@@ -21,13 +21,17 @@ export function Scene() {
                 gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
                 camera={{ position: [0, 0, 3], fov: 45 }}
             >
+                {/* SDF-based orb with shape morphing support */}
                 <Orb />
 
-                {/* Bloom to enhance the light palette */}
-                {/* Bloom to enhance the light palette */}
-                {/* <EffectComposer>
-                    <Bloom intensity={0.5} luminanceThreshold={0.6} luminanceSmoothing={0.9} />
-                </EffectComposer> */}
+                {/* Bloom to enhance the glassmorphic effect */}
+                <EffectComposer>
+                    <Bloom
+                        intensity={0.6}
+                        luminanceThreshold={0.5}
+                        luminanceSmoothing={0.9}
+                    />
+                </EffectComposer>
             </Canvas>
         </div>
     );
