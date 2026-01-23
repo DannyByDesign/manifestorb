@@ -188,6 +188,23 @@ export function Orb() {
     return geo;
   }, []);
 
+  // Calculate responsive orb radius based on viewport width
+  // Smoothly interpolates from 0.5 (mobile) to 1.0 (desktop)
+  const getResponsiveRadius = (viewportWidth: number, baseRadius: number): number => {
+    const minWidth = 480;  // Mobile breakpoint
+    const maxWidth = 1200; // Desktop breakpoint
+    const minRadius = 0.5;
+    const maxRadius = baseRadius; // Use Leva value as max
+
+    // Clamp and normalize viewport width to 0-1 range
+    const t = Math.max(0, Math.min(1, (viewportWidth - minWidth) / (maxWidth - minWidth)));
+
+    // Smooth easing (ease-out quad) for more natural feel
+    const eased = 1 - (1 - t) * (1 - t);
+
+    return minRadius + (maxRadius - minRadius) * eased;
+  };
+
   // Update uniforms every frame
   useFrame((state) => {
     if (!materialRef.current) return;
@@ -212,16 +229,22 @@ export function Orb() {
     );
     u.uCameraMatrixWorld.value.copy(camera.matrixWorld);
 
+    // Responsive radius - smoothly scales with viewport width
+    const responsiveRadius = getResponsiveRadius(size.width, controls.sphereRadius);
+
     // Shape morphing from Leva
     u.uShapeType.value = controls.shapeType;
     u.uMorphProgress.value = controls.morphProgress;
-    u.uSphereRadius.value = controls.sphereRadius;
+    u.uSphereRadius.value = responsiveRadius;
+    
+    // Scale box dimensions proportionally for rounded box shape
+    const scaleFactor = responsiveRadius / controls.sphereRadius;
     u.uShapeDimensions.value.set(
-      controls.boxWidth,
-      controls.boxHeight,
-      controls.boxDepth
+      controls.boxWidth * scaleFactor,
+      controls.boxHeight * scaleFactor,
+      controls.boxDepth * scaleFactor
     );
-    u.uCornerRadius.value = controls.cornerRadius;
+    u.uCornerRadius.value = controls.cornerRadius * scaleFactor;
 
     // Surface effects
     u.uSurfaceNoise.value = controls.surfaceNoise;
