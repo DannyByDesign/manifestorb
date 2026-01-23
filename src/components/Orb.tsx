@@ -44,10 +44,29 @@ const OrbMaterialImpl = shaderMaterial(
     uCornerRadius: 0.15,
     uSphereRadius: 1.0,
 
-    // Surface effects
+    // Surface effects (legacy)
     uSurfaceNoise: 0.0,
     uNoiseScale: 2.0,
     uNoiseSpeed: 0.3,
+
+    // Enhanced displacement system (OFF by default - only for audio reactivity)
+    uDisplacementAmp: 0.0,
+    uNoiseOctaves: 1,
+    uNoiseFrequency: 1.5,
+    uNoiseLacunarity: 2.0,
+    uNoisePersistence: 0.5,
+
+    // Flow-based animation (OFF by default - only for audio reactivity)
+    uFlowStrength: 0.0,
+    uFlowSpeed: 0.0,
+    uFlowScale: 1.0,
+    uEnableFlow: 0,
+
+    // Audio-reactive (prep for Phase 4)
+    uAudioLevel: 0,
+    uAudioBass: 0,
+    uAudioMid: 0,
+    uAudioTreble: 0,
 
     // Glass properties (visionOS style)
     uIOR: 1.45, // Index of refraction (1.45 = glass)
@@ -172,11 +191,108 @@ export function Orb() {
       },
       { collapsed: true }
     ),
-    Surface: folder(
+    "Surface (Audio Only)": folder(
       {
-        surfaceNoise: { value: 0.0, min: 0, max: 0.15, step: 0.005 },
-        noiseScale: { value: 2.0, min: 0.5, max: 5.0, step: 0.1 },
-        noiseSpeed: { value: 0.3, min: 0, max: 1.0, step: 0.05 },
+        displacementAmp: {
+          value: 0.0,
+          min: 0,
+          max: 0.08,
+          step: 0.002,
+          label: "Displacement",
+        },
+        noiseSpeed: {
+          value: 0.0,
+          min: 0,
+          max: 0.2,
+          step: 0.01,
+          label: "Speed",
+        },
+        noiseFrequency: {
+          value: 1.5,
+          min: 0.5,
+          max: 3.0,
+          step: 0.1,
+          label: "Frequency",
+        },
+        noiseOctaves: {
+          value: 1,
+          min: 1,
+          max: 2,
+          step: 1,
+          label: "Octaves",
+        },
+        lacunarity: {
+          value: 2.0,
+          min: 1.5,
+          max: 2.5,
+          step: 0.1,
+          label: "Lacunarity",
+        },
+        persistence: {
+          value: 0.5,
+          min: 0.3,
+          max: 0.7,
+          step: 0.05,
+          label: "Persistence",
+        },
+        enableFlow: {
+          value: false,
+          label: "Enable Flow",
+        },
+        flowStrength: {
+          value: 0.0,
+          min: 0,
+          max: 0.1,
+          step: 0.005,
+          label: "Flow Strength",
+        },
+        flowSpeed: {
+          value: 0.0,
+          min: 0,
+          max: 0.2,
+          step: 0.02,
+          label: "Flow Speed",
+        },
+        flowScale: {
+          value: 1.0,
+          min: 0.5,
+          max: 2.0,
+          step: 0.1,
+          label: "Flow Scale",
+        },
+      },
+      { collapsed: true }
+    ),
+    "Audio (Test)": folder(
+      {
+        testAudioLevel: {
+          value: 0,
+          min: 0,
+          max: 1,
+          step: 0.05,
+          label: "Level",
+        },
+        testAudioBass: {
+          value: 0,
+          min: 0,
+          max: 1,
+          step: 0.05,
+          label: "Bass",
+        },
+        testAudioMid: {
+          value: 0,
+          min: 0,
+          max: 1,
+          step: 0.05,
+          label: "Mid",
+        },
+        testAudioTreble: {
+          value: 0,
+          min: 0,
+          max: 1,
+          step: 0.05,
+          label: "Treble",
+        },
       },
       { collapsed: true }
     ),
@@ -246,10 +362,36 @@ export function Orb() {
     );
     u.uCornerRadius.value = controls.cornerRadius * scaleFactor;
 
-    // Surface effects
-    u.uSurfaceNoise.value = controls.surfaceNoise;
-    u.uNoiseScale.value = controls.noiseScale;
-    u.uNoiseSpeed.value = controls.noiseSpeed;
+    // Quality tier check (used for multiple optimizations)
+    const isMobile = tier.tierName === "mobile";
+
+    // Legacy surface effects (backward compatibility - set to defaults)
+    if (u.uSurfaceNoise) u.uSurfaceNoise.value = 0;
+    if (u.uNoiseScale) u.uNoiseScale.value = 2.0;
+    if (u.uNoiseSpeed) u.uNoiseSpeed.value = controls.noiseSpeed;
+
+    // Enhanced displacement system
+    if (u.uDisplacementAmp) u.uDisplacementAmp.value = controls.displacementAmp;
+    
+    // Quality-tier aware octaves (mobile gets fewer octaves)
+    const maxOctaves = isMobile ? Math.min(controls.noiseOctaves, 2) : controls.noiseOctaves;
+    if (u.uNoiseOctaves) u.uNoiseOctaves.value = maxOctaves;
+    
+    if (u.uNoiseFrequency) u.uNoiseFrequency.value = controls.noiseFrequency;
+    if (u.uNoiseLacunarity) u.uNoiseLacunarity.value = controls.lacunarity;
+    if (u.uNoisePersistence) u.uNoisePersistence.value = controls.persistence;
+
+    // Flow-based animation
+    if (u.uFlowStrength) u.uFlowStrength.value = controls.flowStrength;
+    if (u.uFlowSpeed) u.uFlowSpeed.value = controls.flowSpeed;
+    if (u.uFlowScale) u.uFlowScale.value = controls.flowScale;
+    if (u.uEnableFlow) u.uEnableFlow.value = controls.enableFlow ? 1 : 0;
+
+    // Audio-reactive (test values from Leva, will be replaced by useAudio hook in Phase 4)
+    if (u.uAudioLevel) u.uAudioLevel.value = controls.testAudioLevel;
+    if (u.uAudioBass) u.uAudioBass.value = controls.testAudioBass;
+    if (u.uAudioMid) u.uAudioMid.value = controls.testAudioMid;
+    if (u.uAudioTreble) u.uAudioTreble.value = controls.testAudioTreble;
 
     // Glass properties from Leva (with safety checks for hot reload)
     if (u.uIOR) u.uIOR.value = controls.ior;
@@ -263,7 +405,6 @@ export function Orb() {
     if (u.uEdgeSaturation) u.uEdgeSaturation.value = controls.edgeSaturation;
 
     // Quality tier - affects both raymarch steps and glass quality
-    const isMobile = tier.tierName === "mobile";
     u.uMaxSteps.value = isMobile ? 32 : 64;
     if (u.uGlassQuality) u.uGlassQuality.value = isMobile ? 0 : 1;
 

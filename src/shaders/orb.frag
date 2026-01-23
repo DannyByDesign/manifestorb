@@ -27,10 +27,29 @@ uniform vec3 uShapeDimensions;    // target shape size (half-extents for box)
 uniform float uCornerRadius;      // corner radius for rounded shapes
 uniform float uSphereRadius;      // base sphere radius
 
-// Surface effects
-uniform float uSurfaceNoise;      // displacement amplitude (0 = none)
-uniform float uNoiseScale;        // noise frequency
+// Surface effects (legacy - kept for backward compatibility)
+uniform float uSurfaceNoise;      // displacement amplitude (0 = none) [DEPRECATED]
+uniform float uNoiseScale;        // noise frequency [DEPRECATED]
 uniform float uNoiseSpeed;        // noise animation speed
+
+// Enhanced displacement system
+uniform float uDisplacementAmp;   // overall displacement strength (0.0-0.2)
+uniform int uNoiseOctaves;         // FBM octave count (1-4)
+uniform float uNoiseFrequency;    // base frequency multiplier (1.0-5.0)
+uniform float uNoiseLacunarity;   // frequency multiplier per octave (1.5-2.5)
+uniform float uNoisePersistence;   // amplitude decay per octave (0.3-0.7)
+
+// Flow-based animation
+uniform float uFlowStrength;      // how much curl noise affects position (0.0-0.5)
+uniform float uFlowSpeed;         // animation speed of flow field (0.1-1.0)
+uniform float uFlowScale;          // spatial scale of flow field (0.5-3.0)
+uniform int uEnableFlow;           // flow toggle (0=disabled, 1=enabled)
+
+// Audio-reactive (prep for Phase 4)
+uniform float uAudioLevel;         // overall audio amplitude (0.0-1.0)
+uniform float uAudioBass;          // low frequency band (0.0-1.0)
+uniform float uAudioMid;           // mid frequency band (0.0-1.0)
+uniform float uAudioTreble;        // high frequency band (0.0-1.0)
 
 // Glass properties
 uniform float uIOR;               // Index of refraction (1.45 = glass)
@@ -65,34 +84,149 @@ varying vec2 vUv;
 #define GLASS_THICKNESS_BIAS 0.02 // Small offset to avoid self-intersection
 
 // ============================================
-// Noise (simplified for SDF perturbation)
+// Noise Library (Simplex Noise)
 // ============================================
+// 3D Simplex Noise by Ian McEwan, Stefan Gustavson
+// Optimized for GLSL ES 3.0 (WebGL2)
 
+// Hash function for random vec3 (used by perturbRayFrosted)
 vec3 hash33(vec3 p) {
   p = fract(p * vec3(0.1031, 0.1030, 0.0973));
   p += dot(p, p.yxz + 33.33);
   return fract((p.xxy + p.yxx) * p.zyx);
 }
 
-float noise3D(vec3 p) {
-  vec3 i = floor(p);
-  vec3 f = fract(p);
-  f = f * f * (3.0 - 2.0 * f);
+vec3 mod289(vec3 x) {
+  return x - floor(x * (1.0 / 289.0)) * 289.0;
+}
+
+vec4 mod289(vec4 x) {
+  return x - floor(x * (1.0 / 289.0)) * 289.0;
+}
+
+vec4 permute(vec4 x) {
+  return mod289(((x * 34.0) + 1.0) * x);
+}
+
+vec4 taylorInvSqrt(vec4 r) {
+  return 1.79284291400159 - 0.85373472095314 * r;
+}
+
+// Returns value in range [-1, 1]
+float snoise(vec3 v) {
+  const vec2 C = vec2(1.0 / 6.0, 1.0 / 3.0);
+  const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+
+  // First corner
+  vec3 i  = floor(v + dot(v, C.yyy));
+  vec3 x0 = v - i + dot(i, C.xxx);
+
+  // Other corners
+  vec3 g = step(x0.yzx, x0.xyz);
+  vec3 l = 1.0 - g;
+  vec3 i1 = min(g.xyz, l.zxy);
+  vec3 i2 = max(g.xyz, l.zxy);
+
+  vec3 x1 = x0 - i1 + C.xxx;
+  vec3 x2 = x0 - i2 + C.yyy;
+  vec3 x3 = x0 - D.yyy;
+
+  // Permutations
+  i = mod289(i);
+  vec4 p = permute(permute(permute(
+             i.z + vec4(0.0, i1.z, i2.z, 1.0))
+           + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+           + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+
+  // Gradients: 7x7 points over a square, mapped onto an octahedron
+  float n_ = 0.142857142857; // 1.0/7.0
+  vec3 ns = n_ * D.wyz - D.xzx;
+
+  vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+
+  vec4 x_ = floor(j * ns.z);
+  vec4 y_ = floor(j - 7.0 * x_);
+
+  vec4 x = x_ * ns.x + ns.yyyy;
+  vec4 y = y_ * ns.x + ns.yyyy;
+  vec4 h = 1.0 - abs(x) - abs(y);
+
+  vec4 b0 = vec4(x.xy, y.xy);
+  vec4 b1 = vec4(x.zw, y.zw);
+
+  vec4 s0 = floor(b0) * 2.0 + 1.0;
+  vec4 s1 = floor(b1) * 2.0 + 1.0;
+  vec4 sh = -step(h, vec4(0.0));
+
+  vec4 a0 = b0.xzyw + s0.xzyw * sh.xxyy;
+  vec4 a1 = b1.xzyw + s1.xzyw * sh.zzww;
+
+  vec3 p0 = vec3(a0.xy, h.x);
+  vec3 p1 = vec3(a0.zw, h.y);
+  vec3 p2 = vec3(a1.xy, h.z);
+  vec3 p3 = vec3(a1.zw, h.w);
+
+  // Normalise gradients
+  vec4 norm = taylorInvSqrt(vec4(dot(p0, p0), dot(p1, p1), dot(p2, p2), dot(p3, p3)));
+  p0 *= norm.x;
+  p1 *= norm.y;
+  p2 *= norm.z;
+  p3 *= norm.w;
+
+  // Mix contributions
+  vec4 m = max(0.6 - vec4(dot(x0, x0), dot(x1, x1), dot(x2, x2), dot(x3, x3)), 0.0);
+  m = m * m;
+  return 42.0 * dot(m * m, vec4(dot(p0, x0), dot(p1, x1), dot(p2, x2), dot(p3, x3)));
+}
+
+// Convenience: remap to [0, 1]
+float snoise01(vec3 v) {
+  return snoise(v) * 0.5 + 0.5;
+}
+
+// Fractal Brownian Motion
+float fbm3(vec3 p, int octaves) {
+  float value = 0.0;
+  float amplitude = 0.5;
+  float frequency = 1.0;
   
-  float n = mix(
-    mix(
-      mix(dot(hash33(i), f), dot(hash33(i + vec3(1,0,0)), f - vec3(1,0,0)), f.x),
-      mix(dot(hash33(i + vec3(0,1,0)), f - vec3(0,1,0)), dot(hash33(i + vec3(1,1,0)), f - vec3(1,1,0)), f.x),
-      f.y
-    ),
-    mix(
-      mix(dot(hash33(i + vec3(0,0,1)), f - vec3(0,0,1)), dot(hash33(i + vec3(1,0,1)), f - vec3(1,0,1)), f.x),
-      mix(dot(hash33(i + vec3(0,1,1)), f - vec3(0,1,1)), dot(hash33(i + vec3(1,1,1)), f - vec3(1,1,1)), f.x),
-      f.y
-    ),
-    f.z
-  );
-  return n * 0.5 + 0.5;
+  for (int i = 0; i < octaves; i++) {
+    value += amplitude * snoise(p * frequency);
+    frequency *= 2.0;
+    amplitude *= 0.5;
+  }
+  
+  return value;
+}
+
+// Curl noise helper - compute curl of 3D noise field
+vec3 curlNoise(vec3 p) {
+  const float e = 0.1;
+  
+  vec3 dx = vec3(e, 0.0, 0.0);
+  vec3 dy = vec3(0.0, e, 0.0);
+  vec3 dz = vec3(0.0, 0.0, e);
+  
+  float n_x0 = snoise(p - dx);
+  float n_x1 = snoise(p + dx);
+  float n_y0 = snoise(p - dy);
+  float n_y1 = snoise(p + dy);
+  float n_z0 = snoise(p - dz);
+  float n_z1 = snoise(p + dz);
+  
+  // Use offset samples for different components
+  float n_x0_y = snoise(p - dx + vec3(31.416, 0.0, 0.0));
+  float n_x1_y = snoise(p + dx + vec3(31.416, 0.0, 0.0));
+  float n_y0_z = snoise(p - dy + vec3(0.0, 47.853, 0.0));
+  float n_y1_z = snoise(p + dy + vec3(0.0, 47.853, 0.0));
+  float n_z0_x = snoise(p - dz + vec3(0.0, 0.0, 63.291));
+  float n_z1_x = snoise(p + dz + vec3(0.0, 0.0, 63.291));
+  
+  float curl_x = (n_y1_z - n_y0_z) - (n_z1 - n_z0);
+  float curl_y = (n_z1_x - n_z0_x) - (n_x1 - n_x0);
+  float curl_z = (n_x1_y - n_x0_y) - (n_y1 - n_y0);
+  
+  return vec3(curl_x, curl_y, curl_z) / (2.0 * e);
 }
 
 // ============================================
@@ -111,6 +245,55 @@ float sdRoundedBox(vec3 p, vec3 b, float r) {
 float sdCapsule(vec3 p, float h, float r) {
   p.y -= clamp(p.y, -h * 0.5, h * 0.5);
   return length(p) - r;
+}
+
+// ============================================
+// Surface Displacement
+// ============================================
+
+// Audio-reactive displacement modifier
+float audioDisplacementMod() {
+  float mod = 1.0;
+  mod += uAudioLevel * 2.0;  // Audio doubles displacement
+  mod += uAudioBass * 1.5;    // Bass adds extra punch
+  return mod;
+}
+
+// Multi-octave FBM displacement with flow
+float surfaceDisplacement(vec3 p) {
+  // Apply flow-based position offset (curl noise for organic movement)
+  vec3 offsetP = p;
+  if (uEnableFlow > 0) {
+    vec3 flowP = p * uFlowScale + uTime * uFlowSpeed;
+    vec3 flow = curlNoise(flowP);
+    offsetP = p + flow * uFlowStrength;
+  }
+  
+  // Calculate dynamic frequency (treble adds detail)
+  float dynamicFreq = uNoiseFrequency * (1.0 + uAudioTreble * 0.5);
+  
+  // FBM multi-octave noise
+  float value = 0.0;
+  float amplitude = 1.0;
+  float frequency = dynamicFreq;
+  
+  // Clamp octaves to prevent shader loop issues
+  int maxOctaves = min(uNoiseOctaves, 4);
+  
+  for (int i = 0; i < 4; i++) {
+    if (i >= maxOctaves) break;
+    
+    vec3 noiseP = offsetP * frequency + uTime * uNoiseSpeed;
+    value += amplitude * snoise(noiseP);
+    
+    frequency *= uNoiseLacunarity;
+    amplitude *= uNoisePersistence;
+  }
+  
+  // Apply audio-reactive modifier
+  float audioMod = audioDisplacementMod();
+  
+  return value * uDisplacementAmp * audioMod;
 }
 
 // ============================================
@@ -133,9 +316,14 @@ float sceneSDF(vec3 p) {
   // Morph between sphere and target
   float d = mix(sphere, target, uMorphProgress);
   
-  // Apply surface noise displacement
-  if (uSurfaceNoise > 0.0) {
-    float noiseVal = noise3D(p * uNoiseScale + uTime * uNoiseSpeed);
+  // Apply enhanced surface displacement
+  if (uDisplacementAmp > 0.0) {
+    d += surfaceDisplacement(p);
+  }
+  
+  // Legacy displacement support (for backward compatibility)
+  if (uSurfaceNoise > 0.0 && uDisplacementAmp <= 0.0) {
+    float noiseVal = snoise01(p * uNoiseScale + uTime * uNoiseSpeed);
     d += (noiseVal - 0.5) * 2.0 * uSurfaceNoise;
   }
   
