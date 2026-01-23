@@ -47,52 +47,49 @@ body {
   background-color: var(--base-lilac);
 
   background-image:
+    /* 1) Diagonal purple/violet band (Softer, less linear feel) */
     linear-gradient(135deg,
-      rgb(237 232 242 / 1.00) 0%,
-      rgb(237 232 242 / 0.92) 18%,
-      rgb(198 155 187 / 0.38) 52%,
-      rgb(184 102 152 / 0.40) 74%,
-      rgb(216 145 155 / 0.42) 100%),
+      rgb(136 125 173 / 0.00) 0%,
+      rgb(130 100 160 / 0.50) 30%,
+      rgb(140 90 170 / 0.65) 50%,
+      rgb(140 90 170 / 0.00) 80%),
 
+    /* 2) ORGANIC LIGHT FLOW: Massive radial wash from top-left, curves slightly, reaches bottom-right */
+    /* Using ellipse at offset to simulated 'flow' vs straight line */
+    radial-gradient(2200px 1800px at 5% 5%,
+      rgb(245 248 255 / 1.00) 0%,
+      rgb(235 240 250 / 0.70) 30%,
+      rgb(237 232 242 / 0.20) 60%,
+      rgb(216 145 155 / 0.00) 90%),
+
+    /* 3) Deep Violet/Blue blob (Top-Right) */
+    radial-gradient(1100px 900px at 90% 10%,
+      rgb(100 90 180 / 0.85) 0%,
+      rgb(120 100 190 / 0.50) 45%,
+      rgb(120 100 190 / 0.00) 85%),
+
+    /* 4) Cool Blue-Purple Shadow (Center-Right) */
+    radial-gradient(900px 700px at 75% 50%,
+      rgb(110 100 170 / 0.50) 0%,
+      rgb(110 100 170 / 0.20) 50%,
+      rgb(110 100 170 / 0.00) 85%),
+
+    /* 5) Warm Coral/Pink (Strictly Bottom-Right) */
+    radial-gradient(1400px 1100px at 100% 100%,
+      rgb(225 155 165 / 1.00) 0%,
+      rgb(216 145 155 / 0.75) 45%,
+      rgb(216 145 155 / 0.00) 85%),
+
+    /* 6) Cool Lavender/Blue Wash (Bottom-Left) */
+    radial-gradient(1400px 1000px at 0% 100%,
+      rgb(160 170 210 / 0.70) 0%,
+      rgb(160 170 210 / 0.40) 35%,
+      rgb(160 170 210 / 0.00) 70%),
+
+    /* 7) Cool cyan highlight (Top Edge) */
     linear-gradient(180deg,
-      rgb(224 238 241 / 0.80) 0%,
-      rgb(224 238 241 / 0.20) 12%,
-      rgb(224 238 241 / 0.00) 28%),
-
-    radial-gradient(1200px 900px at 22% 18%,
-      rgb(237 232 242 / 0.95) 0%,
-      rgb(237 232 242 / 0.55) 26%,
-      rgb(237 232 242 / 0.00) 64%),
-
-    radial-gradient(900px 700px at 8% 8%,
-      rgb(224 238 241 / 0.72) 0%,
-      rgb(224 238 241 / 0.18) 28%,
-      rgb(224 238 241 / 0.00) 62%),
-
-    radial-gradient(1100px 900px at 82% 20%,
-      rgb(184 102 152 / 0.70) 0%,
-      rgb(184 102 152 / 0.35) 32%,
-      rgb(184 102 152 / 0.00) 72%),
-
-    radial-gradient(1200px 900px at 78% 54%,
-      rgb(136 125 173 / 0.62) 0%,
-      rgb(136 125 173 / 0.30) 36%,
-      rgb(136 125 173 / 0.00) 74%),
-
-    radial-gradient(1200px 900px at 46% 78%,
-      rgb(198 155 187 / 0.62) 0%,
-      rgb(198 155 187 / 0.28) 34%,
-      rgb(198 155 187 / 0.00) 72%),
-
-    radial-gradient(1200px 900px at 92% 88%,
-      rgb(216 145 155 / 0.70) 0%,
-      rgb(216 145 155 / 0.32) 34%,
-      rgb(216 145 155 / 0.00) 76%),
-
-    radial-gradient(1200px 900px at 10% 86%,
-      rgb(136 125 173 / 0.40) 0%,
-      rgb(136 125 173 / 0.18) 34%,
-      rgb(136 125 173 / 0.00) 72%);
+      rgb(224 238 241 / 0.45) 0%,
+      rgb(224 238 241 / 0.00) 15%);
 
   background-repeat: no-repeat;
   background-attachment: fixed;
@@ -107,52 +104,24 @@ body::before {
   z-index: 10;
 
   background-image:
-    radial-gradient(900px 700px at 22% 16%,
-      rgb(224 238 241 / 0.85) 0%,
-      rgb(237 232 242 / 0.55) 22%,
-      rgb(237 232 242 / 0.00) 60%),
+    /* Reinforce diagonal ribbon (subtle second pass) */
+    linear-gradient(125deg,
+      rgb(136 125 173 / 0.00) 0%,
+      rgb(136 125 173 / 0.25) 22%,
+      rgb(160 120 170 / 0.30) 38%,
+      rgb(184 102 152 / 0.20) 52%,
+      rgb(184 102 152 / 0.00) 68%),
 
-    radial-gradient(1400px 1000px at 34% 22%,
-      rgb(237 232 242 / 0.78) 0%,
-      rgb(237 232 242 / 0.30) 30%,
-      rgb(237 232 242 / 0.00) 70%),
-
-    linear-gradient(110deg,
-      rgb(224 238 241 / 0.00) 0%,
-      rgb(224 238 241 / 0.22) 18%,
-      rgb(237 232 242 / 0.18) 34%,
-      rgb(224 238 241 / 0.00) 56%),
-
-    radial-gradient(900px 700px at 88% 18%,
-      rgb(184 102 152 / 0.42) 0%,
-      rgb(184 102 152 / 0.18) 36%,
-      rgb(184 102 152 / 0.00) 72%),
-
-    radial-gradient(900px 750px at 78% 46%,
-      rgb(136 125 173 / 0.36) 0%,
-      rgb(136 125 173 / 0.16) 38%,
-      rgb(136 125 173 / 0.00) 74%),
-
-    radial-gradient(1000px 800px at 92% 84%,
-      rgb(216 145 155 / 0.40) 0%,
-      rgb(216 145 155 / 0.16) 40%,
-      rgb(216 145 155 / 0.00) 78%),
-
-    radial-gradient(1100px 900px at 52% 86%,
-      rgb(198 155 187 / 0.34) 0%,
-      rgb(198 155 187 / 0.14) 42%,
-      rgb(198 155 187 / 0.00) 80%),
-
-    radial-gradient(1000px 900px at 16% 92%,
-      rgb(224 238 241 / 0.22) 0%,
-      rgb(224 238 241 / 0.08) 40%,
-      rgb(224 238 241 / 0.00) 78%);
+    /* Soft center haze (keeps orb area lighter) */
+    radial-gradient(1200px 900px at 40% 40%,
+      rgb(237 232 242 / 0.45) 0%,
+      rgb(237 232 242 / 0.00) 60%);
 
   background-repeat: no-repeat;
   background-size: cover;
 
-  filter: saturate(1.10) contrast(1.02);
-  opacity: 0.95;
+  filter: saturate(1.05) contrast(1.01);
+  opacity: 0.90;
 }
 
 /* ---------------------------------------------------------
@@ -166,15 +135,16 @@ body::after {
   z-index: 11;
 
   background-image:
-    /* gentle vignette (very light) */
+    /* gentle vignette */
     radial-gradient(120% 95% at 50% 45%,
       rgb(0 0 0 / 0.00) 60%,
-      rgb(0 0 0 / 0.10) 100%),
+      rgb(0 0 0 / 0.15) 100%),
 
-    /* soft film grain */
-    url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+    /* Stronger film grain */
+    url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.80' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
 
   background-repeat: no-repeat, repeat;
-  background-size: cover, 200px 200px;
-  opacity: 0.06;
+  background-size: cover, 128px 128px;
+  mix-blend-mode: overlay;
+  opacity: 0.14;
 }
