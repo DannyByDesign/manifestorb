@@ -1,17 +1,14 @@
 // Orb Vertex Shader
-// Standard transform + view direction for Fresnel
-varying vec3 vNormal;
-varying vec3 vViewDir;
-varying vec2 vUv;
-varying vec3 vPosition;
+// Fullscreen quad for SDF raymarching
+// Used with a PlaneGeometry(2, 2) that covers clip space
 
-uniform float uTime;
+varying vec2 vUv;
 
 void main() {
-  vec4 worldPos = modelMatrix * vec4(position, 1.0);
-  vViewDir = normalize(cameraPosition - worldPos.xyz);
-  vNormal = normalize(normalMatrix * normal);
   vUv = uv;
-  vPosition = worldPos.xyz;
-  gl_Position = projectionMatrix * viewMatrix * worldPos;
+  
+  // Position is already in clip space (-1 to 1)
+  // No transformation needed
+  gl_Position = vec4(position.xy, 0.0, 1.0);
 }
+
