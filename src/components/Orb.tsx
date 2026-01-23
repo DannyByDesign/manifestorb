@@ -49,6 +49,13 @@ const OrbMaterialImpl = shaderMaterial(
     uNoiseScale: 2.0,
     uNoiseSpeed: 0.3,
 
+    // Glass properties (visionOS style)
+    uIOR: 1.45, // Index of refraction (1.45 = glass)
+    uGlassTint: 0.15, // How much base color tints the refraction
+    uReflectionStrength: 0.6, // Fresnel reflection intensity
+    uGlassClarity: 1.0, // How clear the glass is
+    uGlassQuality: 1, // 0=low (mobile), 1=high (desktop)
+
     // Colors
     uBaseColor: new THREE.Color(0xe7e4f2),
     uCoolColor: new THREE.Color(0xe0eef1),
@@ -81,7 +88,7 @@ declare global {
 }
 
 // ============================================
-// Orb Component (SDF Raymarched)
+// Orb Component (SDF Raymarched Volumetric Glass)
 // ============================================
 
 export function Orb() {
@@ -91,23 +98,62 @@ export function Orb() {
 
   // Leva debug controls
   const controls = useControls({
-    Shape: folder({
-      shapeType: {
-        value: 0,
-        options: { Sphere: 0, "Rounded Box": 1, Capsule: 2 },
+    Glass: folder(
+      {
+        ior: {
+          value: 1.45,
+          min: 1.0,
+          max: 2.5,
+          step: 0.05,
+          label: "IOR (Refraction)",
+        },
+        glassTint: {
+          value: 0.15,
+          min: 0,
+          max: 0.5,
+          step: 0.01,
+          label: "Glass Tint",
+        },
+        reflectionStrength: {
+          value: 0.6,
+          min: 0,
+          max: 1,
+          step: 0.05,
+          label: "Reflection",
+        },
+        glassClarity: {
+          value: 1.0,
+          min: 0,
+          max: 1,
+          step: 0.05,
+          label: "Clarity",
+        },
       },
-      morphProgress: { value: 0, min: 0, max: 1, step: 0.01 },
-      sphereRadius: { value: 1.0, min: 0.5, max: 2.0, step: 0.1 },
-      boxWidth: { value: 1.5, min: 0.5, max: 3.0, step: 0.1 },
-      boxHeight: { value: 1.0, min: 0.5, max: 2.5, step: 0.1 },
-      boxDepth: { value: 0.15, min: 0.05, max: 0.5, step: 0.01 },
-      cornerRadius: { value: 0.15, min: 0, max: 0.5, step: 0.01 },
-    }),
-    Surface: folder({
-      surfaceNoise: { value: 0.0, min: 0, max: 0.15, step: 0.005 },
-      noiseScale: { value: 2.0, min: 0.5, max: 5.0, step: 0.1 },
-      noiseSpeed: { value: 0.3, min: 0, max: 1.0, step: 0.05 },
-    }),
+      { collapsed: false }
+    ),
+    Shape: folder(
+      {
+        shapeType: {
+          value: 0,
+          options: { Sphere: 0, "Rounded Box": 1, Capsule: 2 },
+        },
+        morphProgress: { value: 0, min: 0, max: 1, step: 0.01 },
+        sphereRadius: { value: 1.0, min: 0.5, max: 2.0, step: 0.1 },
+        boxWidth: { value: 1.5, min: 0.5, max: 3.0, step: 0.1 },
+        boxHeight: { value: 1.0, min: 0.5, max: 2.5, step: 0.1 },
+        boxDepth: { value: 0.15, min: 0.05, max: 0.5, step: 0.01 },
+        cornerRadius: { value: 0.15, min: 0, max: 0.5, step: 0.01 },
+      },
+      { collapsed: true }
+    ),
+    Surface: folder(
+      {
+        surfaceNoise: { value: 0.0, min: 0, max: 0.15, step: 0.005 },
+        noiseScale: { value: 2.0, min: 0.5, max: 5.0, step: 0.1 },
+        noiseSpeed: { value: 0.3, min: 0, max: 1.0, step: 0.05 },
+      },
+      { collapsed: true }
+    ),
   });
 
   // Create fullscreen quad geometry (clip-space coordinates)
@@ -121,44 +167,56 @@ export function Orb() {
     if (!materialRef.current) return;
 
     const mat = materialRef.current;
+    const u = mat.uniforms;
+
+    // Safety check - uniforms might not exist during hot reload
+    if (!u.uTime) return;
 
     // Time
-    mat.uniforms.uTime.value = state.clock.getElapsedTime();
+    u.uTime.value = state.clock.getElapsedTime();
 
     // Resolution (account for DPR)
     const dpr = gl.getPixelRatio();
-    mat.uniforms.uResolution.value.set(size.width * dpr, size.height * dpr);
+    u.uResolution.value.set(size.width * dpr, size.height * dpr);
 
     // Camera uniforms
-    mat.uniforms.uCameraPos.value.copy(camera.position);
-    mat.uniforms.uInverseProjectionMatrix.value.copy(
+    u.uCameraPos.value.copy(camera.position);
+    u.uInverseProjectionMatrix.value.copy(
       (camera as THREE.PerspectiveCamera).projectionMatrixInverse
     );
-    mat.uniforms.uCameraMatrixWorld.value.copy(camera.matrixWorld);
+    u.uCameraMatrixWorld.value.copy(camera.matrixWorld);
 
     // Shape morphing from Leva
-    mat.uniforms.uShapeType.value = controls.shapeType;
-    mat.uniforms.uMorphProgress.value = controls.morphProgress;
-    mat.uniforms.uSphereRadius.value = controls.sphereRadius;
-    mat.uniforms.uShapeDimensions.value.set(
+    u.uShapeType.value = controls.shapeType;
+    u.uMorphProgress.value = controls.morphProgress;
+    u.uSphereRadius.value = controls.sphereRadius;
+    u.uShapeDimensions.value.set(
       controls.boxWidth,
       controls.boxHeight,
       controls.boxDepth
     );
-    mat.uniforms.uCornerRadius.value = controls.cornerRadius;
+    u.uCornerRadius.value = controls.cornerRadius;
 
     // Surface effects
-    mat.uniforms.uSurfaceNoise.value = controls.surfaceNoise;
-    mat.uniforms.uNoiseScale.value = controls.noiseScale;
-    mat.uniforms.uNoiseSpeed.value = controls.noiseSpeed;
+    u.uSurfaceNoise.value = controls.surfaceNoise;
+    u.uNoiseScale.value = controls.noiseScale;
+    u.uNoiseSpeed.value = controls.noiseSpeed;
 
-    // Quality tier
-    mat.uniforms.uMaxSteps.value = tier.tierName === "mobile" ? 32 : 64;
+    // Glass properties from Leva (with safety checks for hot reload)
+    if (u.uIOR) u.uIOR.value = controls.ior;
+    if (u.uGlassTint) u.uGlassTint.value = controls.glassTint;
+    if (u.uReflectionStrength) u.uReflectionStrength.value = controls.reflectionStrength;
+    if (u.uGlassClarity) u.uGlassClarity.value = controls.glassClarity;
+
+    // Quality tier - affects both raymarch steps and glass quality
+    const isMobile = tier.tierName === "mobile";
+    u.uMaxSteps.value = isMobile ? 32 : 64;
+    if (u.uGlassQuality) u.uGlassQuality.value = isMobile ? 0 : 1;
 
     // Sync colors from CSS variables
-    mat.uniforms.uBaseColor.value = getCssColor("--orb-base", "#E7E4F2");
-    mat.uniforms.uCoolColor.value = getCssColor("--orb-cool", "#E0EEF1");
-    mat.uniforms.uWarmColor.value = getCssColor("--orb-warm", "#D8919B");
+    u.uBaseColor.value = getCssColor("--orb-base", "#E7E4F2");
+    u.uCoolColor.value = getCssColor("--orb-cool", "#E0EEF1");
+    u.uWarmColor.value = getCssColor("--orb-warm", "#D8919B");
   });
 
   return (
@@ -177,4 +235,3 @@ export function Orb() {
     </mesh>
   );
 }
-

@@ -1,9 +1,9 @@
 // Orb Fragment Shader (Raymarched SDF)
-// Glassmorphic shading with shape morphing support
+// visionOS-style volumetric glass with refraction
 //
-// This shader raymarches a signed distance field and applies
-// glassmorphic shading. Supports morphing between sphere and
-// rounded box for modal transformations.
+// This shader raymarches a signed distance field and renders it as
+// a volumetric glass object with proper refraction through front and
+// back surfaces. Supports morphing between sphere and rounded box.
 
 precision highp float;
 
@@ -32,6 +32,13 @@ uniform float uSurfaceNoise;      // displacement amplitude (0 = none)
 uniform float uNoiseScale;        // noise frequency
 uniform float uNoiseSpeed;        // noise animation speed
 
+// Glass properties
+uniform float uIOR;               // Index of refraction (1.45 = glass)
+uniform float uGlassTint;         // How much base color tints refraction (0-1)
+uniform float uReflectionStrength; // Fresnel reflection intensity (0-1)
+uniform float uGlassClarity;      // How clear the glass is (0=frosted, 1=crystal)
+uniform int uGlassQuality;        // 0=low (mobile), 1=high (desktop)
+
 // Colors (from CSS variables)
 uniform vec3 uBaseColor;
 uniform vec3 uCoolColor;
@@ -50,19 +57,18 @@ varying vec2 vUv;
 #define PI 3.14159265359
 #define MAX_DIST 20.0
 #define EPSILON 0.001
+#define GLASS_THICKNESS_BIAS 0.02 // Small offset to avoid self-intersection
 
 // ============================================
 // Noise (simplified for SDF perturbation)
 // ============================================
 
-// Hash function for noise
 vec3 hash33(vec3 p) {
   p = fract(p * vec3(0.1031, 0.1030, 0.0973));
   p += dot(p, p.yxz + 33.33);
   return fract((p.xxy + p.yxx) * p.zyx);
 }
 
-// Simple 3D noise
 float noise3D(vec3 p) {
   vec3 i = floor(p);
   vec3 f = fract(p);
@@ -85,7 +91,7 @@ float noise3D(vec3 p) {
 }
 
 // ============================================
-// SDF Primitives (inlined for performance)
+// SDF Primitives
 // ============================================
 
 float sdSphere(vec3 p, float r) {
@@ -102,12 +108,6 @@ float sdCapsule(vec3 p, float h, float r) {
   return length(p) - r;
 }
 
-// Smooth union for organic blending
-float opSmoothUnion(float d1, float d2, float k) {
-  float h = clamp(0.5 + 0.5 * (d2 - d1) / k, 0.0, 1.0);
-  return mix(d2, d1, h) - k * h * (1.0 - h);
-}
-
 // ============================================
 // Scene SDF
 // ============================================
@@ -117,13 +117,11 @@ float sceneSDF(vec3 p) {
   float sphere = sdSphere(p, uSphereRadius);
   
   // Target shape based on uShapeType
-  float target = sphere; // default
+  float target = sphere;
   
   if (uShapeType == 1) {
-    // Rounded box (modal shape)
     target = sdRoundedBox(p, uShapeDimensions, uCornerRadius);
   } else if (uShapeType == 2) {
-    // Vertical capsule
     target = sdCapsule(p, uShapeDimensions.y * 2.0, uShapeDimensions.x);
   }
   
@@ -156,24 +154,18 @@ vec3 calcNormal(vec3 p) {
 // Raymarching
 // ============================================
 
-float raymarch(vec3 ro, vec3 rd) {
+// Raymarch from outside to find front surface
+float raymarchFront(vec3 ro, vec3 rd) {
   float t = 0.0;
   
-  for (int i = 0; i < 128; i++) { // Max iterations (will early exit)
+  for (int i = 0; i < 128; i++) {
     if (i >= uMaxSteps) break;
     
     vec3 p = ro + rd * t;
     float d = sceneSDF(p);
     
-    // Hit surface
-    if (d < EPSILON) {
-      return t;
-    }
-    
-    // Gone too far
-    if (t > MAX_DIST) {
-      return -1.0;
-    }
+    if (d < EPSILON) return t;
+    if (t > MAX_DIST) return -1.0;
     
     t += d;
   }
@@ -181,51 +173,187 @@ float raymarch(vec3 ro, vec3 rd) {
   return -1.0;
 }
 
-// ============================================
-// Glassmorphic Shading
-// ============================================
-
-float fresnel(float cosTheta, float power) {
-  return pow(1.0 - cosTheta, power);
+// Raymarch from inside to find back surface
+float raymarchBack(vec3 ro, vec3 rd, int maxSteps) {
+  float t = 0.0;
+  
+  for (int i = 0; i < 64; i++) {
+    if (i >= maxSteps) break;
+    
+    vec3 p = ro + rd * t;
+    float d = -sceneSDF(p); // Negative because we're inside
+    
+    if (d < EPSILON) return t;
+    if (t > MAX_DIST * 0.5) return -1.0;
+    
+    // Minimum step size to avoid getting stuck at surface
+    t += max(d, 0.01);
+  }
+  
+  return -1.0;
 }
 
-vec3 shade(vec3 p, vec3 N, vec3 V) {
-  vec3 L = normalize(vec3(-1.0, 1.0, 1.0)); // Main light from top-left
+// ============================================
+// Refraction (Snell's Law)
+// ============================================
+
+// eta = n1/n2 (ratio of refractive indices)
+vec3 refractRay(vec3 I, vec3 N, float eta) {
+  float cosi = dot(-I, N);
+  float k = 1.0 - eta * eta * (1.0 - cosi * cosi);
   
-  float NdotV = max(dot(N, V), 0.0);
-  float NdotL = max(dot(N, L), 0.0);
+  // Total internal reflection
+  if (k < 0.0) {
+    return reflect(I, N);
+  }
   
-  // --- 1. Base Glass Body ---
-  vec3 color = uBaseColor;
+  return eta * I + (eta * cosi - sqrt(k)) * N;
+}
+
+// ============================================
+// Fresnel (Schlick approximation)
+// ============================================
+
+float fresnelSchlick(float cosTheta, float f0) {
+  return f0 + (1.0 - f0) * pow(1.0 - cosTheta, 5.0);
+}
+
+// Simplified fresnel for glass (f0 ~ 0.04 for glass)
+float glassFresnelTerm(float NdotV) {
+  float f0 = 0.04;
+  return fresnelSchlick(NdotV, f0);
+}
+
+// ============================================
+// Environment / Background Sampling
+// ============================================
+
+// Sample environment for reflections (soft gradient)
+vec3 sampleEnvironment(vec3 rd) {
+  // Create a soft environment gradient based on ray direction
+  float upFactor = rd.y * 0.5 + 0.5;
+  float rightFactor = rd.x * 0.5 + 0.5;
   
-  // --- 2. Environment Gradient Mapping ---
-  // Diagonal gradient: Cool (Top-Left) to Warm (Bottom-Right)
-  float gradientFactor = dot(N, normalize(vec3(1.0, -1.0, 0.0)));
-  float t = smoothstep(-0.8, 0.8, gradientFactor);
-  vec3 envTint = mix(uCoolColor, uWarmColor, t);
-  color = mix(color, envTint, 0.4);
+  // Soft sky-like gradient
+  vec3 skyColor = mix(uCoolColor, vec3(1.0), upFactor * 0.3);
+  vec3 groundColor = mix(uWarmColor, uBaseColor, 0.5);
   
-  // --- 3. Holographic Sheen (Iridescence) ---
-  float iridescent = fresnel(NdotV, 2.5);
-  vec3 holoColor = 0.5 + 0.5 * cos(vec3(0.0, 0.33, 0.67) * 6.28 + iridescent * 3.0 + uTime * 0.2);
-  color += holoColor * iridescent * 0.15;
+  vec3 env = mix(groundColor, skyColor, smoothstep(0.3, 0.7, upFactor));
   
-  // --- 4. Lighting & Highlights ---
+  // Add subtle variation
+  env += (rightFactor - 0.5) * 0.05 * uWarmColor;
   
-  // Soft specular
-  float spec = pow(NdotL, 8.0);
-  color += vec3(1.0) * spec * 0.3;
+  return env;
+}
+
+// Sample background through refraction (CSS gradient approximation)
+vec3 sampleBackground(vec3 rd, vec2 screenUv) {
+  // Use refracted ray direction to offset UV sampling
+  vec2 bgUv = screenUv + rd.xy * 0.1;
+  bgUv = clamp(bgUv, 0.0, 1.0);
   
-  // Sharp hotspot
-  float heavySpec = pow(NdotL, 32.0);
-  color += vec3(1.0) * heavySpec * 0.4;
+  // Recreate the CSS gradient (lilac base with warm/cool regions)
+  // This approximates the layered radial gradients from globals.css
   
-  // Rim light
-  float rim = fresnel(NdotV, 4.0);
-  rim = smoothstep(0.2, 1.0, rim);
-  color += uCoolColor * rim * 0.6;
+  // Base lilac
+  vec3 bgColor = uBaseColor * 0.95;
   
-  return color;
+  // Cool region (top-left, bottom-left)
+  float coolRegion = smoothstep(0.7, 0.3, bgUv.x) * smoothstep(0.3, 0.7, bgUv.y);
+  coolRegion += smoothstep(0.7, 0.3, bgUv.x) * smoothstep(0.7, 0.3, bgUv.y) * 0.5;
+  bgColor = mix(bgColor, uCoolColor * 0.9, coolRegion * 0.4);
+  
+  // Warm region (bottom-right)
+  float warmRegion = smoothstep(0.4, 0.8, bgUv.x) * smoothstep(0.6, 0.2, bgUv.y);
+  bgColor = mix(bgColor, uWarmColor, warmRegion * 0.5);
+  
+  // Light wash (top area)
+  float lightWash = smoothstep(0.5, 0.9, bgUv.y);
+  bgColor = mix(bgColor, vec3(0.98, 0.97, 0.99), lightWash * 0.3);
+  
+  return bgColor;
+}
+
+// ============================================
+// Volumetric Glass Shading
+// ============================================
+
+vec4 shadeGlass(vec3 frontHitPos, vec3 frontNormal, vec3 rayDir, vec2 screenUv) {
+  vec3 V = -rayDir;
+  float NdotV = max(dot(frontNormal, V), 0.0);
+  
+  // --- Fresnel term ---
+  float fresnel = glassFresnelTerm(NdotV);
+  fresnel *= uReflectionStrength;
+  
+  // --- Reflection component ---
+  vec3 reflectDir = reflect(rayDir, frontNormal);
+  vec3 reflection = sampleEnvironment(reflectDir);
+  
+  // Add soft specular highlight
+  vec3 lightDir = normalize(vec3(-1.0, 1.0, 1.0));
+  float specAngle = max(dot(reflectDir, lightDir), 0.0);
+  float specular = pow(specAngle, 64.0) * 0.4;
+  reflection += vec3(1.0) * specular;
+  
+  // --- Refraction component ---
+  float eta = 1.0 / uIOR; // Air to glass
+  vec3 refractDir = refractRay(rayDir, frontNormal, eta);
+  
+  vec3 refractedColor;
+  
+  // High quality: trace through volume
+  if (uGlassQuality > 0) {
+    // Step inside the glass slightly
+    vec3 insidePos = frontHitPos + refractDir * GLASS_THICKNESS_BIAS;
+    
+    // Find back surface
+    int backSteps = uGlassQuality > 0 ? 32 : 16;
+    float backDist = raymarchBack(insidePos, refractDir, backSteps);
+    
+    if (backDist > 0.0) {
+      // Hit back surface
+      vec3 backPos = insidePos + refractDir * backDist;
+      vec3 backNormal = -calcNormal(backPos); // Inward-facing normal
+      
+      // Refract again exiting glass
+      vec3 exitDir = refractRay(refractDir, backNormal, uIOR);
+      
+      // Sample background with exit direction
+      refractedColor = sampleBackground(exitDir, screenUv);
+      
+      // Add depth-based absorption (thicker = more tinted)
+      float thickness = backDist;
+      float absorption = 1.0 - exp(-thickness * 0.5);
+      refractedColor = mix(refractedColor, uBaseColor * 0.9, absorption * uGlassTint);
+      
+    } else {
+      // Didn't find back surface (edge case)
+      refractedColor = sampleBackground(refractDir, screenUv);
+    }
+  } else {
+    // Low quality: single refraction (mobile fallback)
+    refractedColor = sampleBackground(refractDir, screenUv);
+    refractedColor = mix(refractedColor, uBaseColor * 0.9, uGlassTint * 0.5);
+  }
+  
+  // --- Blend reflection and refraction ---
+  vec3 glassColor = mix(refractedColor, reflection, fresnel);
+  
+  // --- Subtle rim glow (visionOS style) ---
+  float rimGlow = pow(1.0 - NdotV, 3.0);
+  glassColor += uCoolColor * rimGlow * 0.15;
+  
+  // --- Soft inner glow / subsurface hint ---
+  float innerGlow = pow(NdotV, 2.0) * 0.1;
+  glassColor += uBaseColor * innerGlow;
+  
+  // --- Alpha: more opaque at edges (fresnel), more transparent in center ---
+  // visionOS glass is quite transparent in the center
+  float alpha = mix(0.15, 0.85, fresnel);
+  alpha = mix(alpha, 1.0, specular); // Specular highlights are opaque
+  
+  return vec4(glassColor, alpha);
 }
 
 // ============================================
@@ -233,19 +361,11 @@ vec3 shade(vec3 p, vec3 N, vec3 V) {
 // ============================================
 
 vec3 getRayDirection(vec2 uv) {
-  // Convert UV (0..1) to NDC (-1..1)
   vec2 ndc = uv * 2.0 - 1.0;
-  
-  // Create clip-space position (near plane)
   vec4 clipPos = vec4(ndc, -1.0, 1.0);
-  
-  // Transform to view space
   vec4 viewPos = uInverseProjectionMatrix * clipPos;
-  viewPos = vec4(viewPos.xy, -1.0, 0.0); // Direction in view space
-  
-  // Transform to world space
+  viewPos = vec4(viewPos.xy, -1.0, 0.0);
   vec3 worldDir = (uCameraMatrixWorld * viewPos).xyz;
-  
   return normalize(worldDir);
 }
 
@@ -254,25 +374,23 @@ vec3 getRayDirection(vec2 uv) {
 // ============================================
 
 void main() {
-  // Generate ray
   vec3 ro = uCameraPos;
   vec3 rd = getRayDirection(vUv);
   
-  // Raymarch
-  float t = raymarch(ro, rd);
+  // Raymarch to front surface
+  float t = raymarchFront(ro, rd);
   
   if (t > 0.0) {
-    // Hit - calculate shading
-    vec3 p = ro + rd * t;
-    vec3 N = calcNormal(p);
-    vec3 V = -rd; // View direction (opposite of ray)
+    // Hit glass surface
+    vec3 hitPos = ro + rd * t;
+    vec3 normal = calcNormal(hitPos);
     
-    vec3 color = shade(p, N, V);
+    // Render volumetric glass
+    vec4 glassColor = shadeGlass(hitPos, normal, rd, vUv);
     
-    gl_FragColor = vec4(color, 1.0);
+    gl_FragColor = glassColor;
   } else {
-    // Miss - transparent (let background show through)
+    // Miss - fully transparent
     gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0);
   }
 }
-
