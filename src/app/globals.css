@@ -3,6 +3,10 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  
+  /* Orb scene colors */
+  --bg-top: #fef3e8;     /* creamy peach */
+  --bg-bottom: #f8d5ce;  /* soft pink */
 }
 
 @theme inline {
@@ -16,11 +20,15 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+    /* Keep warm gradient even in dark mode for orb scene */
+    --bg-top: #2a1f1a;
+    --bg-bottom: #1a1215;
   }
 }
 
 body {
-  background: var(--background);
+  background: linear-gradient(to bottom, var(--bg-top), var(--bg-bottom));
+  min-height: 100vh;
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
