@@ -3,10 +3,15 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
-  
-  /* Orb scene colors */
-  --bg-top: #fef3e8;     /* creamy peach */
-  --bg-bottom: #f8d5ce;  /* soft pink */
+
+  --bg-cool: #CFE7FF;
+  --bg-neutral: #D8D1E6;
+  --bg-warm: #E9A7A7;
+  --bg-highlight: #F7F3FF;
+
+  --orb-base: #E7E4F2;
+  --orb-cool: #D6F0FF;
+  --orb-warm: #F2C6D4;
 }
 
 @theme inline {
@@ -20,15 +25,25 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
-    /* Keep warm gradient even in dark mode for orb scene */
-    --bg-top: #2a1f1a;
-    --bg-bottom: #1a1215;
   }
 }
 
 body {
-  background: linear-gradient(to bottom, var(--bg-top), var(--bg-bottom));
-  min-height: 100vh;
+  margin: 0;
+  overflow: hidden;
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  min-height: 100vh;
+
+  /* Complex Gradient Stack */
+  background-color: var(--bg-neutral);
+  background-image:
+    /* 1. Warm Wash (Bottom-Right) */
+    radial-gradient(circle at 90% 90%, var(--bg-warm) 0%, transparent 60%),
+    /* 2. Cool Wash (Top-Left) */
+    radial-gradient(circle at 10% 10%, var(--bg-cool) 0%, transparent 60%),
+    /* 3. Highlight / Neutral Haze (Center-Top) */
+    radial-gradient(circle at 50% 30%, var(--bg-highlight) 0%, transparent 50%);
+
+  background-attachment: fixed;
 }

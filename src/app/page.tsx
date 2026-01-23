@@ -1,9 +1,9 @@
-import { OrbCanvas } from "@/components/OrbCanvas";
+import { Scene } from "@/components/Scene";
 
 export default function Page() {
   return (
-    <main className="h-screen w-screen overflow-hidden">
-      <OrbCanvas />
+    <main className="w-full h-screen">
+      <Scene />
     </main>
   );
 }
