@@ -324,8 +324,11 @@ vec4 shadeGlass(vec3 frontHitPos, vec3 frontNormal, vec3 rayDir, vec2 screenUv) 
   float eta = 1.0 / uIOR; // Air to glass
   vec3 refractDir = refractRay(rayDir, frontNormal, eta);
   
-  // Apply frosted glass effect - perturb refracted ray direction
-  refractDir = perturbRayFrosted(refractDir, frontHitPos, uFrostiness);
+  // Apply frosted glass effect - MORE frost in center, LESS at edges
+  // This keeps edges crisp/saturated while center is soft/diffuse
+  float centerFrost = pow(NdotV, 0.7); // Higher in center (NdotV~1), lower at edges (NdotV~0)
+  float frostAmount = uFrostiness * (0.3 + centerFrost * 1.2); // Base frost + center boost
+  refractDir = perturbRayFrosted(refractDir, frontHitPos, frostAmount);
   
   vec3 refractedColor;
   
@@ -346,8 +349,8 @@ vec4 shadeGlass(vec3 frontHitPos, vec3 frontNormal, vec3 rayDir, vec2 screenUv) 
       // Refract again exiting glass
       vec3 exitDir = refractRay(refractDir, backNormal, uIOR);
       
-      // Apply frosted effect to exit ray as well for more diffusion
-      exitDir = perturbRayFrosted(exitDir, backPos, uFrostiness * 0.5);
+      // Apply frosted effect to exit ray - also center-weighted
+      exitDir = perturbRayFrosted(exitDir, backPos, frostAmount * 0.5);
       
       // Sample background with exit direction
       refractedColor = sampleBackground(exitDir, screenUv);
@@ -367,45 +370,42 @@ vec4 shadeGlass(vec3 frontHitPos, vec3 frontNormal, vec3 rayDir, vec2 screenUv) 
     refractedColor = mix(refractedColor, uBaseColor * 0.9, uGlassTint * 0.5);
   }
   
+  // --- Edge saturation boost (on BACKGROUND color seen through glass) ---
+  // At grazing angles, intensify the refracted background color
+  // This makes the background "pop" more at edges without hardcoding colors
+  float edgeFactor = smoothstep(0.35, 0.85, 1.0 - NdotV);
+  float bgSaturationBoost = 1.0 + edgeFactor * uEdgeSaturation;
+  refractedColor *= bgSaturationBoost;
+  
   // --- Blend reflection and refraction ---
   vec3 glassColor = mix(refractedColor, reflection, fresnel);
   
   // --- Enhanced rim glow (visionOS style) ---
-  // Primary rim: sharp edge highlight
-  float rimSharp = pow(1.0 - NdotV, 4.5);
-  // Secondary rim: softer falloff for gradation
-  float rimSoft = pow(1.0 - NdotV, 2.0);
+  // Primary rim: sharp edge highlight (higher power = tighter to edge)
+  float rimSharp = pow(1.0 - NdotV, 7.0);
+  // Secondary rim: softer falloff for subtle gradation
+  float rimSoft = pow(1.0 - NdotV, 3.5);
   
   // Combine both rims with intensity control
-  float rimGlow = mix(rimSoft * 0.3, rimSharp, 0.7) * uRimIntensity;
+  float rimGlow = mix(rimSoft * 0.25, rimSharp, 0.75) * uRimIntensity;
   
   // Rim color: blend between cool color and white for the highlight
   vec3 rimColor = mix(uCoolColor, vec3(1.0), rimSharp * 0.5);
-  glassColor += rimColor * rimGlow * 0.85; // Stronger rim (was 0.6)
-  
-  // --- Outer edge saturation boost ---
-  // Edges are more saturated/deeper, center is lighter (like reference)
-  // This approach avoids hardcoding colors - uses intensity multiplication instead
-  float edgeFactor = smoothstep(0.4, 0.85, 1.0 - NdotV);
-  
-  // Boost saturation at edges by intensifying the color (multiply approach)
-  // This makes edges richer without hardcoding colors
-  float saturationBoost = 1.0 + edgeFactor * uEdgeSaturation;
-  glassColor *= saturationBoost;
+  glassColor += rimColor * rimGlow * 0.85;
   
   // --- Soft inner glow / subsurface hint ---
-  // Center gets lighter/more washed out (inverse of edge saturation)
+  // Center gets slightly lighter/softer
   float centerFactor = pow(NdotV, 1.5);
-  float innerGlow = centerFactor * 0.15;
-  glassColor = mix(glassColor, glassColor + vec3(0.15), innerGlow); // Lighten center
+  float innerGlow = centerFactor * 0.1;
+  glassColor = mix(glassColor, glassColor + vec3(0.08), innerGlow);
   
   // --- Alpha: more opaque at edges (fresnel), more transparent in center ---
   // visionOS glass is quite transparent in the center
   float alpha = mix(0.15, 0.85, fresnel);
   alpha = mix(alpha, 1.0, specular); // Specular highlights are opaque
   
-  // Also increase opacity at edges for more color presence
-  alpha = mix(alpha, min(alpha + 0.3, 1.0), edgeFactor * uEdgeSaturation);
+  // Increase opacity at edges so the saturated background shows more
+  alpha = mix(alpha, min(alpha + 0.25, 1.0), edgeFactor * uEdgeSaturation);
   
   return vec4(glassColor, alpha);
 }

@@ -58,8 +58,8 @@ const OrbMaterialImpl = shaderMaterial(
 
     // Enhanced glass styling
     uRimIntensity: 0.65, // Fresnel edge/rim glow strength (stronger)
-    uFrostiness: 0.35, // Surface roughness/diffusion (more frosted)
-    uEdgeSaturation: 0.4, // Edge saturation/intensity boost
+    uFrostiness: 0.4, // Surface roughness/diffusion (center-weighted)
+    uEdgeSaturation: 0.55, // Edge saturation/intensity boost (stronger)
 
     // Colors
     uBaseColor: new THREE.Color(0xe7e4f2),
@@ -141,16 +141,16 @@ export function Orb() {
           label: "Rim Strength",
         },
         frostiness: {
-          value: 0.35,
-          min: 0,
-          max: 0.6,
-          step: 0.02,
-          label: "Frostiness",
-        },
-        edgeSaturation: {
           value: 0.4,
           min: 0,
           max: 0.8,
+          step: 0.02,
+          label: "Frostiness (center)",
+        },
+        edgeSaturation: {
+          value: 0.55,
+          min: 0,
+          max: 1.0,
           step: 0.02,
           label: "Edge Saturation",
         },
