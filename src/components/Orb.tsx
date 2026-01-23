@@ -7,8 +7,8 @@ import { shaderMaterial } from "@react-three/drei";
 import { useControls, folder } from "leva";
 import { useQualityStore } from "@/lib/qualityStore";
 
-import vertexShader from "@/shaders/orb-sdf.vert";
-import fragmentShader from "@/shaders/orb-sdf.frag";
+import vertexShader from "@/shaders/orb.vert";
+import fragmentShader from "@/shaders/orb.frag";
 
 // ============================================
 // CSS Color Helper
