@@ -56,6 +56,11 @@ const OrbMaterialImpl = shaderMaterial(
     uGlassClarity: 1.0, // How clear the glass is
     uGlassQuality: 1, // 0=low (mobile), 1=high (desktop)
 
+    // Enhanced glass styling
+    uRimIntensity: 0.65, // Fresnel edge/rim glow strength (stronger)
+    uFrostiness: 0.35, // Surface roughness/diffusion (more frosted)
+    uEdgeSaturation: 0.4, // Edge saturation/intensity boost
+
     // Colors
     uBaseColor: new THREE.Color(0xe7e4f2),
     uCoolColor: new THREE.Color(0xe0eef1),
@@ -127,6 +132,27 @@ export function Orb() {
           max: 1,
           step: 0.05,
           label: "Clarity",
+        },
+        rimIntensity: {
+          value: 0.65,
+          min: 0,
+          max: 1,
+          step: 0.05,
+          label: "Rim Strength",
+        },
+        frostiness: {
+          value: 0.35,
+          min: 0,
+          max: 0.6,
+          step: 0.02,
+          label: "Frostiness",
+        },
+        edgeSaturation: {
+          value: 0.4,
+          min: 0,
+          max: 0.8,
+          step: 0.02,
+          label: "Edge Saturation",
         },
       },
       { collapsed: false }
@@ -207,6 +233,11 @@ export function Orb() {
     if (u.uGlassTint) u.uGlassTint.value = controls.glassTint;
     if (u.uReflectionStrength) u.uReflectionStrength.value = controls.reflectionStrength;
     if (u.uGlassClarity) u.uGlassClarity.value = controls.glassClarity;
+
+    // Enhanced glass styling from Leva
+    if (u.uRimIntensity) u.uRimIntensity.value = controls.rimIntensity;
+    if (u.uFrostiness) u.uFrostiness.value = controls.frostiness;
+    if (u.uEdgeSaturation) u.uEdgeSaturation.value = controls.edgeSaturation;
 
     // Quality tier - affects both raymarch steps and glass quality
     const isMobile = tier.tierName === "mobile";
