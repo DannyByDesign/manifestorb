@@ -103,7 +103,8 @@ export function Sparkles() {
     Sparkles: folder(
       {
         enabled: { value: true, label: "Enabled" },
-        baseColor: { value: "#d97350", label: "Base Color" },
+        baseColor: { value: "#a855f7", label: "Base Color" },
+        glowColor: { value: "#e9d5ff", label: "Glow Color" },  // White with purple hint
       },
       { collapsed: true }
     ),
@@ -185,7 +186,8 @@ export function Sparkles() {
       uPointerLocal: { value: new THREE.Vector3(0, 0, -999) }, // Sentinel = inactive
       uPointerEnergy: { value: 0 },
       uMorphFade: { value: 1.0 },
-      uBaseColor: { value: new THREE.Color(0.85, 0.45, 0.35) }, // Warm coral
+      uBaseColor: { value: new THREE.Color(0.66, 0.33, 0.97) }, // Purple
+      uGlowColor: { value: new THREE.Color(0.91, 0.84, 1.0) },  // White with purple hint
     }),
     []
   );
@@ -243,8 +245,9 @@ export function Sparkles() {
     }
     u.uPointerEnergy.value = energy;
 
-    // Base color from Leva
+    // Colors from Leva
     u.uBaseColor.value.set(controls.baseColor);
+    u.uGlowColor.value.set(controls.glowColor);
   });
 
   // Don't render if disabled

@@ -255,14 +255,19 @@ void main() {
   vDepthFade = rawDepth * rawDepth; // Square for more pop
   
   // ========================================
-  // POINT SIZE (dramatic depth variation)
+  // POINT SIZE (independent sizing for base vs glow sparkles)
   // ========================================
   
-  // Front particles much larger, back particles much smaller
-  // Reference image shows prominent sparkles with good size variation
-  float baseSize = mix(1.5, 10.0, vDepthFade);
-  gl_PointSize = baseSize * (340.0 / particleZ);
-  gl_PointSize = clamp(gl_PointSize, 0.8, 24.0);
+  // Base purple sparkles
+  float baseSize = mix(0.8, 4.0, vDepthFade);
+  float rawSize = baseSize * (200.0 / particleZ);
+  
+  // Purple sparkles: keep original size and clamp
+  // White glow sparkles: larger with higher clamp
+  float purpleSize = clamp(rawSize, 0.5, 10.0);
+  float whiteSize = clamp(rawSize * 2.5, 1.0, 25.0);
+  
+  gl_PointSize = mix(purpleSize, whiteSize, aIsWhite);
   
   // ========================================
   // PASS VARYINGS TO FRAGMENT
