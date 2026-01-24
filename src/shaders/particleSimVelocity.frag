@@ -95,28 +95,37 @@ float snoise(vec3 v) {
 }
 
 // ============================================
-// Curl Noise (finite differences)
+// Curl Noise (proper 3-field implementation)
+// Uses three independent noise fields to avoid diagonal bias
 // ============================================
 
 vec3 curlNoise(vec3 p) {
   const float e = 0.1;
   
-  vec3 dx = vec3(e, 0.0, 0.0);
-  vec3 dy = vec3(0.0, e, 0.0);
-  vec3 dz = vec3(0.0, 0.0, e);
+  // Three independent noise fields (offset creates different patterns)
+  vec3 offsetY = vec3(31.416, 47.853, 12.793);
+  vec3 offsetZ = vec3(93.719, 27.364, 81.252);
   
-  float n1 = snoise(p + dy);
-  float n2 = snoise(p - dy);
-  float n3 = snoise(p + dz);
-  float n4 = snoise(p - dz);
-  float n5 = snoise(p + dx);
-  float n6 = snoise(p - dx);
+  // Sample derivatives for field X (original position)
+  float dXdy = snoise(p + vec3(0.0, e, 0.0)) - snoise(p - vec3(0.0, e, 0.0));
+  float dXdz = snoise(p + vec3(0.0, 0.0, e)) - snoise(p - vec3(0.0, 0.0, e));
   
-  float x = (n1 - n2) - (n3 - n4);
-  float y = (n3 - n4) - (n5 - n6);
-  float z = (n5 - n6) - (n1 - n2);
+  // Sample derivatives for field Y (offset position)
+  float dYdx = snoise(p + offsetY + vec3(e, 0.0, 0.0)) - snoise(p + offsetY - vec3(e, 0.0, 0.0));
+  float dYdz = snoise(p + offsetY + vec3(0.0, 0.0, e)) - snoise(p + offsetY - vec3(0.0, 0.0, e));
   
-  return normalize(vec3(x, y, z)) * 0.5;
+  // Sample derivatives for field Z (different offset)
+  float dZdx = snoise(p + offsetZ + vec3(e, 0.0, 0.0)) - snoise(p + offsetZ - vec3(e, 0.0, 0.0));
+  float dZdy = snoise(p + offsetZ + vec3(0.0, e, 0.0)) - snoise(p + offsetZ - vec3(0.0, e, 0.0));
+  
+  // Proper curl: (dPz/dy - dPy/dz, dPx/dz - dPz/dx, dPy/dx - dPx/dy)
+  vec3 curl = vec3(
+    dZdy - dYdz,
+    dXdz - dZdx,
+    dYdx - dXdy
+  );
+  
+  return normalize(curl + vec3(0.0001)) * 0.5;
 }
 
 // ============================================
@@ -136,54 +145,82 @@ void main() {
   float seed = velData.w;
   
   // Skip if dead (will be respawned in position shader)
+  // Give initial outward velocity to shoot out from center in ALL directions
   if (life <= 0.0) {
-    // Reset velocity for respawn
-    gl_FragColor = vec4(0.0, 0.0, 0.0, seed);
+    // Generate random direction using time + seed + uv for true randomness each respawn
+    float randA = fract(sin(dot(uv + uTime * 0.1, vec2(12.9898, 78.233))) * 43758.5453);
+    float randB = fract(sin(dot(uv * 2.0 + uTime * 0.17, vec2(39.346, 11.135))) * 43758.5453);
+    
+    // Uniform sphere distribution
+    float theta = randA * 6.28318;  // 0 to 2π
+    float phi = acos(2.0 * randB - 1.0);  // Uniform on sphere
+    vec3 randomDir = vec3(
+      sin(phi) * cos(theta),
+      cos(phi),
+      sin(phi) * sin(theta)
+    );
+    // Initial outward velocity
+    vec3 initialVel = randomDir * 0.3;
+    gl_FragColor = vec4(initialVel, seed);
     return;
   }
   
   // ========================================
-  // CURL NOISE FORCE (organic swirl)
+  // PER-PARTICLE VARIATION (from seed)
   // ========================================
   
-  vec3 noisePos = pos * 3.0 + uTime * 0.15;
-  vec3 curl = curlNoise(noisePos);
-  vel += curl * 0.8 * uDeltaTime;
+  float seedNorm = fract(seed);
+  float speedMult = 0.7 + seedNorm * 0.6;  // 0.7x to 1.3x speed variation
+  
+  // White particles (seed > 10) get extra phase offset to spread them out
+  bool isWhite = seed > 10.0;
+  float phaseOffset = isWhite ? fract(seed * 0.1) * 6.28 : 0.0;
   
   // ========================================
-  // RADIAL DRIFT (slight outward fountain effect)
+  // GEOMETRY
   // ========================================
   
   float dist = length(pos);
-  vec3 radial = dist > 0.001 ? normalize(pos) : vec3(0.0, 1.0, 0.0);
-  
-  // Gentle outward push
-  vel += radial * 0.15 * uDeltaTime;
+  float xzDist = length(pos.xz);
+  vec3 radial = dist > 0.001 ? pos / dist : vec3(0.0, 1.0, 0.0);
   
   // ========================================
-  // CENTER ATTRACTION (keeps particles from escaping)
+  // VERY LOW-FREQUENCY CURL NOISE (fluid-like coherent streams)
+  // Lower frequency = nearby particles get nearly identical forces
   // ========================================
   
-  float pullStrength = smoothstep(0.3, 0.8, dist / uOrbRadius);
-  vel -= radial * pullStrength * 0.3 * uDeltaTime;
+  // Very low frequency = particles flow together in streams
+  vec3 noiseOffset = isWhite ? vec3(sin(phaseOffset), cos(phaseOffset), sin(phaseOffset * 0.7)) * 0.3 : vec3(0.0);
+  vec3 noisePos = pos * 0.4 + uTime * 0.12 + noiseOffset;  // Lower freq, slower evolution
+  vec3 curl = curlNoise(noisePos);
+  
+  // Strong curl force - creates fluid 3D motion
+  vel += curl * 2.5 * speedMult * uDeltaTime;
   
   // ========================================
-  // SPIRAL TENDENCY (adds rotation)
+  // RADIAL SPREAD (fill volume)
   // ========================================
   
-  vec3 tangent = normalize(cross(radial, vec3(0.0, 1.0, 0.0)));
-  if (length(tangent) < 0.1) tangent = normalize(cross(radial, vec3(1.0, 0.0, 0.0)));
-  vel += tangent * 0.1 * uDeltaTime;
+  // Very gentle outward push
+  vel += radial * 0.03 * uDeltaTime;
   
   // ========================================
-  // HEMISPHERICAL BALANCE (prevents clustering on one side)
+  // CENTER ATTRACTION (keep particles contained)
+  // Balanced to contain but not compress
   // ========================================
-  // Particles on +X get tiny push toward -X, etc.
-  // This naturally distributes particles evenly without disrupting fluid motion
   
-  float balanceStrength = 0.08;
-  vec3 balanceForce = -pos * balanceStrength;  // Push toward opposite side
-  vel += balanceForce * uDeltaTime;
+  float pullStrength = smoothstep(0.35, 0.75, dist);
+  vel -= radial * pullStrength * 0.6 * uDeltaTime;
+  
+  // ========================================
+  // HARD BOUNDARY ENFORCEMENT
+  // Strongly push particles back if they approach edge
+  // ========================================
+  
+  if (dist > 0.7) {
+    float overflow = (dist - 0.7) / 0.3;  // 0 at 0.7, 1 at 1.0
+    vel -= radial * overflow * 1.5 * uDeltaTime;  // Strong inward push
+  }
   
   // ========================================
   // POINTER VORTEX INJECTION
@@ -193,31 +230,30 @@ void main() {
     vec3 toPointer = uPointerLocal - pos;
     float pointerDist = length(toPointer);
     
-    if (pointerDist < 0.4 && pointerDist > 0.01) {
-      // Tangential swirl around pointer
+    if (pointerDist < 0.5 && pointerDist > 0.01) {
       vec3 pointerDir = normalize(toPointer);
       vec3 vortexTangent = normalize(cross(pointerDir, vec3(0.0, 1.0, 0.0)));
       if (length(vortexTangent) < 0.1) {
         vortexTangent = normalize(cross(pointerDir, vec3(1.0, 0.0, 0.0)));
       }
       
-      float falloff = 1.0 - pointerDist / 0.4;
-      falloff = falloff * falloff; // Quadratic falloff
+      float falloff = 1.0 - pointerDist / 0.5;
+      falloff = falloff * falloff;
       
-      vel += vortexTangent * uPointerEnergy * falloff * 3.0;
+      vel += vortexTangent * uPointerEnergy * falloff * 2.5;
     }
   }
   
   // ========================================
-  // DAMPING (prevents runaway velocities)
+  // DAMPING (very low for fluid-like inertia)
   // ========================================
   
-  vel *= 0.96;
+  vel *= 0.992;  // High momentum = smooth flowing motion
   
-  // Clamp max velocity
+  // Clamp max velocity (high cap for fast motion)
   float speed = length(vel);
-  if (speed > 1.5) {
-    vel = normalize(vel) * 1.5;
+  if (speed > 3.5) {
+    vel = normalize(vel) * 3.5;
   }
   
   // ========================================

@@ -9,6 +9,7 @@ precision highp float;
 attribute vec2 aUv;       // UV to sample position texture
 attribute float aPhase;   // Random phase for flicker
 attribute float aIsWhite; // 1.0 for white accent, 0.0 for base
+attribute float aSeed;    // Per-particle seed for variation (0-1)
 
 // ============================================
 // Uniforms
@@ -27,6 +28,7 @@ varying float vPhase;
 varying float vIsWhite;
 varying float vMorphFade;
 varying float vLife;
+varying float vSeed;
 
 void main() {
   // ========================================
@@ -79,7 +81,7 @@ void main() {
   float baseSize = mix(0.8, 4.0, vDepthFade) * lifeSize;
   
   // Independent sizing for purple vs white sparkles
-  float purpleSize = clamp(baseSize * (200.0 / particleZ), 0.5, 10.0);
+  float purpleSize = clamp(baseSize * (180.0 / particleZ), 0.5, 9.0);  // Slightly bigger purple
   float whiteSize = clamp(baseSize * 2.5 * (200.0 / particleZ), 1.0, 25.0);
   
   gl_PointSize = mix(purpleSize, whiteSize, aIsWhite);
@@ -92,6 +94,7 @@ void main() {
   vIsWhite = aIsWhite;
   vMorphFade = uMorphFade;
   vLife = normalizedLife;  // Pass normalized life (immortal particles clamped to 1.0)
+  vSeed = aSeed;           // Per-particle seed for brightness/hue variation
   
   gl_Position = projectionMatrix * mvPos;
 }

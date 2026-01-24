@@ -19,6 +19,7 @@ varying float vPhase;
 varying float vIsWhite;
 varying float vMorphFade;
 varying float vLife;
+varying float vSeed;
 
 void main() {
   // ========================================
@@ -47,6 +48,20 @@ void main() {
   float flicker = 0.85 + 0.15 * sin(uTime * 3.5 + vPhase * 6.28318);
   
   // ========================================
+  // BRIGHTNESS VARIATION (per-particle)
+  // ========================================
+  
+  float brightnessMult = 0.7 + vSeed * 0.6;  // 0.7 to 1.3x brightness
+  
+  // ========================================
+  // HUE VARIATION (warm/cool tints for depth perception)
+  // ========================================
+  
+  vec3 warmTint = vec3(1.0, 0.92, 0.95);   // slightly pink/warm
+  vec3 coolTint = vec3(0.92, 0.95, 1.0);   // slightly blue/cool
+  vec3 hueTint = mix(coolTint, warmTint, vSeed);
+  
+  // ========================================
   // COLOR
   // ========================================
   
@@ -61,11 +76,13 @@ void main() {
     vec3 coreColor = vec3(1.0);
     vec3 edgeColor = uGlowColor;
     color = mix(edgeColor, coreColor, glow) * flicker * 2.5;
+    color *= brightnessMult;  // Apply brightness variation
     
     finalAlphaMult = glow;
   } else {
     // BASE COLOR SPARKLES (3D sphere shaded)
-    color = uBaseColor * lighting * flicker * 1.3;
+    color = uBaseColor * hueTint * lighting * flicker * 1.3;
+    color *= brightnessMult;  // Apply brightness variation
   }
   
   // ========================================

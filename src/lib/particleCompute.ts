@@ -95,8 +95,8 @@ export class ParticleCompute {
     posUniforms.uOrbRadius = { value: 1.0 };
     posUniforms.uPointerLocal = { value: new THREE.Vector3(0, 0, -999) };
     posUniforms.uPointerEnergy = { value: 0.0 };
-    posUniforms.uSpawnRadius = { value: 0.2 };
-    posUniforms.uLifeDecay = { value: 0.12 };
+    posUniforms.uSpawnRadius = { value: 0.08 };  // Small center spawn
+    posUniforms.uLifeDecay = { value: 0.1 };  // Moderate lifecycle
 
     // Add uniforms to velocity variable
     const velUniforms = this.velocityVariable.material
@@ -106,8 +106,8 @@ export class ParticleCompute {
     velUniforms.uOrbRadius = { value: 1.0 };
     velUniforms.uPointerLocal = { value: new THREE.Vector3(0, 0, -999) };
     velUniforms.uPointerEnergy = { value: 0.0 };
-    velUniforms.uSpawnRadius = { value: 0.2 };
-    velUniforms.uLifeDecay = { value: 0.12 };
+    velUniforms.uSpawnRadius = { value: 0.08 };  // Small center spawn
+    velUniforms.uLifeDecay = { value: 0.1 };  // Moderate lifecycle
 
     // Initialize GPU compute
     const error = this.gpuCompute.init();

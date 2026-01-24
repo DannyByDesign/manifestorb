@@ -15,8 +15,8 @@ import fragmentShader from "@/shaders/sparkles.frag";
 // Constants
 // ============================================
 
-const PARTICLE_COUNT_DESKTOP = 15000;
-const PARTICLE_COUNT_MOBILE = 5000;
+const PARTICLE_COUNT_DESKTOP = 25000;
+const PARTICLE_COUNT_MOBILE = 7500;
 const TEXTURE_SIZE_DESKTOP = 256;
 const TEXTURE_SIZE_MOBILE = 128;
 
@@ -127,6 +127,15 @@ export function Sparkles() {
     return arr;
   }, [particleCount]);
 
+  // Seed for per-particle variation (speed, brightness, hue)
+  const seeds = useMemo(() => {
+    const arr = new Float32Array(particleCount);
+    for (let i = 0; i < particleCount; i++) {
+      arr[i] = Math.random();  // 0-1 range
+    }
+    return arr;
+  }, [particleCount]);
+
   // ============================================
   // Initialize GPU Compute (needs isWhite array)
   // ============================================
@@ -170,11 +179,12 @@ export function Sparkles() {
     geo.setAttribute("aUv", new THREE.BufferAttribute(uvs, 2));
     geo.setAttribute("aPhase", new THREE.BufferAttribute(phases, 1));
     geo.setAttribute("aIsWhite", new THREE.BufferAttribute(isWhite, 1));
+    geo.setAttribute("aSeed", new THREE.BufferAttribute(seeds, 1));
 
     geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 2);
 
     return geo;
-  }, [particleCount, uvs, phases, isWhite]);
+  }, [particleCount, uvs, phases, isWhite, seeds]);
 
   // ============================================
   // Uniforms
