@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { Canvas } from "@react-three/fiber";
 import { useQualityStore, useDPRClamp } from "@/lib/qualityStore";
 import { Orb } from "@/components/Orb";
+import { Sparkles } from "@/components/Sparkles";
 
 export function Scene() {
     const initialize = useQualityStore((state) => state.initialize);
@@ -21,6 +22,7 @@ export function Scene() {
                 camera={{ position: [0, 0, 3], fov: 45 }}
             >
                 <Orb />
+                <Sparkles />
             </Canvas>
         </div>
     );
