@@ -21,6 +21,18 @@ interface ParticleComputeUniforms {
   uPointerEnergy: THREE.IUniform<number>;
   uSpawnRadius: THREE.IUniform<number>;
   uLifeDecay: THREE.IUniform<number>;
+  uDensityNoiseScale: THREE.IUniform<number>;
+  uDensityContrast: THREE.IUniform<number>;
+  uDensityOffset: THREE.IUniform<THREE.Vector3>;
+  uFlowScale: THREE.IUniform<number>;
+  uGlobalRotationSpeed: THREE.IUniform<number>;
+  uVortexStrength: THREE.IUniform<number>;
+  uVortex0: THREE.IUniform<THREE.Vector3>;
+  uVortex1: THREE.IUniform<THREE.Vector3>;
+  uFollowStrength: THREE.IUniform<number>;
+  uDrag: THREE.IUniform<number>;
+  uBoundaryPull: THREE.IUniform<number>;
+  uMaxSpeed: THREE.IUniform<number>;
 }
 
 // ============================================
@@ -97,6 +109,9 @@ export class ParticleCompute {
     posUniforms.uPointerEnergy = { value: 0.0 };
     posUniforms.uSpawnRadius = { value: 0.08 };  // Small center spawn
     posUniforms.uLifeDecay = { value: 0.1 };  // Moderate lifecycle
+    posUniforms.uDensityNoiseScale = { value: 0.6 };
+    posUniforms.uDensityContrast = { value: 1.8 };
+    posUniforms.uDensityOffset = { value: new THREE.Vector3(0, 0, 0) };
 
     // Add uniforms to velocity variable
     const velUniforms = this.velocityVariable.material
@@ -108,6 +123,15 @@ export class ParticleCompute {
     velUniforms.uPointerEnergy = { value: 0.0 };
     velUniforms.uSpawnRadius = { value: 0.08 };  // Small center spawn
     velUniforms.uLifeDecay = { value: 0.1 };  // Moderate lifecycle
+    velUniforms.uFlowScale = { value: 0.8 };
+    velUniforms.uGlobalRotationSpeed = { value: 0.1 };
+    velUniforms.uVortexStrength = { value: 0.4 };
+    velUniforms.uVortex0 = { value: new THREE.Vector3(0, 0, 0) };
+    velUniforms.uVortex1 = { value: new THREE.Vector3(0, 0, 0) };
+    velUniforms.uFollowStrength = { value: 0.5 };
+    velUniforms.uDrag = { value: 0.04 };
+    velUniforms.uBoundaryPull = { value: 0.8 };
+    velUniforms.uMaxSpeed = { value: 2.0 };
 
     // Initialize GPU compute
     const error = this.gpuCompute.init();
@@ -144,7 +168,7 @@ export class ParticleCompute {
         data[idx + 0] = x * fillRadius;
         data[idx + 1] = y * fillRadius;
         data[idx + 2] = z * fillRadius;
-        
+
         // Life value:
         // - White particles: 100.0 (immortal, never respawn)
         // - Purple particles: random 0-1 (will cycle through lifecycle)
@@ -216,6 +240,10 @@ export class ParticleCompute {
       posUniforms.uPointerLocal.value.set(0, 0, -999);
     }
     posUniforms.uPointerEnergy.value = pointerEnergy;
+
+    // Animate density offset slowly
+    const timeScale = 0.05;
+    posUniforms.uDensityOffset.value.set(time * timeScale, time * timeScale * 0.9, time * timeScale * 1.1);
 
     // Update velocity uniforms
     const velUniforms = this.velocityVariable.material

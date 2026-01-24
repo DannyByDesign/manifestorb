@@ -95,29 +95,103 @@ export function Sparkles() {
   const textureSize = isMobile ? TEXTURE_SIZE_MOBILE : TEXTURE_SIZE_DESKTOP;
 
   // Leva controls
-  const controls = useControls({
-    Sparkles: folder(
-      {
-        enabled: { value: true, label: "Enabled" },
-        baseColor: { value: "#a855f7", label: "Base Color" },
-        glowColor: { value: "#e9d5ff", label: "Glow Color" },
-      },
-      { collapsed: true }
-    ),
-  });
+  const isDev = process.env.NODE_ENV === "development";
+
+  const DEFAULTS = {
+    enabled: true,
+    baseColor: "#a855f7",
+    glowColor: "#e9d5ff",
+  };
+
+  const controls = isDev
+    ? useControls({
+      Sparkles: folder(
+        {
+          enabled: { value: DEFAULTS.enabled, label: "Enabled" },
+          baseColor: { value: DEFAULTS.baseColor, label: "Base Color" },
+          glowColor: { value: DEFAULTS.glowColor, label: "Glow Color" },
+        },
+        { collapsed: true }
+      ),
+    })
+    : DEFAULTS;
 
   // ============================================
   // Per-particle attributes (MUST be created before GPU compute)
   // ============================================
 
-  const isWhite = useMemo(() => {
+
+
+  // ============================================
+  // Per-particle attributes (MUST be created before GPU compute)
+  // ============================================
+
+  const layers = useMemo(() => {
     const arr = new Float32Array(particleCount);
     for (let i = 0; i < particleCount; i++) {
-      // ~5% white accents
-      arr[i] = Math.random() < 0.05 ? 1.0 : 0.0;
+      const roll = Math.random();
+      if (roll < 0.45) {
+        arr[i] = 0.0; // Dust (45%)
+      } else if (roll < 0.93) {
+        arr[i] = 1.0; // Body (48%)
+      } else {
+        arr[i] = 2.0; // Glint (5%)
+      }
     }
     return arr;
   }, [particleCount]);
+
+  const sprites = useMemo(() => {
+    const arr = new Float32Array(particleCount);
+    for (let i = 0; i < particleCount; i++) {
+      arr[i] = layers[i]; // 0=dust, 1=bokeh, 2=glint
+    }
+    return arr;
+  }, [particleCount, layers]);
+
+  const rotations = useMemo(() => {
+    const arr = new Float32Array(particleCount);
+    for (let i = 0; i < particleCount; i++) {
+      arr[i] = Math.random() * Math.PI * 2;
+    }
+    return arr;
+  }, [particleCount]);
+
+  const aspects = useMemo(() => {
+    const arr = new Float32Array(particleCount);
+    for (let i = 0; i < particleCount; i++) {
+      arr[i] = 0.6 + Math.random() * 0.8;
+    }
+    return arr;
+  }, [particleCount]);
+
+  const twinkles = useMemo(() => {
+    const arr = new Float32Array(particleCount);
+    for (let i = 0; i < particleCount; i++) {
+      arr[i] = Math.random();
+    }
+    return arr;
+  }, [particleCount]);
+
+  const isWhite = useMemo(() => {
+    const arr = new Float32Array(particleCount);
+    // Legacy isWhite support (map from layers if needed, or keep for now)
+    // The plan replaces this with "layers", but we keep it for backward compat in compute if needed.
+    // However, the new system relies on layers.
+    // For now, let's keep isWhite partially aligned with Glint layer for compute spawn logic compatibility
+    // until we fully update compute to use layers.
+    for (let i = 0; i < particleCount; i++) {
+      // Glint layer (2.0) roughly maps to "white/bright"
+      // But let's keep the original random logic to avoid breaking compute immediatey
+      // Or better: map isWhite to Glint layer?
+      // The compute uses isWhite to make particles "immortal".
+      // Let's stick to the plan: Phase B changes rendering.
+      // We can keep isWhite as is for now, or derive it.
+      // To be safe, let's actally DERIVE isWhite from the Glint layer so they are consistent.
+      arr[i] = layers[i] === 2.0 ? 1.0 : 0.0;
+    }
+    return arr;
+  }, [particleCount, layers]);
 
   const phases = useMemo(() => {
     const arr = new Float32Array(particleCount);
@@ -143,7 +217,7 @@ export function Sparkles() {
   useEffect(() => {
     // Pass isWhite to GPU compute so white particles don't respawn from center
     particleComputeRef.current = new ParticleCompute(gl, particleCount, isMobile, isWhite);
-    
+
     return () => {
       particleComputeRef.current?.dispose();
       particleComputeRef.current = null;
@@ -156,14 +230,14 @@ export function Sparkles() {
 
   const uvs = useMemo(() => {
     const arr = new Float32Array(particleCount * 2);
-    
+
     for (let i = 0; i < particleCount; i++) {
       const u = ((i % textureSize) + 0.5) / textureSize;
       const v = (Math.floor(i / textureSize) + 0.5) / textureSize;
       arr[i * 2] = u;
       arr[i * 2 + 1] = v;
     }
-    
+
     return arr;
   }, [particleCount, textureSize]);
 
@@ -180,11 +254,16 @@ export function Sparkles() {
     geo.setAttribute("aPhase", new THREE.BufferAttribute(phases, 1));
     geo.setAttribute("aIsWhite", new THREE.BufferAttribute(isWhite, 1));
     geo.setAttribute("aSeed", new THREE.BufferAttribute(seeds, 1));
+    geo.setAttribute("aLayer", new THREE.BufferAttribute(layers, 1));
+    geo.setAttribute("aSprite", new THREE.BufferAttribute(sprites, 1));
+    geo.setAttribute("aRot", new THREE.BufferAttribute(rotations, 1));
+    geo.setAttribute("aAspect", new THREE.BufferAttribute(aspects, 1));
+    geo.setAttribute("aTwinkle", new THREE.BufferAttribute(twinkles, 1));
 
     geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 2);
 
     return geo;
-  }, [particleCount, uvs, phases, isWhite, seeds]);
+  }, [particleCount, uvs, phases, isWhite, seeds, layers, sprites, rotations, aspects, twinkles]);
 
   // ============================================
   // Uniforms

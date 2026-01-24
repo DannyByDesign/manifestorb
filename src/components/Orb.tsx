@@ -121,182 +121,221 @@ export function Orb() {
   const tier = useQualityStore((state) => state.tier);
 
   // Leva debug controls
-  const controls = useControls({
-    Glass: folder(
-      {
-        ior: {
-          value: 1.45,
-          min: 1.0,
-          max: 2.5,
-          step: 0.05,
-          label: "IOR (Refraction)",
+  const isDev = process.env.NODE_ENV === "development";
+
+  const DEFAULTS = {
+    // Glass
+    ior: 1.45,
+    glassTint: 0.15,
+    reflectionStrength: 0.6,
+    glassClarity: 1.0,
+    rimIntensity: 0.65,
+    frostiness: 0.4,
+    edgeSaturation: 0.55,
+    // Shape
+    shapeType: 0,
+    morphProgress: 0,
+    sphereRadius: 1.0,
+    boxWidth: 1.5,
+    boxHeight: 1.0,
+    boxDepth: 0.15,
+    cornerRadius: 0.15,
+    // Surface
+    displacementAmp: 0.0,
+    noiseSpeed: 0.0,
+    noiseFrequency: 1.5,
+    noiseOctaves: 1,
+    lacunarity: 2.0,
+    persistence: 0.5,
+    enableFlow: false,
+    flowStrength: 0.0,
+    flowSpeed: 0.0,
+    flowScale: 1.0,
+    // Audio (Test)
+    testAudioLevel: 0,
+    testAudioBass: 0,
+    testAudioMid: 0,
+    testAudioTreble: 0,
+  };
+
+  const controls = isDev
+    ? useControls({
+      Glass: folder(
+        {
+          ior: {
+            value: DEFAULTS.ior,
+            min: 1.0,
+            max: 2.5,
+            step: 0.05,
+            label: "IOR (Refraction)",
+          },
+          glassTint: {
+            value: DEFAULTS.glassTint,
+            min: 0,
+            max: 0.5,
+            step: 0.01,
+            label: "Glass Tint",
+          },
+          reflectionStrength: {
+            value: DEFAULTS.reflectionStrength,
+            min: 0,
+            max: 1,
+            step: 0.05,
+            label: "Reflection",
+          },
+          glassClarity: {
+            value: DEFAULTS.glassClarity,
+            min: 0,
+            max: 1,
+            step: 0.05,
+            label: "Clarity",
+          },
+          rimIntensity: {
+            value: DEFAULTS.rimIntensity,
+            min: 0,
+            max: 1,
+            step: 0.05,
+            label: "Rim Strength",
+          },
+          frostiness: {
+            value: DEFAULTS.frostiness,
+            min: 0,
+            max: 0.8,
+            step: 0.02,
+            label: "Frostiness (center)",
+          },
+          edgeSaturation: {
+            value: DEFAULTS.edgeSaturation,
+            min: 0,
+            max: 1.0,
+            step: 0.02,
+            label: "Edge Saturation",
+          },
         },
-        glassTint: {
-          value: 0.15,
-          min: 0,
-          max: 0.5,
-          step: 0.01,
-          label: "Glass Tint",
+        { collapsed: false }
+      ),
+      Shape: folder(
+        {
+          shapeType: {
+            value: DEFAULTS.shapeType,
+            options: { Sphere: 0, "Rounded Box": 1, Capsule: 2 },
+          },
+          morphProgress: { value: DEFAULTS.morphProgress, min: 0, max: 1, step: 0.01 },
+          sphereRadius: { value: DEFAULTS.sphereRadius, min: 0.5, max: 2.0, step: 0.1 },
+          boxWidth: { value: DEFAULTS.boxWidth, min: 0.5, max: 3.0, step: 0.1 },
+          boxHeight: { value: DEFAULTS.boxHeight, min: 0.5, max: 2.5, step: 0.1 },
+          boxDepth: { value: DEFAULTS.boxDepth, min: 0.05, max: 0.5, step: 0.01 },
+          cornerRadius: { value: DEFAULTS.cornerRadius, min: 0, max: 0.5, step: 0.01 },
         },
-        reflectionStrength: {
-          value: 0.6,
-          min: 0,
-          max: 1,
-          step: 0.05,
-          label: "Reflection",
+        { collapsed: true }
+      ),
+      "Surface (Audio Only)": folder(
+        {
+          displacementAmp: {
+            value: DEFAULTS.displacementAmp,
+            min: 0,
+            max: 0.08,
+            step: 0.002,
+            label: "Displacement",
+          },
+          noiseSpeed: {
+            value: DEFAULTS.noiseSpeed,
+            min: 0,
+            max: 0.2,
+            step: 0.01,
+            label: "Speed",
+          },
+          noiseFrequency: {
+            value: DEFAULTS.noiseFrequency,
+            min: 0.5,
+            max: 3.0,
+            step: 0.1,
+            label: "Frequency",
+          },
+          noiseOctaves: {
+            value: DEFAULTS.noiseOctaves,
+            min: 1,
+            max: 2,
+            step: 1,
+            label: "Octaves",
+          },
+          lacunarity: {
+            value: DEFAULTS.lacunarity,
+            min: 1.5,
+            max: 2.5,
+            step: 0.1,
+            label: "Lacunarity",
+          },
+          persistence: {
+            value: DEFAULTS.persistence,
+            min: 0.3,
+            max: 0.7,
+            step: 0.05,
+            label: "Persistence",
+          },
+          enableFlow: {
+            value: DEFAULTS.enableFlow,
+            label: "Enable Flow",
+          },
+          flowStrength: {
+            value: DEFAULTS.flowStrength,
+            min: 0,
+            max: 0.1,
+            step: 0.005,
+            label: "Flow Strength",
+          },
+          flowSpeed: {
+            value: DEFAULTS.flowSpeed,
+            min: 0,
+            max: 0.2,
+            step: 0.02,
+            label: "Flow Speed",
+          },
+          flowScale: {
+            value: DEFAULTS.flowScale,
+            min: 0.5,
+            max: 2.0,
+            step: 0.1,
+            label: "Flow Scale",
+          },
         },
-        glassClarity: {
-          value: 1.0,
-          min: 0,
-          max: 1,
-          step: 0.05,
-          label: "Clarity",
+        { collapsed: true }
+      ),
+      "Audio (Test)": folder(
+        {
+          testAudioLevel: {
+            value: DEFAULTS.testAudioLevel,
+            min: 0,
+            max: 1,
+            step: 0.05,
+            label: "Level",
+          },
+          testAudioBass: {
+            value: DEFAULTS.testAudioBass,
+            min: 0,
+            max: 1,
+            step: 0.05,
+            label: "Bass",
+          },
+          testAudioMid: {
+            value: DEFAULTS.testAudioMid,
+            min: 0,
+            max: 1,
+            step: 0.05,
+            label: "Mid",
+          },
+          testAudioTreble: {
+            value: DEFAULTS.testAudioTreble,
+            min: 0,
+            max: 1,
+            step: 0.05,
+            label: "Treble",
+          },
         },
-        rimIntensity: {
-          value: 0.65,
-          min: 0,
-          max: 1,
-          step: 0.05,
-          label: "Rim Strength",
-        },
-        frostiness: {
-          value: 0.4,
-          min: 0,
-          max: 0.8,
-          step: 0.02,
-          label: "Frostiness (center)",
-        },
-        edgeSaturation: {
-          value: 0.55,
-          min: 0,
-          max: 1.0,
-          step: 0.02,
-          label: "Edge Saturation",
-        },
-      },
-      { collapsed: false }
-    ),
-    Shape: folder(
-      {
-        shapeType: {
-          value: 0,
-          options: { Sphere: 0, "Rounded Box": 1, Capsule: 2 },
-        },
-        morphProgress: { value: 0, min: 0, max: 1, step: 0.01 },
-        sphereRadius: { value: 1.0, min: 0.5, max: 2.0, step: 0.1 },
-        boxWidth: { value: 1.5, min: 0.5, max: 3.0, step: 0.1 },
-        boxHeight: { value: 1.0, min: 0.5, max: 2.5, step: 0.1 },
-        boxDepth: { value: 0.15, min: 0.05, max: 0.5, step: 0.01 },
-        cornerRadius: { value: 0.15, min: 0, max: 0.5, step: 0.01 },
-      },
-      { collapsed: true }
-    ),
-    "Surface (Audio Only)": folder(
-      {
-        displacementAmp: {
-          value: 0.0,
-          min: 0,
-          max: 0.08,
-          step: 0.002,
-          label: "Displacement",
-        },
-        noiseSpeed: {
-          value: 0.0,
-          min: 0,
-          max: 0.2,
-          step: 0.01,
-          label: "Speed",
-        },
-        noiseFrequency: {
-          value: 1.5,
-          min: 0.5,
-          max: 3.0,
-          step: 0.1,
-          label: "Frequency",
-        },
-        noiseOctaves: {
-          value: 1,
-          min: 1,
-          max: 2,
-          step: 1,
-          label: "Octaves",
-        },
-        lacunarity: {
-          value: 2.0,
-          min: 1.5,
-          max: 2.5,
-          step: 0.1,
-          label: "Lacunarity",
-        },
-        persistence: {
-          value: 0.5,
-          min: 0.3,
-          max: 0.7,
-          step: 0.05,
-          label: "Persistence",
-        },
-        enableFlow: {
-          value: false,
-          label: "Enable Flow",
-        },
-        flowStrength: {
-          value: 0.0,
-          min: 0,
-          max: 0.1,
-          step: 0.005,
-          label: "Flow Strength",
-        },
-        flowSpeed: {
-          value: 0.0,
-          min: 0,
-          max: 0.2,
-          step: 0.02,
-          label: "Flow Speed",
-        },
-        flowScale: {
-          value: 1.0,
-          min: 0.5,
-          max: 2.0,
-          step: 0.1,
-          label: "Flow Scale",
-        },
-      },
-      { collapsed: true }
-    ),
-    "Audio (Test)": folder(
-      {
-        testAudioLevel: {
-          value: 0,
-          min: 0,
-          max: 1,
-          step: 0.05,
-          label: "Level",
-        },
-        testAudioBass: {
-          value: 0,
-          min: 0,
-          max: 1,
-          step: 0.05,
-          label: "Bass",
-        },
-        testAudioMid: {
-          value: 0,
-          min: 0,
-          max: 1,
-          step: 0.05,
-          label: "Mid",
-        },
-        testAudioTreble: {
-          value: 0,
-          min: 0,
-          max: 1,
-          step: 0.05,
-          label: "Treble",
-        },
-      },
-      { collapsed: true }
-    ),
-  });
+        { collapsed: true }
+      ),
+    })
+    : DEFAULTS;
 
   // Create fullscreen quad geometry (clip-space coordinates)
   const geometry = useMemo(() => {
@@ -352,7 +391,7 @@ export function Orb() {
     u.uShapeType.value = controls.shapeType;
     u.uMorphProgress.value = controls.morphProgress;
     u.uSphereRadius.value = responsiveRadius;
-    
+
     // Scale box dimensions proportionally for rounded box shape
     const scaleFactor = responsiveRadius / controls.sphereRadius;
     u.uShapeDimensions.value.set(
@@ -372,11 +411,11 @@ export function Orb() {
 
     // Enhanced displacement system
     if (u.uDisplacementAmp) u.uDisplacementAmp.value = controls.displacementAmp;
-    
+
     // Quality-tier aware octaves (mobile gets fewer octaves)
     const maxOctaves = isMobile ? Math.min(controls.noiseOctaves, 2) : controls.noiseOctaves;
     if (u.uNoiseOctaves) u.uNoiseOctaves.value = maxOctaves;
-    
+
     if (u.uNoiseFrequency) u.uNoiseFrequency.value = controls.noiseFrequency;
     if (u.uNoiseLacunarity) u.uNoiseLacunarity.value = controls.lacunarity;
     if (u.uNoisePersistence) u.uNoisePersistence.value = controls.persistence;

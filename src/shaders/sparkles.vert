@@ -10,6 +10,11 @@ attribute vec2 aUv;       // UV to sample position texture
 attribute float aPhase;   // Random phase for flicker
 attribute float aIsWhite; // 1.0 for white accent, 0.0 for base
 attribute float aSeed;    // Per-particle seed for variation (0-1)
+attribute float aLayer;   // 0=Dust, 1=Body, 2=Glint
+attribute float aSprite;  // Sprite index
+attribute float aRot;     // Rotation (0..2PI)
+attribute float aAspect;  // Aspect ratio
+attribute float aTwinkle; // Twinkle offset
 
 // ============================================
 // Uniforms
@@ -29,6 +34,42 @@ varying float vIsWhite;
 varying float vMorphFade;
 varying float vLife;
 varying float vSeed;
+varying float vSprite;
+varying float vRot;
+varying float vAspect;
+varying float vTwinkle;
+varying float vLayer;
+varying float vBrightness;
+
+// ============================================
+// Layer Logic
+// ============================================
+
+float getLayerSize(float layer, float seed) {
+  if (layer < 0.5) {
+    // Dust: 0.25 - 1.2
+    return 0.25 + seed * 0.95;
+  } else if (layer < 1.5) {
+    // Body: 1.2 - 6.0
+    return 1.2 + seed * 4.8;
+  } else {
+    // Glint: 4.0 - 14.0
+    return 4.0 + seed * 10.0;
+  }
+}
+
+float getLayerBrightness(float layer, float seed) {
+  if (layer < 0.5) {
+    // Dust: very dim (0.15 - 0.4)
+    return 0.15 + seed * 0.25;
+  } else if (layer < 1.5) {
+    // Body: mid (0.4 - 0.85)
+    return 0.4 + seed * 0.45;
+  } else {
+    // Glint: bright HDR (1.2 - 2.2) - triggers bloom
+    return 1.2 + seed * 1.0;
+  }
+}
 
 void main() {
   // ========================================
@@ -77,14 +118,21 @@ void main() {
   // Life affects size (shrink as particle ages/dies)
   float lifeSize = smoothstep(0.0, 0.3, normalizedLife);
   
-  // Base size with depth variation
-  float baseSize = mix(0.8, 4.0, vDepthFade) * lifeSize;
+  // Get base size from layer
+  float layerSize = getLayerSize(aLayer, aSeed);
   
-  // Independent sizing for purple vs white sparkles
-  float purpleSize = clamp(baseSize * (180.0 / particleZ), 0.5, 9.0);  // Slightly bigger purple
-  float whiteSize = clamp(baseSize * 2.5 * (200.0 / particleZ), 1.0, 25.0);
+  // Apply depth scaling (perspective size)
+  float depthScale = (200.0 / particleZ);
   
-  gl_PointSize = mix(purpleSize, whiteSize, aIsWhite);
+  gl_PointSize = layerSize * depthScale * lifeSize;
+  
+  // Clamp max size to avoid massive artifacts
+  gl_PointSize = clamp(gl_PointSize, 0.0, 64.0);
+  
+  // ========================================
+  // BRIGHTNESS (passed to varying)
+  // ========================================
+  vBrightness = getLayerBrightness(aLayer, aSeed);
   
   // ========================================
   // PASS VARYINGS
@@ -95,6 +143,11 @@ void main() {
   vMorphFade = uMorphFade;
   vLife = normalizedLife;  // Pass normalized life (immortal particles clamped to 1.0)
   vSeed = aSeed;           // Per-particle seed for brightness/hue variation
+  vSprite = aSprite;
+  vRot = aRot;
+  vAspect = aAspect;
+  vTwinkle = aTwinkle;
+  vLayer = aLayer;
   
   gl_Position = projectionMatrix * mvPos;
 }

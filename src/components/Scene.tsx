@@ -3,14 +3,17 @@
 import { useEffect } from "react";
 import { Canvas } from "@react-three/fiber";
 import { useQualityStore, useDPRClamp } from "@/lib/qualityStore";
+
 import { Orb } from "@/components/Orb";
 import { Sparkles } from "@/components/Sparkles";
+import { Effects } from "@/components/Effects";
 
 function SceneContent() {
     return (
         <>
             <Orb />
             <Sparkles />
+            <Effects />
         </>
     );
 }
