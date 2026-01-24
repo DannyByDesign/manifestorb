@@ -89,7 +89,7 @@ export class ParticleCompute {
 
     // Add uniforms to position variable
     const posUniforms = this.positionVariable.material
-      .uniforms as ParticleComputeUniforms;
+      .uniforms as unknown as ParticleComputeUniforms;
     posUniforms.uTime = { value: 0.0 };
     posUniforms.uDeltaTime = { value: 0.016 };
     posUniforms.uOrbRadius = { value: 1.0 };
@@ -100,7 +100,7 @@ export class ParticleCompute {
 
     // Add uniforms to velocity variable
     const velUniforms = this.velocityVariable.material
-      .uniforms as ParticleComputeUniforms;
+      .uniforms as unknown as ParticleComputeUniforms;
     velUniforms.uTime = { value: 0.0 };
     velUniforms.uDeltaTime = { value: 0.016 };
     velUniforms.uOrbRadius = { value: 1.0 };
@@ -206,7 +206,7 @@ export class ParticleCompute {
 
     // Update position uniforms
     const posUniforms = this.positionVariable.material
-      .uniforms as ParticleComputeUniforms;
+      .uniforms as unknown as ParticleComputeUniforms;
     posUniforms.uTime.value = time;
     posUniforms.uDeltaTime.value = dt;
     posUniforms.uOrbRadius.value = orbRadius;
@@ -219,7 +219,7 @@ export class ParticleCompute {
 
     // Update velocity uniforms
     const velUniforms = this.velocityVariable.material
-      .uniforms as ParticleComputeUniforms;
+      .uniforms as unknown as ParticleComputeUniforms;
     velUniforms.uTime.value = time;
     velUniforms.uDeltaTime.value = dt;
     velUniforms.uOrbRadius.value = orbRadius;
