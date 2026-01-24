@@ -6,6 +6,15 @@ import { useQualityStore, useDPRClamp } from "@/lib/qualityStore";
 import { Orb } from "@/components/Orb";
 import { Sparkles } from "@/components/Sparkles";
 
+function SceneContent() {
+    return (
+        <>
+            <Orb />
+            <Sparkles />
+        </>
+    );
+}
+
 export function Scene() {
     const initialize = useQualityStore((state) => state.initialize);
     const dprClamp = useDPRClamp();
@@ -21,8 +30,7 @@ export function Scene() {
                 gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
                 camera={{ position: [0, 0, 3], fov: 45 }}
             >
-                <Orb />
-                <Sparkles />
+                <SceneContent />
             </Canvas>
         </div>
     );
