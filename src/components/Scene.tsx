@@ -13,7 +13,7 @@ function SceneContent() {
         <>
             <Orb />
             <Sparkles />
-            <Effects />
+            {/* <Effects /> - Disabled to verify Orb appearance */}
         </>
     );
 }

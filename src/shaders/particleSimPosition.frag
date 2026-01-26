@@ -145,12 +145,14 @@ vec3 randomInSphere(vec3 seed) {
 // ============================================
 
 // Shell probability distribution function
-// Peak around r ≈ 0.65–0.85 of orb radius with some core presence
+// Shell probability distribution function
+// Peak around r ~ 0.85 of orb radius (Surface Only)
 float shellPDF(float r) {
   // r in 0..1
-  float shell = exp(-pow((r - 0.75) / 0.18, 2.0));
-  float core = 0.35 * exp(-pow(r / 0.35, 2.0));
-  return clamp(core + shell, 0.05, 1.0);
+  // Sharp shell at 0.85, very little elsewhere
+  float shell = exp(-pow((r - 0.85) / 0.08, 2.0));
+  float core = 0.0; // Remove core density completely
+  return clamp(core + shell, 0.0, 1.0);
 }
 
 uniform float uDensityNoiseScale;   // ~0.6

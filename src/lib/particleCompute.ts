@@ -165,9 +165,21 @@ export class ParticleCompute {
         } while (x * x + y * y + z * z > 1);
 
         // Scale to fill radius - particles start distributed throughout sphere
-        data[idx + 0] = x * fillRadius;
-        data[idx + 1] = y * fillRadius;
-        data[idx + 2] = z * fillRadius;
+        // MODIFIED: Start on SHELL (0.8 - 0.95) to match the simulation target
+        // This prevents the "implosion" or "mud" look on startup
+
+        // Random radius in shell band
+        const rShell = 0.8 + Math.random() * 0.15;
+
+        // Normalize direction
+        const d = Math.sqrt(x * x + y * y + z * z);
+        const nx = x / d;
+        const ny = y / d;
+        const nz = z / d;
+
+        data[idx + 0] = nx * rShell;
+        data[idx + 1] = ny * rShell;
+        data[idx + 2] = nz * rShell;
 
         // Life value:
         // - White particles: 100.0 (immortal, never respawn)

@@ -292,8 +292,9 @@ export function Sparkles() {
         fragmentShader,
         uniforms,
         transparent: true,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
+        depthWrite: false, // Keep false for transparent particles, or true if opaque
+        blending: THREE.NormalBlending,
+        alphaTest: 0.5, // Discard transparent pixels for cleaner depth sorting if depthWrite were true, but with false, this helps discard edges
       }),
     [uniforms]
   );

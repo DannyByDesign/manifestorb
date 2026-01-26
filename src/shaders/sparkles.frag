@@ -46,125 +46,104 @@ float hash12(vec2 p) {
 
 void main() {
   // ========================================
-  // SPRITE UV TRANSFORM
+  // SPRITE UV TRANSFORM (Simplified)
   // ========================================
   
   vec2 uv = gl_PointCoord - 0.5;
-  uv.x *= vAspect;              // subtle ellipse
-  uv = rot2(uv, vRot);          // rotate
-  vec2 suv = uv + 0.5;          // back to 0..1
+  // Previously we rotated UVs and clipped results, causing square artifacts.
+  // For spherical particles, rotation is irrelevant for the shape itself.
+  // We keep aspect ratio if needed, but for "grains" we want roundness.
+  // Let's stick to simple circular UVs for the imposter sphere.
   
-  // Bounds check (discard if rotated UV is outside)
-  if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0) {
-    discard;
-  }
+  float dist = length(uv) * 2.0; // 0..1 from center
+  
+  // Early discard for circle
+  if (dist > 1.0) discard;
   
   // ========================================
-  // PROCEDURAL SHAPE GENERATION (No Textures)
+  // IMPOSTER SPHERE SHADING
   // ========================================
 
-  float dist = length(suv - 0.5) * 2.0; // 0..1 from center
-  float shapeAlpha = 0.0;
+  // Calculate fake normal from 2D UV
+  // N.z is the "height" of the sphere at this point
+  float z = sqrt(1.0 - dist * dist);
+  vec3 normal = normalize(vec3(uv * 2.0, z));
   
-  // Choose shape based on vSprite (0=Dust, 1=Body, 2=Glint)
-  if (vSprite < 0.5) {
-    // DUST: Soft Gaussian Blob
-    // exp(-dist^2 * falloff)
-    shapeAlpha = exp(-dist * dist * 3.0);
-    shapeAlpha *= 0.6; // Slightly dimmer base
-    
-  } else if (vSprite < 1.5) {
-    // BODY: "Sphere" look (Volume)
-    // NOT a flat circle. Use power function to simulate curvature shading.
-    // 1.0 at center, falling off to 0.0 at edge
-    float sphere = 1.0 - smoothstep(0.0, 1.0, dist);
-    shapeAlpha = pow(sphere, 1.5); // 1.5 exp gives it a "round" shading falloff
-    
-    // Hard clip at edge to keep it contained? Or soft?
-    // User asked for "reads like a sphere", so a smooth but defined edge is good.
-    // The power function handles the volume. Let's ensure it clips at 1.0
-    if (dist >= 1.0) shapeAlpha = 0.0;
-    
-  } else {
-    // GLINT: "Glowing Circle" (Bright Core + Soft Glow)
-    // No rays/star shape anymore.
-    
-    // Core (intense center)
-    float core = exp(-dist * dist * 16.0);
-    
-    // Outer glow (softer falloff)
-    float glow = exp(-dist * dist * 3.0) * 0.5;
-    
-    // Combine
-    shapeAlpha = max(core, glow);
-    
-    // Clip at edge to keep it tidy
-    if (dist >= 1.0) shapeAlpha = 0.0;
-  }
+  // Lighting Setup
+  // Light coming from Top-Left-Front (matches orb lighting)
+  vec3 lightDir = normalize(vec3(-1.0, 1.0, 1.0));
+  
+  // Diffuse Lighting (Lambert)
+  float diffuse = max(dot(normal, lightDir), 0.0);
+  
+  // Ambient Light (so shadow side isn't pitch black)
+  float ambient = 0.4;
+  
+  // Specular Highlight (Flash)
+  vec3 viewDir = vec3(0.0, 0.0, 1.0); // Orthographic approximation for sprite
+  vec3 halfVec = normalize(lightDir + viewDir);
+  float rnd = 32.0; // Roughness/Glossiness
+  float specular = pow(max(dot(normal, halfVec), 0.0), rnd);
+  
+  // ========================================
+  // SHAPE & COLOR
+  // ========================================
 
-  // Basic alpha threshold
-  if (shapeAlpha < 0.01) discard;
-
-  // ========================================
-  // FLICKER / TWINKLE
-  // ========================================
+  float alpha = 1.0;
   
-  // Layer-based character
-  // Dust (layer=0): Slow breathe
-  // Body (layer=1): Gentle pulse
-  // Glint (layer=2): Rapid sparkle
+  // Base Particle Appearance
+  vec3 baseCol = uBaseColor;
   
-  float speed = (vLayer < 0.5) ? 0.5 : (vLayer < 1.5) ? 2.0 : 6.0;
-  float amp = (vLayer < 0.5) ? 0.05 : (vLayer < 1.5) ? 0.15 : 0.4;
-  
-  float flicker = 1.0 - amp + amp * sin(uTime * speed + vTwinkle * 6.28 + vPhase * 3.0);
-  
-  // ========================================
-  // BRIGHTNESS & COLOR (Bloom Disabled)
-  // ========================================
-  
-  float brightnessMult = vBrightness;
-  
+  // Variation Tints
   vec3 warmTint = vec3(1.0, 0.92, 0.95);
   vec3 coolTint = vec3(0.92, 0.95, 1.0);
   vec3 hueTint = mix(coolTint, warmTint, vSeed);
   
-  vec3 color;
-  float alpha = shapeAlpha;
+  baseCol *= hueTint;
+
+  // Apply Shading to Color
+  vec3 litColor = baseCol * (diffuse * 0.8 + ambient);
   
-  if (vIsWhite > 0.5 || vLayer > 1.5) {
-    // GLINT
-    // Boosted slightly but CLAMPED to LDR since bloom is off.
-    // Use uGlowColor for the outer glow, White for core.
-    vec3 glintColor = mix(uGlowColor, vec3(1.0), shapeAlpha);
-    
-    color = glintColor * flicker * brightnessMult * 1.5;
-    
-    // Modulate alpha by shape
-    alpha *= 1.0; 
+  // Add Specular (white hot)
+  litColor += vec3(1.0) * specular * 0.6; // 60% intensity specular
+  
+  // Handle "Glint" vs "Dust" via Layer
+  // Glint (Layer 2) = Emissive / Unlit? Or just brighter?
+  if (vLayer > 1.5) {
+     // Glint: Ignore shading, just glow
+     // Use texture-like soft glow pattern
+     float glow = exp(-dist * dist * 8.0);
+     litColor = mix(uGlowColor, vec3(1.0), glow * 0.5);
+     litColor *= 1.5; // Boost brightness
+     alpha = glow; // Soft edge
   } else {
-    // BODY / DUST
-    color = uBaseColor * hueTint * flicker;
-    color *= (0.5 + 0.5 * shapeAlpha);
+     // Body/Dust: Solid Imposter Sphere
+     // Soften edge slightly for anti-aliasing
+     alpha = smoothstep(1.0, 0.85, dist);
   }
   
-  // Clamp all colors to standard range [0, 1] to ensure no bloom triggering
-  // even if it were enabled (safety).
-  color = min(color, vec3(1.0));
+  // ========================================
+  // FLICKER / TWINKLE
+  // ========================================
   
+  float speed = (vLayer < 0.5) ? 0.5 : (vLayer < 1.5) ? 2.0 : 6.0;
+  float amp = (vLayer < 0.5) ? 0.05 : (vLayer < 1.5) ? 0.15 : 0.4;
+  float flicker = 1.0 - amp + amp * sin(uTime * speed + vTwinkle * 6.28 + vPhase * 3.0);
+  
+  litColor *= flicker;
+  
+  // Brightness Mult from Vertex
+  litColor *= vBrightness;
+
   // ========================================
   // ALPHA FADES
   // ========================================
   
   float lifeAlpha = smoothstep(0.0, 0.2, vLife);
   alpha *= vDepthFade * vRadialFade * vMorphFade * lifeAlpha;
+
+  // Ensure alpha isn't too low for normal blending to register
+  // But also can use it for semi-transparent edge
   
-  // ========================================
-  // DITHERING (Filmic Lift)
-  // ========================================
-  
-  float dither = (hash12(gl_FragCoord.xy + uTime * 0.1) - 0.5) * 0.03;
-  alpha = clamp(alpha + dither, 0.0, 1.0);
-  
-  gl_FragColor = vec4(color, alpha);
+  gl_FragColor = vec4(litColor, alpha);
 }
