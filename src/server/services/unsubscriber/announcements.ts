@@ -1,9 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { announcementDismissedBody } from "@/utils/actions/announcements.validation";
-import { actionClientUser } from "@/utils/actions/safe-action";
-import prisma from "@/utils/prisma";
+import { announcementDismissedBody } from "@/server/services/unsubscriber/announcements.validation";
+import { actionClientUser } from "@/server/services/unsubscriber/safe-action";
+import prisma from "@/server/db/client";
 
 export const dismissAnnouncementModalAction = actionClientUser
   .metadata({ name: "dismissAnnouncementModal" })

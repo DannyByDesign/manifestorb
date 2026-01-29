@@ -9,19 +9,19 @@ import {
   forwardEmailHtml,
   forwardEmailSubject,
   forwardEmailText,
-} from "@/utils/gmail/forward";
+} from "@/server/integrations/google/forward";
 import type { ParsedMessage } from "@/utils/types";
-import { createReplyContent } from "@/utils/gmail/reply";
-import type { EmailForAction } from "@/utils/ai/types";
-import { createScopedLogger } from "@/utils/logger";
-import { withGmailRetry } from "@/utils/gmail/retry";
+import { createReplyContent } from "@/server/integrations/google/reply";
+import type { EmailForAction } from "@/server/integrations/ai/types";
+import { createScopedLogger } from "@/server/utils/logger";
+import { withGmailRetry } from "@/server/integrations/google/retry";
 import {
   buildReplyAllRecipients,
   formatCcList,
   mergeAndDedupeRecipients,
-} from "@/utils/email/reply-all";
-import { formatReplySubject } from "@/utils/email/subject";
-import { buildThreadingHeaders } from "@/utils/email/threading";
+} from "@/server/integrations/google/reply-all";
+import { formatReplySubject } from "@/server/integrations/google/subject";
+import { buildThreadingHeaders } from "@/server/integrations/google/threading";
 import { ensureEmailSendingEnabled } from "@/utils/mail";
 
 const logger = createScopedLogger("gmail/mail");

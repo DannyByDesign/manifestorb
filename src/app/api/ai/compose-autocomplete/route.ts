@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { withEmailAccount } from "@/utils/middleware";
+import { withEmailAccount } from "@/server/utils/middleware";
 import { composeAutocompleteBody } from "@/app/api/ai/compose-autocomplete/validation";
 import { chatCompletionStream } from "@/utils/llms";
 import { getEmailAccountWithAi } from "@/utils/user/get";

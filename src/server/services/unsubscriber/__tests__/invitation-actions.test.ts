@@ -3,11 +3,11 @@ import prisma from "@/utils/__mocks__/prisma";
 import {
   handleInvitationAction,
   inviteMemberAction,
-} from "@/utils/actions/organization";
+} from "@/server/services/unsubscriber/organization";
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/utils/prisma");
-vi.mock("@/utils/auth", () => ({
+vi.mock("@/server/db/client");
+vi.mock("@/server/auth", () => ({
   auth: vi.fn(async () => ({ user: { id: "u1", email: "test@test.com" } })),
 }));
 

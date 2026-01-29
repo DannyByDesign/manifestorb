@@ -1,15 +1,15 @@
 "use server";
 
-import { actionClient } from "@/utils/actions/safe-action";
+import { actionClient } from "@/server/services/unsubscriber/safe-action";
 import {
   sendDebugBriefBody,
   updateMeetingBriefsEnabledBody,
   updateMeetingBriefsMinutesBeforeBody,
-} from "@/utils/actions/meeting-briefs.validation";
-import prisma from "@/utils/prisma";
+} from "@/server/services/unsubscriber/meeting-briefs.validation";
+import prisma from "@/server/db/client";
 import { runMeetingBrief } from "@/utils/meeting-briefs/process";
 import type { CalendarEvent } from "@/utils/calendar/event-types";
-import { SafeError } from "@/utils/error";
+import { SafeError } from "@/server/utils/error";
 
 export const updateMeetingBriefsEnabledAction = actionClient
   .metadata({ name: "updateMeetingBriefsEnabled" })

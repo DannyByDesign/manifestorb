@@ -1,12 +1,12 @@
 import { z } from "zod";
-import type { Logger } from "@/utils/logger";
+import type { Logger } from "@/server/utils/logger";
 import type { EmailAccountWithAI } from "@/utils/llms/types";
 import type { EmailForLLM } from "@/utils/types";
-import { getEmailListPrompt, getTodayForLLM } from "@/utils/ai/helpers";
+import { getEmailListPrompt, getTodayForLLM } from "@/server/integrations/ai/helpers";
 import { preprocessBooleanLike } from "@/utils/zod";
 import { getModel } from "@/utils/llms/model";
 import { createGenerateObject } from "@/utils/llms";
-import { getUserInfoPrompt } from "@/utils/ai/helpers";
+import { getUserInfoPrompt } from "@/server/integrations/ai/helpers";
 
 const system = `You are an email history analysis agent. Your task is to analyze the provided historical email threads and extract relevant information that would be helpful for drafting a response to the current email thread.
 

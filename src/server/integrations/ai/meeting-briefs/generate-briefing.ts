@@ -7,7 +7,7 @@ import { env } from "@/env";
 import { getModel } from "@/utils/llms/model";
 import { createGenerateText } from "@/utils/llms";
 import type { EmailAccountWithAI } from "@/utils/llms/types";
-import { getUserInfoPrompt } from "@/utils/ai/helpers";
+import { getUserInfoPrompt } from "@/server/integrations/ai/helpers";
 import type { CalendarEvent } from "@/utils/calendar/event-types";
 import type { MeetingBriefingData } from "@/utils/meeting-briefs/gather-context";
 import { stringifyEmailSimple } from "@/utils/stringify-email";
@@ -18,9 +18,9 @@ import {
   getCachedResearch,
   setCachedResearch,
 } from "@/utils/redis/research-cache";
-import type { Logger } from "@/utils/logger";
+import type { Logger } from "@/server/utils/logger";
 import { Provider } from "@/utils/llms/config";
-import { createMcpToolsForAgent } from "@/utils/ai/mcp/mcp-tools";
+import { createMcpToolsForAgent } from "@/server/integrations/ai/mcp/mcp-tools";
 
 const MAX_AGENT_STEPS = 15;
 const MAX_EMAILS_PER_GUEST = 10;

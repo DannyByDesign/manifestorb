@@ -1,13 +1,13 @@
 import type { gmail_v1 } from "@googleapis/gmail";
-import { getBatch } from "@/utils/gmail/batch";
+import { getBatch } from "@/server/integrations/google/batch";
 import {
   isDefined,
   type ThreadWithPayloadMessages,
   type MessageWithPayload,
 } from "@/utils/types";
-import { parseMessage } from "@/utils/gmail/message";
-import { GmailLabel } from "@/utils/gmail/label";
-import { withGmailRetry } from "@/utils/gmail/retry";
+import { parseMessage } from "@/server/integrations/google/message";
+import { GmailLabel } from "@/server/integrations/google/label";
+import { withGmailRetry } from "@/server/integrations/google/retry";
 
 export async function getThread(
   threadId: string,

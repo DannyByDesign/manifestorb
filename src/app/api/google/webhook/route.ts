@@ -1,8 +1,8 @@
 import { after, NextResponse } from "next/server";
-import { withError } from "@/utils/middleware";
+import { withError } from "@/server/utils/middleware";
 import { env } from "@/env";
 import { processHistoryForUser } from "@/app/api/google/webhook/process-history";
-import type { Logger } from "@/utils/logger";
+import type { Logger } from "@/server/utils/logger";
 import { handleWebhookError } from "@/utils/webhook/error-handler";
 import { getWebhookEmailAccount } from "@/utils/webhook/validate-webhook-account";
 

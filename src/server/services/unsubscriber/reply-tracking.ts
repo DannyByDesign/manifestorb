@@ -2,12 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import {
   startAnalyzingReplyTracker,
   stopAnalyzingReplyTracker,
 } from "@/utils/redis/reply-tracker-analyzing";
-import { actionClient } from "@/utils/actions/safe-action";
+import { actionClient } from "@/server/services/unsubscriber/safe-action";
 import { prefixPath } from "@/utils/path";
 
 const resolveThreadTrackerSchema = z.object({

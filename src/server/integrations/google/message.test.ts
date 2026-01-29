@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { getMessagesBatch } from "./message";
-import { getBatch } from "@/utils/gmail/batch";
+import { getBatch } from "@/server/integrations/google/batch";
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/utils/gmail/batch");
-vi.mock("@/utils/logger", () => ({
+vi.mock("@/server/integrations/google/batch");
+vi.mock("@/server/utils/logger", () => ({
   createScopedLogger: () => ({
     info: vi.fn(),
     warn: vi.fn(),

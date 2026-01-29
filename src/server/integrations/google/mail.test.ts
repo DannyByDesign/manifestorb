@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import { convertTextToHtmlParagraphs } from "@/utils/gmail/mail";
+import { convertTextToHtmlParagraphs } from "@/server/integrations/google/mail";
 
 describe("convertTextToHtmlParagraphs", () => {
   it("preserves paragraph spacing with double newlines", () => {

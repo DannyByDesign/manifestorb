@@ -1,13 +1,13 @@
 import { stepCountIs, tool } from "ai";
 import { z } from "zod";
 import { createGenerateText } from "@/utils/llms";
-import type { Logger } from "@/utils/logger";
+import type { Logger } from "@/server/utils/logger";
 import { GroupItemType, LogicalOperator } from "@/generated/prisma/enums";
 import type { Rule } from "@/generated/prisma/client";
 import type { EmailAccountWithAI } from "@/utils/llms/types";
 import type { RuleWithRelations } from "@/utils/rule/types";
 import type { ParsedMessage } from "@/utils/types";
-import { createRuleSchema } from "@/utils/ai/rule/create-rule-schema";
+import { createRuleSchema } from "@/server/integrations/ai/rule/create-rule-schema";
 import { deleteGroupItem } from "@/utils/group/group-item";
 import { createRule, partialUpdateRule } from "@/utils/rule/rule";
 import { getEmailForLLM } from "@/utils/get-email-from-message";
@@ -15,7 +15,7 @@ import { stringifyEmailSimple } from "@/utils/stringify-email";
 import { env } from "@/env";
 import { posthogCaptureEvent } from "@/utils/posthog";
 import { getModel } from "@/utils/llms/model";
-import { getUserInfoPrompt } from "@/utils/ai/helpers";
+import { getUserInfoPrompt } from "@/server/integrations/ai/helpers";
 
 export async function processUserRequest({
   emailAccount,

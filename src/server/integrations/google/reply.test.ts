@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
-import { createReplyContent } from "@/utils/gmail/reply";
+import { createReplyContent } from "@/server/integrations/google/reply";
 import type { ParsedMessage } from "@/utils/types";
 
 describe("email formatting", () => {

@@ -4,14 +4,14 @@ import { z } from "zod";
 import { after } from "next/server";
 import uniq from "lodash/uniq";
 import sumBy from "lodash/sumBy";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { env } from "@/env";
-import { isAdminForPremium, isOnHigherTier, isPremium } from "@/utils/premium";
+import { isAdminForPremium, isOnHigherTier, isPremium } from "@/server/utils/premium";
 import {
   cancelPremiumLemon,
   syncPremiumSeats,
   upgradeToPremiumLemon,
-} from "@/utils/premium/server";
+} from "@/server/utils/premium/server";
 import { changePremiumStatusSchema } from "@/app/(app)/admin/validation";
 import {
   activateLemonLicenseKey,
@@ -23,10 +23,10 @@ import { getStripePriceId } from "@/app/(app)/premium/config";
 import {
   actionClientUser,
   adminActionClient,
-} from "@/utils/actions/safe-action";
-import { activateLicenseKeySchema } from "@/utils/actions/premium.validation";
-import { SafeError } from "@/utils/error";
-import { createPremiumForUser } from "@/utils/premium/create-premium";
+} from "@/server/services/unsubscriber/safe-action";
+import { activateLicenseKeySchema } from "@/server/services/unsubscriber/premium.validation";
+import { SafeError } from "@/server/utils/error";
+import { createPremiumForUser } from "@/server/utils/premium/create-premium";
 import { getStripe } from "@/ee/billing/stripe";
 import {
   trackStripeCheckoutCreated,

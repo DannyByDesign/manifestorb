@@ -1,9 +1,9 @@
 import { type InferUITool, tool, type ModelMessage } from "ai";
 import { z } from "zod";
-import type { Logger } from "@/utils/logger";
-import { createRuleSchema } from "@/utils/ai/rule/create-rule-schema";
-import prisma from "@/utils/prisma";
-import { isDuplicateError } from "@/utils/prisma-helpers";
+import type { Logger } from "@/server/utils/logger";
+import { createRuleSchema } from "@/server/integrations/ai/rule/create-rule-schema";
+import prisma from "@/server/db/client";
+import { isDuplicateError } from "@/server/db/client-helpers";
 import {
   createRule,
   partialUpdateRule,
@@ -19,8 +19,8 @@ import { saveLearnedPatterns } from "@/utils/rule/learned-patterns";
 import { posthogCaptureEvent } from "@/utils/posthog";
 import { chatCompletionStream } from "@/utils/llms";
 import { filterNullProperties } from "@/utils";
-import { delayInMinutesSchema } from "@/utils/actions/rule.validation";
-import { isMicrosoftProvider } from "@/utils/email/provider-types";
+import { delayInMinutesSchema } from "@/server/services/unsubscriber/rule.validation";
+import { isMicrosoftProvider } from "@/server/integrations/google/provider-types";
 import type { MessageContext } from "@/app/api/chat/validation";
 import { stringifyEmail } from "@/utils/stringify-email";
 import { getEmailForLLM } from "@/utils/get-email-from-message";

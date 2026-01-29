@@ -8,16 +8,16 @@ import {
   SystemType,
 } from "@/generated/prisma/enums";
 import type { Rule } from "@/generated/prisma/client";
-import type { ActionItem } from "@/utils/ai/types";
-import { findMatchingRules } from "@/utils/ai/choose-rule/match-rules";
-import { getActionItemsWithAiArgs } from "@/utils/ai/choose-rule/choose-args";
-import { executeAct } from "@/utils/ai/choose-rule/execute";
-import prisma from "@/utils/prisma";
-import { withPrismaRetry } from "@/utils/prisma-retry";
-import type { MatchReason } from "@/utils/ai/choose-rule/types";
-import { serializeMatchReasons } from "@/utils/ai/choose-rule/types";
+import type { ActionItem } from "@/server/integrations/ai/types";
+import { findMatchingRules } from "@/server/integrations/ai/choose-rule/match-rules";
+import { getActionItemsWithAiArgs } from "@/server/integrations/ai/choose-rule/choose-args";
+import { executeAct } from "@/server/integrations/ai/choose-rule/execute";
+import prisma from "@/server/db/client";
+import { withPrismaRetry } from "@/server/db/client-retry";
+import type { MatchReason } from "@/server/integrations/ai/choose-rule/types";
+import { serializeMatchReasons } from "@/server/integrations/ai/choose-rule/types";
 import { sanitizeActionFields } from "@/utils/action-item";
-import { extractEmailAddress } from "@/utils/email";
+import { extractEmailAddress } from "@/server/integrations/google";
 import { filterNullProperties } from "@/utils";
 import { analyzeSenderPattern } from "@/app/api/ai/analyze-sender-pattern/call-analyze-pattern-api";
 import {
@@ -25,7 +25,7 @@ import {
   cancelScheduledActions,
 } from "@/utils/scheduled-actions/scheduler";
 import groupBy from "lodash/groupBy";
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/integrations/google/types";
 import type { ModelType } from "@/utils/llms/model";
 import {
   CONVERSATION_STATUS_TYPES,
@@ -39,7 +39,7 @@ import { removeConflictingThreadStatusLabels } from "@/utils/reply-tracker/label
 import { saveLearnedPattern } from "@/utils/rule/learned-patterns";
 import { internalDateToDate } from "@/utils/date";
 import { ConditionType } from "@/utils/config";
-import type { Logger } from "@/utils/logger";
+import type { Logger } from "@/server/utils/logger";
 
 const MODULE = "ai/choose-rule";
 

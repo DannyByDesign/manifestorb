@@ -3,7 +3,7 @@ import {
   createAutoArchiveFilterAction,
   deleteFilterAction,
   trashThreadAction,
-} from "@/utils/actions/mail";
+} from "@/server/services/unsubscriber/mail";
 
 export async function onAutoArchive({
   emailAccountId,

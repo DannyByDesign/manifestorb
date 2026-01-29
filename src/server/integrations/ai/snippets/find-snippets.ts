@@ -3,7 +3,7 @@ import type { EmailForLLM } from "@/utils/types";
 import type { EmailAccountWithAI } from "@/utils/llms/types";
 import { getModel } from "@/utils/llms/model";
 import { createGenerateObject } from "@/utils/llms";
-import { getEmailListPrompt } from "@/utils/ai/helpers";
+import { getEmailListPrompt } from "@/server/integrations/ai/helpers";
 
 export async function aiFindSnippets({
   emailAccount,

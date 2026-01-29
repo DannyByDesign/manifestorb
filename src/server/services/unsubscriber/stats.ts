@@ -1,20 +1,20 @@
 "use server";
 
-import { actionClient } from "@/utils/actions/safe-action";
+import { actionClient } from "@/server/services/unsubscriber/safe-action";
 import { z } from "zod";
-import { createEmailProvider } from "@/utils/email/provider";
+import { createEmailProvider } from "@/server/integrations/google/provider";
 import { isDefined } from "@/utils/types";
 import {
   extractDomainFromEmail,
   extractEmailAddress,
   extractNameFromEmail,
-} from "@/utils/email";
+} from "@/server/integrations/google";
 import { findUnsubscribeLink } from "@/utils/parse/parseHtml.server";
 import { internalDateToDate } from "@/utils/date";
-import prisma from "@/utils/prisma";
-import { SafeError } from "@/utils/error";
-import type { Logger } from "@/utils/logger";
-import type { EmailProvider } from "@/utils/email/types";
+import prisma from "@/server/db/client";
+import { SafeError } from "@/server/utils/error";
+import type { Logger } from "@/server/utils/logger";
+import type { EmailProvider } from "@/server/integrations/google/types";
 
 const PAGE_SIZE = 20; // avoid setting too high because it will hit the rate limit
 // const PAUSE_AFTER_RATE_LIMIT = 10_000;

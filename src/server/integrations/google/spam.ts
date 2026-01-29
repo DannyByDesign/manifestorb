@@ -1,6 +1,6 @@
 import type { gmail_v1 } from "@googleapis/gmail";
-import { GmailLabel } from "@/utils/gmail/label";
-import { withGmailRetry } from "@/utils/gmail/retry";
+import { GmailLabel } from "@/server/integrations/google/label";
+import { withGmailRetry } from "@/server/integrations/google/retry";
 
 export async function markSpam(options: {
   gmail: gmail_v1.Gmail;

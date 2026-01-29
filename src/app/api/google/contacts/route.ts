@@ -1,11 +1,11 @@
 import type { people_v1 } from "@googleapis/people";
 import { z } from "zod";
 import { NextResponse } from "next/server";
-import { withEmailAccount } from "@/utils/middleware";
-import { getContactsClient } from "@/utils/gmail/client";
-import { searchContacts } from "@/utils/gmail/contact";
+import { withEmailAccount } from "@/server/utils/middleware";
+import { getContactsClient } from "@/server/integrations/google/client";
+import { searchContacts } from "@/server/integrations/google/contact";
 import { env } from "@/env";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 
 const contactsQuery = z.object({ query: z.string() });
 export type ContactsQuery = z.infer<typeof contactsQuery>;

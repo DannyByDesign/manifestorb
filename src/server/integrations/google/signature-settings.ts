@@ -1,6 +1,6 @@
 import type { gmail_v1 } from "@googleapis/gmail";
-import { createScopedLogger } from "@/utils/logger";
-import { withGmailRetry } from "@/utils/gmail/retry";
+import { createScopedLogger } from "@/server/utils/logger";
+import { withGmailRetry } from "@/server/integrations/google/retry";
 
 const logger = createScopedLogger("gmail-signature");
 

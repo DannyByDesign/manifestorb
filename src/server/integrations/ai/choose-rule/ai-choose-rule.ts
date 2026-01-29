@@ -4,8 +4,8 @@ import { stringifyEmail } from "@/utils/stringify-email";
 import { isDefined, type EmailForLLM } from "@/utils/types";
 import { getModel, type ModelType } from "@/utils/llms/model";
 import { createGenerateObject } from "@/utils/llms";
-import { getUserInfoPrompt, getUserRulesPrompt } from "@/utils/ai/helpers";
-import { PROMPT_SECURITY_INSTRUCTIONS } from "@/utils/ai/security";
+import { getUserInfoPrompt, getUserRulesPrompt } from "@/server/integrations/ai/helpers";
+import { PROMPT_SECURITY_INSTRUCTIONS } from "@/server/integrations/ai/security";
 
 type GetAiResponseOptions = {
   email: EmailForLLM;

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { createGenerateObject } from "@/utils/llms";
 import type { EmailAccountWithAI } from "@/utils/llms/types";
-import type { EmailSummary } from "@/utils/ai/report/summarize-emails";
+import type { EmailSummary } from "@/server/integrations/ai/report/summarize-emails";
 import { getModel } from "@/utils/llms/model";
 
 const userPersonaSchema = z.object({

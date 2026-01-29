@@ -4,7 +4,7 @@ import {
 } from "@sentry/nextjs";
 import { APICallError, RetryError } from "ai";
 import type { FlattenedValidationErrors } from "next-safe-action";
-import { createScopedLogger, type Logger } from "@/utils/logger";
+import { createScopedLogger, type Logger } from "@/server/utils/logger";
 
 export type ErrorMessage = { error: string; data?: any };
 export type ZodError = {

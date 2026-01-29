@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { ActionType, LogicalOperator } from "@/generated/prisma/enums";
-import { delayInMinutesSchema } from "@/utils/actions/rule.validation";
-import { isMicrosoftProvider } from "@/utils/email/provider-types";
+import { delayInMinutesSchema } from "@/server/services/unsubscriber/rule.validation";
+import { isMicrosoftProvider } from "@/server/integrations/google/provider-types";
 import { isDefined } from "@/utils/types";
 import { env } from "@/env";
 

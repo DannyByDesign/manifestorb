@@ -13,9 +13,9 @@ import { getEmailForLLM } from "@/utils/get-email-from-message";
 import {
   type ActionArgResponse,
   aiGenerateArgs,
-} from "@/utils/ai/choose-rule/ai-choose-args";
-import type { Logger } from "@/utils/logger";
-import type { EmailProvider } from "@/utils/email/types";
+} from "@/server/integrations/ai/choose-rule/ai-choose-args";
+import type { Logger } from "@/server/utils/logger";
+import type { EmailProvider } from "@/server/integrations/google/types";
 
 const MODULE = "choose-args";
 

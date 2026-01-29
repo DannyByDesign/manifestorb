@@ -1,12 +1,12 @@
 import { z } from "zod";
-import { createScopedLogger } from "@/utils/logger";
+import { createScopedLogger } from "@/server/utils/logger";
 import type { EmailAccountWithAI } from "@/utils/llms/types";
 import type { EmailForLLM } from "@/utils/types";
 import { truncate } from "@/utils/string";
 import { removeExcessiveWhitespace } from "@/utils/string";
 import { getModel } from "@/utils/llms/model";
 import { createGenerateObject } from "@/utils/llms";
-import { getUserInfoPrompt } from "@/utils/ai/helpers";
+import { getUserInfoPrompt } from "@/server/integrations/ai/helpers";
 
 const logger = createScopedLogger("writing-style-analyzer");
 

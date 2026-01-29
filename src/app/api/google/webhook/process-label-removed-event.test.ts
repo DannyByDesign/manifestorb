@@ -3,16 +3,16 @@ import { HistoryEventType } from "./types";
 import { handleLabelRemovedEvent } from "./process-label-removed-event";
 import type { gmail_v1 } from "@googleapis/gmail";
 import { saveLearnedPattern } from "@/utils/rule/learned-patterns";
-import { createScopedLogger } from "@/utils/logger";
+import { createScopedLogger } from "@/server/utils/logger";
 import { GroupItemSource, SystemType } from "@/generated/prisma/enums";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 
 const logger = createScopedLogger("test");
 
 vi.mock("server-only", () => ({}));
 
 // Mock dependencies
-vi.mock("@/utils/prisma", () => ({
+vi.mock("@/server/db/client", () => ({
   default: {
     rule: {
       findFirst: vi.fn(),
@@ -24,7 +24,7 @@ vi.mock("@/utils/rule/learned-patterns", () => ({
   saveLearnedPattern: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("@/utils/gmail/label", () => ({
+vi.mock("@/server/integrations/google/label", () => ({
   GmailLabel: {
     INBOX: "INBOX",
     SENT: "SENT",
@@ -51,7 +51,7 @@ vi.mock("@/utils/gmail/label", () => ({
   }),
 }));
 
-vi.mock("@/utils/email", () => ({
+vi.mock("@/server/integrations/google", () => ({
   extractEmailAddress: vi.fn().mockReturnValue("sender@example.com"),
 }));
 

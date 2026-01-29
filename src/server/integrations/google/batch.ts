@@ -1,5 +1,5 @@
 import { isDefined } from "@/utils/types";
-import { createScopedLogger } from "@/utils/logger";
+import { createScopedLogger } from "@/server/utils/logger";
 
 const logger = createScopedLogger("gmail/batch");
 

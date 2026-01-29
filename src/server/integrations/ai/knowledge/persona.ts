@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { createScopedLogger } from "@/utils/logger";
+import { createScopedLogger } from "@/server/utils/logger";
 import type { EmailAccountWithAI } from "@/utils/llms/types";
 import type { EmailForLLM } from "@/utils/types";
 import { getModel } from "@/utils/llms/model";
 import { createGenerateObject } from "@/utils/llms";
 import { USER_ROLES } from "@/utils/constants/user-roles";
-import { getEmailListPrompt } from "@/utils/ai/helpers";
+import { getEmailListPrompt } from "@/server/integrations/ai/helpers";
 
 const logger = createScopedLogger("persona-analyzer");
 

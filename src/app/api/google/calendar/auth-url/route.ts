@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { withEmailAccount } from "@/utils/middleware";
+import { withEmailAccount } from "@/server/utils/middleware";
 import { getCalendarOAuth2Client } from "@/utils/calendar/client";
 import { CALENDAR_STATE_COOKIE_NAME } from "@/utils/calendar/constants";
-import { CALENDAR_SCOPES } from "@/utils/gmail/scopes";
+import { CALENDAR_SCOPES } from "@/server/integrations/google/scopes";
 import {
   generateOAuthState,
   oauthStateCookieOptions,

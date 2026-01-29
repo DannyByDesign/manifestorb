@@ -1,9 +1,9 @@
 import type { gmail_v1 } from "@googleapis/gmail";
-import { createScopedLogger } from "@/utils/logger";
-import { parseMessage } from "@/utils/gmail/message";
+import { createScopedLogger } from "@/server/utils/logger";
+import { parseMessage } from "@/server/integrations/google/message";
 import type { MessageWithPayload } from "@/utils/types";
-import { isGmailError } from "@/utils/error";
-import { withGmailRetry } from "@/utils/gmail/retry";
+import { isGmailError } from "@/server/utils/error";
+import { withGmailRetry } from "@/server/integrations/google/retry";
 
 const logger = createScopedLogger("gmail/draft");
 

@@ -1,12 +1,12 @@
 "use server";
 
 import { z } from "zod";
-import { handleGmailPermissionsCheck } from "@/utils/gmail/permissions";
-import { actionClient, adminActionClient } from "@/utils/actions/safe-action";
+import { handleGmailPermissionsCheck } from "@/server/integrations/google/permissions";
+import { actionClient, adminActionClient } from "@/server/services/unsubscriber/safe-action";
 import { getGmailAndAccessTokenForEmail } from "@/utils/account";
-import prisma from "@/utils/prisma";
-import { SafeError } from "@/utils/error";
-import { isGoogleProvider } from "@/utils/email/provider-types";
+import prisma from "@/server/db/client";
+import { SafeError } from "@/server/utils/error";
+import { isGoogleProvider } from "@/server/integrations/google/provider-types";
 
 export const checkPermissionsAction = actionClient
   .metadata({ name: "checkPermissions" })

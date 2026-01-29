@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
 import { z } from "zod";
-import { withError, type RequestWithLogger } from "@/utils/middleware";
-import { getGmailClientWithRefresh } from "@/utils/gmail/client";
-import { GmailLabel, labelThread } from "@/utils/gmail/label";
-import { SafeError } from "@/utils/error";
-import prisma from "@/utils/prisma";
+import { withError, type RequestWithLogger } from "@/server/utils/middleware";
+import { getGmailClientWithRefresh } from "@/server/integrations/google/client";
+import { GmailLabel, labelThread } from "@/server/integrations/google/label";
+import { SafeError } from "@/server/utils/error";
+import prisma from "@/server/db/client";
 import { isDefined } from "@/utils/types";
-import type { Logger } from "@/utils/logger";
+import type { Logger } from "@/server/utils/logger";
 import { CleanAction } from "@/generated/prisma/enums";
 import { updateThread } from "@/utils/redis/clean";
 

@@ -1,15 +1,15 @@
 "use server";
 
 import { z } from "zod";
-import { actionClient } from "@/utils/actions/safe-action";
+import { actionClient } from "@/server/services/unsubscriber/safe-action";
 import {
   toggleFollowUpRemindersBody,
   saveFollowUpSettingsBody,
   DEFAULT_FOLLOW_UP_DAYS,
-} from "@/utils/actions/follow-up-reminders.validation";
-import prisma from "@/utils/prisma";
+} from "@/server/services/unsubscriber/follow-up-reminders.validation";
+import prisma from "@/server/db/client";
 import { processAccountFollowUps } from "@/app/api/follow-up-reminders/process";
-import { SafeError } from "@/utils/error";
+import { SafeError } from "@/server/utils/error";
 
 export const toggleFollowUpRemindersAction = actionClient
   .metadata({ name: "toggleFollowUpReminders" })

@@ -1,22 +1,22 @@
 "use server";
 
-import { actionClient, actionClientUser } from "@/utils/actions/safe-action";
+import { actionClient, actionClientUser } from "@/server/services/unsubscriber/safe-action";
 import {
   createOrganizationBody,
   inviteMemberBody,
   removeMemberBody,
   cancelInvitationBody,
   handleInvitationBody,
-} from "@/utils/actions/organization.validation";
-import prisma from "@/utils/prisma";
-import { SafeError } from "@/utils/error";
+} from "@/server/services/unsubscriber/organization.validation";
+import prisma from "@/server/db/client";
+import { SafeError } from "@/server/utils/error";
 import { hasOrganizationAdminRole } from "@/utils/organizations/roles";
 import { sendOrganizationInvitation } from "@/utils/organizations/invitations";
 import {
   claimPendingPremiumInvite,
   removeFromPendingInvites,
   removeUserFromPremium,
-} from "@/utils/premium/server";
+} from "@/server/utils/premium/server";
 import { env } from "@/env";
 
 export const createOrganizationAction = actionClient

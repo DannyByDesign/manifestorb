@@ -1,6 +1,6 @@
 "use server";
 
-import { actionClient } from "@/utils/actions/safe-action";
+import { actionClient } from "@/server/services/unsubscriber/safe-action";
 import {
   disconnectDriveBody,
   updateFilingPromptBody,
@@ -11,11 +11,11 @@ import {
   moveFilingBody,
   createDriveFolderBody,
   fileAttachmentBody,
-} from "@/utils/actions/drive.validation";
-import prisma from "@/utils/prisma";
-import { SafeError } from "@/utils/error";
+} from "@/server/services/unsubscriber/drive.validation";
+import prisma from "@/server/db/client";
+import { SafeError } from "@/server/utils/error";
 import { createDriveProviderWithRefresh } from "@/utils/drive/provider";
-import { createEmailProvider } from "@/utils/email/provider";
+import { createEmailProvider } from "@/server/integrations/google/provider";
 import {
   getExtractableAttachments,
   processAttachment,

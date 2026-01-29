@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import prisma from "@/utils/__mocks__/prisma";
-import { copyRulesFromAccountAction } from "@/utils/actions/rule";
+import { copyRulesFromAccountAction } from "@/server/services/unsubscriber/rule";
 import {
   getAction,
   getMockEmailAccountWithAccount,
@@ -9,8 +9,8 @@ import {
 import { ActionType } from "@/generated/prisma/enums";
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/utils/prisma");
-vi.mock("@/utils/auth", () => ({
+vi.mock("@/server/db/client");
+vi.mock("@/server/auth", () => ({
   auth: vi.fn(async () => ({ user: { id: "user1", email: "test@test.com" } })),
 }));
 

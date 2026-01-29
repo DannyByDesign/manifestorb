@@ -1,7 +1,7 @@
 "use server";
 
-import prisma from "@/utils/prisma";
-import { actionClientUser } from "@/utils/actions/safe-action";
+import prisma from "@/server/db/client";
+import { actionClientUser } from "@/server/services/unsubscriber/safe-action";
 
 export const regenerateWebhookSecretAction = actionClientUser
   .metadata({ name: "regenerateWebhookSecret" })

@@ -2,11 +2,11 @@ import { ZodError } from "zod";
 import { type NextRequest, NextResponse, after } from "next/server";
 import { randomUUID } from "node:crypto";
 import * as Sentry from "@sentry/nextjs";
-import { captureException, checkCommonErrors, SafeError } from "@/utils/error";
+import { captureException, checkCommonErrors, SafeError } from "@/server/utils/error";
 import { env } from "@/env";
-import { logErrorToPosthog } from "@/utils/error.server";
-import { createScopedLogger, type Logger } from "@/utils/logger";
-import { auth } from "@/utils/auth";
+import { logErrorToPosthog } from "@/server/utils/error.server";
+import { createScopedLogger, type Logger } from "@/server/utils/logger";
+import { auth } from "@/server/auth";
 import { getEmailAccount } from "@/utils/redis/account-validation";
 import { getCallerEmailAccount } from "@/utils/organizations/access";
 import {
@@ -14,9 +14,9 @@ import {
   MICROSOFT_AUTH_EXPIRED_ERROR_CODE,
   NO_REFRESH_TOKEN_ERROR_CODE,
 } from "@/utils/config";
-import prisma from "@/utils/prisma";
-import { createEmailProvider } from "@/utils/email/provider";
-import type { EmailProvider } from "@/utils/email/types";
+import prisma from "@/server/db/client";
+import { createEmailProvider } from "@/server/integrations/google/provider";
+import type { EmailProvider } from "@/server/integrations/google/types";
 
 const logger = createScopedLogger("middleware");
 

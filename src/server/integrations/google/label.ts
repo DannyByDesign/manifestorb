@@ -11,9 +11,9 @@ import {
   messageVisibility,
   type LabelVisibility,
   type MessageVisibility,
-} from "@/utils/gmail/constants";
-import { createScopedLogger } from "@/utils/logger";
-import { extractErrorInfo, withGmailRetry } from "@/utils/gmail/retry";
+} from "@/server/integrations/google/constants";
+import { createScopedLogger } from "@/server/utils/logger";
+import { extractErrorInfo, withGmailRetry } from "@/server/integrations/google/retry";
 
 const logger = createScopedLogger("gmail/label");
 

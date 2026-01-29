@@ -1,19 +1,19 @@
 "use server";
 
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import {
   createKnowledgeBody,
   updateKnowledgeBody,
   deleteKnowledgeBody,
-} from "@/utils/actions/knowledge.validation";
-import { actionClient } from "@/utils/actions/safe-action";
-import { SafeError } from "@/utils/error";
+} from "@/server/services/unsubscriber/knowledge.validation";
+import { actionClient } from "@/server/services/unsubscriber/safe-action";
+import { SafeError } from "@/server/utils/error";
 import {
   KNOWLEDGE_BASIC_MAX_ITEMS,
   KNOWLEDGE_BASIC_MAX_CHARS,
 } from "@/utils/config";
 import { PremiumTier } from "@/generated/prisma/enums";
-import { checkHasAccess } from "@/utils/premium/server";
+import { checkHasAccess } from "@/server/utils/premium/server";
 
 export const createKnowledgeAction = actionClient
   .metadata({ name: "createKnowledge" })

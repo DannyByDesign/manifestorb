@@ -5,7 +5,7 @@ import {
   scryptSync,
 } from "node:crypto";
 import { env } from "@/env";
-import { createScopedLogger } from "@/utils/logger";
+import { createScopedLogger } from "@/server/utils/logger";
 
 const logger = createScopedLogger("encryption");
 

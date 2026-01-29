@@ -17,3 +17,7 @@
 | 2026-01-29 | Copy | `apps/web/utils/logger.ts`, `middleware.ts`, `error.ts` | `src/server/utils/` | Shared Utilities Copied |
 | 2026-01-29 | Copy | `apps/web/app/api/` (selected) | `src/app/api/` | API Routes Copied |
 | 2026-01-29 | Copy | `apps/web/env.ts` | `src/env.ts` | Env Schema Copied |
+| 2026-01-29 | Copy | `apps/web/utils/auth.ts`, `auth/` | `src/server/auth/` | Auth Module Copied |
+| 2026-01-29 | Copy | `apps/web/utils/dub.ts`, `outlook/`, `referral/` | `src/server/utils/` | External Integration Utils Copied |
+| 2026-01-29 | Copy | `packages/` | `src/server/packages/` | Shared Packages Copied |
+| 2026-01-29 | Copy | `apps/web/utils/premium/`, `internal-api.ts` | `src/server/utils/` | Premium & Internal API Utils Copied |

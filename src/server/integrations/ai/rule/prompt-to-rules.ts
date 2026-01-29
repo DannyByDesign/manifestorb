@@ -4,8 +4,8 @@ import type { EmailAccountWithAI } from "@/utils/llms/types";
 import {
   type CreateRuleSchema,
   createRuleSchema,
-} from "@/utils/ai/rule/create-rule-schema";
-import { createScopedLogger } from "@/utils/logger";
+} from "@/server/integrations/ai/rule/create-rule-schema";
+import { createScopedLogger } from "@/server/utils/logger";
 import { convertMentionsToLabels } from "@/utils/mention";
 import { getModel } from "@/utils/llms/model";
 

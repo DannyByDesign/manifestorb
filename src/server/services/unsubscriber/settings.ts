@@ -1,23 +1,23 @@
 "use server";
 
-import { actionClient } from "@/utils/actions/safe-action";
+import { actionClient } from "@/server/services/unsubscriber/safe-action";
 import {
   saveAiSettingsBody,
   saveEmailUpdateSettingsBody,
   saveDigestScheduleBody,
   updateDigestItemsBody,
   toggleDigestBody,
-} from "@/utils/actions/settings.validation";
+} from "@/server/services/unsubscriber/settings.validation";
 import { DEFAULT_PROVIDER } from "@/utils/llms/config";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import {
   calculateNextScheduleDate,
   createCanonicalTimeOfDay,
 } from "@/utils/schedule";
-import { actionClientUser } from "@/utils/actions/safe-action";
+import { actionClientUser } from "@/server/services/unsubscriber/safe-action";
 import { ActionType, SystemType } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
-import { clearSpecificErrorMessages, ErrorType } from "@/utils/error-messages";
+import { clearSpecificErrorMessages, ErrorType } from "@/server/utils/error-messages";
 
 export const updateEmailSettingsAction = actionClient
   .metadata({ name: "updateEmailSettings" })

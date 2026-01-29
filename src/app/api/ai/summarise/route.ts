@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { summarise } from "@/app/api/ai/summarise/controller";
-import { withEmailAccount } from "@/utils/middleware";
+import { withEmailAccount } from "@/server/utils/middleware";
 import { summariseBody } from "@/app/api/ai/summarise/validation";
 import { getSummary } from "@/utils/redis/summary";
 import { emailToContent } from "@/utils/mail";

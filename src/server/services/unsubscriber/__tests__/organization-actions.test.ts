@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import prisma from "@/utils/__mocks__/prisma";
-import { createOrganizationAction } from "@/utils/actions/organization";
+import { createOrganizationAction } from "@/server/services/unsubscriber/organization";
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/utils/prisma");
-vi.mock("@/utils/auth", () => ({
+vi.mock("@/server/db/client");
+vi.mock("@/server/auth", () => ({
   auth: vi.fn(async () => ({ user: { id: "u1", email: "test@test.com" } })),
 }));
 

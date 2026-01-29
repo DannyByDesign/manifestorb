@@ -1,7 +1,7 @@
 import {
   getParameterFieldsForAction,
   parseTemplate,
-} from "@/utils/ai/choose-rule/choose-args";
+} from "@/server/integrations/ai/choose-rule/choose-args";
 import { describe, it, expect, vi } from "vitest";
 import { z } from "zod";
 

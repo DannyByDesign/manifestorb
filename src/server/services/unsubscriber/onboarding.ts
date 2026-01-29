@@ -4,9 +4,9 @@ import { after } from "next/server";
 import {
   saveOnboardingAnswersBody,
   saveOnboardingFeaturesSchema,
-} from "@/utils/actions/onboarding.validation";
-import { actionClientUser } from "@/utils/actions/safe-action";
-import prisma from "@/utils/prisma";
+} from "@/server/services/unsubscriber/onboarding.validation";
+import { actionClientUser } from "@/server/services/unsubscriber/safe-action";
+import prisma from "@/server/db/client";
 import { updateContactCompanySize, updateContactRole } from "@inboxzero/loops";
 
 export const completedOnboardingAction = actionClientUser

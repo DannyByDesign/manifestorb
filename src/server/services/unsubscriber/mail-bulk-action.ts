@@ -1,8 +1,8 @@
 "use server";
 
 import { z } from "zod";
-import { actionClient } from "@/utils/actions/safe-action";
-import { createEmailProvider } from "@/utils/email/provider";
+import { actionClient } from "@/server/services/unsubscriber/safe-action";
+import { createEmailProvider } from "@/server/integrations/google/provider";
 
 export const bulkArchiveAction = actionClient
   .metadata({ name: "bulkArchive" })

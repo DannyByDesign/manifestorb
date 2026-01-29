@@ -1,7 +1,7 @@
-import prisma from "@/utils/prisma";
-import { createEmailProvider } from "@/utils/email/provider";
-import { runRules } from "@/utils/ai/choose-rule/run-rules";
-import type { Logger } from "@/utils/logger";
+import prisma from "@/server/db/client";
+import { createEmailProvider } from "@/server/integrations/google/provider";
+import { runRules } from "@/server/integrations/ai/choose-rule/run-rules";
+import type { Logger } from "@/server/utils/logger";
 import type { EmailAccountWithAI } from "@/utils/llms/types";
 import type { ParsedMessage } from "@/utils/types";
 

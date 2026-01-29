@@ -1,19 +1,19 @@
 import { NextResponse, after } from "next/server";
 import { headers } from "next/headers";
 import { z } from "zod";
-import { withError } from "@/utils/middleware";
-import prisma from "@/utils/prisma";
-import type { Logger } from "@/utils/logger";
+import { withError } from "@/server/utils/middleware";
+import prisma from "@/server/db/client";
+import type { Logger } from "@/server/utils/logger";
 import type { ParsedMessage } from "@/utils/types";
-import { aiDetectRecurringPattern } from "@/utils/ai/choose-rule/ai-detect-recurring-pattern";
-import { isValidInternalApiKey } from "@/utils/internal-api";
-import { extractEmailAddress } from "@/utils/email";
+import { aiDetectRecurringPattern } from "@/server/integrations/ai/choose-rule/ai-detect-recurring-pattern";
+import { isValidInternalApiKey } from "@/server/utils/internal-api";
+import { extractEmailAddress } from "@/server/integrations/google";
 import { getEmailForLLM } from "@/utils/get-email-from-message";
 import { saveLearnedPattern } from "@/utils/rule/learned-patterns";
 import { GroupItemSource } from "@/generated/prisma/enums";
 import { checkSenderRuleHistory } from "@/utils/rule/check-sender-rule-history";
-import { createEmailProvider } from "@/utils/email/provider";
-import type { EmailProvider } from "@/utils/email/types";
+import { createEmailProvider } from "@/server/integrations/google/provider";
+import type { EmailProvider } from "@/server/integrations/google/types";
 
 export const maxDuration = 60;
 

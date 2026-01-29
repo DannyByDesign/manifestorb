@@ -1,10 +1,10 @@
-import { SCOPES } from "@/utils/gmail/scopes";
+import { SCOPES } from "@/server/integrations/google/scopes";
 import {
   getAccessTokenFromClient,
   getGmailClientWithRefresh,
-} from "@/utils/gmail/client";
-import { createScopedLogger } from "@/utils/logger";
-import prisma from "@/utils/prisma";
+} from "@/server/integrations/google/client";
+import { createScopedLogger } from "@/server/utils/logger";
+import prisma from "@/server/db/client";
 
 const logger = createScopedLogger("Gmail Permissions");
 

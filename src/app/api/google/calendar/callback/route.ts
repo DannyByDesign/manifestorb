@@ -1,4 +1,4 @@
-import { withError } from "@/utils/middleware";
+import { withError } from "@/server/utils/middleware";
 import { handleCalendarCallback } from "@/utils/calendar/handle-calendar-callback";
 import { createGoogleCalendarProvider } from "@/utils/calendar/providers/google";
 

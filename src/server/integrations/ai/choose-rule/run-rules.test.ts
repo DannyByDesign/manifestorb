@@ -15,24 +15,24 @@ import { ConditionType } from "@/utils/config";
 import prisma from "@/utils/__mocks__/prisma";
 import type { RuleWithActions } from "@/utils/types";
 import { getAction, getEmailAccount, getEmail } from "@/__tests__/helpers";
-import { createScopedLogger } from "@/utils/logger";
+import { createScopedLogger } from "@/server/utils/logger";
 
 const logger = createScopedLogger("test");
 
-vi.mock("@/utils/prisma");
+vi.mock("@/server/db/client");
 vi.mock("server-only", () => ({}));
 vi.mock("next/server", () => ({ after: vi.fn((fn) => fn()) }));
-vi.mock("@/utils/ai/choose-rule/match-rules", () => ({
+vi.mock("@/server/integrations/ai/choose-rule/match-rules", () => ({
   findMatchingRules: vi.fn(),
 }));
 vi.mock("@/utils/reply-tracker/handle-conversation-status", () => ({
   determineConversationStatus: vi.fn(),
   updateThreadTrackers: vi.fn(),
 }));
-vi.mock("@/utils/ai/choose-rule/choose-args", () => ({
+vi.mock("@/server/integrations/ai/choose-rule/choose-args", () => ({
   getActionItemsWithAiArgs: vi.fn(),
 }));
-vi.mock("@/utils/ai/choose-rule/execute", () => ({
+vi.mock("@/server/integrations/ai/choose-rule/execute", () => ({
   executeAct: vi.fn(),
 }));
 vi.mock("@/utils/reply-tracker/label-helpers", () => ({
@@ -561,15 +561,15 @@ describe("runRules - double draft prevention", () => {
 
   it("executes only one DRAFT_EMAIL when custom rule and TO_REPLY both have drafts", async () => {
     const { findMatchingRules } = await import(
-      "@/utils/ai/choose-rule/match-rules"
+      "@/server/integrations/ai/choose-rule/match-rules"
     );
     const { determineConversationStatus } = await import(
       "@/utils/reply-tracker/handle-conversation-status"
     );
     const { getActionItemsWithAiArgs } = await import(
-      "@/utils/ai/choose-rule/choose-args"
+      "@/server/integrations/ai/choose-rule/choose-args"
     );
-    const { executeAct } = await import("@/utils/ai/choose-rule/execute");
+    const { executeAct } = await import("@/server/integrations/ai/choose-rule/execute");
 
     const guestsRule = createRule("guests-rule", null, [
       getAction({

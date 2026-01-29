@@ -1,16 +1,16 @@
 import { z } from "zod";
-import { createScopedLogger } from "@/utils/logger";
+import { createScopedLogger } from "@/server/utils/logger";
 import { createGenerateObject } from "@/utils/llms/index";
 import type { EmailAccountWithAI } from "@/utils/llms/types";
 import type { EmailForLLM } from "@/utils/types";
-import { getEmailListPrompt, getTodayForLLM } from "@/utils/ai/helpers";
+import { getEmailListPrompt, getTodayForLLM } from "@/server/integrations/ai/helpers";
 import { getModel } from "@/utils/llms/model";
-import type { ReplyContextCollectorResult } from "@/utils/ai/reply/reply-context-collector";
-import type { CalendarAvailabilityContext } from "@/utils/ai/calendar/availability";
+import type { ReplyContextCollectorResult } from "@/server/integrations/ai/reply/reply-context-collector";
+import type { CalendarAvailabilityContext } from "@/server/integrations/ai/calendar/availability";
 import {
   PLAIN_TEXT_OUTPUT_INSTRUCTION,
   PROMPT_SECURITY_INSTRUCTIONS,
-} from "@/utils/ai/security";
+} from "@/server/integrations/ai/security";
 
 const logger = createScopedLogger("DraftReply");
 

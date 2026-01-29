@@ -17,9 +17,9 @@ import {
   toggleAllRulesBody,
   copyRulesFromAccountBody,
   importRulesBody,
-} from "@/utils/actions/rule.validation";
-import prisma from "@/utils/prisma";
-import { isDuplicateError, isNotFoundError } from "@/utils/prisma-helpers";
+} from "@/server/services/unsubscriber/rule.validation";
+import prisma from "@/server/db/client";
+import { isDuplicateError, isNotFoundError } from "@/server/db/client-helpers";
 import { flattenConditions } from "@/utils/condition";
 import { ActionType, SystemType } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
@@ -30,22 +30,22 @@ import {
   createRule,
   updateRule,
 } from "@/utils/rule/rule";
-import { SafeError } from "@/utils/error";
+import { SafeError } from "@/server/utils/error";
 import {
   getRuleConfig,
   getSystemRuleActionTypes,
   getCategoryAction,
   getActionTypesForCategoryAction,
 } from "@/utils/rule/consts";
-import { actionClient, actionClientUser } from "@/utils/actions/safe-action";
+import { actionClient, actionClientUser } from "@/server/services/unsubscriber/safe-action";
 import { prefixPath } from "@/utils/path";
 import { ONE_WEEK_MINUTES } from "@/utils/date";
-import { createEmailProvider } from "@/utils/email/provider";
+import { createEmailProvider } from "@/server/integrations/google/provider";
 import { resolveLabelNameAndId } from "@/utils/label/resolve-label";
-import type { Logger } from "@/utils/logger";
-import { validateGmailLabelName } from "@/utils/gmail/label-validation";
-import { isGoogleProvider } from "@/utils/email/provider-types";
-import { bulkProcessInboxEmails } from "@/utils/ai/choose-rule/bulk-process-emails";
+import type { Logger } from "@/server/utils/logger";
+import { validateGmailLabelName } from "@/server/integrations/google/label-validation";
+import { isGoogleProvider } from "@/server/integrations/google/provider-types";
+import { bulkProcessInboxEmails } from "@/server/integrations/ai/choose-rule/bulk-process-emails";
 import { getEmailAccountWithAi } from "@/utils/user/get";
 
 export const createRuleAction = actionClient

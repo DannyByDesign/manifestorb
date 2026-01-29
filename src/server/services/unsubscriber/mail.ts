@@ -1,11 +1,11 @@
 "use server";
 
 import { z } from "zod";
-import prisma from "@/utils/prisma";
-import { sendEmailBody } from "@/utils/gmail/mail";
-import { actionClient } from "@/utils/actions/safe-action";
-import { SafeError } from "@/utils/error";
-import { createEmailProvider } from "@/utils/email/provider";
+import prisma from "@/server/db/client";
+import { sendEmailBody } from "@/server/integrations/google/mail";
+import { actionClient } from "@/server/services/unsubscriber/safe-action";
+import { SafeError } from "@/server/utils/error";
+import { createEmailProvider } from "@/server/integrations/google/provider";
 
 const isStatusOk = (status: number) => status >= 200 && status < 300;
 

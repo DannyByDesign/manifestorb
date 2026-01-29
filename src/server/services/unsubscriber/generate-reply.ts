@@ -1,12 +1,12 @@
 "use server";
 
-import { generateReplySchema } from "@/utils/actions/generate-reply.validation";
-import { aiGenerateNudge } from "@/utils/ai/reply/generate-nudge";
+import { generateReplySchema } from "@/server/services/unsubscriber/generate-reply.validation";
+import { aiGenerateNudge } from "@/server/integrations/ai/reply/generate-nudge";
 import { emailToContent } from "@/utils/mail";
 import { getReply, saveReply } from "@/utils/redis/reply";
-import { actionClient } from "@/utils/actions/safe-action";
+import { actionClient } from "@/server/services/unsubscriber/safe-action";
 import { getEmailAccountWithAi } from "@/utils/user/get";
-import { SafeError } from "@/utils/error";
+import { SafeError } from "@/server/utils/error";
 
 export const generateNudgeReplyAction = actionClient
   .metadata({ name: "generateNudgeReply" })

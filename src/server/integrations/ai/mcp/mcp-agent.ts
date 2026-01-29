@@ -1,11 +1,11 @@
 import { stepCountIs, type ToolSet } from "ai";
 import { createGenerateText } from "@/utils/llms";
 import type { EmailAccountWithAI } from "@/utils/llms/types";
-import { createMcpToolsForAgent } from "@/utils/ai/mcp/mcp-tools";
+import { createMcpToolsForAgent } from "@/server/integrations/ai/mcp/mcp-tools";
 import { getModel } from "@/utils/llms/model";
 import type { EmailForLLM } from "@/utils/types";
-import { getEmailListPrompt, getUserInfoPrompt } from "@/utils/ai/helpers";
-import { createScopedLogger } from "@/utils/logger";
+import { getEmailListPrompt, getUserInfoPrompt } from "@/server/integrations/ai/helpers";
+import { createScopedLogger } from "@/server/utils/logger";
 
 const logger = createScopedLogger("mcp-agent");
 

@@ -3,17 +3,17 @@ import { InvalidArgumentError } from "ai";
 import { createGenerateObject } from "@/utils/llms";
 import { withRetry } from "@/utils/llms/retry";
 import { stringifyEmail } from "@/utils/stringify-email";
-import type { Logger } from "@/utils/logger";
+import type { Logger } from "@/server/utils/logger";
 import type { EmailAccountWithAI } from "@/utils/llms/types";
 import type { EmailForLLM, RuleWithActions } from "@/utils/types";
 import { LogicalOperator } from "@/generated/prisma/enums";
 import type { ActionType } from "@/generated/prisma/enums";
 import { getModel, type ModelType } from "@/utils/llms/model";
-import { getUserInfoPrompt } from "@/utils/ai/helpers";
+import { getUserInfoPrompt } from "@/server/integrations/ai/helpers";
 import {
   PLAIN_TEXT_OUTPUT_INSTRUCTION,
   PROMPT_SECURITY_INSTRUCTIONS,
-} from "@/utils/ai/security";
+} from "@/server/integrations/ai/security";
 
 /**
  * AI Argument Generator for Email Actions

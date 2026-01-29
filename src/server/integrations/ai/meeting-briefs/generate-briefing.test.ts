@@ -12,7 +12,7 @@ vi.mock("@/env", () => ({
 }));
 vi.mock("@/utils/llms/model", () => ({ getModel: vi.fn() }));
 vi.mock("@/utils/llms", () => ({ createGenerateObject: vi.fn() }));
-vi.mock("@/utils/ai/helpers", () => ({
+vi.mock("@/server/integrations/ai/helpers", () => ({
   getUserInfoPrompt: vi.fn(
     ({ emailAccount }) =>
       `The user you are acting on behalf of is:

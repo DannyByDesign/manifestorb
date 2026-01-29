@@ -11,19 +11,19 @@ import {
   SystemType,
 } from "@/generated/prisma/enums";
 import { ConditionType } from "@/utils/config";
-import prisma from "@/utils/prisma";
-import { aiChooseRule } from "@/utils/ai/choose-rule/ai-choose-rule";
+import prisma from "@/server/db/client";
+import { aiChooseRule } from "@/server/integrations/ai/choose-rule/ai-choose-rule";
 import { getEmailForLLM } from "@/utils/get-email-from-message";
 import type { EmailAccountWithAI } from "@/utils/llms/types";
-import type { Logger } from "@/utils/logger";
+import type { Logger } from "@/server/utils/logger";
 import type {
   MatchReason,
   MatchingRuleResult,
-} from "@/utils/ai/choose-rule/types";
-import { extractEmailAddress } from "@/utils/email";
+} from "@/server/integrations/ai/choose-rule/types";
+import { extractEmailAddress } from "@/server/integrations/google";
 import { isCalendarInvite } from "@/utils/parse/calender-event";
 import { checkSenderReplyHistory } from "@/utils/reply-tracker/check-sender-reply-history";
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/integrations/google/types";
 import type { ModelType } from "@/utils/llms/model";
 import {
   getColdEmailRule,

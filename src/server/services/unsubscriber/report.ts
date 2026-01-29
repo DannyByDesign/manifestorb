@@ -2,20 +2,20 @@
 
 import type { gmail_v1 } from "@googleapis/gmail";
 import { z } from "zod";
-import { fetchEmailsForReport } from "@/utils/ai/report/fetch";
-import { aiSummarizeEmails } from "@/utils/ai/report/summarize-emails";
-import { aiGenerateExecutiveSummary } from "@/utils/ai/report/generate-executive-summary";
-import { aiBuildUserPersona } from "@/utils/ai/report/build-user-persona";
-import { aiAnalyzeEmailBehavior } from "@/utils/ai/report/analyze-email-behavior";
-import { aiAnalyzeResponsePatterns } from "@/utils/ai/report/response-patterns";
-import { aiAnalyzeLabelOptimization } from "@/utils/ai/report/analyze-label-optimization";
-import { aiGenerateActionableRecommendations } from "@/utils/ai/report/generate-actionable-recommendations";
-import { actionClient } from "@/utils/actions/safe-action";
+import { fetchEmailsForReport } from "@/server/integrations/ai/report/fetch";
+import { aiSummarizeEmails } from "@/server/integrations/ai/report/summarize-emails";
+import { aiGenerateExecutiveSummary } from "@/server/integrations/ai/report/generate-executive-summary";
+import { aiBuildUserPersona } from "@/server/integrations/ai/report/build-user-persona";
+import { aiAnalyzeEmailBehavior } from "@/server/integrations/ai/report/analyze-email-behavior";
+import { aiAnalyzeResponsePatterns } from "@/server/integrations/ai/report/response-patterns";
+import { aiAnalyzeLabelOptimization } from "@/server/integrations/ai/report/analyze-label-optimization";
+import { aiGenerateActionableRecommendations } from "@/server/integrations/ai/report/generate-actionable-recommendations";
+import { actionClient } from "@/server/services/unsubscriber/safe-action";
 import { getEmailAccountWithAi } from "@/utils/user/get";
 import { getGmailClientForEmail } from "@/utils/account";
 import { getEmailForLLM } from "@/utils/get-email-from-message";
-import type { Logger } from "@/utils/logger";
-import { getGmailSignatures } from "@/utils/gmail/signature-settings";
+import type { Logger } from "@/server/utils/logger";
+import { getGmailSignatures } from "@/server/integrations/google/signature-settings";
 
 export type EmailReportData = Awaited<ReturnType<typeof getEmailReportData>>;
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { cleanThread } from "./route";
-import { GmailLabel } from "@/utils/gmail/label";
+import { GmailLabel } from "@/server/integrations/google/label";
 import type { ParsedMessage } from "@/utils/types";
 import { CleanAction } from "@/generated/prisma/enums";
 import { getMockMessage } from "@/__tests__/helpers";
@@ -8,16 +8,16 @@ import { getMockMessage } from "@/__tests__/helpers";
 vi.mock("server-only", () => ({}));
 
 const mockPublishToQstash = vi.fn();
-vi.mock("@/utils/upstash", () => ({
+vi.mock("@/server/integrations/qstash", () => ({
   publishToQstash: (...args: unknown[]) => mockPublishToQstash(...args),
 }));
 
 const mockGetThreadMessages = vi.fn();
-vi.mock("@/utils/gmail/thread", () => ({
+vi.mock("@/server/integrations/google/thread", () => ({
   getThreadMessages: (...args: unknown[]) => mockGetThreadMessages(...args),
 }));
 
-vi.mock("@/utils/gmail/client", () => ({
+vi.mock("@/server/integrations/google/client", () => ({
   getGmailClientWithRefresh: vi.fn().mockResolvedValue({}),
 }));
 
@@ -35,15 +35,15 @@ vi.mock("@/utils/redis/clean", () => ({
 }));
 
 const mockAiClean = vi.fn();
-vi.mock("@/utils/ai/clean/ai-clean", () => ({
+vi.mock("@/server/integrations/ai/clean/ai-clean", () => ({
   aiClean: (...args: unknown[]) => mockAiClean(...args),
 }));
 
-vi.mock("@/utils/ai/group/find-newsletters", () => ({
+vi.mock("@/server/integrations/ai/group/find-newsletters", () => ({
   isNewsletterSender: vi.fn().mockReturnValue(false),
 }));
 
-vi.mock("@/utils/ai/group/find-receipts", () => ({
+vi.mock("@/server/integrations/ai/group/find-receipts", () => ({
   isReceipt: vi.fn().mockReturnValue(false),
   isMaybeReceipt: vi.fn().mockImplementation((message: ParsedMessage) => {
     return message.headers.subject.toLowerCase().includes("payment");

@@ -17,9 +17,9 @@ import type {
   ParsedMessage,
   ParsedMessageHeaders,
 } from "@/utils/types";
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/integrations/google/types";
 import prisma from "@/utils/__mocks__/prisma";
-import { aiChooseRule } from "@/utils/ai/choose-rule/ai-choose-rule";
+import { aiChooseRule } from "@/server/integrations/ai/choose-rule/ai-choose-rule";
 import { getEmailAccount } from "@/__tests__/helpers";
 import { ConditionType } from "@/utils/config";
 import {
@@ -27,7 +27,7 @@ import {
   isColdEmailRuleEnabled,
 } from "@/utils/cold-email/cold-email-rule";
 import { isColdEmail } from "@/utils/cold-email/is-cold-email";
-import { createScopedLogger } from "@/utils/logger";
+import { createScopedLogger } from "@/server/utils/logger";
 
 // Run with:
 // pnpm test match-rules.test.ts
@@ -39,8 +39,8 @@ const provider = {
 } as unknown as EmailProvider;
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/utils/prisma");
-vi.mock("@/utils/ai/choose-rule/ai-choose-rule", () => ({
+vi.mock("@/server/db/client");
+vi.mock("@/server/integrations/ai/choose-rule/ai-choose-rule", () => ({
   aiChooseRule: vi.fn(),
 }));
 vi.mock("@/utils/reply-tracker/check-sender-reply-history", () => ({

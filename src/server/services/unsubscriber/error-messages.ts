@@ -1,8 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { clearUserErrorMessages } from "@/utils/error-messages";
-import { actionClientUser } from "@/utils/actions/safe-action";
+import { clearUserErrorMessages } from "@/server/utils/error-messages";
+import { actionClientUser } from "@/server/services/unsubscriber/safe-action";
 
 export const clearUserErrorMessagesAction = actionClientUser
   .metadata({ name: "clearUserErrorMessages" })

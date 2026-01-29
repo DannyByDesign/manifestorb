@@ -3,18 +3,18 @@
 import { z } from "zod";
 import type Stripe from "stripe";
 import { deleteUser } from "@/utils/user/delete";
-import prisma from "@/utils/prisma";
-import { adminActionClient } from "@/utils/actions/safe-action";
-import { SafeError } from "@/utils/error";
+import prisma from "@/server/db/client";
+import { adminActionClient } from "@/server/services/unsubscriber/safe-action";
+import { SafeError } from "@/server/utils/error";
 import { syncStripeDataToDb } from "@/ee/billing/stripe/sync-stripe";
 import { getStripe } from "@/ee/billing/stripe";
-import { createEmailProvider } from "@/utils/email/provider";
+import { createEmailProvider } from "@/server/integrations/google/provider";
 import { hash } from "@/utils/hash";
 import {
   hashEmailBody,
   convertGmailUrlBody,
   getLabelsBody,
-} from "@/utils/actions/admin.validation";
+} from "@/server/services/unsubscriber/admin.validation";
 
 export const adminProcessHistoryAction = adminActionClient
   .metadata({ name: "adminProcessHistory" })

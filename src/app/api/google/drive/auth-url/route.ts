@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { withEmailAccount } from "@/utils/middleware";
+import { withEmailAccount } from "@/server/utils/middleware";
 import { getGoogleDriveOAuth2Url } from "@/utils/drive/client";
 import { DRIVE_STATE_COOKIE_NAME } from "@/utils/drive/constants";
 import {

@@ -1,17 +1,17 @@
 "use server";
 
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { GroupItemSource } from "@/generated/prisma/enums";
 import { emailToContent } from "@/utils/mail";
 import { isColdEmail } from "@/utils/cold-email/is-cold-email";
 import {
   coldEmailBlockerBody,
   markNotColdEmailBody,
-} from "@/utils/actions/cold-email.validation";
-import { actionClient } from "@/utils/actions/safe-action";
-import { SafeError } from "@/utils/error";
-import { createEmailProvider } from "@/utils/email/provider";
-import type { EmailProvider } from "@/utils/email/types";
+} from "@/server/services/unsubscriber/cold-email.validation";
+import { actionClient } from "@/server/services/unsubscriber/safe-action";
+import { SafeError } from "@/server/utils/error";
+import { createEmailProvider } from "@/server/integrations/google/provider";
+import type { EmailProvider } from "@/server/integrations/google/types";
 import { getColdEmailRule } from "@/utils/cold-email/cold-email-rule";
 import { internalDateToDate } from "@/utils/date";
 import { saveLearnedPattern } from "@/utils/rule/learned-patterns";

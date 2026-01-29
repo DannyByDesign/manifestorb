@@ -1,12 +1,12 @@
 "use server";
 
 import { after } from "next/server";
-import { actionClient } from "@/utils/actions/safe-action";
-import prisma from "@/utils/prisma";
-import { aiAnalyzePersona } from "@/utils/ai/knowledge/persona";
-import { createEmailProvider } from "@/utils/email/provider";
+import { actionClient } from "@/server/services/unsubscriber/safe-action";
+import prisma from "@/server/db/client";
+import { aiAnalyzePersona } from "@/server/integrations/ai/knowledge/persona";
+import { createEmailProvider } from "@/server/integrations/google/provider";
 import { getEmailAccountWithAiAndTokens } from "@/utils/user/get";
-import { SafeError } from "@/utils/error";
+import { SafeError } from "@/server/utils/error";
 import { getEmailForLLM } from "@/utils/get-email-from-message";
 import { z } from "zod";
 import { updateContactRole } from "@inboxzero/loops";

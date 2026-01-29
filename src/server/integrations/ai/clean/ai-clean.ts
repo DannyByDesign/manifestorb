@@ -6,7 +6,7 @@ import { formatDateForLLM, formatRelativeTimeForLLM } from "@/utils/date";
 import { preprocessBooleanLike } from "@/utils/zod";
 import { getModel } from "@/utils/llms/model";
 import { createGenerateObject } from "@/utils/llms";
-import { PROMPT_SECURITY_INSTRUCTIONS } from "@/utils/ai/security";
+import { PROMPT_SECURITY_INSTRUCTIONS } from "@/server/integrations/ai/security";
 // import { Braintrust } from "@/utils/braintrust";
 
 // TODO: allow specific labels

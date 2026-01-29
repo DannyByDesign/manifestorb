@@ -2,18 +2,18 @@
 
 import { z } from "zod";
 import { after } from "next/server";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { deleteUser } from "@/utils/user/delete";
-import { actionClient, actionClientUser } from "@/utils/actions/safe-action";
-import { SafeError } from "@/utils/error";
-import { updateAccountSeats } from "@/utils/premium/server";
-import { betterAuthConfig } from "@/utils/auth";
+import { actionClient, actionClientUser } from "@/server/services/unsubscriber/safe-action";
+import { SafeError } from "@/server/utils/error";
+import { updateAccountSeats } from "@/server/utils/premium/server";
+import { betterAuthConfig } from "@/server/auth";
 import { headers } from "next/headers";
 import {
   saveAboutBody,
   saveSignatureBody,
   saveWritingStyleBody,
-} from "@/utils/actions/user.validation";
+} from "@/server/services/unsubscriber/user.validation";
 import { clearLastEmailAccountCookie } from "@/utils/cookies.server";
 import { aliasPosthogUser } from "@/utils/posthog";
 

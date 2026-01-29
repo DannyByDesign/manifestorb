@@ -1,14 +1,14 @@
 "use server";
 
 import { z } from "zod";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import {
   addGroupItemBody,
   createGroupBody,
-} from "@/utils/actions/group.validation";
+} from "@/server/services/unsubscriber/group.validation";
 import { addGroupItem, deleteGroupItem } from "@/utils/group/group-item";
-import { actionClient } from "@/utils/actions/safe-action";
-import { SafeError } from "@/utils/error";
+import { actionClient } from "@/server/services/unsubscriber/safe-action";
+import { SafeError } from "@/server/utils/error";
 
 export const createGroupAction = actionClient
   .metadata({ name: "createGroup" })

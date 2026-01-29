@@ -1,17 +1,17 @@
 "use server";
 
-import { actionClient } from "@/utils/actions/safe-action";
+import { actionClient } from "@/server/services/unsubscriber/safe-action";
 import {
   disconnectMcpConnectionBody,
   toggleMcpConnectionBody,
   toggleMcpToolBody,
-} from "@/utils/actions/mcp.validation";
-import prisma from "@/utils/prisma";
-import { SafeError } from "@/utils/error";
-import { mcpAgent } from "@/utils/ai/mcp/mcp-agent";
+} from "@/server/services/unsubscriber/mcp.validation";
+import prisma from "@/server/db/client";
+import { SafeError } from "@/server/utils/error";
+import { mcpAgent } from "@/server/integrations/ai/mcp/mcp-agent";
 import { getEmailAccountWithAi } from "@/utils/user/get";
 import type { EmailForLLM } from "@/utils/types";
-import { testMcpSchema } from "@/utils/actions/mcp.validation";
+import { testMcpSchema } from "@/server/services/unsubscriber/mcp.validation";
 
 export const disconnectMcpConnectionAction = actionClient
   .metadata({ name: "disconnectMcpConnection" })

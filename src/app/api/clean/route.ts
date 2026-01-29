@@ -1,14 +1,14 @@
 import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
 import { z } from "zod";
 import { NextResponse } from "next/server";
-import { withError, type RequestWithLogger } from "@/utils/middleware";
-import { publishToQstash } from "@/utils/upstash";
-import { getThreadMessages } from "@/utils/gmail/thread";
-import { getGmailClientWithRefresh } from "@/utils/gmail/client";
+import { withError, type RequestWithLogger } from "@/server/utils/middleware";
+import { publishToQstash } from "@/server/integrations/qstash";
+import { getThreadMessages } from "@/server/integrations/google/thread";
+import { getGmailClientWithRefresh } from "@/server/integrations/google/client";
 import type { CleanGmailBody } from "@/app/api/clean/gmail/route";
-import { SafeError } from "@/utils/error";
-import type { Logger } from "@/utils/logger";
-import { aiClean } from "@/utils/ai/clean/ai-clean";
+import { SafeError } from "@/server/utils/error";
+import type { Logger } from "@/server/utils/logger";
+import { aiClean } from "@/server/integrations/ai/clean/ai-clean";
 import { getEmailForLLM } from "@/utils/get-email-from-message";
 import {
   getEmailAccountWithAiAndTokens,
@@ -16,14 +16,14 @@ import {
 } from "@/utils/user/get";
 import { findUnsubscribeLink } from "@/utils/parse/parseHtml.server";
 import { getCalendarEventStatus } from "@/utils/parse/calender-event";
-import { GmailLabel } from "@/utils/gmail/label";
-import { isNewsletterSender } from "@/utils/ai/group/find-newsletters";
-import { isMaybeReceipt, isReceipt } from "@/utils/ai/group/find-receipts";
+import { GmailLabel } from "@/server/integrations/google/label";
+import { isNewsletterSender } from "@/server/integrations/ai/group/find-newsletters";
+import { isMaybeReceipt, isReceipt } from "@/server/integrations/ai/group/find-receipts";
 import { saveThread, updateThread } from "@/utils/redis/clean";
 import { internalDateToDate } from "@/utils/date";
 import { CleanAction } from "@/generated/prisma/enums";
 import type { ParsedMessage } from "@/utils/types";
-import { isActivePremium } from "@/utils/premium";
+import { isActivePremium } from "@/server/utils/premium";
 
 const cleanThreadBody = z.object({
   emailAccountId: z.string(),

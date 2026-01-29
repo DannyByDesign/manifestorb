@@ -1,12 +1,12 @@
 "use server";
 
 import { env } from "@/env";
-import { ssoRegistrationBody } from "@/utils/actions/sso.validation";
-import { adminActionClient } from "@/utils/actions/safe-action";
-import { auth } from "@/utils/auth";
-import { SafeError } from "@/utils/error";
+import { ssoRegistrationBody } from "@/server/services/unsubscriber/sso.validation";
+import { adminActionClient } from "@/server/services/unsubscriber/safe-action";
+import { auth } from "@/server/auth";
+import { SafeError } from "@/server/utils/error";
 import { extractSSOProviderConfigFromXML } from "@/utils/sso/extract-sso-provider-config-from-xml";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { validateIdpMetadata } from "@/utils/sso/validate-idp-metadata";
 import { slugify } from "@/utils/string";
 

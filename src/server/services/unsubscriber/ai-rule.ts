@@ -1,32 +1,32 @@
 "use server";
 
 import { z } from "zod";
-import prisma from "@/utils/prisma";
-import { isNotFoundError, isDuplicateError } from "@/utils/prisma-helpers";
+import prisma from "@/server/db/client";
+import { isNotFoundError, isDuplicateError } from "@/server/db/client-helpers";
 import {
   runRules,
   type RunRulesResult,
-} from "@/utils/ai/choose-rule/run-rules";
+} from "@/server/integrations/ai/choose-rule/run-rules";
 import { emailToContent } from "@/utils/mail";
 import {
   runRulesBody,
   testAiCustomContentBody,
-} from "@/utils/actions/ai-rule.validation";
+} from "@/server/services/unsubscriber/ai-rule.validation";
 import {
   createRulesBody,
   saveRulesPromptBody,
-} from "@/utils/actions/rule.validation";
-import { aiPromptToRules } from "@/utils/ai/rule/prompt-to-rules";
-import { aiDiffRules } from "@/utils/ai/rule/diff-rules";
-import { aiFindExistingRules } from "@/utils/ai/rule/find-existing-rules";
-import { aiGenerateRulesPrompt } from "@/utils/ai/rule/generate-rules-prompt";
-import { aiFindSnippets } from "@/utils/ai/snippets/find-snippets";
+} from "@/server/services/unsubscriber/rule.validation";
+import { aiPromptToRules } from "@/server/integrations/ai/rule/prompt-to-rules";
+import { aiDiffRules } from "@/server/integrations/ai/rule/diff-rules";
+import { aiFindExistingRules } from "@/server/integrations/ai/rule/find-existing-rules";
+import { aiGenerateRulesPrompt } from "@/server/integrations/ai/rule/generate-rules-prompt";
+import { aiFindSnippets } from "@/server/integrations/ai/snippets/find-snippets";
 import { createRule, updateRule, deleteRule } from "@/utils/rule/rule";
-import { actionClient } from "@/utils/actions/safe-action";
+import { actionClient } from "@/server/services/unsubscriber/safe-action";
 import { getEmailAccountWithAi } from "@/utils/user/get";
-import { SafeError } from "@/utils/error";
-import { createEmailProvider } from "@/utils/email/provider";
-import { aiPromptToRulesOld } from "@/utils/ai/rule/prompt-to-rules-old";
+import { SafeError } from "@/server/utils/error";
+import { createEmailProvider } from "@/server/integrations/google/provider";
+import { aiPromptToRulesOld } from "@/server/integrations/ai/rule/prompt-to-rules-old";
 import type { CreateRuleResult } from "@/utils/rule/types";
 
 export const runRulesAction = actionClient

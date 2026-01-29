@@ -3,7 +3,7 @@ import { createGenerateObject } from "@/utils/llms";
 import type { EmailAccountWithAI } from "@/utils/llms/types";
 import type { EmailForLLM, RuleWithActions } from "@/utils/types";
 import { getModel, type ModelType } from "@/utils/llms/model";
-import { getUserInfoPrompt, getEmailListPrompt } from "@/utils/ai/helpers";
+import { getUserInfoPrompt, getEmailListPrompt } from "@/server/integrations/ai/helpers";
 import type { ConversationStatus } from "@/utils/reply-tracker/conversation-status-config";
 import { SystemType } from "@/generated/prisma/enums";
 import { getRuleConfig } from "@/utils/rule/consts";

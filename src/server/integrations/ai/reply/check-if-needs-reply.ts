@@ -8,8 +8,8 @@ import {
 } from "@/utils/stringify-email";
 import { preprocessBooleanLike } from "@/utils/zod";
 import { getModel } from "@/utils/llms/model";
-import { getUserInfoPrompt } from "@/utils/ai/helpers";
-import { PROMPT_SECURITY_INSTRUCTIONS } from "@/utils/ai/security";
+import { getUserInfoPrompt } from "@/server/integrations/ai/helpers";
+import { PROMPT_SECURITY_INSTRUCTIONS } from "@/server/integrations/ai/security";
 
 export async function aiCheckIfNeedsReply({
   emailAccount,

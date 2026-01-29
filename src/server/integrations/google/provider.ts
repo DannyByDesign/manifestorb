@@ -1,17 +1,17 @@
 import type { gmail_v1 } from "@googleapis/gmail";
 import type { MessageWithPayload, ParsedMessage } from "@/utils/types";
-import { parseMessage } from "@/utils/gmail/message";
+import { parseMessage } from "@/server/integrations/google/message";
 import {
   getMessage,
   getMessages,
   getSentMessages,
   queryBatchMessages,
   hasPreviousCommunicationsWithSenderOrDomain,
-} from "@/utils/gmail/message";
+} from "@/server/integrations/google/message";
 import {
   publishBulkActionToTinybird,
   updateEmailMessagesForSender,
-} from "@/utils/email/bulk-action-tracking";
+} from "@/server/integrations/google/bulk-action-tracking";
 import {
   getLabels,
   getLabel,
@@ -20,59 +20,59 @@ import {
   getOrCreateLabel,
   getOrCreateInboxZeroLabel,
   GmailLabel,
-} from "@/utils/gmail/label";
-import { labelVisibility, messageVisibility } from "@/utils/gmail/constants";
+} from "@/server/integrations/google/label";
+import { labelVisibility, messageVisibility } from "@/server/integrations/google/constants";
 import type { InboxZeroLabel } from "@/utils/label";
 import type { ThreadsQuery } from "@/app/api/threads/validation";
-import { getMessageByRfc822Id } from "@/utils/gmail/message";
+import { getMessageByRfc822Id } from "@/server/integrations/google/message";
 import {
   draftEmail,
   forwardEmail,
   replyToEmail,
   sendEmailWithPlainText,
   sendEmailWithHtml,
-} from "@/utils/gmail/mail";
+} from "@/server/integrations/google/mail";
 import {
   archiveThread,
   labelMessage,
   labelThread,
   markReadThread,
   removeThreadLabel,
-} from "@/utils/gmail/label";
-import { trashThread } from "@/utils/gmail/trash";
-import { markSpam } from "@/utils/gmail/spam";
-import { handlePreviousDraftDeletion } from "@/utils/ai/choose-rule/draft-management";
+} from "@/server/integrations/google/label";
+import { trashThread } from "@/server/integrations/google/trash";
+import { markSpam } from "@/server/integrations/google/spam";
+import { handlePreviousDraftDeletion } from "@/server/integrations/ai/choose-rule/draft-management";
 import {
   getThreadMessages,
   getThreadsFromSenderWithSubject,
-} from "@/utils/gmail/thread";
-import { getMessagesBatch } from "@/utils/gmail/message";
-import { getAccessTokenFromClient } from "@/utils/gmail/client";
-import { getGmailAttachment } from "@/utils/gmail/attachment";
+} from "@/server/integrations/google/thread";
+import { getMessagesBatch } from "@/server/integrations/google/message";
+import { getAccessTokenFromClient } from "@/server/integrations/google/client";
+import { getGmailAttachment } from "@/server/integrations/google/attachment";
 import {
   getThreadsBatch,
   getThreadsWithNextPageToken,
-} from "@/utils/gmail/thread";
-import { decodeSnippet } from "@/utils/gmail/decode";
-import { getDraft, deleteDraft, sendDraft } from "@/utils/gmail/draft";
-import { extractErrorInfo, withGmailRetry } from "@/utils/gmail/retry";
+} from "@/server/integrations/google/thread";
+import { decodeSnippet } from "@/server/integrations/google/decode";
+import { getDraft, deleteDraft, sendDraft } from "@/server/integrations/google/draft";
+import { extractErrorInfo, withGmailRetry } from "@/server/integrations/google/retry";
 import {
   getFiltersList,
   createFilter,
   deleteFilter,
   createAutoArchiveFilter,
-} from "@/utils/gmail/filter";
+} from "@/server/integrations/google/filter";
 import { processHistoryForUser } from "@/app/api/google/webhook/process-history";
-import { watchGmail, unwatchGmail } from "@/utils/gmail/watch";
+import { watchGmail, unwatchGmail } from "@/server/integrations/google/watch";
 import type {
   EmailProvider,
   EmailThread,
   EmailLabel,
   EmailFilter,
   EmailSignature,
-} from "@/utils/email/types";
-import { createScopedLogger, type Logger } from "@/utils/logger";
-import { getGmailSignatures } from "@/utils/gmail/signature-settings";
+} from "@/server/integrations/google/types";
+import { createScopedLogger, type Logger } from "@/server/utils/logger";
+import { getGmailSignatures } from "@/server/integrations/google/signature-settings";
 
 /**
  * Build a raw RFC 2822 message and encode it as base64url for Gmail API

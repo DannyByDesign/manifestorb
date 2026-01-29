@@ -1,7 +1,7 @@
 import type { gmail_v1 } from "@googleapis/gmail";
 import { GmailLabel } from "./label";
 import { env } from "@/env";
-import { withGmailRetry } from "@/utils/gmail/retry";
+import { withGmailRetry } from "@/server/integrations/google/retry";
 
 export async function watchGmail(gmail: gmail_v1.Gmail) {
   const res = await withGmailRetry(() =>

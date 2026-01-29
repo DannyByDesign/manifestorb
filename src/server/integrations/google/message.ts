@@ -7,15 +7,15 @@ import {
   isBatchError,
   isDefined,
 } from "@/utils/types";
-import { getBatch } from "@/utils/gmail/batch";
-import { getSearchTermForSender } from "@/utils/email";
-import { createScopedLogger } from "@/utils/logger";
+import { getBatch } from "@/server/integrations/google/batch";
+import { getSearchTermForSender } from "@/server/integrations/google";
+import { createScopedLogger } from "@/server/utils/logger";
 import { sleep } from "@/utils/sleep";
-import { getAccessTokenFromClient } from "@/utils/gmail/client";
-import { GmailLabel } from "@/utils/gmail/label";
+import { getAccessTokenFromClient } from "@/server/integrations/google/client";
+import { GmailLabel } from "@/server/integrations/google/label";
 import { isIgnoredSender } from "@/utils/filter-ignored-senders";
 import parse from "gmail-api-parse-message";
-import { isRetryableError, withGmailRetry } from "@/utils/gmail/retry";
+import { isRetryableError, withGmailRetry } from "@/server/integrations/google/retry";
 
 const logger = createScopedLogger("gmail/message");
 

@@ -7,7 +7,7 @@ import {
   type LastEmailAccountCookieValue,
 } from "@/utils/cookies";
 import { clearLastEmailAccountCookie } from "@/utils/cookies.server";
-import { actionClientUser } from "@/utils/actions/safe-action";
+import { actionClientUser } from "@/server/services/unsubscriber/safe-action";
 
 /**
  * Sets a cookie with the last selected email account ID.

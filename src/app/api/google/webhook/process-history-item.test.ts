@@ -5,11 +5,11 @@ import { NewsletterStatus } from "@/generated/prisma/enums";
 import type { gmail_v1 } from "@googleapis/gmail";
 import { isAssistantEmail } from "@/utils/assistant/is-assistant-email";
 import { markMessageAsProcessing } from "@/utils/redis/message-processing";
-import { GmailLabel } from "@/utils/gmail/label";
+import { GmailLabel } from "@/server/integrations/google/label";
 import { processAssistantEmail } from "@/utils/assistant/process-assistant-email";
 import { getEmailAccount } from "@/__tests__/helpers";
-import { createEmailProvider } from "@/utils/email/provider";
-import { createScopedLogger } from "@/utils/logger";
+import { createEmailProvider } from "@/server/integrations/google/provider";
+import { createScopedLogger } from "@/server/utils/logger";
 
 const logger = createScopedLogger("test");
 
@@ -17,12 +17,12 @@ vi.mock("server-only", () => ({}));
 vi.mock("next/server", () => ({
   after: vi.fn((callback) => callback()),
 }));
-vi.mock("@/utils/prisma");
+vi.mock("@/server/db/client");
 vi.mock("@/utils/redis/message-processing", () => ({
   markMessageAsProcessing: vi.fn().mockResolvedValue(true),
 }));
 
-vi.mock("@/utils/gmail/thread", () => ({
+vi.mock("@/server/integrations/google/thread", () => ({
   getThreadMessages: vi.fn().mockImplementation(async (_gmail, threadId) => [
     {
       id: threadId === "thread-456" ? "456" : "123",
@@ -50,7 +50,7 @@ vi.mock("@/utils/cold-email/is-cold-email", () => ({
 vi.mock("@/utils/categorize/senders/categorize", () => ({
   categorizeSender: vi.fn(),
 }));
-vi.mock("@/utils/ai/choose-rule/run-rules", () => ({
+vi.mock("@/server/integrations/ai/choose-rule/run-rules", () => ({
   runRules: vi.fn(),
 }));
 vi.mock("@/utils/assistant/process-assistant-email", () => ({
@@ -59,7 +59,7 @@ vi.mock("@/utils/assistant/process-assistant-email", () => ({
 vi.mock("@/utils/digest/index", () => ({
   enqueueDigestItem: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock("@/utils/email/provider", () => ({
+vi.mock("@/server/integrations/google/provider", () => ({
   createEmailProvider: vi.fn().mockResolvedValue({
     getMessage: vi.fn().mockImplementation(async (messageId) => ({
       id: messageId,
@@ -83,8 +83,8 @@ vi.mock("@/utils/email/provider", () => ({
   }),
 }));
 
-vi.mock("@/utils/gmail/label", async () => {
-  const actual = await vi.importActual("@/utils/gmail/label");
+vi.mock("@/server/integrations/google/label", async () => {
+  const actual = await vi.importActual("@/server/integrations/google/label");
   return {
     ...actual,
     getLabelById: vi.fn().mockImplementation(async ({ id }: { id: string }) => {
@@ -223,7 +223,7 @@ describe("processHistoryItem", () => {
   });
 
   it("should skip if email is unsubscribed", async () => {
-    const mockPrisma = await import("@/utils/prisma");
+    const mockPrisma = await import("@/server/db/client");
     vi.mocked(mockPrisma.default.newsletter.findFirst).mockResolvedValueOnce({
       id: "newsletter-123",
       email: "sender@example.com",

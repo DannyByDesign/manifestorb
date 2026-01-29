@@ -2,27 +2,27 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { createEmailProvider } from "@/utils/email/provider";
+import { createEmailProvider } from "@/server/integrations/google/provider";
 import {
   type CreateCategoryBody,
   createCategoryBody,
-} from "@/utils/actions/categorize.validation";
-import prisma from "@/utils/prisma";
-import { isDuplicateError } from "@/utils/prisma-helpers";
+} from "@/server/services/unsubscriber/categorize.validation";
+import prisma from "@/server/db/client";
+import { isDuplicateError } from "@/server/db/client-helpers";
 import { defaultCategory } from "@/utils/categories";
 import {
   categorizeSender,
   updateCategoryForSender,
 } from "@/utils/categorize/senders/categorize";
 import { validateUserAndAiAccess } from "@/utils/user/validate";
-import { SafeError } from "@/utils/error";
+import { SafeError } from "@/server/utils/error";
 import {
   deleteEmptyCategorizeSendersQueues,
   publishToAiCategorizeSendersQueue,
-} from "@/utils/upstash/categorize-senders";
+} from "@/server/integrations/qstash/categorize-senders";
 import { saveCategorizationTotalItems } from "@/utils/redis/categorization-progress";
 import { getUncategorizedSenders } from "@/app/api/user/categorize/senders/uncategorized/get-uncategorized-senders";
-import { actionClient } from "@/utils/actions/safe-action";
+import { actionClient } from "@/server/services/unsubscriber/safe-action";
 import { prefixPath } from "@/utils/path";
 
 export const bulkCategorizeSendersAction = actionClient

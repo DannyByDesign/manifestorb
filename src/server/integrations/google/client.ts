@@ -1,10 +1,10 @@
 import { auth, gmail, type gmail_v1 } from "@googleapis/gmail";
 import { people } from "@googleapis/people";
-import { saveTokens } from "@/utils/auth";
+import { saveTokens } from "@/server/auth";
 import { env } from "@/env";
-import type { Logger } from "@/utils/logger";
-import { SCOPES } from "@/utils/gmail/scopes";
-import { SafeError } from "@/utils/error";
+import type { Logger } from "@/server/utils/logger";
+import { SCOPES } from "@/server/integrations/google/scopes";
+import { SafeError } from "@/server/utils/error";
 
 type AuthOptions = {
   accessToken?: string | null;

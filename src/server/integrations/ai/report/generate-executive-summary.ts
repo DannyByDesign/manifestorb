@@ -2,8 +2,8 @@ import { z } from "zod";
 import { createGenerateObject } from "@/utils/llms";
 import type { gmail_v1 } from "@googleapis/gmail";
 import type { EmailAccountWithAI } from "@/utils/llms/types";
-import type { EmailSummary } from "@/utils/ai/report/summarize-emails";
-import { createScopedLogger } from "@/utils/logger";
+import type { EmailSummary } from "@/server/integrations/ai/report/summarize-emails";
+import { createScopedLogger } from "@/server/utils/logger";
 import { getModel } from "@/utils/llms/model";
 
 const logger = createScopedLogger("email-report-executive-summary");

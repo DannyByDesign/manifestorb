@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { processHistoryForUser } from "./process-history";
-import { getHistory } from "@/utils/gmail/history";
+import { getHistory } from "@/server/integrations/google/history";
 import {
   getWebhookEmailAccount,
   validateWebhookAccount,
 } from "@/utils/webhook/validate-webhook-account";
-import { createScopedLogger } from "@/utils/logger";
-import prisma from "@/utils/prisma";
+import { createScopedLogger } from "@/server/utils/logger";
+import prisma from "@/server/db/client";
 
 const logger = createScopedLogger("test");
 // Mock logger.with to return the same logger instance so spies work
@@ -14,11 +14,11 @@ vi.spyOn(logger, "with").mockReturnValue(logger);
 
 vi.mock("server-only", () => ({}));
 
-vi.mock("@/utils/gmail/client", () => ({
+vi.mock("@/server/integrations/google/client", () => ({
   getGmailClientWithRefresh: vi.fn().mockResolvedValue({}),
 }));
 
-vi.mock("@/utils/gmail/history", () => ({
+vi.mock("@/server/integrations/google/history", () => ({
   getHistory: vi.fn(),
 }));
 
@@ -27,7 +27,7 @@ vi.mock("@/utils/webhook/validate-webhook-account", () => ({
   validateWebhookAccount: vi.fn(),
 }));
 
-vi.mock("@/utils/prisma", () => ({
+vi.mock("@/server/db/client", () => ({
   default: {
     emailAccount: {
       update: vi.fn().mockResolvedValue({}),
@@ -36,7 +36,7 @@ vi.mock("@/utils/prisma", () => ({
   },
 }));
 
-vi.mock("@/utils/error", () => ({
+vi.mock("@/server/utils/error", () => ({
   captureException: vi.fn(),
 }));
 

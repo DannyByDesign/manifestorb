@@ -1,18 +1,18 @@
 import { after } from "next/server";
 import { ActionType } from "@/generated/prisma/enums";
 import type { ExecutedRule } from "@/generated/prisma/client";
-import type { Logger } from "@/utils/logger";
+import type { Logger } from "@/server/utils/logger";
 import { callWebhook } from "@/utils/webhook";
-import type { ActionItem, EmailForAction } from "@/utils/ai/types";
-import type { EmailProvider } from "@/utils/email/types";
+import type { ActionItem, EmailForAction } from "@/server/integrations/ai/types";
+import type { EmailProvider } from "@/server/integrations/google/types";
 import { enqueueDigestItem } from "@/utils/digest/index";
 import { filterNullProperties } from "@/utils";
 import { labelMessageAndSync } from "@/utils/label.server";
 import { hasVariables } from "@/utils/template";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { sendColdEmailNotification } from "@/utils/cold-email/send-notification";
-import { extractEmailAddress } from "@/utils/email";
-import { captureException } from "@/utils/error";
+import { extractEmailAddress } from "@/server/integrations/google";
+import { captureException } from "@/server/utils/error";
 import { ensureEmailSendingEnabled } from "@/utils/mail";
 
 const MODULE = "ai-actions";

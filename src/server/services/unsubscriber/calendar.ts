@@ -1,14 +1,14 @@
 "use server";
 
-import { actionClient } from "@/utils/actions/safe-action";
+import { actionClient } from "@/server/services/unsubscriber/safe-action";
 import {
   disconnectCalendarBody,
   toggleCalendarBody,
   updateTimezoneBody,
   updateBookingLinkBody,
-} from "@/utils/actions/calendar.validation";
-import prisma from "@/utils/prisma";
-import { SafeError } from "@/utils/error";
+} from "@/server/services/unsubscriber/calendar.validation";
+import prisma from "@/server/db/client";
+import { SafeError } from "@/server/utils/error";
 
 export const disconnectCalendarAction = actionClient
   .metadata({ name: "disconnectCalendar" })

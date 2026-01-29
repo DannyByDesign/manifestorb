@@ -3,10 +3,10 @@
 import {
   createApiKeyBody,
   deactivateApiKeyBody,
-} from "@/utils/actions/api-key.validation";
-import prisma from "@/utils/prisma";
+} from "@/server/services/unsubscriber/api-key.validation";
+import prisma from "@/server/db/client";
 import { generateSecureToken, hashApiKey } from "@/utils/api-key";
-import { actionClientUser } from "@/utils/actions/safe-action";
+import { actionClientUser } from "@/server/services/unsubscriber/safe-action";
 
 export const createApiKeyAction = actionClientUser
   .metadata({ name: "createApiKey" })

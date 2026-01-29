@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
 import { digestBody } from "./validation";
 import { DigestStatus } from "@/generated/prisma/enums";
-import type { Logger } from "@/utils/logger";
-import prisma from "@/utils/prisma";
-import { aiSummarizeEmailForDigest } from "@/utils/ai/digest/summarize-email-for-digest";
+import type { Logger } from "@/server/utils/logger";
+import prisma from "@/server/db/client";
+import { aiSummarizeEmailForDigest } from "@/server/integrations/ai/digest/summarize-email-for-digest";
 import { getEmailAccountWithAi } from "@/utils/user/get";
 import type { StoredDigestContent } from "@/app/api/resend/digest/validation";
-import { withError } from "@/utils/middleware";
+import { withError } from "@/server/utils/middleware";
 import { isAssistantEmail } from "@/utils/assistant/is-assistant-email";
 import { env } from "@/env";
 

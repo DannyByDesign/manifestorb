@@ -1,5 +1,5 @@
 import type { gmail_v1 } from "@googleapis/gmail";
-import { withGmailRetry } from "@/utils/gmail/retry";
+import { withGmailRetry } from "@/server/integrations/google/retry";
 
 export async function getGmailAttachment(
   gmail: gmail_v1.Gmail,

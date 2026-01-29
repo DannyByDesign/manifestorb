@@ -1,13 +1,13 @@
 import { z } from "zod";
 import { tool } from "ai";
-import type { Logger } from "@/utils/logger";
+import type { Logger } from "@/server/utils/logger";
 import { createGenerateText } from "@/utils/llms";
 import { getModel } from "@/utils/llms/model";
 import { getUnifiedCalendarAvailability } from "@/utils/calendar/unified-availability";
 import type { EmailAccountWithAI } from "@/utils/llms/types";
 import type { EmailForLLM } from "@/utils/types";
-import prisma from "@/utils/prisma";
-import { getUserInfoPrompt } from "@/utils/ai/helpers";
+import prisma from "@/server/db/client";
+import { getUserInfoPrompt } from "@/server/integrations/ai/helpers";
 
 const timeSlotSchema = z.object({
   start: z.string().describe("Start time in format YYYY-MM-DD HH:MM"),

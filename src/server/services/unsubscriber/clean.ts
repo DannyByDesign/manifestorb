@@ -5,29 +5,29 @@ import {
   cleanInboxSchema,
   undoCleanInboxSchema,
   changeKeepToDoneSchema,
-} from "@/utils/actions/clean.validation";
-import { bulkPublishToQstash } from "@/utils/upstash";
-import { getInternalApiUrl } from "@/utils/internal-api";
+} from "@/server/services/unsubscriber/clean.validation";
+import { bulkPublishToQstash } from "@/server/integrations/qstash";
+import { getInternalApiUrl } from "@/server/utils/internal-api";
 import {
   getLabel,
   getOrCreateInboxZeroLabel,
   GmailLabel,
   labelThread,
-} from "@/utils/gmail/label";
+} from "@/server/integrations/google/label";
 import type { CleanThreadBody } from "@/app/api/clean/route";
 import { isDefined } from "@/utils/types";
 import { inboxZeroLabels } from "@/utils/label";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { CleanAction } from "@/generated/prisma/enums";
 import { updateThread } from "@/utils/redis/clean";
 import { getUnhandledCount } from "@/utils/assess";
 import { getGmailClientForEmail } from "@/utils/account";
-import { actionClient } from "@/utils/actions/safe-action";
-import { SafeError } from "@/utils/error";
-import { createEmailProvider } from "@/utils/email/provider";
-import { isGoogleProvider } from "@/utils/email/provider-types";
+import { actionClient } from "@/server/services/unsubscriber/safe-action";
+import { SafeError } from "@/server/utils/error";
+import { createEmailProvider } from "@/server/integrations/google/provider";
+import { isGoogleProvider } from "@/server/integrations/google/provider-types";
 import { getUserPremium } from "@/utils/user/get";
-import { isActivePremium } from "@/utils/premium";
+import { isActivePremium } from "@/server/utils/premium";
 import { ONE_DAY_MS } from "@/utils/date";
 
 export const cleanInboxAction = actionClient

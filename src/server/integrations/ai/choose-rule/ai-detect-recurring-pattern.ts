@@ -3,12 +3,12 @@ import type { EmailAccountWithAI } from "@/utils/llms/types";
 import type { EmailForLLM } from "@/utils/types";
 import { getModel } from "@/utils/llms/model";
 import { createGenerateObject } from "@/utils/llms";
-import type { Logger } from "@/utils/logger";
+import type { Logger } from "@/server/utils/logger";
 import {
   getEmailListPrompt,
   getUserInfoPrompt,
   getUserRulesPrompt,
-} from "@/utils/ai/helpers";
+} from "@/server/integrations/ai/helpers";
 
 // const braintrust = new Braintrust("recurring-pattern-detection");
 

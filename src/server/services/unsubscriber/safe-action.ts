@@ -4,11 +4,11 @@ import { withServerActionInstrumentation } from "@sentry/nextjs";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { after } from "next/server";
-import { auth } from "@/utils/auth";
-import { createScopedLogger } from "@/utils/logger";
-import prisma from "@/utils/prisma";
+import { auth } from "@/server/auth";
+import { createScopedLogger } from "@/server/utils/logger";
+import prisma from "@/server/db/client";
 import { isAdmin } from "@/utils/admin";
-import { captureException, SafeError } from "@/utils/error";
+import { captureException, SafeError } from "@/server/utils/error";
 import { env } from "@/env";
 
 // TODO: take functionality from `withActionInstrumentation` and move it here (apps/web/utils/actions/middleware.ts)

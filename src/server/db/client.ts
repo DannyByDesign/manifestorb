@@ -1,7 +1,7 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { env } from "@/env";
 import { PrismaClient } from "@/generated/prisma/client";
-import { encryptedTokens } from "@/utils/prisma-extensions";
+import { encryptedTokens } from "@/server/db/client-extensions";
 
 declare global {
   var prisma: PrismaClient | undefined;

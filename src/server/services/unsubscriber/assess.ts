@@ -1,13 +1,13 @@
 "use server";
 
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { assessUser } from "@/utils/assess";
-import { aiAnalyzeWritingStyle } from "@/utils/ai/knowledge/writing-style";
+import { aiAnalyzeWritingStyle } from "@/server/integrations/ai/knowledge/writing-style";
 import { formatBulletList } from "@/utils/string";
 import { getEmailForLLM } from "@/utils/get-email-from-message";
-import { actionClient } from "@/utils/actions/safe-action";
-import { createEmailProvider } from "@/utils/email/provider";
-import { SafeError } from "@/utils/error";
+import { actionClient } from "@/server/services/unsubscriber/safe-action";
+import { createEmailProvider } from "@/server/integrations/google/provider";
+import { SafeError } from "@/server/utils/error";
 
 // to help with onboarding and provide the best flow to new users
 export const assessAction = actionClient

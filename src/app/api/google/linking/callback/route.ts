@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { env } from "@/env";
-import prisma from "@/utils/prisma";
-import { getLinkingOAuth2Client } from "@/utils/gmail/client";
-import { GOOGLE_LINKING_STATE_COOKIE_NAME } from "@/utils/gmail/constants";
-import { withError } from "@/utils/middleware";
+import prisma from "@/server/db/client";
+import { getLinkingOAuth2Client } from "@/server/integrations/google/client";
+import { GOOGLE_LINKING_STATE_COOKIE_NAME } from "@/server/integrations/google/constants";
+import { withError } from "@/server/utils/middleware";
 import { validateOAuthCallback } from "@/utils/oauth/callback-validation";
 import { handleAccountLinking } from "@/utils/oauth/account-linking";
 import { mergeAccount } from "@/utils/user/merge-account";
@@ -14,7 +14,7 @@ import {
   setOAuthCodeResult,
   clearOAuthCode,
 } from "@/utils/redis/oauth-code";
-import { isDuplicateError } from "@/utils/prisma-helpers";
+import { isDuplicateError } from "@/server/db/client-helpers";
 
 export const GET = withError("google/linking/callback", async (request) => {
   const logger = request.logger;

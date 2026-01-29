@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { withAuth } from "@/utils/middleware";
-import { getLinkingOAuth2Client } from "@/utils/gmail/client";
-import { GOOGLE_LINKING_STATE_COOKIE_NAME } from "@/utils/gmail/constants";
-import { SCOPES } from "@/utils/gmail/scopes";
+import { withAuth } from "@/server/utils/middleware";
+import { getLinkingOAuth2Client } from "@/server/integrations/google/client";
+import { GOOGLE_LINKING_STATE_COOKIE_NAME } from "@/server/integrations/google/constants";
+import { SCOPES } from "@/server/integrations/google/scopes";
 import {
   generateOAuthState,
   oauthStateCookieOptions,

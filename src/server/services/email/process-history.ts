@@ -1,22 +1,22 @@
 import uniqBy from "lodash/uniqBy";
 import { NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
-import { getGmailClientWithRefresh } from "@/utils/gmail/client";
-import { GmailLabel } from "@/utils/gmail/label";
-import { captureException } from "@/utils/error";
+import { getGmailClientWithRefresh } from "@/server/integrations/google/client";
+import { GmailLabel } from "@/server/integrations/google/label";
+import { captureException } from "@/server/utils/error";
 import {
   HistoryEventType,
   type ProcessHistoryOptions,
 } from "@/app/api/google/webhook/types";
 import { processHistoryItem } from "@/app/api/google/webhook/process-history-item";
-import { getHistory } from "@/utils/gmail/history";
+import { getHistory } from "@/server/integrations/google/history";
 import {
   validateWebhookAccount,
   getWebhookEmailAccount,
   type ValidatedWebhookAccountData,
 } from "@/utils/webhook/validate-webhook-account";
-import prisma from "@/utils/prisma";
-import type { Logger } from "@/utils/logger";
+import prisma from "@/server/db/client";
+import type { Logger } from "@/server/utils/logger";
 import type { gmail_v1 } from "@googleapis/gmail";
 
 export async function processHistoryForUser(

@@ -1,12 +1,12 @@
 import { z } from "zod";
 import type { EmailAccountWithAI } from "@/utils/llms/types";
-import { createScopedLogger } from "@/utils/logger";
+import { createScopedLogger } from "@/server/utils/logger";
 import type { EmailForLLM } from "@/utils/types";
 import { stringifyEmailSimple } from "@/utils/stringify-email";
 import { getModel } from "@/utils/llms/model";
 import { createGenerateObject } from "@/utils/llms";
-import { getUserInfoPrompt } from "@/utils/ai/helpers";
-import { PROMPT_SECURITY_INSTRUCTIONS } from "@/utils/ai/security";
+import { getUserInfoPrompt } from "@/server/integrations/ai/helpers";
+import { PROMPT_SECURITY_INSTRUCTIONS } from "@/server/integrations/ai/security";
 
 const logger = createScopedLogger("summarize-digest-email");
 
