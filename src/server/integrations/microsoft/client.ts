@@ -3,9 +3,9 @@ import type { User } from "@microsoft/microsoft-graph-types";
 import { saveTokens } from "@/utils/auth";
 import { cleanupInvalidTokens } from "@/utils/auth/cleanup-invalid-tokens";
 import { env } from "@/env";
-import type { Logger } from "@/utils/logger";
+import type { Logger } from "@/server/utils/logger";
 import { SCOPES } from "@/server/integrations/microsoft/scopes";
-import { SafeError } from "@/utils/error";
+import { SafeError } from "@/server/utils/error";
 
 // Add buffer time to prevent token expiry during long-running operations
 const TOKEN_REFRESH_BUFFER_MS = 10 * 60 * 1000; // 10 minutes

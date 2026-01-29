@@ -8,7 +8,7 @@ import { OutlookLabel } from "./label";
 import { escapeODataString } from "@/server/integrations/microsoft/odata-escape";
 import { withOutlookRetry } from "@/server/integrations/microsoft/retry";
 import { formatEmailWithName } from "@/utils/email";
-import type { Logger } from "@/utils/logger";
+import type { Logger } from "@/server/utils/logger";
 
 // Standard fields to select when fetching messages from Microsoft Graph API
 // internetMessageId is the RFC 5322 Message-ID header, needed for cross-provider email threading

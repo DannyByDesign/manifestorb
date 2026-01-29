@@ -17,7 +17,7 @@ vi.mock("@/server/utils/error-messages", () => ({
     ACCOUNT_DISCONNECTED: "Account disconnected",
   },
 }));
-vi.mock("@/utils/unsubscribe", () => ({
+vi.mock("@/server/utils/unsubscribe", () => ({
   createUnsubscribeToken: vi.fn().mockResolvedValue("mock-token"),
 }));
 

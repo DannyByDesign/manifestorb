@@ -2,7 +2,7 @@ import type { OutlookClient } from "@/server/integrations/microsoft/client";
 import type { Message } from "@microsoft/microsoft-graph-types";
 import type { ParsedMessage } from "@/utils/types";
 import { escapeODataString } from "@/server/integrations/microsoft/odata-escape";
-import type { Logger } from "@/utils/logger";
+import type { Logger } from "@/server/utils/logger";
 import {
   convertMessage,
   createMessagesRequest,

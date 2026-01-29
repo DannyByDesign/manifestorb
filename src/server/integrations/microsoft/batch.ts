@@ -1,4 +1,4 @@
-import type { Logger } from "@/utils/logger";
+import type { Logger } from "@/server/utils/logger";
 import type { OutlookClient } from "@/server/integrations/microsoft/client";
 import { escapeODataString } from "@/server/integrations/microsoft/odata-escape";
 import {

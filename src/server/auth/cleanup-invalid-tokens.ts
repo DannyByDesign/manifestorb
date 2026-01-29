@@ -3,7 +3,7 @@ import type { Logger } from "@/server/utils/logger";
 import { sendReconnectionEmail } from "@inboxzero/resend";
 import { env } from "@/env";
 import { addUserErrorMessage, ErrorType } from "@/server/utils/error-messages";
-import { createUnsubscribeToken } from "@/utils/unsubscribe";
+import { createUnsubscribeToken } from "@/server/utils/unsubscribe";
 
 /**
  * Cleans up invalid tokens when authentication fails permanently.

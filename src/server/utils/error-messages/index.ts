@@ -1,9 +1,9 @@
-import prisma from "@/utils/prisma";
-import type { Logger } from "@/utils/logger";
-import { captureException } from "@/utils/error";
+import prisma from "@/server/db/client";
+import type { Logger } from "@/server/utils/logger";
+import { captureException } from "@/server/utils/error";
 import { sendActionRequiredEmail } from "@inboxzero/resend";
 import { env } from "@/env";
-import { createUnsubscribeToken } from "@/utils/unsubscribe";
+import { createUnsubscribeToken } from "@/server/utils/unsubscribe";
 
 // Used to store error messages for a user which we display in the UI
 

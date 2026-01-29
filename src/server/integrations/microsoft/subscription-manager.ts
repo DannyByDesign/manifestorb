@@ -1,8 +1,8 @@
-import prisma from "@/utils/prisma";
-import { captureException } from "@/utils/error";
+import prisma from "@/server/db/client";
+import { captureException } from "@/server/utils/error";
 import type { EmailProvider } from "@/utils/email/types";
 import { createEmailProvider } from "@/utils/email/provider";
-import type { Logger } from "@/utils/logger";
+import type { Logger } from "@/server/utils/logger";
 import {
   parseSubscriptionHistory,
   cleanupOldHistoryEntries,

@@ -3,7 +3,7 @@ import type {
   MessageRule,
   OutlookCategory,
 } from "@microsoft/microsoft-graph-types";
-import type { Logger } from "@/utils/logger";
+import type { Logger } from "@/server/utils/logger";
 import { isAlreadyExistsError } from "./errors";
 import { withOutlookRetry } from "@/server/integrations/microsoft/retry";
 import { getLabelById } from "@/server/integrations/microsoft/label";

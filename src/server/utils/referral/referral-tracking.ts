@@ -1,5 +1,5 @@
-import prisma from "@/utils/prisma";
-import type { Logger } from "@/utils/logger";
+import prisma from "@/server/db/client";
+import type { Logger } from "@/server/utils/logger";
 import { getStripe } from "@/ee/billing/stripe";
 import { ReferralStatus } from "@/generated/prisma/enums";
 

@@ -6,12 +6,12 @@ import {
   checkUserReferral,
   createReferral,
 } from "./referral-code";
-import { SafeError } from "@/utils/error";
+import { SafeError } from "@/server/utils/error";
 import prisma from "@/utils/__mocks__/prisma";
 import { ReferralStatus } from "@/generated/prisma/enums";
 import { Prisma } from "@/generated/prisma/client";
 
-vi.mock("@/utils/prisma");
+vi.mock("@/server/db/client");
 
 describe("referral-code", () => {
   beforeEach(() => {

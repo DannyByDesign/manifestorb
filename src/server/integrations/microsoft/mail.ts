@@ -14,7 +14,7 @@ import {
 import { withOutlookRetry } from "@/server/integrations/microsoft/retry";
 import { extractEmailAddress, extractNameFromEmail } from "@/utils/email";
 import { ensureEmailSendingEnabled } from "@/utils/mail";
-import type { Logger } from "@/utils/logger";
+import type { Logger } from "@/server/utils/logger";
 
 interface OutlookMessageRequest {
   subject: string;

@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
-import prisma from "@/utils/prisma";
-import { SafeError } from "@/utils/error";
-import { isDuplicateError } from "@/utils/prisma-helpers";
+import prisma from "@/server/db/client";
+import { SafeError } from "@/server/utils/error";
+import { isDuplicateError } from "@/server/db/client-helpers";
 import { ReferralStatus } from "@/generated/prisma/enums";
 
 /**

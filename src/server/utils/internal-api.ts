@@ -1,5 +1,5 @@
 import { env } from "@/env";
-import type { Logger } from "@/utils/logger";
+import type { Logger } from "@/server/utils/logger";
 
 export const INTERNAL_API_KEY_HEADER = "x-api-key";
 

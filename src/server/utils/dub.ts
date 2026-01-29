@@ -1,7 +1,7 @@
 import { Dub } from "dub";
 import { env } from "@/env";
 import { cookies } from "next/headers";
-import type { Logger } from "@/utils/logger";
+import type { Logger } from "@/server/utils/logger";
 
 function getDub() {
   if (!env.DUB_API_KEY) return null;

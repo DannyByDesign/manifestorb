@@ -1,4 +1,4 @@
-import type { Logger } from "@/utils/logger";
+import type { Logger } from "@/server/utils/logger";
 
 export type SubscriptionHistoryEntry = {
   subscriptionId: string;

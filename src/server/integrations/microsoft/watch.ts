@@ -3,7 +3,7 @@ import type { Subscription } from "@microsoft/microsoft-graph-types";
 import { addDays } from "date-fns/addDays";
 import { env } from "@/env";
 import { withOutlookRetry } from "@/server/integrations/microsoft/retry";
-import type { Logger } from "@/utils/logger";
+import type { Logger } from "@/server/utils/logger";
 
 export async function watchOutlook(client: Client, logger: Logger) {
   const base = env.WEBHOOK_URL || env.NEXT_PUBLIC_BASE_URL;

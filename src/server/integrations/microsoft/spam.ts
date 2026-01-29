@@ -1,6 +1,6 @@
 import type { OutlookClient } from "@/server/integrations/microsoft/client";
 import { withOutlookRetry } from "@/server/integrations/microsoft/retry";
-import type { Logger } from "@/utils/logger";
+import type { Logger } from "@/server/utils/logger";
 
 export async function markSpam(
   client: OutlookClient,

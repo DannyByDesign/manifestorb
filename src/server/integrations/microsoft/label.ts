@@ -1,5 +1,5 @@
 import type { OutlookClient } from "@/server/integrations/microsoft/client";
-import type { Logger } from "@/utils/logger";
+import type { Logger } from "@/server/utils/logger";
 import { publishArchive, type TinybirdEmailAction } from "@inboxzero/tinybird";
 import { WELL_KNOWN_FOLDERS } from "./message";
 import { extractErrorInfo, withOutlookRetry } from "@/server/integrations/microsoft/retry";

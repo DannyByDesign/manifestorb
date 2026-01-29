@@ -1,6 +1,6 @@
 import type { OutlookClient } from "@/server/integrations/microsoft/client";
 import { publishDelete, type TinybirdEmailAction } from "@inboxzero/tinybird";
-import type { Logger } from "@/utils/logger";
+import type { Logger } from "@/server/utils/logger";
 import { withOutlookRetry } from "@/server/integrations/microsoft/retry";
 
 export async function trashThread(options: {
