@@ -2,13 +2,13 @@ import { tool } from "ai";
 import { subMonths } from "date-fns/subMonths";
 import { z } from "zod";
 import { createScopedLogger } from "@/server/utils/logger";
-import { createGenerateText } from "@/utils/llms";
-import type { EmailAccountWithAI } from "@/utils/llms/types";
-import type { EmailForLLM } from "@/utils/types";
+import { createGenerateText } from "@/server/utils/llms";
+import type { EmailAccountWithAI } from "@/server/utils/llms/types";
+import type { EmailForLLM } from "@/server/types";
 import { getTodayForLLM } from "@/server/integrations/ai/helpers";
-import { getModel } from "@/utils/llms/model";
+import { getModel } from "@/server/utils/llms/model";
 import type { EmailProvider } from "@/server/integrations/google/types";
-import { getEmailForLLM } from "@/utils/get-email-from-message";
+import { getEmailForLLM } from "@/server/utils/get-email-from-message";
 import { captureException } from "@/server/utils/error";
 import { getEmailListPrompt, getUserInfoPrompt } from "@/server/integrations/ai/helpers";
 

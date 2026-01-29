@@ -4,7 +4,7 @@ import {
   INTERNAL_API_KEY_HEADER,
   getInternalApiUrl,
 } from "@/server/utils/internal-api";
-import { sleep } from "@/utils/sleep";
+import { sleep } from "@/server/utils/sleep";
 import { createScopedLogger } from "@/server/utils/logger";
 
 const logger = createScopedLogger("upstash");

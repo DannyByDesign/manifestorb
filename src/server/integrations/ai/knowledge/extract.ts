@@ -1,9 +1,9 @@
 import { z } from "zod";
 import type { Logger } from "@/server/utils/logger";
 import type { Knowledge } from "@/generated/prisma/client";
-import type { EmailAccountWithAI } from "@/utils/llms/types";
-import { getModel } from "@/utils/llms/model";
-import { createGenerateObject } from "@/utils/llms";
+import type { EmailAccountWithAI } from "@/server/utils/llms/types";
+import { getModel } from "@/server/utils/llms/model";
+import { createGenerateObject } from "@/server/utils/llms";
 import { getUserInfoPrompt } from "@/server/integrations/ai/helpers";
 import { PROMPT_SECURITY_INSTRUCTIONS } from "@/server/integrations/ai/security";
 

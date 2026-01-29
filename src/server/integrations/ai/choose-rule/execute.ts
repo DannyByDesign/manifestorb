@@ -3,7 +3,7 @@ import prisma from "@/server/db/client";
 import type { Prisma } from "@/generated/prisma/client";
 import { ExecutedRuleStatus, ActionType } from "@/generated/prisma/enums";
 import type { Logger } from "@/server/utils/logger";
-import type { ParsedMessage } from "@/utils/types";
+import type { ParsedMessage } from "@/server/types";
 import { updateExecutedActionWithDraftId } from "@/server/integrations/ai/choose-rule/draft-management";
 import type { EmailProvider } from "@/server/integrations/google/types";
 

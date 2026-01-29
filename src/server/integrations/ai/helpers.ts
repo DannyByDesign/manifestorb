@@ -1,6 +1,6 @@
-import type { EmailAccountWithAI } from "@/utils/llms/types";
-import { stringifyEmail } from "@/utils/stringify-email";
-import type { EmailForLLM } from "@/utils/types";
+import type { EmailAccountWithAI } from "@/server/utils/llms/types";
+import { stringifyEmail } from "@/server/utils/stringify-email";
+import type { EmailForLLM } from "@/server/types";
 
 export function getTodayForLLM(date: Date = new Date()) {
   return `Today's date and time is: ${date.toISOString()}.`;

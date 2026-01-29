@@ -1,4 +1,4 @@
-import type { ParsedMessage } from "@/utils/types";
+import type { ParsedMessage } from "@/server/types";
 import type { ExecutedAction } from "@/generated/prisma/client";
 
 export type EmailForAction = Pick<

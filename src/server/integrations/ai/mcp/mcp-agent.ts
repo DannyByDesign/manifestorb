@@ -1,9 +1,9 @@
 import { stepCountIs, type ToolSet } from "ai";
-import { createGenerateText } from "@/utils/llms";
-import type { EmailAccountWithAI } from "@/utils/llms/types";
+import { createGenerateText } from "@/server/utils/llms";
+import type { EmailAccountWithAI } from "@/server/utils/llms/types";
 import { createMcpToolsForAgent } from "@/server/integrations/ai/mcp/mcp-tools";
-import { getModel } from "@/utils/llms/model";
-import type { EmailForLLM } from "@/utils/types";
+import { getModel } from "@/server/utils/llms/model";
+import type { EmailForLLM } from "@/server/types";
 import { getEmailListPrompt, getUserInfoPrompt } from "@/server/integrations/ai/helpers";
 import { createScopedLogger } from "@/server/utils/logger";
 

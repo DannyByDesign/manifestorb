@@ -13,7 +13,7 @@ import { aiGenerateActionableRecommendations } from "@/server/integrations/ai/re
 import { actionClient } from "@/server/services/unsubscriber/safe-action";
 import { getEmailAccountWithAi } from "@/utils/user/get";
 import { getGmailClientForEmail } from "@/utils/account";
-import { getEmailForLLM } from "@/utils/get-email-from-message";
+import { getEmailForLLM } from "@/server/utils/get-email-from-message";
 import type { Logger } from "@/server/utils/logger";
 import { getGmailSignatures } from "@/server/integrations/google/signature-settings";
 

@@ -10,7 +10,7 @@ import prisma from "@/server/db/client";
 import { SafeError } from "@/server/utils/error";
 import { mcpAgent } from "@/server/integrations/ai/mcp/mcp-agent";
 import { getEmailAccountWithAi } from "@/utils/user/get";
-import type { EmailForLLM } from "@/utils/types";
+import type { EmailForLLM } from "@/server/types";
 import { testMcpSchema } from "@/server/services/unsubscriber/mcp.validation";
 
 export const disconnectMcpConnectionAction = actionClient

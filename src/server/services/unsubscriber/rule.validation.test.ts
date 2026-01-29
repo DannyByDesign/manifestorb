@@ -6,7 +6,7 @@ import {
 } from "./rule.validation";
 import { ActionType, LogicalOperator } from "@/generated/prisma/enums";
 import { ConditionType } from "@/utils/config";
-import { NINETY_DAYS_MINUTES } from "@/utils/date";
+import { NINETY_DAYS_MINUTES } from "@/server/utils/date";
 
 describe("delayInMinutesSchema", () => {
   describe("valid values", () => {

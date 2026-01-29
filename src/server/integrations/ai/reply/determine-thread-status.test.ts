@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { SystemType } from "@/generated/prisma/enums";
 import { getRuleConfig } from "@/utils/rule/consts";
-import type { RuleWithActions } from "@/utils/types";
+import type { RuleWithActions } from "@/server/types";
 
 function getCustomizedRules(conversationRules: RuleWithActions[]) {
   return conversationRules.filter((r) => {

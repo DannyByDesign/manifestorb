@@ -1,12 +1,12 @@
 import { stepCountIs, tool } from "ai";
 import { z } from "zod";
 import type { gmail_v1 } from "@googleapis/gmail";
-import { createGenerateText } from "@/utils/llms";
+import { createGenerateText } from "@/server/utils/llms";
 import type { Group } from "@/generated/prisma/client";
 import { queryBatchMessages } from "@/server/integrations/google/message";
-import type { EmailAccountWithAI } from "@/utils/llms/types";
+import type { EmailAccountWithAI } from "@/server/utils/llms/types";
 import { createScopedLogger } from "@/server/utils/logger";
-import { getModel } from "@/utils/llms/model";
+import { getModel } from "@/server/utils/llms/model";
 
 const logger = createScopedLogger("aiCreateGroup");
 

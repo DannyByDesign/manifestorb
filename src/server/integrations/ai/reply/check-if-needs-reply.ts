@@ -1,13 +1,13 @@
 import { z } from "zod";
-import { createGenerateObject } from "@/utils/llms";
-import type { EmailAccountWithAI } from "@/utils/llms/types";
-import type { EmailForLLM } from "@/utils/types";
+import { createGenerateObject } from "@/server/utils/llms";
+import type { EmailAccountWithAI } from "@/server/utils/llms/types";
+import type { EmailForLLM } from "@/server/types";
 import {
   stringifyEmailFromBody,
   stringifyEmailSimple,
-} from "@/utils/stringify-email";
-import { preprocessBooleanLike } from "@/utils/zod";
-import { getModel } from "@/utils/llms/model";
+} from "@/server/utils/stringify-email";
+import { preprocessBooleanLike } from "@/server/utils/zod";
+import { getModel } from "@/server/utils/llms/model";
 import { getUserInfoPrompt } from "@/server/integrations/ai/helpers";
 import { PROMPT_SECURITY_INSTRUCTIONS } from "@/server/integrations/ai/security";
 

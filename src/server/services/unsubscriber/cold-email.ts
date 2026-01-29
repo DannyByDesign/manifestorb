@@ -13,7 +13,7 @@ import { SafeError } from "@/server/utils/error";
 import { createEmailProvider } from "@/server/integrations/google/provider";
 import type { EmailProvider } from "@/server/integrations/google/types";
 import { getColdEmailRule } from "@/utils/cold-email/cold-email-rule";
-import { internalDateToDate } from "@/utils/date";
+import { internalDateToDate } from "@/server/utils/date";
 import { saveLearnedPattern } from "@/utils/rule/learned-patterns";
 
 export const markNotColdEmailAction = actionClient

@@ -8,7 +8,7 @@ import {
   updateDigestItemsBody,
   toggleDigestBody,
 } from "@/server/services/unsubscriber/settings.validation";
-import { DEFAULT_PROVIDER } from "@/utils/llms/config";
+import { DEFAULT_PROVIDER } from "@/server/utils/llms/config";
 import prisma from "@/server/db/client";
 import {
   calculateNextScheduleDate,

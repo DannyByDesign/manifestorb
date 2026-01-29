@@ -3,14 +3,14 @@
 import { actionClient } from "@/server/services/unsubscriber/safe-action";
 import { z } from "zod";
 import { createEmailProvider } from "@/server/integrations/google/provider";
-import { isDefined } from "@/utils/types";
+import { isDefined } from "@/server/types";
 import {
   extractDomainFromEmail,
   extractEmailAddress,
   extractNameFromEmail,
 } from "@/server/integrations/google";
 import { findUnsubscribeLink } from "@/utils/parse/parseHtml.server";
-import { internalDateToDate } from "@/utils/date";
+import { internalDateToDate } from "@/server/utils/date";
 import prisma from "@/server/db/client";
 import { SafeError } from "@/server/utils/error";
 import type { Logger } from "@/server/utils/logger";

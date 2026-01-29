@@ -15,7 +15,7 @@ import {
   labelThread,
 } from "@/server/integrations/google/label";
 import type { CleanThreadBody } from "@/app/api/clean/route";
-import { isDefined } from "@/utils/types";
+import { isDefined } from "@/server/types";
 import { inboxZeroLabels } from "@/utils/label";
 import prisma from "@/server/db/client";
 import { CleanAction } from "@/generated/prisma/enums";
@@ -28,7 +28,7 @@ import { createEmailProvider } from "@/server/integrations/google/provider";
 import { isGoogleProvider } from "@/server/integrations/google/provider-types";
 import { getUserPremium } from "@/utils/user/get";
 import { isActivePremium } from "@/server/utils/premium";
-import { ONE_DAY_MS } from "@/utils/date";
+import { ONE_DAY_MS } from "@/server/utils/date";
 
 export const cleanInboxAction = actionClient
   .metadata({ name: "cleanInbox" })

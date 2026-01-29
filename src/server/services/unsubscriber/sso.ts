@@ -8,7 +8,7 @@ import { SafeError } from "@/server/utils/error";
 import { extractSSOProviderConfigFromXML } from "@/utils/sso/extract-sso-provider-config-from-xml";
 import prisma from "@/server/db/client";
 import { validateIdpMetadata } from "@/utils/sso/validate-idp-metadata";
-import { slugify } from "@/utils/string";
+import { slugify } from "@/server/utils/string";
 
 export const registerSSOProviderAction = adminActionClient
   .metadata({ name: "registerSSOProvider" })

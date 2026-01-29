@@ -1,7 +1,7 @@
 import type { SystemType } from "@/generated/prisma/enums";
 import type { Group, GroupItem } from "@/generated/prisma/client";
 import type { ConditionType } from "@/utils/config";
-import type { RuleWithActions } from "@/utils/types";
+import type { RuleWithActions } from "@/server/types";
 
 export type StaticMatch = {
   type: Extract<ConditionType, "STATIC">;

@@ -2,8 +2,8 @@ import prisma from "@/server/db/client";
 import { createEmailProvider } from "@/server/integrations/google/provider";
 import { runRules } from "@/server/integrations/ai/choose-rule/run-rules";
 import type { Logger } from "@/server/utils/logger";
-import type { EmailAccountWithAI } from "@/utils/llms/types";
-import type { ParsedMessage } from "@/utils/types";
+import type { EmailAccountWithAI } from "@/server/utils/llms/types";
+import type { ParsedMessage } from "@/server/types";
 
 export async function bulkProcessInboxEmails({
   emailAccount,

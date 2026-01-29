@@ -39,7 +39,7 @@ import {
 } from "@/utils/rule/consts";
 import { actionClient, actionClientUser } from "@/server/services/unsubscriber/safe-action";
 import { prefixPath } from "@/utils/path";
-import { ONE_WEEK_MINUTES } from "@/utils/date";
+import { ONE_WEEK_MINUTES } from "@/server/utils/date";
 import { createEmailProvider } from "@/server/integrations/google/provider";
 import { resolveLabelNameAndId } from "@/utils/label/resolve-label";
 import type { Logger } from "@/server/utils/logger";

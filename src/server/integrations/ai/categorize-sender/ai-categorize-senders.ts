@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { isDefined } from "@/utils/types";
-import type { EmailAccountWithAI } from "@/utils/llms/types";
+import { isDefined } from "@/server/types";
+import type { EmailAccountWithAI } from "@/server/utils/llms/types";
 import type { Category } from "@/generated/prisma/client";
 import { formatCategoriesForPrompt } from "@/server/integrations/ai/categorize-sender/format-categories";
 import { extractEmailAddress } from "@/server/integrations/google";
-import { getModel } from "@/utils/llms/model";
-import { createGenerateObject } from "@/utils/llms";
+import { getModel } from "@/server/utils/llms/model";
+import { createGenerateObject } from "@/server/utils/llms";
 
 export const REQUEST_MORE_INFORMATION_CATEGORY = "RequestMoreInformation";
 export const UNKNOWN_CATEGORY = "Other";

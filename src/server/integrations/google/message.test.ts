@@ -11,7 +11,7 @@ vi.mock("@/server/utils/logger", () => ({
     error: vi.fn(),
   }),
 }));
-vi.mock("@/utils/sleep", () => ({
+vi.mock("@/server/utils/sleep", () => ({
   sleep: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("gmail-api-parse-message", () => ({

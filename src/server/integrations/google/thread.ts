@@ -4,7 +4,7 @@ import {
   isDefined,
   type ThreadWithPayloadMessages,
   type MessageWithPayload,
-} from "@/utils/types";
+} from "@/server/types";
 import { parseMessage } from "@/server/integrations/google/message";
 import { GmailLabel } from "@/server/integrations/google/label";
 import { withGmailRetry } from "@/server/integrations/google/retry";

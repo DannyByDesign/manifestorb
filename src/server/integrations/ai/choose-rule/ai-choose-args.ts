@@ -1,14 +1,14 @@
 import { z } from "zod";
 import { InvalidArgumentError } from "ai";
-import { createGenerateObject } from "@/utils/llms";
-import { withRetry } from "@/utils/llms/retry";
-import { stringifyEmail } from "@/utils/stringify-email";
+import { createGenerateObject } from "@/server/utils/llms";
+import { withRetry } from "@/server/utils/llms/retry";
+import { stringifyEmail } from "@/server/utils/stringify-email";
 import type { Logger } from "@/server/utils/logger";
-import type { EmailAccountWithAI } from "@/utils/llms/types";
-import type { EmailForLLM, RuleWithActions } from "@/utils/types";
+import type { EmailAccountWithAI } from "@/server/utils/llms/types";
+import type { EmailForLLM, RuleWithActions } from "@/server/types";
 import { LogicalOperator } from "@/generated/prisma/enums";
 import type { ActionType } from "@/generated/prisma/enums";
-import { getModel, type ModelType } from "@/utils/llms/model";
+import { getModel, type ModelType } from "@/server/utils/llms/model";
 import { getUserInfoPrompt } from "@/server/integrations/ai/helpers";
 import {
   PLAIN_TEXT_OUTPUT_INSTRUCTION,

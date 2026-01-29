@@ -1,11 +1,11 @@
 import { z } from "zod";
 import { tool } from "ai";
 import type { Logger } from "@/server/utils/logger";
-import { createGenerateText } from "@/utils/llms";
-import { getModel } from "@/utils/llms/model";
+import { createGenerateText } from "@/server/utils/llms";
+import { getModel } from "@/server/utils/llms/model";
 import { getUnifiedCalendarAvailability } from "@/utils/calendar/unified-availability";
-import type { EmailAccountWithAI } from "@/utils/llms/types";
-import type { EmailForLLM } from "@/utils/types";
+import type { EmailAccountWithAI } from "@/server/utils/llms/types";
+import type { EmailForLLM } from "@/server/types";
 import prisma from "@/server/db/client";
 import { getUserInfoPrompt } from "@/server/integrations/ai/helpers";
 

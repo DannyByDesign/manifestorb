@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { createScopedLogger } from "@/server/utils/logger";
-import { createGenerateObject } from "@/utils/llms";
-import type { EmailForLLM } from "@/utils/types";
-import type { EmailAccountWithAI } from "@/utils/llms/types";
-import { sleep } from "@/utils/sleep";
-import { getModel } from "@/utils/llms/model";
+import { createGenerateObject } from "@/server/utils/llms";
+import type { EmailForLLM } from "@/server/types";
+import type { EmailAccountWithAI } from "@/server/utils/llms/types";
+import { sleep } from "@/server/utils/sleep";
+import { getModel } from "@/server/utils/llms/model";
 import { getEmailListPrompt } from "@/server/integrations/ai/helpers";
 
 const logger = createScopedLogger("email-report-summarize-emails");

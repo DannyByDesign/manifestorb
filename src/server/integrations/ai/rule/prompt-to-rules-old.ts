@@ -1,13 +1,13 @@
 import { z } from "zod";
-import { createGenerateObject } from "@/utils/llms";
-import type { EmailAccountWithAI } from "@/utils/llms/types";
+import { createGenerateObject } from "@/server/utils/llms";
+import type { EmailAccountWithAI } from "@/server/utils/llms/types";
 import {
   type CreateOrUpdateRuleSchema,
   createRuleSchema,
 } from "@/server/integrations/ai/rule/create-rule-schema";
 import { createScopedLogger } from "@/server/utils/logger";
 import { convertMentionsToLabels } from "@/utils/mention";
-import { getModel } from "@/utils/llms/model";
+import { getModel } from "@/server/utils/llms/model";
 
 const logger = createScopedLogger("ai-prompt-to-rules");
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { cleanThread } from "./route";
 import { GmailLabel } from "@/server/integrations/google/label";
-import type { ParsedMessage } from "@/utils/types";
+import type { ParsedMessage } from "@/server/types";
 import { CleanAction } from "@/generated/prisma/enums";
 import { getMockMessage } from "@/__tests__/helpers";
 

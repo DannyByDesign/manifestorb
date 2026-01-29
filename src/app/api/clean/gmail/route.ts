@@ -6,7 +6,7 @@ import { getGmailClientWithRefresh } from "@/server/integrations/google/client";
 import { GmailLabel, labelThread } from "@/server/integrations/google/label";
 import { SafeError } from "@/server/utils/error";
 import prisma from "@/server/db/client";
-import { isDefined } from "@/utils/types";
+import { isDefined } from "@/server/types";
 import type { Logger } from "@/server/utils/logger";
 import { CleanAction } from "@/generated/prisma/enums";
 import { updateThread } from "@/utils/redis/clean";

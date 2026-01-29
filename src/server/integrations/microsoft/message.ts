@@ -2,7 +2,7 @@ import type {
   Message,
   Attachment as GraphAttachment,
 } from "@microsoft/microsoft-graph-types";
-import type { ParsedMessage, Attachment } from "@/utils/types";
+import type { ParsedMessage, Attachment } from "@/server/types";
 import type { OutlookClient } from "@/server/integrations/microsoft/client";
 import { OutlookLabel } from "./label";
 import { escapeODataString } from "@/server/integrations/microsoft/odata-escape";

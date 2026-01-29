@@ -1,5 +1,5 @@
 import type { gmail_v1 } from "@googleapis/gmail";
-import type { MessageWithPayload, ParsedMessage } from "@/utils/types";
+import type { MessageWithPayload, ParsedMessage } from "@/server/types";
 import { parseMessage } from "@/server/integrations/google/message";
 import {
   getMessage,

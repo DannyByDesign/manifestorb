@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, vi, afterEach } from "vitest";
 import { forwardEmailHtml } from "./forward";
-import type { ParsedMessage } from "@/utils/types";
+import type { ParsedMessage } from "@/server/types";
 
 describe("email forwarding", () => {
   // Set a specific timezone offset for consistent testing

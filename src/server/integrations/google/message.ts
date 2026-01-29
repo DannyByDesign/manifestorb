@@ -6,11 +6,11 @@ import {
   type ThreadWithPayloadMessages,
   isBatchError,
   isDefined,
-} from "@/utils/types";
+} from "@/server/types";
 import { getBatch } from "@/server/integrations/google/batch";
 import { getSearchTermForSender } from "@/server/integrations/google";
 import { createScopedLogger } from "@/server/utils/logger";
-import { sleep } from "@/utils/sleep";
+import { sleep } from "@/server/utils/sleep";
 import { getAccessTokenFromClient } from "@/server/integrations/google/client";
 import { GmailLabel } from "@/server/integrations/google/label";
 import { isIgnoredSender } from "@/utils/filter-ignored-senders";

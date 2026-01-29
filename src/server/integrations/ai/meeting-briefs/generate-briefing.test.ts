@@ -10,8 +10,8 @@ vi.mock("@/env", () => ({
     EMAIL_ENCRYPT_SALT: "test-encrypt-salt-for-testing",
   },
 }));
-vi.mock("@/utils/llms/model", () => ({ getModel: vi.fn() }));
-vi.mock("@/utils/llms", () => ({ createGenerateObject: vi.fn() }));
+vi.mock("@/server/utils/llms/model", () => ({ getModel: vi.fn() }));
+vi.mock("@/server/utils/llms", () => ({ createGenerateObject: vi.fn() }));
 vi.mock("@/server/integrations/ai/helpers", () => ({
   getUserInfoPrompt: vi.fn(
     ({ emailAccount }) =>
@@ -22,13 +22,13 @@ vi.mock("@/server/integrations/ai/helpers", () => ({
 </user_info>`,
   ),
 }));
-vi.mock("@/utils/stringify-email", () => ({
+vi.mock("@/server/utils/stringify-email", () => ({
   stringifyEmailSimple: vi.fn(
     (email) =>
       `From: ${email.from}\nSubject: ${email.subject}\nBody: ${email.content}`,
   ),
 }));
-vi.mock("@/utils/get-email-from-message", () => ({
+vi.mock("@/server/utils/get-email-from-message", () => ({
   getEmailForLLM: vi.fn((msg) => ({
     from: msg.headers?.from || "unknown",
     subject: msg.headers?.subject || "no subject",
@@ -36,10 +36,10 @@ vi.mock("@/utils/get-email-from-message", () => ({
   })),
 }));
 
-vi.doUnmock("@/utils/date");
+vi.doUnmock("@/server/utils/date");
 
 import { buildPrompt } from "./generate-briefing";
-import type { EmailAccountWithAI } from "@/utils/llms/types";
+import type { EmailAccountWithAI } from "@/server/utils/llms/types";
 
 beforeEach(() => {
   vi.clearAllMocks();

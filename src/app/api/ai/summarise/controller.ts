@@ -1,5 +1,5 @@
-import { chatCompletionStream } from "@/utils/llms";
-import type { EmailAccountWithAI } from "@/utils/llms/types";
+import { chatCompletionStream } from "@/server/utils/llms";
+import type { EmailAccountWithAI } from "@/server/utils/llms/types";
 import { expire } from "@/utils/redis";
 import { saveSummary } from "@/utils/redis/summary";
 

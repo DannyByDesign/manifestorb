@@ -16,7 +16,7 @@ import type {
   RuleWithActions,
   ParsedMessage,
   ParsedMessageHeaders,
-} from "@/utils/types";
+} from "@/server/types";
 import type { EmailProvider } from "@/server/integrations/google/types";
 import prisma from "@/utils/__mocks__/prisma";
 import { aiChooseRule } from "@/server/integrations/ai/choose-rule/ai-choose-rule";

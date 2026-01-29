@@ -13,7 +13,7 @@ import {
 import type { Action } from "@/generated/prisma/client";
 import { ConditionType } from "@/utils/config";
 import prisma from "@/utils/__mocks__/prisma";
-import type { RuleWithActions } from "@/utils/types";
+import type { RuleWithActions } from "@/server/types";
 import { getAction, getEmailAccount, getEmail } from "@/__tests__/helpers";
 import { createScopedLogger } from "@/server/utils/logger";
 

@@ -3,8 +3,8 @@
 import prisma from "@/server/db/client";
 import { assessUser } from "@/utils/assess";
 import { aiAnalyzeWritingStyle } from "@/server/integrations/ai/knowledge/writing-style";
-import { formatBulletList } from "@/utils/string";
-import { getEmailForLLM } from "@/utils/get-email-from-message";
+import { formatBulletList } from "@/server/utils/string";
+import { getEmailForLLM } from "@/server/utils/get-email-from-message";
 import { actionClient } from "@/server/services/unsubscriber/safe-action";
 import { createEmailProvider } from "@/server/integrations/google/provider";
 import { SafeError } from "@/server/utils/error";

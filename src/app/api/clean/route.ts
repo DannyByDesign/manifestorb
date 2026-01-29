@@ -9,7 +9,7 @@ import type { CleanGmailBody } from "@/app/api/clean/gmail/route";
 import { SafeError } from "@/server/utils/error";
 import type { Logger } from "@/server/utils/logger";
 import { aiClean } from "@/server/integrations/ai/clean/ai-clean";
-import { getEmailForLLM } from "@/utils/get-email-from-message";
+import { getEmailForLLM } from "@/server/utils/get-email-from-message";
 import {
   getEmailAccountWithAiAndTokens,
   getUserPremium,
@@ -20,9 +20,9 @@ import { GmailLabel } from "@/server/integrations/google/label";
 import { isNewsletterSender } from "@/server/integrations/ai/group/find-newsletters";
 import { isMaybeReceipt, isReceipt } from "@/server/integrations/ai/group/find-receipts";
 import { saveThread, updateThread } from "@/utils/redis/clean";
-import { internalDateToDate } from "@/utils/date";
+import { internalDateToDate } from "@/server/utils/date";
 import { CleanAction } from "@/generated/prisma/enums";
-import type { ParsedMessage } from "@/utils/types";
+import type { ParsedMessage } from "@/server/types";
 import { isActivePremium } from "@/server/utils/premium";
 
 const cleanThreadBody = z.object({

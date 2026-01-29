@@ -1,8 +1,8 @@
-import { createGenerateText } from "@/utils/llms";
-import type { EmailAccountWithAI } from "@/utils/llms/types";
-import type { EmailForLLM } from "@/utils/types";
+import { createGenerateText } from "@/server/utils/llms";
+import type { EmailAccountWithAI } from "@/server/utils/llms/types";
+import type { EmailForLLM } from "@/server/types";
 import { getEmailListPrompt, getTodayForLLM } from "@/server/integrations/ai/helpers";
-import { getModel } from "@/utils/llms/model";
+import { getModel } from "@/server/utils/llms/model";
 import {
   PLAIN_TEXT_OUTPUT_INSTRUCTION,
   PROMPT_SECURITY_INSTRUCTIONS,

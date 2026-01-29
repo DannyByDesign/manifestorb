@@ -1,6 +1,6 @@
 import { after } from "next/server";
-import type { ParsedMessage, RuleWithActions } from "@/utils/types";
-import type { EmailAccountWithAI } from "@/utils/llms/types";
+import type { ParsedMessage, RuleWithActions } from "@/server/types";
+import type { EmailAccountWithAI } from "@/server/utils/llms/types";
 import {
   ActionType,
   ExecutedRuleStatus,
@@ -26,7 +26,7 @@ import {
 } from "@/utils/scheduled-actions/scheduler";
 import groupBy from "lodash/groupBy";
 import type { EmailProvider } from "@/server/integrations/google/types";
-import type { ModelType } from "@/utils/llms/model";
+import type { ModelType } from "@/server/utils/llms/model";
 import {
   CONVERSATION_STATUS_TYPES,
   isConversationStatusType,
@@ -37,7 +37,7 @@ import {
 } from "@/utils/reply-tracker/handle-conversation-status";
 import { removeConflictingThreadStatusLabels } from "@/utils/reply-tracker/label-helpers";
 import { saveLearnedPattern } from "@/utils/rule/learned-patterns";
-import { internalDateToDate } from "@/utils/date";
+import { internalDateToDate } from "@/server/utils/date";
 import { ConditionType } from "@/utils/config";
 import type { Logger } from "@/server/utils/logger";
 

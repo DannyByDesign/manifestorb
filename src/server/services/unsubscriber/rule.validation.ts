@@ -6,7 +6,7 @@ import {
   SystemType,
 } from "@/generated/prisma/enums";
 import { ConditionType } from "@/utils/config";
-import { NINETY_DAYS_MINUTES } from "@/utils/date";
+import { NINETY_DAYS_MINUTES } from "@/server/utils/date";
 import { validateLabelNameBasic } from "@/server/integrations/google/label-validation";
 
 export const delayInMinutesSchema = z

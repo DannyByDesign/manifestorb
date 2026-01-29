@@ -1,7 +1,7 @@
 import type { gmail_v1 } from "@googleapis/gmail";
 import { createScopedLogger } from "@/server/utils/logger";
 import { parseMessage } from "@/server/integrations/google/message";
-import type { MessageWithPayload } from "@/utils/types";
+import type { MessageWithPayload } from "@/server/types";
 import { isGmailError } from "@/server/utils/error";
 import { withGmailRetry } from "@/server/integrations/google/retry";
 

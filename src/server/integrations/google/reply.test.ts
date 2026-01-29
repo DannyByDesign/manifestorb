@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { createReplyContent } from "@/server/integrations/google/reply";
-import type { ParsedMessage } from "@/utils/types";
+import type { ParsedMessage } from "@/server/types";
 
 describe("email formatting", () => {
   // Set a specific timezone offset for consistent testing

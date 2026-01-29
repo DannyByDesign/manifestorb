@@ -2,10 +2,10 @@ import type { Message } from "@microsoft/microsoft-graph-types";
 import type { OutlookClient } from "@/server/integrations/microsoft/client";
 import type { Attachment } from "nodemailer/lib/mailer";
 import type { SendEmailBody } from "@/utils/gmail/mail";
-import type { ParsedMessage } from "@/utils/types";
+import type { ParsedMessage } from "@/server/types";
 import type { EmailForAction } from "@/utils/ai/types";
 import { createOutlookReplyContent } from "@/server/integrations/microsoft/reply";
-import { escapeHtml } from "@/utils/string";
+import { escapeHtml } from "@/server/utils/string";
 import { forwardEmailHtml, forwardEmailSubject } from "@/utils/gmail/forward";
 import {
   buildReplyAllRecipients,

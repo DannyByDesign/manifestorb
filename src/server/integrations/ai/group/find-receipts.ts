@@ -4,8 +4,8 @@ import uniqBy from "lodash/uniqBy";
 import { queryBatchMessagesPages } from "@/server/integrations/google/message";
 import { GroupItemType } from "@/generated/prisma/enums";
 import { findMatchingGroupItem } from "@/utils/group/find-matching-group";
-import { generalizeSubject } from "@/utils/string";
-import type { ParsedMessage } from "@/utils/types";
+import { generalizeSubject } from "@/server/utils/string";
+import type { ParsedMessage } from "@/server/types";
 
 // Predefined lists of receipt senders and subjects
 const defaultReceiptSenders = [

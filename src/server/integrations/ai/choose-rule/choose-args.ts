@@ -1,15 +1,15 @@
 import { z } from "zod";
-import type { EmailAccountWithAI } from "@/utils/llms/types";
-import type { ModelType } from "@/utils/llms/model";
+import type { EmailAccountWithAI } from "@/server/utils/llms/types";
+import type { ModelType } from "@/server/utils/llms/model";
 import { ActionType } from "@/generated/prisma/enums";
 import type { Action } from "@/generated/prisma/client";
 import {
   type RuleWithActions,
   isDefined,
   type ParsedMessage,
-} from "@/utils/types";
+} from "@/server/types";
 import { fetchMessagesAndGenerateDraft } from "@/utils/reply-tracker/generate-draft";
-import { getEmailForLLM } from "@/utils/get-email-from-message";
+import { getEmailForLLM } from "@/server/utils/get-email-from-message";
 import {
   type ActionArgResponse,
   aiGenerateArgs,

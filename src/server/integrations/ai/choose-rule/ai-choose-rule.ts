@@ -1,9 +1,9 @@
 import { z } from "zod";
-import type { EmailAccountWithAI } from "@/utils/llms/types";
-import { stringifyEmail } from "@/utils/stringify-email";
-import { isDefined, type EmailForLLM } from "@/utils/types";
-import { getModel, type ModelType } from "@/utils/llms/model";
-import { createGenerateObject } from "@/utils/llms";
+import type { EmailAccountWithAI } from "@/server/utils/llms/types";
+import { stringifyEmail } from "@/server/utils/stringify-email";
+import { isDefined, type EmailForLLM } from "@/server/types";
+import { getModel, type ModelType } from "@/server/utils/llms/model";
+import { createGenerateObject } from "@/server/utils/llms";
 import { getUserInfoPrompt, getUserRulesPrompt } from "@/server/integrations/ai/helpers";
 import { PROMPT_SECURITY_INSTRUCTIONS } from "@/server/integrations/ai/security";
 

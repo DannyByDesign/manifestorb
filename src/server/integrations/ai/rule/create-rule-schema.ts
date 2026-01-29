@@ -2,7 +2,7 @@ import { z } from "zod";
 import { ActionType, LogicalOperator } from "@/generated/prisma/enums";
 import { delayInMinutesSchema } from "@/server/services/unsubscriber/rule.validation";
 import { isMicrosoftProvider } from "@/server/integrations/google/provider-types";
-import { isDefined } from "@/utils/types";
+import { isDefined } from "@/server/types";
 import { env } from "@/env";
 
 const conditionSchema = z

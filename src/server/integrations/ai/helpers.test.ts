@@ -5,9 +5,9 @@ import {
   getEmailListPrompt,
 } from "./helpers";
 import { getEmailAccount, getEmail } from "@/__tests__/helpers";
-import { stringifyEmail } from "@/utils/stringify-email";
+import { stringifyEmail } from "@/server/utils/stringify-email";
 
-vi.mock("@/utils/stringify-email", () => ({
+vi.mock("@/server/utils/stringify-email", () => ({
   stringifyEmail: vi.fn(),
 }));
 

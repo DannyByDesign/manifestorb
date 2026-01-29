@@ -1,5 +1,5 @@
-import type { ParsedMessage } from "@/utils/types";
-import { convertNewlinesToBr, escapeHtml } from "@/utils/string";
+import type { ParsedMessage } from "@/server/types";
+import { convertNewlinesToBr, escapeHtml } from "@/server/utils/string";
 
 export const createReplyContent = ({
   textContent,

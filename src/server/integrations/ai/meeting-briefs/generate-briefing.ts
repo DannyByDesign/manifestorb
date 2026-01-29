@@ -4,22 +4,22 @@ import { createPerplexity } from "@ai-sdk/perplexity";
 import { openai } from "@ai-sdk/openai";
 import { google } from "@ai-sdk/google";
 import { env } from "@/env";
-import { getModel } from "@/utils/llms/model";
-import { createGenerateText } from "@/utils/llms";
-import type { EmailAccountWithAI } from "@/utils/llms/types";
+import { getModel } from "@/server/utils/llms/model";
+import { createGenerateText } from "@/server/utils/llms";
+import type { EmailAccountWithAI } from "@/server/utils/llms/types";
 import { getUserInfoPrompt } from "@/server/integrations/ai/helpers";
 import type { CalendarEvent } from "@/utils/calendar/event-types";
 import type { MeetingBriefingData } from "@/utils/meeting-briefs/gather-context";
-import { stringifyEmailSimple } from "@/utils/stringify-email";
-import { getEmailForLLM } from "@/utils/get-email-from-message";
-import type { ParsedMessage } from "@/utils/types";
-import { formatDateTimeInUserTimezone } from "@/utils/date";
+import { stringifyEmailSimple } from "@/server/utils/stringify-email";
+import { getEmailForLLM } from "@/server/utils/get-email-from-message";
+import type { ParsedMessage } from "@/server/types";
+import { formatDateTimeInUserTimezone } from "@/server/utils/date";
 import {
   getCachedResearch,
   setCachedResearch,
 } from "@/utils/redis/research-cache";
 import type { Logger } from "@/server/utils/logger";
-import { Provider } from "@/utils/llms/config";
+import { Provider } from "@/server/utils/llms/config";
 import { createMcpToolsForAgent } from "@/server/integrations/ai/mcp/mcp-tools";
 
 const MAX_AGENT_STEPS = 15;

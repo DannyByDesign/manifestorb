@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { createGenerateObject } from "@/utils/llms";
-import type { EmailAccountWithAI } from "@/utils/llms/types";
-import type { EmailForLLM, RuleWithActions } from "@/utils/types";
-import { getModel, type ModelType } from "@/utils/llms/model";
+import { createGenerateObject } from "@/server/utils/llms";
+import type { EmailAccountWithAI } from "@/server/utils/llms/types";
+import type { EmailForLLM, RuleWithActions } from "@/server/types";
+import { getModel, type ModelType } from "@/server/utils/llms/model";
 import { getUserInfoPrompt, getEmailListPrompt } from "@/server/integrations/ai/helpers";
 import type { ConversationStatus } from "@/utils/reply-tracker/conversation-status-config";
 import { SystemType } from "@/generated/prisma/enums";

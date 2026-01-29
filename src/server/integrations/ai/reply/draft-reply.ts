@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { createScopedLogger } from "@/server/utils/logger";
-import { createGenerateObject } from "@/utils/llms/index";
-import type { EmailAccountWithAI } from "@/utils/llms/types";
-import type { EmailForLLM } from "@/utils/types";
+import { createGenerateObject } from "@/server/utils/llms/index";
+import type { EmailAccountWithAI } from "@/server/utils/llms/types";
+import type { EmailForLLM } from "@/server/types";
 import { getEmailListPrompt, getTodayForLLM } from "@/server/integrations/ai/helpers";
-import { getModel } from "@/utils/llms/model";
+import { getModel } from "@/server/utils/llms/model";
 import type { ReplyContextCollectorResult } from "@/server/integrations/ai/reply/reply-context-collector";
 import type { CalendarAvailabilityContext } from "@/server/integrations/ai/calendar/availability";
 import {

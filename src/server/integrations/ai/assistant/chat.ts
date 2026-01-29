@@ -14,17 +14,17 @@ import {
   GroupItemType,
   LogicalOperator,
 } from "@/generated/prisma/enums";
-import type { EmailAccountWithAI } from "@/utils/llms/types";
+import type { EmailAccountWithAI } from "@/server/utils/llms/types";
 import { saveLearnedPatterns } from "@/utils/rule/learned-patterns";
 import { posthogCaptureEvent } from "@/utils/posthog";
-import { chatCompletionStream } from "@/utils/llms";
+import { chatCompletionStream } from "@/server/utils/llms";
 import { filterNullProperties } from "@/utils";
 import { delayInMinutesSchema } from "@/server/services/unsubscriber/rule.validation";
 import { isMicrosoftProvider } from "@/server/integrations/google/provider-types";
 import type { MessageContext } from "@/app/api/chat/validation";
-import { stringifyEmail } from "@/utils/stringify-email";
-import { getEmailForLLM } from "@/utils/get-email-from-message";
-import type { ParsedMessage } from "@/utils/types";
+import { stringifyEmail } from "@/server/utils/stringify-email";
+import { getEmailForLLM } from "@/server/utils/get-email-from-message";
+import type { ParsedMessage } from "@/server/types";
 import { env } from "@/env";
 
 export const maxDuration = 120;

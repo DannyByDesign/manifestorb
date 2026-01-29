@@ -1,7 +1,7 @@
 import { z } from "zod";
-import type { EmailAccountWithAI } from "@/utils/llms/types";
-import { getModel } from "@/utils/llms/model";
-import { createGenerateObject } from "@/utils/llms";
+import type { EmailAccountWithAI } from "@/server/utils/llms/types";
+import { getModel } from "@/server/utils/llms/model";
+import { createGenerateObject } from "@/server/utils/llms";
 import { cleanExtractedText } from "@/utils/drive/document-extraction";
 
 const documentAnalysisSchema = z

@@ -3,14 +3,14 @@ import type { gmail_v1 } from "@googleapis/gmail";
 import MailComposer from "nodemailer/lib/mail-composer";
 import type Mail from "nodemailer/lib/mailer";
 import type { Attachment } from "nodemailer/lib/mailer";
-import { zodAttachment } from "@/utils/types/mail";
+import { zodAttachment } from "@/server/types/mail";
 import { convertEmailHtmlToText } from "@/utils/mail";
 import {
   forwardEmailHtml,
   forwardEmailSubject,
   forwardEmailText,
 } from "@/server/integrations/google/forward";
-import type { ParsedMessage } from "@/utils/types";
+import type { ParsedMessage } from "@/server/types";
 import { createReplyContent } from "@/server/integrations/google/reply";
 import type { EmailForAction } from "@/server/integrations/ai/types";
 import { createScopedLogger } from "@/server/utils/logger";

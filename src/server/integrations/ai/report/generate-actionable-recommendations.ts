@@ -1,10 +1,10 @@
 import { z } from "zod";
-import { createGenerateObject } from "@/utils/llms";
-import type { EmailAccountWithAI } from "@/utils/llms/types";
+import { createGenerateObject } from "@/server/utils/llms";
+import type { EmailAccountWithAI } from "@/server/utils/llms/types";
 import type { UserPersona } from "@/server/integrations/ai/report/build-user-persona";
 import type { EmailSummary } from "@/server/integrations/ai/report/summarize-emails";
 import { createScopedLogger } from "@/server/utils/logger";
-import { getModel } from "@/utils/llms/model";
+import { getModel } from "@/server/utils/llms/model";
 
 const logger = createScopedLogger("email-report-actionable-recommendations");
 

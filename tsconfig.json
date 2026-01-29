@@ -22,24 +22,26 @@
         "name": "next"
       }
     ],
-    "paths": {
-      "@/*": [
-        "./src/*"
-      ],
-      "@inboxzero/*": [
-        "./src/server/packages/*"
-      ]
-    }
-  },
-  "include": [
-    "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
-    ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts",
-    "**/*.mts"
-  ],
-  "exclude": [
-    "node_modules"
-  ]
+    "@/*": [
+      "./src/*"
+    ],
+    "@inboxzero/*": [
+      "./src/server/packages/*"
+    ],
+    "@/generated/*": [
+      "./generated/*"
+    ]
+  }
+},
+"include": [
+  "next-env.d.ts",
+  "**/*.ts",
+  "**/*.tsx",
+  ".next/types/**/*.ts",
+  ".next/dev/types/**/*.ts",
+  "**/*.mts"
+],
+"exclude": [
+  "node_modules"
+]
 }

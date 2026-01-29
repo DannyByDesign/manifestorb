@@ -1,7 +1,7 @@
 import { createScopedLogger } from "@/server/utils/logger";
-import type { ParsedMessage } from "@/utils/types";
-import type { EmailAccountWithAI } from "@/utils/llms/types";
-import { sleep } from "@/utils/sleep";
+import type { ParsedMessage } from "@/server/types";
+import type { EmailAccountWithAI } from "@/server/utils/llms/types";
+import { sleep } from "@/server/utils/sleep";
 import { createEmailProvider } from "@/server/integrations/google/provider";
 import type { EmailProvider } from "@/server/integrations/google/types";
 

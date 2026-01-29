@@ -4,7 +4,7 @@ import type { ExecutedRule } from "@/generated/prisma/client";
 import type { Logger } from "@/server/utils/logger";
 import type { EmailProvider } from "@/server/integrations/google/types";
 import { convertEmailHtmlToText } from "@/utils/mail";
-import type { ParsedMessage } from "@/utils/types";
+import type { ParsedMessage } from "@/server/types";
 
 /**
  * Handles finding and potentially deleting a previous AI-generated draft for a thread.

@@ -7,7 +7,7 @@ import { aiAnalyzePersona } from "@/server/integrations/ai/knowledge/persona";
 import { createEmailProvider } from "@/server/integrations/google/provider";
 import { getEmailAccountWithAiAndTokens } from "@/utils/user/get";
 import { SafeError } from "@/server/utils/error";
-import { getEmailForLLM } from "@/utils/get-email-from-message";
+import { getEmailForLLM } from "@/server/utils/get-email-from-message";
 import { z } from "zod";
 import { updateContactRole } from "@inboxzero/loops";
 

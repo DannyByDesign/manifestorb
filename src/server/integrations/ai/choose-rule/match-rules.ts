@@ -4,7 +4,7 @@ import {
   getGroupsWithRules,
   type GroupsWithRules,
 } from "@/utils/group/find-matching-group";
-import type { ParsedMessage, RuleWithActions } from "@/utils/types";
+import type { ParsedMessage, RuleWithActions } from "@/server/types";
 import {
   ExecutedRuleStatus,
   LogicalOperator,
@@ -13,8 +13,8 @@ import {
 import { ConditionType } from "@/utils/config";
 import prisma from "@/server/db/client";
 import { aiChooseRule } from "@/server/integrations/ai/choose-rule/ai-choose-rule";
-import { getEmailForLLM } from "@/utils/get-email-from-message";
-import type { EmailAccountWithAI } from "@/utils/llms/types";
+import { getEmailForLLM } from "@/server/utils/get-email-from-message";
+import type { EmailAccountWithAI } from "@/server/utils/llms/types";
 import type { Logger } from "@/server/utils/logger";
 import type {
   MatchReason,
@@ -24,7 +24,7 @@ import { extractEmailAddress } from "@/server/integrations/google";
 import { isCalendarInvite } from "@/utils/parse/calender-event";
 import { checkSenderReplyHistory } from "@/utils/reply-tracker/check-sender-reply-history";
 import type { EmailProvider } from "@/server/integrations/google/types";
-import type { ModelType } from "@/utils/llms/model";
+import type { ModelType } from "@/server/utils/llms/model";
 import {
   getColdEmailRule,
   isColdEmailRuleEnabled,

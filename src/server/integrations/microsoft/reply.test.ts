@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { createOutlookReplyContent } from "@/server/integrations/microsoft/reply";
-import type { ParsedMessage } from "@/utils/types";
+import type { ParsedMessage } from "@/server/types";
 
 describe("Outlook email formatting", () => {
   // Set a specific timezone offset for consistent testing
