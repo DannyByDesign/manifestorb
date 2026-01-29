@@ -2,7 +2,7 @@
 
 import { actionClient } from "@/server/services/unsubscriber/safe-action";
 import { z } from "zod";
-import { createEmailProvider } from "@/server/integrations/google/provider";
+import { createEmailProvider } from "@/utils/email/provider";
 import { isDefined } from "@/server/types";
 import {
   extractDomainFromEmail,

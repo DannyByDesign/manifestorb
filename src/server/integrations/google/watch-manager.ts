@@ -1,7 +1,7 @@
 import prisma from "@/server/db/client";
 import { hasAiAccess, getPremiumUserFilter } from "@/server/utils/premium";
 import type { Logger } from "@/server/utils/logger";
-import { createEmailProvider } from "@/server/integrations/google/provider";
+import { createEmailProvider } from "@/utils/email/provider";
 import { captureException } from "@/server/utils/error";
 import { cleanupInvalidTokens } from "@/server/auth/cleanup-invalid-tokens";
 import type { EmailProvider } from "@/server/integrations/google/types";

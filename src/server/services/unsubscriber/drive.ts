@@ -15,7 +15,7 @@ import {
 import prisma from "@/server/db/client";
 import { SafeError } from "@/server/utils/error";
 import { createDriveProviderWithRefresh } from "@/utils/drive/provider";
-import { createEmailProvider } from "@/server/integrations/google/provider";
+import { createEmailProvider } from "@/utils/email/provider";
 import {
   getExtractableAttachments,
   processAttachment,

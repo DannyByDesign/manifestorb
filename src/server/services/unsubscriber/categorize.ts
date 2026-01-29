@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { createEmailProvider } from "@/server/integrations/google/provider";
+import { createEmailProvider } from "@/utils/email/provider";
 import {
   type CreateCategoryBody,
   createCategoryBody,

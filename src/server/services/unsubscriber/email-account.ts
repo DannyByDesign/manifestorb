@@ -4,7 +4,7 @@ import { after } from "next/server";
 import { actionClient } from "@/server/services/unsubscriber/safe-action";
 import prisma from "@/server/db/client";
 import { aiAnalyzePersona } from "@/server/integrations/ai/knowledge/persona";
-import { createEmailProvider } from "@/server/integrations/google/provider";
+import { createEmailProvider } from "@/utils/email/provider";
 import { getEmailAccountWithAiAndTokens } from "@/utils/user/get";
 import { SafeError } from "@/server/utils/error";
 import { getEmailForLLM } from "@/server/utils/get-email-from-message";

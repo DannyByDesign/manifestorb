@@ -4,7 +4,7 @@ import { env } from "@/env";
 import { GmailLabel } from "@/server/integrations/google/label";
 import { actionClient } from "@/server/services/unsubscriber/safe-action";
 import { isGoogleProvider } from "@/server/integrations/google/provider-types";
-import { createEmailProvider } from "@/server/integrations/google/provider";
+import { createEmailProvider } from "@/utils/email/provider";
 
 export const whitelistInboxZeroAction = actionClient
   .metadata({ name: "whitelistInboxZero" })

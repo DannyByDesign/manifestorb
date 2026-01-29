@@ -1,7 +1,7 @@
 import type { gmail_v1 } from "@googleapis/gmail";
 import type { ProcessHistoryOptions } from "@/app/api/google/webhook/types";
 import { HistoryEventType } from "@/app/api/google/webhook/types";
-import { createEmailProvider } from "@/server/integrations/google/provider";
+import { createEmailProvider } from "@/utils/email/provider";
 import { handleLabelRemovedEvent } from "@/app/api/google/webhook/process-label-removed-event";
 import { processHistoryItem as processHistoryItemShared } from "@/utils/webhook/process-history-item";
 import { markMessageAsProcessing } from "@/utils/redis/message-processing";

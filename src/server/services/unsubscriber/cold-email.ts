@@ -10,7 +10,7 @@ import {
 } from "@/server/services/unsubscriber/cold-email.validation";
 import { actionClient } from "@/server/services/unsubscriber/safe-action";
 import { SafeError } from "@/server/utils/error";
-import { createEmailProvider } from "@/server/integrations/google/provider";
+import { createEmailProvider } from "@/utils/email/provider";
 import type { EmailProvider } from "@/server/integrations/google/types";
 import { getColdEmailRule } from "@/utils/cold-email/cold-email-rule";
 import { internalDateToDate } from "@/server/utils/date";

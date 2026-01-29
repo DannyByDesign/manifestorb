@@ -5,7 +5,7 @@ import prisma from "@/server/db/client";
 import { sendEmailBody } from "@/server/integrations/google/mail";
 import { actionClient } from "@/server/services/unsubscriber/safe-action";
 import { SafeError } from "@/server/utils/error";
-import { createEmailProvider } from "@/server/integrations/google/provider";
+import { createEmailProvider } from "@/utils/email/provider";
 
 const isStatusOk = (status: number) => status >= 200 && status < 300;
 

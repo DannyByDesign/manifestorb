@@ -8,7 +8,7 @@ import { adminActionClient } from "@/server/services/unsubscriber/safe-action";
 import { SafeError } from "@/server/utils/error";
 import { syncStripeDataToDb } from "@/ee/billing/stripe/sync-stripe";
 import { getStripe } from "@/ee/billing/stripe";
-import { createEmailProvider } from "@/server/integrations/google/provider";
+import { createEmailProvider } from "@/utils/email/provider";
 import { hash } from "@/utils/hash";
 import {
   hashEmailBody,

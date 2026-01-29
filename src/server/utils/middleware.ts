@@ -15,7 +15,7 @@ import {
   NO_REFRESH_TOKEN_ERROR_CODE,
 } from "@/utils/config";
 import prisma from "@/server/db/client";
-import { createEmailProvider } from "@/server/integrations/google/provider";
+import { createEmailProvider } from "@/utils/email/provider";
 import type { EmailProvider } from "@/server/integrations/google/types";
 
 const logger = createScopedLogger("middleware");

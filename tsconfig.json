@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2017",
+    "baseUrl": ".",
     "lib": [
       "dom",
       "dom.iterable",
@@ -22,26 +23,33 @@
         "name": "next"
       }
     ],
-    "@/*": [
-      "./src/*"
-    ],
-    "@inboxzero/*": [
-      "./src/server/packages/*"
-    ],
-    "@/generated/*": [
-      "./generated/*"
-    ]
-  }
-},
-"include": [
-  "next-env.d.ts",
-  "**/*.ts",
-  "**/*.tsx",
-  ".next/types/**/*.ts",
-  ".next/dev/types/**/*.ts",
-  "**/*.mts"
-],
-"exclude": [
-  "node_modules"
-]
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ],
+      "@inboxzero/*": [
+        "./src/server/packages/*"
+      ],
+      "@/generated/*": [
+        "./generated/*"
+      ],
+      "@/utils/*": [
+        "./src/server/utils/*"
+      ],
+      "@/types/*": [
+        "./src/server/types/*"
+      ]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    "**/*.mts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }

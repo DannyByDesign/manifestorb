@@ -6,7 +6,7 @@ import { aiAnalyzeWritingStyle } from "@/server/integrations/ai/knowledge/writin
 import { formatBulletList } from "@/server/utils/string";
 import { getEmailForLLM } from "@/server/utils/get-email-from-message";
 import { actionClient } from "@/server/services/unsubscriber/safe-action";
-import { createEmailProvider } from "@/server/integrations/google/provider";
+import { createEmailProvider } from "@/utils/email/provider";
 import { SafeError } from "@/server/utils/error";
 
 // to help with onboarding and provide the best flow to new users

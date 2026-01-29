@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { actionClient } from "@/server/services/unsubscriber/safe-action";
-import { createEmailProvider } from "@/server/integrations/google/provider";
+import { createEmailProvider } from "@/utils/email/provider";
 
 export const bulkArchiveAction = actionClient
   .metadata({ name: "bulkArchive" })

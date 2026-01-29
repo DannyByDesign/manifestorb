@@ -24,7 +24,7 @@ import { getUnhandledCount } from "@/utils/assess";
 import { getGmailClientForEmail } from "@/utils/account";
 import { actionClient } from "@/server/services/unsubscriber/safe-action";
 import { SafeError } from "@/server/utils/error";
-import { createEmailProvider } from "@/server/integrations/google/provider";
+import { createEmailProvider } from "@/utils/email/provider";
 import { isGoogleProvider } from "@/server/integrations/google/provider-types";
 import { getUserPremium } from "@/utils/user/get";
 import { isActivePremium } from "@/server/utils/premium";
