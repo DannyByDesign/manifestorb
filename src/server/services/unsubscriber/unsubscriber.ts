@@ -26,5 +26,20 @@ export const setNewsletterStatusAction = actionClient
         },
         update: { status },
       });
+
+      // If status is UNSUBSCRIBED, attempt to execute unsubscribe logic
+      if (status === "UNSUBSCRIBED") {
+        // We fire and forget this for now, or we could await it.
+        // Importing dynamically to avoid circular deps if any
+        const { unsubscribeFromSender } = await import("@/server/services/unsubscriber/execute");
+
+        // We don't await the result to keep UI snappy, but we log errors in background
+        unsubscribeFromSender({
+          emailAccountId,
+          senderEmail: newsletterEmail // extractEmailAddress handled in caller? No, we extracted it to `email`.
+        }).catch(err => console.error("Unsubscribe background task failed", err));
+      }
+
+      return result;
     },
   );

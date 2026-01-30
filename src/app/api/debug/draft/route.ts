@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
                 subject: msg.headers.subject || "",
                 date: new Date(msg.headers.date || Date.now()),
                 text: msg.textPlain || msg.textHtml || "", // Prefer plain text
-                // Ensure properties match EmailForLLM interface
+                content: msg.textPlain || msg.textHtml || "", // Added content property
             })
         );
 

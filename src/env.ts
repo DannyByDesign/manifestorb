@@ -39,6 +39,7 @@ export const env = createEnv({
 
     AUTH_SECRET: z.string().optional(),
     NEXTAUTH_SECRET: z.string().optional(),
+    ADMIN_TOKEN: z.string().optional(), // For debug endpoints
     GOOGLE_CLIENT_ID: z.string().min(1),
     GOOGLE_CLIENT_SECRET: z.string().min(1),
     MICROSOFT_CLIENT_ID: z.string().optional(),

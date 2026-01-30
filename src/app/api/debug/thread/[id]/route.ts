@@ -56,14 +56,7 @@ export async function GET(
                 messageId: m.messageId,
                 from: m.from,
                 to: m.to,
-                subject: m.fromName, // schema doesn't have subject on message? wait, let me check schema again.
-                // Schema: emailMessage has threadId, messageId, date, from, fromName, fromDomain, to, unsubscribeLink, read, sent, draft, inbox.
-                // It does NOT have subject?
-                // Wait, where is subject stored?
-                // Rule has subject. Action has subject.
-                // GroupItem has value.
-                // Maybe subject is not stored on EmailMessage?
-                // I need to check schema again.
+                subject: "Subject not in DB", // Schema does not have subject on EmailMessage
                 date: m.date,
                 snippet: "...", // Schema doesn't have snippet.
             })),

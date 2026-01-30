@@ -34,10 +34,10 @@ export async function GET(req: NextRequest) {
             take: 50,
             select: {
                 threadId: true,
-                subject: true,
+                // subject: true, // Not in schema
                 from: true,
                 date: true,
-                snippet: false, // snippet not in schema, assuming subject is enough
+                // snippet: false, // Not in schema
                 emailAccountId: true,
             },
         });
