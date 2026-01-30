@@ -209,8 +209,7 @@
 
 | 🚀/🕒/🗑️ | Feature | Description | Key Files | Primary UX Surface |
 |---|---|---|---|---|
-| 🕒 | **Stripe Integration** | Subscriptions | `enterprise/billing/stripe/` | UI-first |
-| 🗑️ | **Lemon Squeezy Integration** | Alternative payments | `enterprise/billing/lemon/` | (Deprioritize if Stripe-only) |
+| 🕒 | **Stripe Integration** | Subscriptions | `enterprise/stripe/` | UI-first |
 | 🕒 | **Premium Tiers** | Plan levels | `PremiumTier` enum | UI-first |
 | 🕒 | **Credit System** | AI/unsubscribe credits | `Premium.*Credits` | UI-first |
 | 🕒 | **Payment History** | Transactions | `Payment` | UI-first |
@@ -262,7 +261,7 @@
 - MCP tools + webhooks
 
 ### 🗑️ Consider removal / hide deep in settings
-- Lemon Squeezy (if Stripe-only)
+
 - Marketing email tooling (Loops)
 - Real-time compose autocomplete (unless you can guarantee UX latency + quality)
 - Referral system (unless it’s a proven acquisition lever)

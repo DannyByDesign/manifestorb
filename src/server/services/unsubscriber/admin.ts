@@ -6,8 +6,8 @@ import { deleteUser } from "@/utils/user/delete";
 import prisma from "@/server/db/client";
 import { adminActionClient } from "@/server/services/unsubscriber/safe-action";
 import { SafeError } from "@/server/utils/error";
-import { syncStripeDataToDb } from "@/enterprise/billing/stripe/sync-stripe";
-import { getStripe } from "@/enterprise/billing/stripe";
+import { syncStripeDataToDb } from "@/enterprise/stripe/sync-stripe";
+import { getStripe } from "@/enterprise/stripe";
 import { createEmailProvider } from "@/server/services/email/provider";
 import { hash } from "@/utils/hash";
 import {

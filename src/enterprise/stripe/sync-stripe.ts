@@ -1,7 +1,7 @@
 import { after } from "next/server";
 import prisma from "@/server/db/client";
 import type { Logger } from "@/utils/logger";
-import { getStripe } from "@/enterprise/billing/stripe";
+import { getStripe } from "@/enterprise/stripe";
 import { env } from "@/env";
 import { PremiumTier } from "@/generated/prisma/enums";
 
@@ -24,7 +24,7 @@ export const getStripeSubscriptionTier = ({
   }
   return null;
 };
-import { handleLoopsEvents } from "@/enterprise/billing/stripe/loops-events";
+import { handleLoopsEvents } from "@/enterprise/stripe/loops-events";
 import { syncPremiumSeats } from "@/utils/premium/server";
 import { ensureEmailAccountsWatched } from "@/server/services/email/watch-manager";
 import { captureException } from "@/utils/error";

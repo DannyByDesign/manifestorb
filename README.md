@@ -21,7 +21,7 @@ AI-powered email management and automation platform with a stunning 3D visual in
 | **Cache** | Upstash Redis | Caching & rate limiting |
 | **Email** | Resend, Loops | Transactional & marketing email |
 | **Analytics** | Tinybird, PostHog | Event tracking & analytics |
-| **Payments** | Stripe, Lemon Squeezy | Subscription billing |
+| **Payments** | Stripe | Subscription billing |
 
 ---
 
@@ -132,7 +132,7 @@ amodel/
 │   ├── enterprise/             # Premium features (BACKEND)
 │   │   └── billing/
 │   │       ├── stripe/         # Stripe integration
-│   │       └── lemon/          # Lemon Squeezy
+
 │   │
 │   ├── __tests__/              # Test files
 │   └── env.ts                  # Environment config
@@ -165,7 +165,7 @@ amodel/
 | Modify Gmail integration | `src/server/integrations/google/` |
 | Change database schema | `prisma/schema.prisma` |
 | Add a server action | `src/server/services/unsubscriber/` |
-| Modify billing | `src/enterprise/billing/` |
+| Modify billing | `src/enterprise/stripe/` |
 
 ---
 
@@ -187,7 +187,7 @@ import { createAgentTools } from "@/server/integrations/ai/tools";
 import { sendEmail } from "@amodel/resend";
 
 // Enterprise
-import { syncStripe } from "@/enterprise/billing/stripe";
+import { syncStripe } from "@/enterprise/stripe";
 ```
 
 ---

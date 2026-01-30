@@ -1,7 +1,7 @@
 import sumBy from "lodash/sumBy";
 import { after } from "next/server";
 
-import { updateStripeSubscriptionItemQuantity } from "@/enterprise/billing/stripe/index";
+import { updateStripeSubscriptionItemQuantity } from "@/enterprise/stripe/index";
 import prisma from "@/server/db/client";
 import type { PremiumTier } from "@/generated/prisma/enums";
 import { createScopedLogger } from "@/server/utils/logger";

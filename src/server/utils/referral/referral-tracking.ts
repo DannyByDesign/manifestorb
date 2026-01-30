@@ -1,6 +1,6 @@
 import prisma from "@/server/db/client";
 import type { Logger } from "@/server/utils/logger";
-import { getStripe } from "@/enterprise/billing/stripe";
+import { getStripe } from "@/enterprise/stripe";
 import { ReferralStatus } from "@/generated/prisma/enums";
 
 const REWARD_AMOUNT_CENTS = 2000; // $20 credit
