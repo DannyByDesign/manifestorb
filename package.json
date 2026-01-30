@@ -8,7 +8,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test-ai": "vitest"
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "3.0.67",

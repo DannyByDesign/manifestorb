@@ -138,7 +138,7 @@ async function runSetup(options: { name?: string }) {
       {
         value: "development",
         label: "Development",
-        hint: "local dev with pnpm dev",
+        hint: "local dev with bun dev",
       },
       {
         value: "production",
@@ -188,7 +188,7 @@ async function runSetup(options: { name?: string }) {
         {
           value: "no",
           label: "No, just database & Redis",
-          hint: "I'll run Next.js separately with pnpm",
+          hint: "I'll run Next.js separately with bun",
         },
         {
           value: "yes",
@@ -715,14 +715,14 @@ docker logs amodel-services-web-1 -f
 # Then open:
 https://yourdomain.com`;
   } else {
-    // Web app runs on host (pnpm dev or pnpm start)
+    // Web app runs on host (bun dev or bun start)
     const dockerStep = useDockerInfra
       ? `# Start Docker services (database & Redis):\n${composeCmd} --profile local-db --profile local-redis up -d\n\n`
       : "";
     const migrateCmd = isDevMode
-      ? "pnpm prisma:migrate:dev"
-      : "pnpm prisma:migrate:deploy";
-    const startCmd = isDevMode ? "pnpm dev" : "pnpm build && pnpm start";
+      ? "bunx prisma migrate dev"
+      : "bunx prisma migrate deploy";
+    const startCmd = isDevMode ? "bun dev" : "bun build && bun start";
 
     nextSteps = `${dockerStep}# Run database migrations:
 ${migrateCmd}

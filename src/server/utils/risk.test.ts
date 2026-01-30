@@ -10,7 +10,7 @@ import { ActionType } from "@/generated/prisma/enums";
 type RulesResponse = any[];
 
 // Run with:
-// pnpm test risk.test.ts
+// bun test risk.test.ts
 
 vi.mock("server-only", () => ({}));
 

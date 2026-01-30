@@ -3,7 +3,7 @@ import { findMatchingGroupItem } from "./find-matching-group";
 import { GroupItemType } from "@/generated/prisma/enums";
 
 // Run with:
-// pnpm test utils/group/find-matching-group.test.ts
+// bun test utils/group/find-matching-group.test.ts
 
 describe("findMatchingGroupItem", () => {
   it("should match FROM rules", () => {

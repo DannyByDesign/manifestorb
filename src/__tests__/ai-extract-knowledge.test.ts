@@ -5,7 +5,7 @@ import { getEmailAccount } from "@/__tests__/helpers";
 
 const TIMEOUT = 30_000;
 
-// pnpm test-ai ai-extract-knowledge
+// bun test-ai ai-extract-knowledge
 
 vi.mock("server-only", () => ({}));
 

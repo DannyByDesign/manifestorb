@@ -2,7 +2,7 @@ import { describe, expect, test, vi, beforeEach } from "vitest";
 import { aiChooseRule } from "@/utils/ai/choose-rule/ai-choose-rule";
 import { getEmailAccount, getEmail, getRule } from "./helpers";
 
-// Run with: pnpm test-ai ai-prompt-security
+// Run with: bun test-ai ai-prompt-security
 
 vi.mock("server-only", () => ({}));
 

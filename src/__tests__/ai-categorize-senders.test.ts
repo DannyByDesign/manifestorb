@@ -7,7 +7,7 @@ import { defaultCategory } from "@/utils/categories";
 import { aiCategorizeSender } from "@/utils/ai/categorize-sender/ai-categorize-single-sender";
 import { getEmailAccount } from "@/__tests__/helpers";
 
-// pnpm test-ai ai-categorize-senders
+// bun test-ai ai-categorize-senders
 
 const isAiTest = process.env.RUN_AI_TESTS === "true";
 

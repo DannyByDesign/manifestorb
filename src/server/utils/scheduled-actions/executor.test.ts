@@ -4,7 +4,7 @@ import { executeScheduledAction } from "./executor";
 import prisma from "@/utils/__mocks__/prisma";
 import { createScopedLogger } from "@/utils/logger";
 
-// Run with: pnpm test utils/scheduled-actions/executor.test.ts
+// Run with: bun test utils/scheduled-actions/executor.test.ts
 
 const logger = createScopedLogger("test");
 

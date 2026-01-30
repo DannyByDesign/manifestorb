@@ -6,7 +6,7 @@ import { getRuleName, getRuleConfig } from "@/utils/rule/consts";
 import { SystemType } from "@/generated/prisma/enums";
 import { getEmailAccount } from "@/__tests__/helpers";
 
-// Run with: pnpm test-ai ai-detect-recurring-pattern
+// Run with: bun test-ai ai-detect-recurring-pattern
 
 const TIMEOUT = 15_000;
 

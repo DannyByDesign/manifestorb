@@ -5,7 +5,7 @@ import { queryBatchMessages } from "@/server/integrations/google/message";
 import type { ParsedMessage } from "@/utils/types";
 import { getEmailAccount } from "@/__tests__/helpers";
 
-// pnpm test-ai ai-create-group
+// bun test-ai ai-create-group
 
 const isAiTest = process.env.RUN_AI_TESTS === "true";
 

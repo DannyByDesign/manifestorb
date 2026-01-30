@@ -6,7 +6,7 @@ import { describe, it, expect, vi } from "vitest";
 import { z } from "zod";
 
 // Run with:
-// pnpm test-ai ai-choose-args.test.ts
+// bun test-ai ai-choose-args.test.ts
 
 vi.mock("server-only", () => ({}));
 

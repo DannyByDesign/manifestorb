@@ -8,7 +8,7 @@ import { getEmailAccount } from "@/__tests__/helpers";
 import { createScopedLogger } from "@/utils/logger";
 import type { RuleWithRelations } from "@/utils/rule/types";
 
-// pnpm test-ai ai-process-user-request
+// bun test-ai ai-process-user-request
 
 const logger: ReturnType<typeof createScopedLogger> =
   createScopedLogger("test");

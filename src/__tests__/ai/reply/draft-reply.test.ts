@@ -5,7 +5,7 @@ import { getEmailAccount } from "@/__tests__/helpers";
 
 const TIMEOUT = 60_000;
 
-// Run with: pnpm test-ai draft-reply
+// Run with: bun test-ai draft-reply
 
 vi.mock("server-only", () => ({}));
 

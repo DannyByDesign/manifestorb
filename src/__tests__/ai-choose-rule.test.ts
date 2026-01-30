@@ -3,7 +3,7 @@ import { aiChooseRule } from "@/utils/ai/choose-rule/ai-choose-rule";
 import { ActionType } from "@/generated/prisma/enums";
 import { getEmail, getEmailAccount, getRule } from "@/__tests__/helpers";
 
-// pnpm test-ai ai-choose-rule
+// bun test-ai ai-choose-rule
 
 const isAiTest = process.env.RUN_AI_TESTS === "true";
 

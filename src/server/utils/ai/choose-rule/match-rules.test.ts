@@ -30,7 +30,7 @@ import { isColdEmail } from "@/utils/cold-email/is-cold-email";
 import { createScopedLogger } from "@/utils/logger";
 
 // Run with:
-// pnpm test match-rules.test.ts
+// bun test match-rules.test.ts
 
 const logger = createScopedLogger("test");
 

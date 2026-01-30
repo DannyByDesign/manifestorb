@@ -7,7 +7,7 @@ This package is used to send transactional emails to users.
 To run:
 
 ```bash
-pnpm dev
+bun dev
 ```
 
 Then visit http://localhost:3010/ to view email previews.

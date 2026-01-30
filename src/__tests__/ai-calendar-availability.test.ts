@@ -9,7 +9,7 @@ import type { BusyPeriod } from "@/utils/calendar/availability-types";
 
 const logger = createScopedLogger("test");
 
-// Run with: pnpm test-ai calendar-availability
+// Run with: bun test-ai calendar-availability
 
 vi.mock("server-only", () => ({}));
 

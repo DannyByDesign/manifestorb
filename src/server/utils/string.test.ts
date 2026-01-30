@@ -8,7 +8,7 @@ import {
 } from "./string";
 
 // Run with:
-// pnpm test utils/string.test.ts
+// bun test utils/string.test.ts
 
 describe("string utils", () => {
   describe("truncate", () => {

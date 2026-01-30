@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { aiDiffRules } from "@/utils/ai/rule/diff-rules";
 import { getEmailAccount } from "@/__tests__/helpers";
 
-// RUN_AI_TESTS=true pnpm test-ai ai-diff-rules
+// RUN_AI_TESTS=true bun test-ai ai-diff-rules
 
 const TIMEOUT = 15_000;
 

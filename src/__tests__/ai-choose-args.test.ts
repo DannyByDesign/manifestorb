@@ -5,7 +5,7 @@ import { getEmailAccount, getAction, getRule } from "@/__tests__/helpers";
 import { ActionType } from "@/generated/prisma/enums";
 import { createScopedLogger } from "@/utils/logger";
 
-// pnpm test-ai ai-choose-args
+// bun test-ai ai-choose-args
 
 const logger = createScopedLogger("test");
 
