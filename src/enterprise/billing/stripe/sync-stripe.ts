@@ -2,8 +2,28 @@ import { after } from "next/server";
 import prisma from "@/server/db/client";
 import type { Logger } from "@/utils/logger";
 import { getStripe } from "@/enterprise/billing/stripe";
-// import { getStripeSubscriptionTier } from "@/app/(app)/premium/config";
-const getStripeSubscriptionTier = (args: any) => "FREE" as any;
+import { env } from "@/env";
+import { PremiumTier } from "@/generated/prisma/enums";
+
+export const getStripeSubscriptionTier = ({
+  priceId,
+}: {
+  priceId: string;
+}): PremiumTier | null => {
+  if (priceId === env.NEXT_PUBLIC_STRIPE_BUSINESS_MONTHLY_PRICE_ID) {
+    return PremiumTier.BUSINESS_MONTHLY;
+  }
+  if (priceId === env.NEXT_PUBLIC_STRIPE_BUSINESS_ANNUALLY_PRICE_ID) {
+    return PremiumTier.BUSINESS_ANNUALLY;
+  }
+  if (priceId === env.NEXT_PUBLIC_STRIPE_BUSINESS_PLUS_MONTHLY_PRICE_ID) {
+    return PremiumTier.BUSINESS_PLUS_MONTHLY;
+  }
+  if (priceId === env.NEXT_PUBLIC_STRIPE_BUSINESS_PLUS_ANNUALLY_PRICE_ID) {
+    return PremiumTier.BUSINESS_PLUS_ANNUALLY;
+  }
+  return null;
+};
 import { handleLoopsEvents } from "@/enterprise/billing/stripe/loops-events";
 import { syncPremiumSeats } from "@/utils/premium/server";
 import { ensureEmailAccountsWatched } from "@/server/services/email/watch-manager";

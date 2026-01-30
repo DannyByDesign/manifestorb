@@ -73,10 +73,10 @@ export const betterAuthConfig = betterAuth({
     // OAuth proxy for preview deployments (Google doesn't allow wildcard redirect URIs)
     ...(env.OAUTH_PROXY_URL || env.IS_OAUTH_PROXY_SERVER
       ? [
-          oAuthProxy({
-            productionURL: env.OAUTH_PROXY_URL || env.NEXT_PUBLIC_BASE_URL,
-          }),
-        ]
+        oAuthProxy({
+          productionURL: env.OAUTH_PROXY_URL || env.NEXT_PUBLIC_BASE_URL,
+        }),
+      ]
       : []),
     nextCookies(), // Must be last
   ],
@@ -254,15 +254,12 @@ async function handlePendingPremiumInvite({ email }: { email: string }) {
       where: { pendingInvites: { has: email } },
       select: {
         id: true,
-        lemonSqueezySubscriptionItemId: true,
+
         stripeSubscriptionId: true,
       },
     });
 
-    if (
-      premium?.lemonSqueezySubscriptionItemId ||
-      premium?.stripeSubscriptionId
-    ) {
+    if (premium?.stripeSubscriptionId) {
       const user = await prisma.user.findUnique({
         where: { email },
         select: { id: true },
@@ -512,15 +509,15 @@ export async function saveTokens({
   accountRefreshToken: string | null;
   provider: string;
 } & ( // provide one of these:
-  | {
+    | {
       providerAccountId: string;
       emailAccountId?: never;
     }
-  | {
+    | {
       emailAccountId: string;
       providerAccountId?: never;
     }
-)) {
+  )) {
   const refreshToken = tokens.refresh_token ?? accountRefreshToken;
 
   if (!refreshToken) {

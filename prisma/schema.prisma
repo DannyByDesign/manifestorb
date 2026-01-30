@@ -330,17 +330,7 @@ model Premium {
 
   pendingInvites String[]
 
-  // lemon squeezy
-  lemonSqueezyRenewsAt           DateTime?
-  lemonSqueezyCustomerId         Int?
-  lemonSqueezySubscriptionId     Int?
-  lemonSqueezySubscriptionItemId Int?
-  lemonSqueezyOrderId            Int? // lifetime purchase is an order and not a subscription
-  lemonSqueezyProductId          Int?
-  lemonSqueezyVariantId          Int?
-  lemonLicenseKey                String?
-  lemonLicenseInstanceId         String?
-  lemonSubscriptionStatus        String?
+
 
   // stripe
   stripeCustomerId         String?   @unique
@@ -856,7 +846,7 @@ model Payment {
   premium   Premium? @relation(fields: [premiumId], references: [id], onDelete: SetNull)
 
   // Payment processor information
-  processorType           ProcessorType @default(LEMON_SQUEEZY)
+  processorType           ProcessorType @default(STRIPE)
   processorId             String?       @unique // External payment ID from Stripe/Lemon Squeezy
   processorSubscriptionId String? // External subscription ID
   processorCustomerId     String? // External customer ID
@@ -1245,7 +1235,7 @@ enum ThreadTrackerType {
 }
 
 enum ProcessorType {
-  LEMON_SQUEEZY
+
   STRIPE
 }
 

@@ -25,7 +25,6 @@ export async function validateUserAndAiAccess({
           premium: {
             select: {
               tier: true,
-              lemonSqueezyRenewsAt: true,
               stripeSubscriptionStatus: true,
             },
           },
@@ -37,7 +36,6 @@ export async function validateUserAndAiAccess({
   if (!emailAccount) throw new SafeError("User not found");
 
   const isUserPremium = isPremium(
-    emailAccount.user.premium?.lemonSqueezyRenewsAt || null,
     emailAccount.user.premium?.stripeSubscriptionStatus || null,
   );
   if (!isUserPremium) throw new SafeError("Please upgrade for AI access");

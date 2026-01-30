@@ -27,12 +27,6 @@ export type AggregatePremium = {
 }
 
 export type PremiumAvgAggregateOutputType = {
-  lemonSqueezyCustomerId: number | null
-  lemonSqueezySubscriptionId: number | null
-  lemonSqueezySubscriptionItemId: number | null
-  lemonSqueezyOrderId: number | null
-  lemonSqueezyProductId: number | null
-  lemonSqueezyVariantId: number | null
   emailAccountsAccess: number | null
   unsubscribeMonth: number | null
   unsubscribeCredits: number | null
@@ -41,12 +35,6 @@ export type PremiumAvgAggregateOutputType = {
 }
 
 export type PremiumSumAggregateOutputType = {
-  lemonSqueezyCustomerId: number | null
-  lemonSqueezySubscriptionId: number | null
-  lemonSqueezySubscriptionItemId: number | null
-  lemonSqueezyOrderId: number | null
-  lemonSqueezyProductId: number | null
-  lemonSqueezyVariantId: number | null
   emailAccountsAccess: number | null
   unsubscribeMonth: number | null
   unsubscribeCredits: number | null
@@ -58,16 +46,6 @@ export type PremiumMinAggregateOutputType = {
   id: string | null
   createdAt: Date | null
   updatedAt: Date | null
-  lemonSqueezyRenewsAt: Date | null
-  lemonSqueezyCustomerId: number | null
-  lemonSqueezySubscriptionId: number | null
-  lemonSqueezySubscriptionItemId: number | null
-  lemonSqueezyOrderId: number | null
-  lemonSqueezyProductId: number | null
-  lemonSqueezyVariantId: number | null
-  lemonLicenseKey: string | null
-  lemonLicenseInstanceId: string | null
-  lemonSubscriptionStatus: string | null
   stripeCustomerId: string | null
   stripeSubscriptionId: string | null
   stripeSubscriptionItemId: string | null
@@ -91,16 +69,6 @@ export type PremiumMaxAggregateOutputType = {
   id: string | null
   createdAt: Date | null
   updatedAt: Date | null
-  lemonSqueezyRenewsAt: Date | null
-  lemonSqueezyCustomerId: number | null
-  lemonSqueezySubscriptionId: number | null
-  lemonSqueezySubscriptionItemId: number | null
-  lemonSqueezyOrderId: number | null
-  lemonSqueezyProductId: number | null
-  lemonSqueezyVariantId: number | null
-  lemonLicenseKey: string | null
-  lemonLicenseInstanceId: string | null
-  lemonSubscriptionStatus: string | null
   stripeCustomerId: string | null
   stripeSubscriptionId: string | null
   stripeSubscriptionItemId: string | null
@@ -125,16 +93,6 @@ export type PremiumCountAggregateOutputType = {
   createdAt: number
   updatedAt: number
   pendingInvites: number
-  lemonSqueezyRenewsAt: number
-  lemonSqueezyCustomerId: number
-  lemonSqueezySubscriptionId: number
-  lemonSqueezySubscriptionItemId: number
-  lemonSqueezyOrderId: number
-  lemonSqueezyProductId: number
-  lemonSqueezyVariantId: number
-  lemonLicenseKey: number
-  lemonLicenseInstanceId: number
-  lemonSubscriptionStatus: number
   stripeCustomerId: number
   stripeSubscriptionId: number
   stripeSubscriptionItemId: number
@@ -157,12 +115,6 @@ export type PremiumCountAggregateOutputType = {
 
 
 export type PremiumAvgAggregateInputType = {
-  lemonSqueezyCustomerId?: true
-  lemonSqueezySubscriptionId?: true
-  lemonSqueezySubscriptionItemId?: true
-  lemonSqueezyOrderId?: true
-  lemonSqueezyProductId?: true
-  lemonSqueezyVariantId?: true
   emailAccountsAccess?: true
   unsubscribeMonth?: true
   unsubscribeCredits?: true
@@ -171,12 +123,6 @@ export type PremiumAvgAggregateInputType = {
 }
 
 export type PremiumSumAggregateInputType = {
-  lemonSqueezyCustomerId?: true
-  lemonSqueezySubscriptionId?: true
-  lemonSqueezySubscriptionItemId?: true
-  lemonSqueezyOrderId?: true
-  lemonSqueezyProductId?: true
-  lemonSqueezyVariantId?: true
   emailAccountsAccess?: true
   unsubscribeMonth?: true
   unsubscribeCredits?: true
@@ -188,16 +134,6 @@ export type PremiumMinAggregateInputType = {
   id?: true
   createdAt?: true
   updatedAt?: true
-  lemonSqueezyRenewsAt?: true
-  lemonSqueezyCustomerId?: true
-  lemonSqueezySubscriptionId?: true
-  lemonSqueezySubscriptionItemId?: true
-  lemonSqueezyOrderId?: true
-  lemonSqueezyProductId?: true
-  lemonSqueezyVariantId?: true
-  lemonLicenseKey?: true
-  lemonLicenseInstanceId?: true
-  lemonSubscriptionStatus?: true
   stripeCustomerId?: true
   stripeSubscriptionId?: true
   stripeSubscriptionItemId?: true
@@ -221,16 +157,6 @@ export type PremiumMaxAggregateInputType = {
   id?: true
   createdAt?: true
   updatedAt?: true
-  lemonSqueezyRenewsAt?: true
-  lemonSqueezyCustomerId?: true
-  lemonSqueezySubscriptionId?: true
-  lemonSqueezySubscriptionItemId?: true
-  lemonSqueezyOrderId?: true
-  lemonSqueezyProductId?: true
-  lemonSqueezyVariantId?: true
-  lemonLicenseKey?: true
-  lemonLicenseInstanceId?: true
-  lemonSubscriptionStatus?: true
   stripeCustomerId?: true
   stripeSubscriptionId?: true
   stripeSubscriptionItemId?: true
@@ -255,16 +181,6 @@ export type PremiumCountAggregateInputType = {
   createdAt?: true
   updatedAt?: true
   pendingInvites?: true
-  lemonSqueezyRenewsAt?: true
-  lemonSqueezyCustomerId?: true
-  lemonSqueezySubscriptionId?: true
-  lemonSqueezySubscriptionItemId?: true
-  lemonSqueezyOrderId?: true
-  lemonSqueezyProductId?: true
-  lemonSqueezyVariantId?: true
-  lemonLicenseKey?: true
-  lemonLicenseInstanceId?: true
-  lemonSubscriptionStatus?: true
   stripeCustomerId?: true
   stripeSubscriptionId?: true
   stripeSubscriptionItemId?: true
@@ -376,16 +292,6 @@ export type PremiumGroupByOutputType = {
   createdAt: Date
   updatedAt: Date
   pendingInvites: string[]
-  lemonSqueezyRenewsAt: Date | null
-  lemonSqueezyCustomerId: number | null
-  lemonSqueezySubscriptionId: number | null
-  lemonSqueezySubscriptionItemId: number | null
-  lemonSqueezyOrderId: number | null
-  lemonSqueezyProductId: number | null
-  lemonSqueezyVariantId: number | null
-  lemonLicenseKey: string | null
-  lemonLicenseInstanceId: string | null
-  lemonSubscriptionStatus: string | null
   stripeCustomerId: string | null
   stripeSubscriptionId: string | null
   stripeSubscriptionItemId: string | null
@@ -433,16 +339,6 @@ export type PremiumWhereInput = {
   createdAt?: Prisma.DateTimeFilter<"Premium"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Premium"> | Date | string
   pendingInvites?: Prisma.StringNullableListFilter<"Premium">
-  lemonSqueezyRenewsAt?: Prisma.DateTimeNullableFilter<"Premium"> | Date | string | null
-  lemonSqueezyCustomerId?: Prisma.IntNullableFilter<"Premium"> | number | null
-  lemonSqueezySubscriptionId?: Prisma.IntNullableFilter<"Premium"> | number | null
-  lemonSqueezySubscriptionItemId?: Prisma.IntNullableFilter<"Premium"> | number | null
-  lemonSqueezyOrderId?: Prisma.IntNullableFilter<"Premium"> | number | null
-  lemonSqueezyProductId?: Prisma.IntNullableFilter<"Premium"> | number | null
-  lemonSqueezyVariantId?: Prisma.IntNullableFilter<"Premium"> | number | null
-  lemonLicenseKey?: Prisma.StringNullableFilter<"Premium"> | string | null
-  lemonLicenseInstanceId?: Prisma.StringNullableFilter<"Premium"> | string | null
-  lemonSubscriptionStatus?: Prisma.StringNullableFilter<"Premium"> | string | null
   stripeCustomerId?: Prisma.StringNullableFilter<"Premium"> | string | null
   stripeSubscriptionId?: Prisma.StringNullableFilter<"Premium"> | string | null
   stripeSubscriptionItemId?: Prisma.StringNullableFilter<"Premium"> | string | null
@@ -470,16 +366,6 @@ export type PremiumOrderByWithRelationInput = {
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   pendingInvites?: Prisma.SortOrder
-  lemonSqueezyRenewsAt?: Prisma.SortOrderInput | Prisma.SortOrder
-  lemonSqueezyCustomerId?: Prisma.SortOrderInput | Prisma.SortOrder
-  lemonSqueezySubscriptionId?: Prisma.SortOrderInput | Prisma.SortOrder
-  lemonSqueezySubscriptionItemId?: Prisma.SortOrderInput | Prisma.SortOrder
-  lemonSqueezyOrderId?: Prisma.SortOrderInput | Prisma.SortOrder
-  lemonSqueezyProductId?: Prisma.SortOrderInput | Prisma.SortOrder
-  lemonSqueezyVariantId?: Prisma.SortOrderInput | Prisma.SortOrder
-  lemonLicenseKey?: Prisma.SortOrderInput | Prisma.SortOrder
-  lemonLicenseInstanceId?: Prisma.SortOrderInput | Prisma.SortOrder
-  lemonSubscriptionStatus?: Prisma.SortOrderInput | Prisma.SortOrder
   stripeCustomerId?: Prisma.SortOrderInput | Prisma.SortOrder
   stripeSubscriptionId?: Prisma.SortOrderInput | Prisma.SortOrder
   stripeSubscriptionItemId?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -513,16 +399,6 @@ export type PremiumWhereUniqueInput = Prisma.AtLeast<{
   createdAt?: Prisma.DateTimeFilter<"Premium"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Premium"> | Date | string
   pendingInvites?: Prisma.StringNullableListFilter<"Premium">
-  lemonSqueezyRenewsAt?: Prisma.DateTimeNullableFilter<"Premium"> | Date | string | null
-  lemonSqueezyCustomerId?: Prisma.IntNullableFilter<"Premium"> | number | null
-  lemonSqueezySubscriptionId?: Prisma.IntNullableFilter<"Premium"> | number | null
-  lemonSqueezySubscriptionItemId?: Prisma.IntNullableFilter<"Premium"> | number | null
-  lemonSqueezyOrderId?: Prisma.IntNullableFilter<"Premium"> | number | null
-  lemonSqueezyProductId?: Prisma.IntNullableFilter<"Premium"> | number | null
-  lemonSqueezyVariantId?: Prisma.IntNullableFilter<"Premium"> | number | null
-  lemonLicenseKey?: Prisma.StringNullableFilter<"Premium"> | string | null
-  lemonLicenseInstanceId?: Prisma.StringNullableFilter<"Premium"> | string | null
-  lemonSubscriptionStatus?: Prisma.StringNullableFilter<"Premium"> | string | null
   stripePriceId?: Prisma.StringNullableFilter<"Premium"> | string | null
   stripeProductId?: Prisma.StringNullableFilter<"Premium"> | string | null
   stripeSubscriptionStatus?: Prisma.StringNullableFilter<"Premium"> | string | null
@@ -547,16 +423,6 @@ export type PremiumOrderByWithAggregationInput = {
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   pendingInvites?: Prisma.SortOrder
-  lemonSqueezyRenewsAt?: Prisma.SortOrderInput | Prisma.SortOrder
-  lemonSqueezyCustomerId?: Prisma.SortOrderInput | Prisma.SortOrder
-  lemonSqueezySubscriptionId?: Prisma.SortOrderInput | Prisma.SortOrder
-  lemonSqueezySubscriptionItemId?: Prisma.SortOrderInput | Prisma.SortOrder
-  lemonSqueezyOrderId?: Prisma.SortOrderInput | Prisma.SortOrder
-  lemonSqueezyProductId?: Prisma.SortOrderInput | Prisma.SortOrder
-  lemonSqueezyVariantId?: Prisma.SortOrderInput | Prisma.SortOrder
-  lemonLicenseKey?: Prisma.SortOrderInput | Prisma.SortOrder
-  lemonLicenseInstanceId?: Prisma.SortOrderInput | Prisma.SortOrder
-  lemonSubscriptionStatus?: Prisma.SortOrderInput | Prisma.SortOrder
   stripeCustomerId?: Prisma.SortOrderInput | Prisma.SortOrder
   stripeSubscriptionId?: Prisma.SortOrderInput | Prisma.SortOrder
   stripeSubscriptionItemId?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -589,16 +455,6 @@ export type PremiumScalarWhereWithAggregatesInput = {
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"Premium"> | Date | string
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"Premium"> | Date | string
   pendingInvites?: Prisma.StringNullableListFilter<"Premium">
-  lemonSqueezyRenewsAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Premium"> | Date | string | null
-  lemonSqueezyCustomerId?: Prisma.IntNullableWithAggregatesFilter<"Premium"> | number | null
-  lemonSqueezySubscriptionId?: Prisma.IntNullableWithAggregatesFilter<"Premium"> | number | null
-  lemonSqueezySubscriptionItemId?: Prisma.IntNullableWithAggregatesFilter<"Premium"> | number | null
-  lemonSqueezyOrderId?: Prisma.IntNullableWithAggregatesFilter<"Premium"> | number | null
-  lemonSqueezyProductId?: Prisma.IntNullableWithAggregatesFilter<"Premium"> | number | null
-  lemonSqueezyVariantId?: Prisma.IntNullableWithAggregatesFilter<"Premium"> | number | null
-  lemonLicenseKey?: Prisma.StringNullableWithAggregatesFilter<"Premium"> | string | null
-  lemonLicenseInstanceId?: Prisma.StringNullableWithAggregatesFilter<"Premium"> | string | null
-  lemonSubscriptionStatus?: Prisma.StringNullableWithAggregatesFilter<"Premium"> | string | null
   stripeCustomerId?: Prisma.StringNullableWithAggregatesFilter<"Premium"> | string | null
   stripeSubscriptionId?: Prisma.StringNullableWithAggregatesFilter<"Premium"> | string | null
   stripeSubscriptionItemId?: Prisma.StringNullableWithAggregatesFilter<"Premium"> | string | null
@@ -623,16 +479,6 @@ export type PremiumCreateInput = {
   createdAt?: Date | string
   updatedAt?: Date | string
   pendingInvites?: Prisma.PremiumCreatependingInvitesInput | string[]
-  lemonSqueezyRenewsAt?: Date | string | null
-  lemonSqueezyCustomerId?: number | null
-  lemonSqueezySubscriptionId?: number | null
-  lemonSqueezySubscriptionItemId?: number | null
-  lemonSqueezyOrderId?: number | null
-  lemonSqueezyProductId?: number | null
-  lemonSqueezyVariantId?: number | null
-  lemonLicenseKey?: string | null
-  lemonLicenseInstanceId?: string | null
-  lemonSubscriptionStatus?: string | null
   stripeCustomerId?: string | null
   stripeSubscriptionId?: string | null
   stripeSubscriptionItemId?: string | null
@@ -660,16 +506,6 @@ export type PremiumUncheckedCreateInput = {
   createdAt?: Date | string
   updatedAt?: Date | string
   pendingInvites?: Prisma.PremiumCreatependingInvitesInput | string[]
-  lemonSqueezyRenewsAt?: Date | string | null
-  lemonSqueezyCustomerId?: number | null
-  lemonSqueezySubscriptionId?: number | null
-  lemonSqueezySubscriptionItemId?: number | null
-  lemonSqueezyOrderId?: number | null
-  lemonSqueezyProductId?: number | null
-  lemonSqueezyVariantId?: number | null
-  lemonLicenseKey?: string | null
-  lemonLicenseInstanceId?: string | null
-  lemonSubscriptionStatus?: string | null
   stripeCustomerId?: string | null
   stripeSubscriptionId?: string | null
   stripeSubscriptionItemId?: string | null
@@ -697,16 +533,6 @@ export type PremiumUpdateInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   pendingInvites?: Prisma.PremiumUpdatependingInvitesInput | string[]
-  lemonSqueezyRenewsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  lemonSqueezyCustomerId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezySubscriptionId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezySubscriptionItemId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyOrderId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyProductId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyVariantId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonLicenseKey?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  lemonLicenseInstanceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  lemonSubscriptionStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionItemId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -734,16 +560,6 @@ export type PremiumUncheckedUpdateInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   pendingInvites?: Prisma.PremiumUpdatependingInvitesInput | string[]
-  lemonSqueezyRenewsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  lemonSqueezyCustomerId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezySubscriptionId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezySubscriptionItemId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyOrderId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyProductId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyVariantId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonLicenseKey?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  lemonLicenseInstanceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  lemonSubscriptionStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionItemId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -771,16 +587,6 @@ export type PremiumCreateManyInput = {
   createdAt?: Date | string
   updatedAt?: Date | string
   pendingInvites?: Prisma.PremiumCreatependingInvitesInput | string[]
-  lemonSqueezyRenewsAt?: Date | string | null
-  lemonSqueezyCustomerId?: number | null
-  lemonSqueezySubscriptionId?: number | null
-  lemonSqueezySubscriptionItemId?: number | null
-  lemonSqueezyOrderId?: number | null
-  lemonSqueezyProductId?: number | null
-  lemonSqueezyVariantId?: number | null
-  lemonLicenseKey?: string | null
-  lemonLicenseInstanceId?: string | null
-  lemonSubscriptionStatus?: string | null
   stripeCustomerId?: string | null
   stripeSubscriptionId?: string | null
   stripeSubscriptionItemId?: string | null
@@ -805,16 +611,6 @@ export type PremiumUpdateManyMutationInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   pendingInvites?: Prisma.PremiumUpdatependingInvitesInput | string[]
-  lemonSqueezyRenewsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  lemonSqueezyCustomerId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezySubscriptionId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezySubscriptionItemId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyOrderId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyProductId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyVariantId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonLicenseKey?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  lemonLicenseInstanceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  lemonSubscriptionStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionItemId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -839,16 +635,6 @@ export type PremiumUncheckedUpdateManyInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   pendingInvites?: Prisma.PremiumUpdatependingInvitesInput | string[]
-  lemonSqueezyRenewsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  lemonSqueezyCustomerId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezySubscriptionId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezySubscriptionItemId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyOrderId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyProductId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyVariantId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonLicenseKey?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  lemonLicenseInstanceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  lemonSubscriptionStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionItemId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -878,16 +664,6 @@ export type PremiumCountOrderByAggregateInput = {
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   pendingInvites?: Prisma.SortOrder
-  lemonSqueezyRenewsAt?: Prisma.SortOrder
-  lemonSqueezyCustomerId?: Prisma.SortOrder
-  lemonSqueezySubscriptionId?: Prisma.SortOrder
-  lemonSqueezySubscriptionItemId?: Prisma.SortOrder
-  lemonSqueezyOrderId?: Prisma.SortOrder
-  lemonSqueezyProductId?: Prisma.SortOrder
-  lemonSqueezyVariantId?: Prisma.SortOrder
-  lemonLicenseKey?: Prisma.SortOrder
-  lemonLicenseInstanceId?: Prisma.SortOrder
-  lemonSubscriptionStatus?: Prisma.SortOrder
   stripeCustomerId?: Prisma.SortOrder
   stripeSubscriptionId?: Prisma.SortOrder
   stripeSubscriptionItemId?: Prisma.SortOrder
@@ -908,12 +684,6 @@ export type PremiumCountOrderByAggregateInput = {
 }
 
 export type PremiumAvgOrderByAggregateInput = {
-  lemonSqueezyCustomerId?: Prisma.SortOrder
-  lemonSqueezySubscriptionId?: Prisma.SortOrder
-  lemonSqueezySubscriptionItemId?: Prisma.SortOrder
-  lemonSqueezyOrderId?: Prisma.SortOrder
-  lemonSqueezyProductId?: Prisma.SortOrder
-  lemonSqueezyVariantId?: Prisma.SortOrder
   emailAccountsAccess?: Prisma.SortOrder
   unsubscribeMonth?: Prisma.SortOrder
   unsubscribeCredits?: Prisma.SortOrder
@@ -925,16 +695,6 @@ export type PremiumMaxOrderByAggregateInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
-  lemonSqueezyRenewsAt?: Prisma.SortOrder
-  lemonSqueezyCustomerId?: Prisma.SortOrder
-  lemonSqueezySubscriptionId?: Prisma.SortOrder
-  lemonSqueezySubscriptionItemId?: Prisma.SortOrder
-  lemonSqueezyOrderId?: Prisma.SortOrder
-  lemonSqueezyProductId?: Prisma.SortOrder
-  lemonSqueezyVariantId?: Prisma.SortOrder
-  lemonLicenseKey?: Prisma.SortOrder
-  lemonLicenseInstanceId?: Prisma.SortOrder
-  lemonSubscriptionStatus?: Prisma.SortOrder
   stripeCustomerId?: Prisma.SortOrder
   stripeSubscriptionId?: Prisma.SortOrder
   stripeSubscriptionItemId?: Prisma.SortOrder
@@ -958,16 +718,6 @@ export type PremiumMinOrderByAggregateInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
-  lemonSqueezyRenewsAt?: Prisma.SortOrder
-  lemonSqueezyCustomerId?: Prisma.SortOrder
-  lemonSqueezySubscriptionId?: Prisma.SortOrder
-  lemonSqueezySubscriptionItemId?: Prisma.SortOrder
-  lemonSqueezyOrderId?: Prisma.SortOrder
-  lemonSqueezyProductId?: Prisma.SortOrder
-  lemonSqueezyVariantId?: Prisma.SortOrder
-  lemonLicenseKey?: Prisma.SortOrder
-  lemonLicenseInstanceId?: Prisma.SortOrder
-  lemonSubscriptionStatus?: Prisma.SortOrder
   stripeCustomerId?: Prisma.SortOrder
   stripeSubscriptionId?: Prisma.SortOrder
   stripeSubscriptionItemId?: Prisma.SortOrder
@@ -988,12 +738,6 @@ export type PremiumMinOrderByAggregateInput = {
 }
 
 export type PremiumSumOrderByAggregateInput = {
-  lemonSqueezyCustomerId?: Prisma.SortOrder
-  lemonSqueezySubscriptionId?: Prisma.SortOrder
-  lemonSqueezySubscriptionItemId?: Prisma.SortOrder
-  lemonSqueezyOrderId?: Prisma.SortOrder
-  lemonSqueezyProductId?: Prisma.SortOrder
-  lemonSqueezyVariantId?: Prisma.SortOrder
   emailAccountsAccess?: Prisma.SortOrder
   unsubscribeMonth?: Prisma.SortOrder
   unsubscribeCredits?: Prisma.SortOrder
@@ -1067,16 +811,6 @@ export type PremiumCreateWithoutUsersInput = {
   createdAt?: Date | string
   updatedAt?: Date | string
   pendingInvites?: Prisma.PremiumCreatependingInvitesInput | string[]
-  lemonSqueezyRenewsAt?: Date | string | null
-  lemonSqueezyCustomerId?: number | null
-  lemonSqueezySubscriptionId?: number | null
-  lemonSqueezySubscriptionItemId?: number | null
-  lemonSqueezyOrderId?: number | null
-  lemonSqueezyProductId?: number | null
-  lemonSqueezyVariantId?: number | null
-  lemonLicenseKey?: string | null
-  lemonLicenseInstanceId?: string | null
-  lemonSubscriptionStatus?: string | null
   stripeCustomerId?: string | null
   stripeSubscriptionId?: string | null
   stripeSubscriptionItemId?: string | null
@@ -1103,16 +837,6 @@ export type PremiumUncheckedCreateWithoutUsersInput = {
   createdAt?: Date | string
   updatedAt?: Date | string
   pendingInvites?: Prisma.PremiumCreatependingInvitesInput | string[]
-  lemonSqueezyRenewsAt?: Date | string | null
-  lemonSqueezyCustomerId?: number | null
-  lemonSqueezySubscriptionId?: number | null
-  lemonSqueezySubscriptionItemId?: number | null
-  lemonSqueezyOrderId?: number | null
-  lemonSqueezyProductId?: number | null
-  lemonSqueezyVariantId?: number | null
-  lemonLicenseKey?: string | null
-  lemonLicenseInstanceId?: string | null
-  lemonSubscriptionStatus?: string | null
   stripeCustomerId?: string | null
   stripeSubscriptionId?: string | null
   stripeSubscriptionItemId?: string | null
@@ -1144,16 +868,6 @@ export type PremiumCreateWithoutAdminsInput = {
   createdAt?: Date | string
   updatedAt?: Date | string
   pendingInvites?: Prisma.PremiumCreatependingInvitesInput | string[]
-  lemonSqueezyRenewsAt?: Date | string | null
-  lemonSqueezyCustomerId?: number | null
-  lemonSqueezySubscriptionId?: number | null
-  lemonSqueezySubscriptionItemId?: number | null
-  lemonSqueezyOrderId?: number | null
-  lemonSqueezyProductId?: number | null
-  lemonSqueezyVariantId?: number | null
-  lemonLicenseKey?: string | null
-  lemonLicenseInstanceId?: string | null
-  lemonSubscriptionStatus?: string | null
   stripeCustomerId?: string | null
   stripeSubscriptionId?: string | null
   stripeSubscriptionItemId?: string | null
@@ -1180,16 +894,6 @@ export type PremiumUncheckedCreateWithoutAdminsInput = {
   createdAt?: Date | string
   updatedAt?: Date | string
   pendingInvites?: Prisma.PremiumCreatependingInvitesInput | string[]
-  lemonSqueezyRenewsAt?: Date | string | null
-  lemonSqueezyCustomerId?: number | null
-  lemonSqueezySubscriptionId?: number | null
-  lemonSqueezySubscriptionItemId?: number | null
-  lemonSqueezyOrderId?: number | null
-  lemonSqueezyProductId?: number | null
-  lemonSqueezyVariantId?: number | null
-  lemonLicenseKey?: string | null
-  lemonLicenseInstanceId?: string | null
-  lemonSubscriptionStatus?: string | null
   stripeCustomerId?: string | null
   stripeSubscriptionId?: string | null
   stripeSubscriptionItemId?: string | null
@@ -1232,16 +936,6 @@ export type PremiumUpdateWithoutUsersInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   pendingInvites?: Prisma.PremiumUpdatependingInvitesInput | string[]
-  lemonSqueezyRenewsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  lemonSqueezyCustomerId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezySubscriptionId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezySubscriptionItemId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyOrderId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyProductId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyVariantId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonLicenseKey?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  lemonLicenseInstanceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  lemonSubscriptionStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionItemId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1268,16 +962,6 @@ export type PremiumUncheckedUpdateWithoutUsersInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   pendingInvites?: Prisma.PremiumUpdatependingInvitesInput | string[]
-  lemonSqueezyRenewsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  lemonSqueezyCustomerId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezySubscriptionId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezySubscriptionItemId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyOrderId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyProductId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyVariantId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonLicenseKey?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  lemonLicenseInstanceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  lemonSubscriptionStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionItemId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1315,16 +999,6 @@ export type PremiumUpdateWithoutAdminsInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   pendingInvites?: Prisma.PremiumUpdatependingInvitesInput | string[]
-  lemonSqueezyRenewsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  lemonSqueezyCustomerId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezySubscriptionId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezySubscriptionItemId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyOrderId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyProductId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyVariantId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonLicenseKey?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  lemonLicenseInstanceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  lemonSubscriptionStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionItemId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1351,16 +1025,6 @@ export type PremiumUncheckedUpdateWithoutAdminsInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   pendingInvites?: Prisma.PremiumUpdatependingInvitesInput | string[]
-  lemonSqueezyRenewsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  lemonSqueezyCustomerId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezySubscriptionId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezySubscriptionItemId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyOrderId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyProductId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyVariantId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonLicenseKey?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  lemonLicenseInstanceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  lemonSubscriptionStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionItemId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1387,16 +1051,6 @@ export type PremiumCreateWithoutPaymentsInput = {
   createdAt?: Date | string
   updatedAt?: Date | string
   pendingInvites?: Prisma.PremiumCreatependingInvitesInput | string[]
-  lemonSqueezyRenewsAt?: Date | string | null
-  lemonSqueezyCustomerId?: number | null
-  lemonSqueezySubscriptionId?: number | null
-  lemonSqueezySubscriptionItemId?: number | null
-  lemonSqueezyOrderId?: number | null
-  lemonSqueezyProductId?: number | null
-  lemonSqueezyVariantId?: number | null
-  lemonLicenseKey?: string | null
-  lemonLicenseInstanceId?: string | null
-  lemonSubscriptionStatus?: string | null
   stripeCustomerId?: string | null
   stripeSubscriptionId?: string | null
   stripeSubscriptionItemId?: string | null
@@ -1423,16 +1077,6 @@ export type PremiumUncheckedCreateWithoutPaymentsInput = {
   createdAt?: Date | string
   updatedAt?: Date | string
   pendingInvites?: Prisma.PremiumCreatependingInvitesInput | string[]
-  lemonSqueezyRenewsAt?: Date | string | null
-  lemonSqueezyCustomerId?: number | null
-  lemonSqueezySubscriptionId?: number | null
-  lemonSqueezySubscriptionItemId?: number | null
-  lemonSqueezyOrderId?: number | null
-  lemonSqueezyProductId?: number | null
-  lemonSqueezyVariantId?: number | null
-  lemonLicenseKey?: string | null
-  lemonLicenseInstanceId?: string | null
-  lemonSubscriptionStatus?: string | null
   stripeCustomerId?: string | null
   stripeSubscriptionId?: string | null
   stripeSubscriptionItemId?: string | null
@@ -1475,16 +1119,6 @@ export type PremiumUpdateWithoutPaymentsInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   pendingInvites?: Prisma.PremiumUpdatependingInvitesInput | string[]
-  lemonSqueezyRenewsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  lemonSqueezyCustomerId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezySubscriptionId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezySubscriptionItemId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyOrderId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyProductId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyVariantId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonLicenseKey?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  lemonLicenseInstanceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  lemonSubscriptionStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionItemId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1511,16 +1145,6 @@ export type PremiumUncheckedUpdateWithoutPaymentsInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   pendingInvites?: Prisma.PremiumUpdatependingInvitesInput | string[]
-  lemonSqueezyRenewsAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  lemonSqueezyCustomerId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezySubscriptionId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezySubscriptionItemId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyOrderId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyProductId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonSqueezyVariantId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  lemonLicenseKey?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  lemonLicenseInstanceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  lemonSubscriptionStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionItemId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1596,16 +1220,6 @@ export type PremiumSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs 
   createdAt?: boolean
   updatedAt?: boolean
   pendingInvites?: boolean
-  lemonSqueezyRenewsAt?: boolean
-  lemonSqueezyCustomerId?: boolean
-  lemonSqueezySubscriptionId?: boolean
-  lemonSqueezySubscriptionItemId?: boolean
-  lemonSqueezyOrderId?: boolean
-  lemonSqueezyProductId?: boolean
-  lemonSqueezyVariantId?: boolean
-  lemonLicenseKey?: boolean
-  lemonLicenseInstanceId?: boolean
-  lemonSubscriptionStatus?: boolean
   stripeCustomerId?: boolean
   stripeSubscriptionId?: boolean
   stripeSubscriptionItemId?: boolean
@@ -1634,16 +1248,6 @@ export type PremiumSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exten
   createdAt?: boolean
   updatedAt?: boolean
   pendingInvites?: boolean
-  lemonSqueezyRenewsAt?: boolean
-  lemonSqueezyCustomerId?: boolean
-  lemonSqueezySubscriptionId?: boolean
-  lemonSqueezySubscriptionItemId?: boolean
-  lemonSqueezyOrderId?: boolean
-  lemonSqueezyProductId?: boolean
-  lemonSqueezyVariantId?: boolean
-  lemonLicenseKey?: boolean
-  lemonLicenseInstanceId?: boolean
-  lemonSubscriptionStatus?: boolean
   stripeCustomerId?: boolean
   stripeSubscriptionId?: boolean
   stripeSubscriptionItemId?: boolean
@@ -1668,16 +1272,6 @@ export type PremiumSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exten
   createdAt?: boolean
   updatedAt?: boolean
   pendingInvites?: boolean
-  lemonSqueezyRenewsAt?: boolean
-  lemonSqueezyCustomerId?: boolean
-  lemonSqueezySubscriptionId?: boolean
-  lemonSqueezySubscriptionItemId?: boolean
-  lemonSqueezyOrderId?: boolean
-  lemonSqueezyProductId?: boolean
-  lemonSqueezyVariantId?: boolean
-  lemonLicenseKey?: boolean
-  lemonLicenseInstanceId?: boolean
-  lemonSubscriptionStatus?: boolean
   stripeCustomerId?: boolean
   stripeSubscriptionId?: boolean
   stripeSubscriptionItemId?: boolean
@@ -1702,16 +1296,6 @@ export type PremiumSelectScalar = {
   createdAt?: boolean
   updatedAt?: boolean
   pendingInvites?: boolean
-  lemonSqueezyRenewsAt?: boolean
-  lemonSqueezyCustomerId?: boolean
-  lemonSqueezySubscriptionId?: boolean
-  lemonSqueezySubscriptionItemId?: boolean
-  lemonSqueezyOrderId?: boolean
-  lemonSqueezyProductId?: boolean
-  lemonSqueezyVariantId?: boolean
-  lemonLicenseKey?: boolean
-  lemonLicenseInstanceId?: boolean
-  lemonSubscriptionStatus?: boolean
   stripeCustomerId?: boolean
   stripeSubscriptionId?: boolean
   stripeSubscriptionItemId?: boolean
@@ -1731,7 +1315,7 @@ export type PremiumSelectScalar = {
   aiCredits?: boolean
 }
 
-export type PremiumOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "pendingInvites" | "lemonSqueezyRenewsAt" | "lemonSqueezyCustomerId" | "lemonSqueezySubscriptionId" | "lemonSqueezySubscriptionItemId" | "lemonSqueezyOrderId" | "lemonSqueezyProductId" | "lemonSqueezyVariantId" | "lemonLicenseKey" | "lemonLicenseInstanceId" | "lemonSubscriptionStatus" | "stripeCustomerId" | "stripeSubscriptionId" | "stripeSubscriptionItemId" | "stripePriceId" | "stripeProductId" | "stripeSubscriptionStatus" | "stripeCancelAtPeriodEnd" | "stripeRenewsAt" | "stripeTrialEnd" | "stripeCanceledAt" | "stripeEndedAt" | "tier" | "emailAccountsAccess" | "unsubscribeMonth" | "unsubscribeCredits" | "aiMonth" | "aiCredits", ExtArgs["result"]["premium"]>
+export type PremiumOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "pendingInvites" | "stripeCustomerId" | "stripeSubscriptionId" | "stripeSubscriptionItemId" | "stripePriceId" | "stripeProductId" | "stripeSubscriptionStatus" | "stripeCancelAtPeriodEnd" | "stripeRenewsAt" | "stripeTrialEnd" | "stripeCanceledAt" | "stripeEndedAt" | "tier" | "emailAccountsAccess" | "unsubscribeMonth" | "unsubscribeCredits" | "aiMonth" | "aiCredits", ExtArgs["result"]["premium"]>
 export type PremiumInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   users?: boolean | Prisma.Premium$usersArgs<ExtArgs>
   admins?: boolean | Prisma.Premium$adminsArgs<ExtArgs>
@@ -1753,16 +1337,6 @@ export type $PremiumPayload<ExtArgs extends runtime.Types.Extensions.InternalArg
     createdAt: Date
     updatedAt: Date
     pendingInvites: string[]
-    lemonSqueezyRenewsAt: Date | null
-    lemonSqueezyCustomerId: number | null
-    lemonSqueezySubscriptionId: number | null
-    lemonSqueezySubscriptionItemId: number | null
-    lemonSqueezyOrderId: number | null
-    lemonSqueezyProductId: number | null
-    lemonSqueezyVariantId: number | null
-    lemonLicenseKey: string | null
-    lemonLicenseInstanceId: string | null
-    lemonSubscriptionStatus: string | null
     stripeCustomerId: string | null
     stripeSubscriptionId: string | null
     stripeSubscriptionItemId: string | null
@@ -2210,16 +1784,6 @@ export interface PremiumFieldRefs {
   readonly createdAt: Prisma.FieldRef<"Premium", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"Premium", 'DateTime'>
   readonly pendingInvites: Prisma.FieldRef<"Premium", 'String[]'>
-  readonly lemonSqueezyRenewsAt: Prisma.FieldRef<"Premium", 'DateTime'>
-  readonly lemonSqueezyCustomerId: Prisma.FieldRef<"Premium", 'Int'>
-  readonly lemonSqueezySubscriptionId: Prisma.FieldRef<"Premium", 'Int'>
-  readonly lemonSqueezySubscriptionItemId: Prisma.FieldRef<"Premium", 'Int'>
-  readonly lemonSqueezyOrderId: Prisma.FieldRef<"Premium", 'Int'>
-  readonly lemonSqueezyProductId: Prisma.FieldRef<"Premium", 'Int'>
-  readonly lemonSqueezyVariantId: Prisma.FieldRef<"Premium", 'Int'>
-  readonly lemonLicenseKey: Prisma.FieldRef<"Premium", 'String'>
-  readonly lemonLicenseInstanceId: Prisma.FieldRef<"Premium", 'String'>
-  readonly lemonSubscriptionStatus: Prisma.FieldRef<"Premium", 'String'>
   readonly stripeCustomerId: Prisma.FieldRef<"Premium", 'String'>
   readonly stripeSubscriptionId: Prisma.FieldRef<"Premium", 'String'>
   readonly stripeSubscriptionItemId: Prisma.FieldRef<"Premium", 'String'>

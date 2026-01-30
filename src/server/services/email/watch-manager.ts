@@ -10,16 +10,16 @@ import { isMicrosoftProvider } from "@/server/services/email/provider-types";
 
 export type WatchEmailAccountResult =
   | {
-      emailAccountId: string;
-      status: "success";
-      expirationDate: Date;
-    }
+    emailAccountId: string;
+    status: "success";
+    expirationDate: Date;
+  }
   | {
-      emailAccountId: string;
-      status: "error";
-      message: string;
-      errorDetails?: string;
-    };
+    emailAccountId: string;
+    status: "error";
+    message: string;
+    errorDetails?: string;
+  };
 
 export async function ensureEmailAccountsWatched({
   userIds,
@@ -60,7 +60,7 @@ async function getEmailAccountsToWatch(userIds: string[] | null) {
           premium: {
             select: {
               tier: true,
-              lemonSqueezyRenewsAt: true,
+
               stripeSubscriptionStatus: true,
             },
           },

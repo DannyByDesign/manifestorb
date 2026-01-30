@@ -21,7 +21,6 @@
         "@googleapis/drive": "^20.0.0",
         "@googleapis/gmail": "^16.1.1",
         "@googleapis/people": "^7.0.1",
-        "@lemonsqueezy/lemonsqueezy.js": "^4.0.0",
         "@microsoft/microsoft-graph-client": "^3.0.7",
         "@microsoft/microsoft-graph-types": "^2.43.1",
         "@modelcontextprotocol/sdk": "^1.25.3",
@@ -664,8 +663,6 @@
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
 
     "@juggle/resize-observer": ["@juggle/resize-observer@3.4.0", "", {}, "sha512-dfLbk+PwWvFzSxwk3n5ySL0hfBog779o8h68wK/7/APo/7cgyWp5jcXockbxdk5kFRkbeXWm4Fbi9FrdN381sA=="],
-
-    "@lemonsqueezy/lemonsqueezy.js": ["@lemonsqueezy/lemonsqueezy.js@4.0.0", "", {}, "sha512-xcY1/lDrY7CpIF98WKiL1ElsfoVhddP7FT0fw7ssOzrFqQsr44HgolKrQZxd9SywsCPn12OTOUieqDIokI3mFg=="],
 
     "@mediapipe/tasks-vision": ["@mediapipe/tasks-vision@0.10.17", "", {}, "sha512-CZWV/q6TTe8ta61cZXjfnnHsfWIdFhms03M9T7Cnd5y2mdpylJM0rF1qRq+wsQVRMLz1OYPVEBU9ph2Bx8cxrg=="],
 

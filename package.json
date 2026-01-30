@@ -28,7 +28,6 @@
     "@googleapis/drive": "^20.0.0",
     "@googleapis/gmail": "^16.1.1",
     "@googleapis/people": "^7.0.1",
-    "@lemonsqueezy/lemonsqueezy.js": "^4.0.0",
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "@microsoft/microsoft-graph-types": "^2.43.1",
     "@modelcontextprotocol/sdk": "^1.25.3",

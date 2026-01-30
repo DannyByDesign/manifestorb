@@ -274,18 +274,15 @@ export async function trackSwitchedPremiumPlan(
 export async function trackPaymentSuccess({
   email,
   totalPaidUSD,
-  lemonSqueezyId,
-  lemonSqueezyType,
+
 }: {
   email: string;
   totalPaidUSD: number | undefined;
-  lemonSqueezyId: string;
-  lemonSqueezyType: string;
+
 }) {
   return posthogCaptureEvent(email, "Payment success", {
     totalPaidUSD,
-    lemonSqueezyId,
-    lemonSqueezyType,
+
   });
 }
 

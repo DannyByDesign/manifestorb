@@ -45,7 +45,7 @@ export async function getWebhookEmailAccount(
           aiApiKey: true,
           premium: {
             select: {
-              lemonSqueezyRenewsAt: true,
+
               stripeSubscriptionStatus: true,
               tier: true,
             },
@@ -75,8 +75,8 @@ export async function getWebhookEmailAccount(
     const [foundAccount] = await prisma.$queryRaw<Array<{ id: string }>>`
       SELECT id FROM "EmailAccount"
       WHERE "watchEmailsSubscriptionHistory" @> ${JSON.stringify([
-        { subscriptionId: where.watchEmailsSubscriptionId },
-      ])}::jsonb
+      { subscriptionId: where.watchEmailsSubscriptionId },
+    ])}::jsonb
       LIMIT 1
     `;
 
@@ -134,9 +134,9 @@ export async function validateWebhookAccount(
   const premium = env.NEXT_PUBLIC_BYPASS_PREMIUM_CHECKS
     ? { tier: "BUSINESS_PLUS_ANNUALLY" as const }
     : isPremium(
-          emailAccount.user.premium?.lemonSqueezyRenewsAt || null,
-          emailAccount.user.premium?.stripeSubscriptionStatus || null,
-        )
+
+      emailAccount.user.premium?.stripeSubscriptionStatus || null,
+    )
       ? emailAccount.user.premium
       : undefined;
 
@@ -148,7 +148,7 @@ export async function validateWebhookAccount(
 
   if (!premium) {
     logger.info("Account not premium", {
-      lemonSqueezyRenewsAt: emailAccount.user.premium?.lemonSqueezyRenewsAt,
+
       stripeSubscriptionStatus:
         emailAccount.user.premium?.stripeSubscriptionStatus,
     });

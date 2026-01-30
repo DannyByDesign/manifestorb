@@ -254,15 +254,12 @@ async function handlePendingPremiumInvite({ email }: { email: string }) {
       where: { pendingInvites: { has: email } },
       select: {
         id: true,
-        lemonSqueezySubscriptionItemId: true,
+
         stripeSubscriptionId: true,
       },
     });
 
-    if (
-      premium?.lemonSqueezySubscriptionItemId ||
-      premium?.stripeSubscriptionId
-    ) {
+    if (premium?.stripeSubscriptionId) {
       const user = await prisma.user.findUnique({
         where: { email },
         select: { id: true },

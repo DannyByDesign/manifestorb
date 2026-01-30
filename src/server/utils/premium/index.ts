@@ -8,43 +8,33 @@ function isPremiumStripe(stripeSubscriptionStatus: string | null): boolean {
   return activeStatuses.includes(stripeSubscriptionStatus);
 }
 
-function isPremiumLemonSqueezy(lemonSqueezyRenewsAt: Date | null): boolean {
-  if (!lemonSqueezyRenewsAt) return false;
-  return new Date(lemonSqueezyRenewsAt) > new Date();
-}
+
 
 export const isPremium = (
-  lemonSqueezyRenewsAt: Date | null,
   stripeSubscriptionStatus: string | null,
 ): boolean => {
   if (env.NEXT_PUBLIC_BYPASS_PREMIUM_CHECKS) return true;
 
-  return (
-    isPremiumStripe(stripeSubscriptionStatus) ||
-    isPremiumLemonSqueezy(lemonSqueezyRenewsAt)
-  );
+  return isPremiumStripe(stripeSubscriptionStatus);
 };
 
 export const isActivePremium = (
   premium: Pick<
     Premium,
-    "lemonSqueezyRenewsAt" | "stripeSubscriptionStatus"
+    "stripeSubscriptionStatus"
   > | null,
 ): boolean => {
   if (env.NEXT_PUBLIC_BYPASS_PREMIUM_CHECKS) return true;
 
   if (!premium) return false;
 
-  return (
-    premium.stripeSubscriptionStatus === "active" ||
-    isPremiumLemonSqueezy(premium.lemonSqueezyRenewsAt)
-  );
+  return premium.stripeSubscriptionStatus === "active";
 };
 
 export const getUserTier = (
   premium?: Pick<
     Premium,
-    "tier" | "lemonSqueezyRenewsAt" | "stripeSubscriptionStatus"
+    "tier" | "stripeSubscriptionStatus"
   > | null,
 ) => {
   if (env.NEXT_PUBLIC_BYPASS_PREMIUM_CHECKS) {
@@ -53,10 +43,7 @@ export const getUserTier = (
 
   if (!premium) return null;
 
-  const isActive = isPremium(
-    premium.lemonSqueezyRenewsAt || null,
-    premium.stripeSubscriptionStatus || null,
-  );
+  const isActive = isPremium(premium.stripeSubscriptionStatus || null);
 
   if (!isActive) return null;
 
@@ -148,10 +135,7 @@ export function getPremiumUserFilter() {
   return {
     user: {
       premium: {
-        OR: [
-          { lemonSqueezyRenewsAt: { gt: new Date() } },
-          { stripeSubscriptionStatus: { in: ["active", "trialing"] } },
-        ],
+        stripeSubscriptionStatus: { in: ["active", "trialing"] },
       },
     },
   };

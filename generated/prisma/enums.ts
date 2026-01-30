@@ -138,7 +138,6 @@ export type ThreadTrackerType = (typeof ThreadTrackerType)[keyof typeof ThreadTr
 
 
 export const ProcessorType = {
-  LEMON_SQUEEZY: 'LEMON_SQUEEZY',
   STRIPE: 'STRIPE'
 } as const
 
