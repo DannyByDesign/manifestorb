@@ -1,5 +1,5 @@
 import { env } from "@/env";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import type { Logger } from "@/utils/logger";
 import {
   getCalendarOAuth2Client,

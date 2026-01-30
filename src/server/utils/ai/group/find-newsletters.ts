@@ -1,6 +1,6 @@
 import type { gmail_v1 } from "@googleapis/gmail";
 import uniq from "lodash/uniq";
-import { queryBatchMessagesPages } from "@/utils/gmail/message";
+import { queryBatchMessagesPages } from "@/server/integrations/google/message";
 
 export const newsletterSenders = [
   "substack.com",

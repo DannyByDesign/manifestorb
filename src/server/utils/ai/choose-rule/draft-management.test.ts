@@ -5,15 +5,15 @@ import {
   stripQuotedContent,
   isDraftUnmodified,
 } from "@/utils/ai/choose-rule/draft-management";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { ActionType } from "@/generated/prisma/enums";
 import { createScopedLogger } from "@/utils/logger";
 import type { ParsedMessage } from "@/utils/types";
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/services/email/types";
 
 vi.mock("server-only", () => ({}));
 
-vi.mock("@/utils/prisma", () => ({
+vi.mock("@/server/db/client", () => ({
   default: {
     executedAction: {
       findFirst: vi.fn(),

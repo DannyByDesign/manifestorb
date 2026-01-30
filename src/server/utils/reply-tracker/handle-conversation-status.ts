@@ -1,14 +1,14 @@
 import type { EmailAccountWithAI } from "@/utils/llms/types";
 import type { ModelType } from "@/utils/llms/model";
 import type { ParsedMessage, RuleWithActions } from "@/utils/types";
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/services/email/types";
 import { aiDetermineThreadStatus } from "@/utils/ai/reply/determine-thread-status";
 import { getEmailForLLM } from "@/utils/get-email-from-message";
 import { createScopedLogger } from "@/utils/logger";
 import { SystemType, ThreadTrackerType } from "@/generated/prisma/enums";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { sortByInternalDate } from "@/utils/date";
-import { withPrismaRetry } from "@/utils/prisma-retry";
+import { withPrismaRetry } from "@/server/db/client-retry";
 
 const logger = createScopedLogger("conversation-status-handler");
 

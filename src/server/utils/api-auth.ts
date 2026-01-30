@@ -1,8 +1,8 @@
 import type { NextRequest } from "next/server";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { hashApiKey } from "@/utils/api-key";
 import { SafeError } from "@/utils/error";
-import { createEmailProvider } from "@/utils/email/provider";
+import { createEmailProvider } from "@/server/services/email/provider";
 import type { RequestWithLogger } from "@/utils/middleware";
 
 export const API_KEY_HEADER = "API-Key";

@@ -8,7 +8,7 @@ import {
 import type { ParsedMessage } from "@/utils/types";
 import type { Logger } from "@/utils/logger";
 import { type EmailForAction } from "@/utils/ai/types";
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/services/email/types";
 
 // Mocking types
 export type RuleWithActions = any;

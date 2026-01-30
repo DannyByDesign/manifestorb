@@ -14,7 +14,7 @@ import { trackDubSignUp } from "@/server/utils/dub";
 import {
   isGoogleProvider,
   isMicrosoftProvider,
-} from "@/utils/email/provider-types";
+} from "@/server/services/email/provider-types";
 import { encryptToken } from "@/utils/encryption";
 import { captureException } from "@/server/utils/error";
 import { getContactsClient as getGoogleContactsClient } from "@/server/integrations/google/client";

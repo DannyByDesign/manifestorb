@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/utils/auth";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 
 export async function checkUserOwnsEmailAccount({
   emailAccountId,

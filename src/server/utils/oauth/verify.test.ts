@@ -5,7 +5,7 @@ import prisma from "@/utils/__mocks__/prisma";
 import { createScopedLogger } from "@/utils/logger";
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/utils/prisma");
+vi.mock("@/server/db/client");
 vi.mock("@/utils/auth", () => ({
   auth: vi.fn(),
 }));

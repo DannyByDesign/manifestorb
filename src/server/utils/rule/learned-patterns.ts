@@ -1,7 +1,7 @@
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import type { Logger } from "@/utils/logger";
 import { GroupItemType, type GroupItemSource } from "@/generated/prisma/enums";
-import { isDuplicateError } from "@/utils/prisma-helpers";
+import { isDuplicateError } from "@/server/db/client-helpers";
 
 /**
  * Saves a learned pattern for a rule

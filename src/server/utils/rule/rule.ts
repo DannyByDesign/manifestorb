@@ -1,5 +1,5 @@
 import type { CreateOrUpdateRuleSchema } from "@/utils/ai/rule/create-rule-schema";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import type { Logger } from "@/utils/logger";
 import { ActionType } from "@/generated/prisma/enums";
 import type { SystemType } from "@/generated/prisma/enums";
@@ -7,8 +7,8 @@ import type { Prisma, Rule } from "@/generated/prisma/client";
 import { getActionRiskLevel, type RiskAction } from "@/utils/risk";
 
 import { createRuleHistory } from "@/utils/rule/rule-history";
-import { isMicrosoftProvider } from "@/utils/email/provider-types";
-import { createEmailProvider } from "@/utils/email/provider";
+import { isMicrosoftProvider } from "@/server/services/email/provider-types";
+import { createEmailProvider } from "@/server/services/email/provider";
 import { resolveLabelNameAndId } from "@/utils/label/resolve-label";
 
 export function partialUpdateRule({

@@ -2,12 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { saveLearnedPattern, saveLearnedPatterns } from "./learned-patterns";
 import prisma from "@/utils/__mocks__/prisma";
 import { GroupItemType, GroupItemSource } from "@/generated/prisma/enums";
-import { isDuplicateError } from "@/utils/prisma-helpers";
+import { isDuplicateError } from "@/server/db/client-helpers";
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/utils/prisma");
+vi.mock("@/server/db/client");
 
-vi.mock("@/utils/prisma-helpers", () => ({
+vi.mock("@/server/db/client-helpers", () => ({
   isDuplicateError: vi.fn(),
 }));
 

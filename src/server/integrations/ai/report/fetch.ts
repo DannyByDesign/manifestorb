@@ -2,8 +2,8 @@ import { createScopedLogger } from "@/server/utils/logger";
 import type { ParsedMessage } from "@/server/types";
 import type { EmailAccountWithAI } from "@/server/utils/llms/types";
 import { sleep } from "@/server/utils/sleep";
-import { createEmailProvider } from "@/utils/email/provider";
-import type { EmailProvider } from "@/utils/email/types";
+import { createEmailProvider } from "@/server/services/email/provider";
+import type { EmailProvider } from "@/server/services/email/types";
 
 const logger = createScopedLogger("email-report-fetch");
 

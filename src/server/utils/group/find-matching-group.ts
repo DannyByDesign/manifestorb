@@ -1,4 +1,4 @@
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { generalizeSubject } from "@/utils/string";
 import type { ParsedMessage } from "@/utils/types";
 import { GroupItemType } from "@/generated/prisma/enums";

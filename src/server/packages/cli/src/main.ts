@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, resolve } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
-import { program } from "commander";
+import program from "commander";
 import * as p from "@clack/prompts";
 import { generateSecret, generateEnvFile, type EnvConfig } from "./utils";
 import { runGoogleSetup } from "./setup-google";
@@ -211,7 +211,7 @@ async function runSetup(options: { name?: string }) {
     if (!checkDocker()) {
       p.log.error(
         "Docker is not installed or not running.\n" +
-          "Please install Docker Desktop: https://www.docker.com/products/docker-desktop/",
+        "Please install Docker Desktop: https://www.docker.com/products/docker-desktop/",
       );
       process.exit(1);
     }
@@ -219,7 +219,7 @@ async function runSetup(options: { name?: string }) {
     if (!checkDockerCompose()) {
       p.log.error(
         "Docker Compose is not available.\n" +
-          "Please update Docker Desktop or install Docker Compose.",
+        "Please update Docker Desktop or install Docker Compose.",
       );
       process.exit(1);
     }
@@ -631,7 +631,7 @@ Full guide: https://docs.getamodel.com/self-hosting/microsoft-oauth`,
       spinner.stop("Failed to fetch docker-compose.yml");
       p.log.error(
         "Could not fetch docker-compose.yml from GitHub.\n" +
-          "Please check your internet connection and try again.",
+        "Please check your internet connection and try again.",
       );
       process.exit(1);
     }
@@ -649,7 +649,7 @@ Full guide: https://docs.getamodel.com/self-hosting/microsoft-oauth`,
     spinner.stop("Failed to fetch .env template");
     p.log.error(
       "Could not fetch .env.example template.\n" +
-        "Please check your internet connection and try again.",
+      "Please check your internet connection and try again.",
     );
     process.exit(1);
   }
@@ -692,7 +692,7 @@ Full guide: https://docs.getamodel.com/self-hosting/microsoft-oauth`,
   if (!useDockerInfra) {
     p.log.warn(
       "You selected external infrastructure.\n" +
-        "Please update DATABASE_URL and UPSTASH_REDIS_URL in your .env file.",
+      "Please update DATABASE_URL and UPSTASH_REDIS_URL in your .env file.",
     );
   }
 
@@ -747,7 +747,7 @@ async function runStart(options: { detach: boolean }) {
   if (!existsSync(STANDALONE_COMPOSE_FILE)) {
     p.log.error(
       "Amodel is not configured for production mode.\n" +
-        "Run 'amodel setup' and choose Production (Docker) first.",
+      "Run 'amodel setup' and choose Production (Docker) first.",
     );
     process.exit(1);
   }
@@ -791,8 +791,8 @@ async function runStart(options: { detach: boolean }) {
       spinner.stop("Failed to start");
       p.log.error(
         upResult.error?.message ||
-          upResult.stderr?.toString() ||
-          `Unknown error (status: ${upResult.status})`,
+        upResult.stderr?.toString() ||
+        `Unknown error (status: ${upResult.status})`,
       );
       process.exit(1);
     }

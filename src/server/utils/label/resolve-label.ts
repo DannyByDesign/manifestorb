@@ -1,4 +1,4 @@
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/services/email/types";
 import { createScopedLogger } from "@/utils/logger";
 import { hasVariables } from "@/utils/template";
 

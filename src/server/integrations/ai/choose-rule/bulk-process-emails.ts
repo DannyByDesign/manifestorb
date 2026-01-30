@@ -1,5 +1,5 @@
 import prisma from "@/server/db/client";
-import { createEmailProvider } from "@/utils/email/provider";
+import { createEmailProvider } from "@/server/services/email/provider";
 import { runRules } from "@/server/integrations/ai/choose-rule/run-rules";
 import type { Logger } from "@/server/utils/logger";
 import type { EmailAccountWithAI } from "@/server/utils/llms/types";

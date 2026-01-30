@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { gmail_v1 } from "@googleapis/gmail";
 import { createGenerateText } from "@/utils/llms";
 import type { Group } from "@/generated/prisma/client";
-import { queryBatchMessages } from "@/utils/gmail/message";
+import { getMessage, queryBatchMessages } from "@/server/integrations/google/message";
 import type { EmailAccountWithAI } from "@/utils/llms/types";
 import { createScopedLogger } from "@/utils/logger";
 import { getModel } from "@/utils/llms/model";

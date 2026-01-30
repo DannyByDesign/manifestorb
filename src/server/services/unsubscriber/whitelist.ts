@@ -3,8 +3,8 @@
 import { env } from "@/env";
 import { GmailLabel } from "@/server/integrations/google/label";
 import { actionClient } from "@/server/services/unsubscriber/safe-action";
-import { isGoogleProvider } from "@/utils/email/provider-types";
-import { createEmailProvider } from "@/utils/email/provider";
+import { isGoogleProvider } from "@/server/services/email/provider-types";
+import { createEmailProvider } from "@/server/services/email/provider";
 
 export const whitelistAmodelAction = actionClient
   .metadata({ name: "whitelistAmodel" })

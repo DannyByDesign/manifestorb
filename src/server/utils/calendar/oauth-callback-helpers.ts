@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { CALENDAR_STATE_COOKIE_NAME } from "@/utils/calendar/constants";
 import { parseOAuthState } from "@/utils/oauth/state";
 import { prefixPath } from "@/utils/path";
@@ -76,7 +76,7 @@ export function parseAndValidateCalendarState(
   const validationResult = calendarOAuthStateSchema.safeParse(rawState);
   if (!validationResult.success) {
     logger.error("State validation failed", {
-      errors: validationResult.error.errors,
+      errors: validationResult.error.issues,
     });
     redirectUrl.searchParams.set("error", "invalid_state_format");
     throw new RedirectError(redirectUrl, responseHeaders);

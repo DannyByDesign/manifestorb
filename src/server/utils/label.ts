@@ -1,4 +1,4 @@
-import { messageVisibility } from "@/utils/gmail/constants";
+import { messageVisibility } from "@/server/integrations/google/constants";
 import { getRuleLabel } from "@/utils/rule/consts";
 import { SystemType } from "@/generated/prisma/enums";
 

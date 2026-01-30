@@ -1,4 +1,4 @@
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { transferPremiumDuringMerge } from "@/utils/user/merge-premium";
 import type { Logger } from "@/utils/logger";
 

@@ -5,7 +5,7 @@ import { createScopedLogger } from "@/utils/logger";
 import { createMockEmailProvider } from "@/__tests__/mocks/email-provider.mock";
 import { subDays } from "date-fns/subDays";
 
-vi.mock("@/utils/prisma");
+vi.mock("@/server/db/client");
 
 vi.mock("./labels", () => ({
   hasFollowUpLabel: vi.fn(),

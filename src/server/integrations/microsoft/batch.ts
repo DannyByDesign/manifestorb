@@ -4,7 +4,7 @@ import { escapeODataString } from "@/server/integrations/microsoft/odata-escape"
 import {
   publishBulkActionToTinybird,
   updateEmailMessagesForSender,
-} from "@/utils/email/bulk-action-tracking";
+} from "@/server/services/email/bulk-action-tracking";
 
 const GRAPH_JSON_BATCH_LIMIT = 20; // Microsoft Graph JSON batching limit
 

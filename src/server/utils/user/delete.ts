@@ -1,12 +1,12 @@
 import { deleteContact as deleteLoopsContact } from "@amodel/loops";
 import { deleteContact as deleteResendContact } from "@amodel/resend";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { deleteTinybirdAiCalls } from "@amodel/tinybird-ai-analytics";
 import { deletePosthogUser, trackUserDeleted } from "@/utils/posthog";
 import { captureException } from "@/utils/error";
-import { unwatchEmails } from "@/utils/email/watch-manager";
-import { createEmailProvider } from "@/utils/email/provider";
-import type { EmailProvider } from "@/utils/email/types";
+import { unwatchEmails } from "@/server/services/email/watch-manager";
+import { createEmailProvider } from "@/server/services/email/provider";
+import type { EmailProvider } from "@/server/services/email/types";
 import type { Logger } from "@/utils/logger";
 import { sleep } from "@/utils/sleep";
 import { clearCachedResearchForUser } from "@/utils/redis/research-cache";

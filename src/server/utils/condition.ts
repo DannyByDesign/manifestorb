@@ -4,7 +4,7 @@ import { ConditionType, type CoreConditionType } from "@/utils/config";
 import type {
   CreateRuleBody,
   ZodCondition,
-} from "@/utils/actions/rule.validation";
+} from "@/server/services/unsubscriber/rule.validation";
 import type { Logger } from "@/utils/logger";
 
 export type RuleConditions = Partial<

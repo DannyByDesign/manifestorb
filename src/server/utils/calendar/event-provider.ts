@@ -1,9 +1,9 @@
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import type { Logger } from "@/utils/logger";
 import type { CalendarEventProvider } from "@/utils/calendar/event-types";
 import { GoogleCalendarEventProvider } from "@/utils/calendar/providers/google-events";
 import { MicrosoftCalendarEventProvider } from "@/utils/calendar/providers/microsoft-events";
-import { isGoogleProvider } from "@/utils/email/provider-types";
+import { isGoogleProvider } from "@/server/services/email/provider-types";
 
 /**
  * Create calendar event providers for all connected calendars.

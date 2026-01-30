@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { OutlookSubscriptionManager } from "@/server/integrations/microsoft/subscription-manager";
 import prisma from "@/server/db/client";
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/services/email/types";
 import type { SubscriptionHistoryEntry } from "@/server/integrations/microsoft/subscription-history";
 import { createScopedLogger } from "@/server/utils/logger";
 

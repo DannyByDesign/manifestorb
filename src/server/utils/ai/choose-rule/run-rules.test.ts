@@ -19,7 +19,7 @@ import { createScopedLogger } from "@/utils/logger";
 
 const logger = createScopedLogger("test");
 
-vi.mock("@/utils/prisma");
+vi.mock("@/server/db/client");
 vi.mock("server-only", () => ({}));
 vi.mock("next/server", () => ({ after: vi.fn((fn) => fn()) }));
 vi.mock("@/utils/ai/choose-rule/match-rules", () => ({

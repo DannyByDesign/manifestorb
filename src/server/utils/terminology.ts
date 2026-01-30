@@ -1,4 +1,4 @@
-import { isMicrosoftProvider } from "@/utils/email/provider-types";
+import { isMicrosoftProvider } from "@/server/services/email/provider-types";
 
 interface EmailTerminology {
   label: {

@@ -1,6 +1,6 @@
 import { render } from "@react-email/render";
 import { env } from "@/env";
-import { createEmailProvider } from "@/utils/email/provider";
+import { createEmailProvider } from "@/server/services/email/provider";
 import { sendMeetingBriefingEmail } from "@amodel/resend";
 import MeetingBriefingEmail, {
   generateMeetingBriefingSubject,

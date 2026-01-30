@@ -1,8 +1,8 @@
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { ActionType } from "@/generated/prisma/enums";
 import type { ExecutedRule } from "@/generated/prisma/client";
 import type { Logger } from "@/utils/logger";
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/services/email/types";
 import { convertEmailHtmlToText } from "@/utils/mail";
 import type { ParsedMessage } from "@/utils/types";
 

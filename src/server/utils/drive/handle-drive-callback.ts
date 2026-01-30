@@ -16,7 +16,7 @@ import {
   clearOAuthCode,
 } from "@/utils/redis/oauth-code";
 import { DRIVE_STATE_COOKIE_NAME } from "./constants";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { parseOAuthState } from "@/utils/oauth/state";
 import { prefixPath } from "@/utils/path";
 
@@ -235,7 +235,7 @@ function parseAndValidateDriveState(
   const validationResult = driveOAuthStateSchema.safeParse(rawState);
   if (!validationResult.success) {
     logger.error("State validation failed", {
-      errors: validationResult.error.errors,
+      errors: validationResult.error.issues,
     });
     redirectUrl.searchParams.set("error", "invalid_state_format");
     throw new RedirectError(redirectUrl, responseHeaders);

@@ -6,7 +6,7 @@ import { getMockAccountWithEmailAccount } from "@/__tests__/helpers";
 
 const logger = createScopedLogger("test");
 
-vi.mock("@/utils/prisma");
+vi.mock("@/server/db/client");
 
 describe("cleanupOrphanedAccount", () => {
   beforeEach(() => {

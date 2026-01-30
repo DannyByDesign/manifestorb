@@ -1,6 +1,6 @@
 import { listMcpTools } from "@/utils/mcp/list-tools";
 import { getIntegration, type IntegrationKey } from "@/utils/mcp/integrations";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import type { Logger } from "@/utils/logger";
 import type { Prisma } from "@/generated/prisma/client";
 

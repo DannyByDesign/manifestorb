@@ -1,6 +1,6 @@
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/services/email/types";
 import type { Logger } from "@/utils/logger";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 
 /**
  * Labels a message and automatically updates the database if a stale label ID was detected and fixed.

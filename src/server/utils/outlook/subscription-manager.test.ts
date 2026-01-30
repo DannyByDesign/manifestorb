@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { OutlookSubscriptionManager } from "@/utils/outlook/subscription-manager";
-import prisma from "@/utils/prisma";
-import type { EmailProvider } from "@/utils/email/types";
+import prisma from "@/server/db/client";
+import type { EmailProvider } from "@/server/services/email/types";
 import type { SubscriptionHistoryEntry } from "@/utils/outlook/subscription-history";
 import { createScopedLogger } from "@/utils/logger";
 
@@ -9,7 +9,7 @@ const logger = createScopedLogger("test");
 
 // Mock dependencies
 vi.mock("server-only", () => ({}));
-vi.mock("@/utils/prisma", () => ({
+vi.mock("@/server/db/client", () => ({
   default: {
     emailAccount: {
       findUnique: vi.fn(),

@@ -1,9 +1,9 @@
 import { ActionType } from "@/generated/prisma/enums";
 import type { ParsedMessage } from "@/utils/types";
-import prisma from "@/utils/prisma";
-import { withPrismaRetry } from "@/utils/prisma-retry";
+import prisma from "@/server/db/client";
+import { withPrismaRetry } from "@/server/db/client-retry";
 import { calculateSimilarity } from "@/utils/similarity-score";
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/services/email/types";
 import type { Logger } from "@/utils/logger";
 
 /**

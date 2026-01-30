@@ -1,6 +1,6 @@
 import { subMonths } from "date-fns/subMonths";
-import { createEmailProvider } from "@/utils/email/provider";
-import type { EmailProvider, EmailThread } from "@/utils/email/types";
+import { createEmailProvider } from "@/server/services/email/provider";
+import type { EmailProvider, EmailThread } from "@/server/services/email/types";
 import type { Logger } from "@/utils/logger";
 import { createCalendarEventProviders } from "@/utils/calendar/event-provider";
 import type {

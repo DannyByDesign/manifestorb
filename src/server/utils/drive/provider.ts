@@ -2,7 +2,7 @@ import type { DriveConnection } from "@/generated/prisma/client";
 import {
   isGoogleProvider,
   isMicrosoftProvider,
-} from "@/utils/email/provider-types";
+} from "@/server/services/email/provider-types";
 import type { DriveProvider } from "@/utils/drive/types";
 import type { Logger } from "@/utils/logger";
 import { OneDriveProvider } from "@/utils/drive/providers/microsoft";
@@ -10,7 +10,7 @@ import { GoogleDriveProvider } from "@/utils/drive/providers/google";
 import { MICROSOFT_DRIVE_SCOPES } from "@/utils/drive/scopes";
 import { SafeError } from "@/utils/error";
 import { env } from "@/env";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 
 type OAuthTokenResponse = {
   access_token?: string;

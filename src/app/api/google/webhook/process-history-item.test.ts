@@ -8,7 +8,7 @@ import { markMessageAsProcessing } from "@/utils/redis/message-processing";
 import { GmailLabel } from "@/server/integrations/google/label";
 import { processAssistantEmail } from "@/utils/assistant/process-assistant-email";
 import { getEmailAccount } from "@/__tests__/helpers";
-import { createEmailProvider } from "@/utils/email/provider";
+import { createEmailProvider } from "@/server/services/email/provider";
 import { createScopedLogger } from "@/server/utils/logger";
 
 const logger = createScopedLogger("test");

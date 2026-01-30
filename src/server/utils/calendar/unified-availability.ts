@@ -1,11 +1,11 @@
 import { TZDate } from "@date-fns/tz";
 import { startOfDay, endOfDay, format } from "date-fns";
 import type { Logger } from "@/utils/logger";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import type { BusyPeriod } from "./availability-types";
 import { createGoogleAvailabilityProvider } from "./providers/google-availability";
 import { createMicrosoftAvailabilityProvider } from "./providers/microsoft-availability";
-import { isGoogleProvider } from "@/utils/email/provider-types";
+import { isGoogleProvider } from "@/server/services/email/provider-types";
 
 /**
  * Fetch calendar availability across all connected calendars (Google and Microsoft)

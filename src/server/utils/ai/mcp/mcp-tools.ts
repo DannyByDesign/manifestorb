@@ -1,6 +1,6 @@
 import { experimental_createMCPClient } from "@ai-sdk/mcp";
 import { getIntegration } from "@/utils/mcp/integrations";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { createScopedLogger } from "@/utils/logger";
 import { getAuthToken } from "@/utils/mcp/oauth";
 import { createMcpTransport } from "@/utils/mcp/transport";

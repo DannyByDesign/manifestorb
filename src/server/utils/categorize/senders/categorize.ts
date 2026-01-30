@@ -1,4 +1,4 @@
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { aiCategorizeSenders } from "@/utils/ai/categorize-sender/ai-categorize-senders";
 import { defaultCategory, type SenderCategory } from "@/utils/categories";
 import { isNewsletterSender } from "@/utils/ai/group/find-newsletters";
@@ -10,7 +10,7 @@ import type { EmailAccountWithAI } from "@/utils/llms/types";
 import { createScopedLogger } from "@/utils/logger";
 import { extractEmailAddress } from "@/utils/email";
 import { SafeError } from "@/utils/error";
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/services/email/types";
 
 const logger = createScopedLogger("categorize/senders");
 

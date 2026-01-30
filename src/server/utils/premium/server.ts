@@ -1,11 +1,11 @@
 import sumBy from "lodash/sumBy";
 import { after } from "next/server";
-import { updateSubscriptionItemQuantity } from "@/ee/billing/lemon/index";
-import { updateStripeSubscriptionItemQuantity } from "@/ee/billing/stripe/index";
+import { updateSubscriptionItemQuantity } from "@/enterprise/billing/lemon/index";
+import { updateStripeSubscriptionItemQuantity } from "@/enterprise/billing/stripe/index";
 import prisma from "@/server/db/client";
 import type { PremiumTier } from "@/generated/prisma/enums";
 import { createScopedLogger } from "@/server/utils/logger";
-import { ensureEmailAccountsWatched } from "@/utils/email/watch-manager";
+import { ensureEmailAccountsWatched } from "@/server/services/email/watch-manager";
 import { hasTierAccess, isPremium } from "@/server/utils/premium";
 import { SafeError } from "@/server/utils/error";
 import { env } from "@/env";

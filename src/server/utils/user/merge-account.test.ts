@@ -4,7 +4,7 @@ import prisma from "@/utils/__mocks__/prisma";
 import { createScopedLogger } from "@/utils/logger";
 import { getMockUserSelect } from "@/__tests__/helpers";
 
-vi.mock("@/utils/prisma");
+vi.mock("@/server/db/client");
 vi.mock("@/utils/user/merge-premium");
 
 const logger = createScopedLogger("test");

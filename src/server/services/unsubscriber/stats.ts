@@ -2,7 +2,7 @@
 
 import { actionClient } from "@/server/services/unsubscriber/safe-action";
 import { z } from "zod";
-import { createEmailProvider } from "@/utils/email/provider";
+import { createEmailProvider } from "@/server/services/email/provider";
 import { isDefined } from "@/server/types";
 import {
   extractDomainFromEmail,
@@ -14,7 +14,7 @@ import { internalDateToDate } from "@/server/utils/date";
 import prisma from "@/server/db/client";
 import { SafeError } from "@/server/utils/error";
 import type { Logger } from "@/server/utils/logger";
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/services/email/types";
 
 const PAGE_SIZE = 20; // avoid setting too high because it will hit the rate limit
 // const PAUSE_AFTER_RATE_LIMIT = 10_000;

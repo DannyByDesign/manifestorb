@@ -2,7 +2,7 @@ import type { EmailAccountWithAI } from "@/utils/llms/types";
 import type { EmailForLLM } from "@/utils/types";
 import { ActionType, LogicalOperator } from "@/generated/prisma/enums";
 import type { Action, Prisma } from "@/generated/prisma/client";
-import { isGoogleProvider } from "@/utils/email/provider-types";
+import { isGoogleProvider } from "@/server/services/email/provider-types";
 
 type EmailAccountSelect = {
   id: string;

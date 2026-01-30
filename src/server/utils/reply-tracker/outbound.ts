@@ -1,11 +1,11 @@
 import type { EmailAccountWithAI } from "@/utils/llms/types";
 import type { ParsedMessage } from "@/utils/types";
 import { aiDetermineThreadStatus } from "@/utils/ai/reply/determine-thread-status";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import type { Logger } from "@/utils/logger";
 import { getEmailForLLM } from "@/utils/get-email-from-message";
 import { internalDateToDate, sortByInternalDate } from "@/utils/date";
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/services/email/types";
 import { applyThreadStatusLabel } from "./label-helpers";
 import { updateThreadTrackers } from "@/utils/reply-tracker/handle-conversation-status";
 import { CONVERSATION_STATUS_TYPES } from "@/utils/reply-tracker/conversation-status-config";

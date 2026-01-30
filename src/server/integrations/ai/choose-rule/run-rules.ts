@@ -25,7 +25,7 @@ import {
   cancelScheduledActions,
 } from "@/utils/scheduled-actions/scheduler";
 import groupBy from "lodash/groupBy";
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/services/email/types";
 import type { ModelType } from "@/server/utils/llms/model";
 import {
   CONVERSATION_STATUS_TYPES,

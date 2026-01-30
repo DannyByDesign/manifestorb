@@ -9,7 +9,7 @@ import prisma from "@/server/db/client";
 import { ActionType } from "@/generated/prisma/enums";
 import { createScopedLogger } from "@/server/utils/logger";
 import type { ParsedMessage } from "@/server/types";
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/services/email/types";
 
 vi.mock("server-only", () => ({}));
 

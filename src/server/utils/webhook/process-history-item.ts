@@ -1,5 +1,5 @@
 import { after } from "next/server";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { runRules } from "@/utils/ai/choose-rule/run-rules";
 import { categorizeSender } from "@/utils/categorize/senders/categorize";
 import { isAssistantEmail } from "@/utils/assistant/is-assistant-email";
@@ -16,7 +16,7 @@ import { NewsletterStatus } from "@/generated/prisma/enums";
 import type { EmailAccount } from "@/generated/prisma/client";
 import { extractEmailAddress, extractNameFromEmail } from "@/utils/email";
 import { isIgnoredSender } from "@/utils/filter-ignored-senders";
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/services/email/types";
 import type { ParsedMessage, RuleWithActions } from "@/utils/types";
 import type { EmailAccountWithAI } from "@/utils/llms/types";
 import type { Logger } from "@/utils/logger";

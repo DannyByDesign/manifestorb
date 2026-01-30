@@ -1,13 +1,14 @@
 import uniq from "lodash/uniq";
 import countBy from "lodash/countBy";
-import type { EmailProvider } from "@/utils/email/types";
-import { GmailProvider } from "@/utils/email/google";
+import type { EmailProvider } from "@/server/services/email/types";
+import { GmailProvider } from "@/server/services/email/google";
 import { getEmailClient } from "@/utils/mail";
 import { isDefined } from "@/utils/types";
 import type { Logger } from "@/utils/logger";
-import { GmailLabel } from "@/utils/gmail/label";
+import { getMessage } from "@/server/integrations/google/message";
+import { GmailLabel } from "@/server/integrations/google/label";
 import { OutlookLabel } from "@/utils/outlook/label";
-import { getFilters, getForwardingAddresses } from "@/utils/gmail/settings";
+import { getFilters, getForwardingAddresses } from "@/server/integrations/google/settings";
 
 export async function assessUser({
   client,

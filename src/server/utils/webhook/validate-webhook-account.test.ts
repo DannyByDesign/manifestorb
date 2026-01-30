@@ -8,14 +8,14 @@ const logger = createScopedLogger("test");
 
 vi.mock("@/utils/premium");
 vi.mock("@/app/api/watch/controller");
-vi.mock("@/utils/email/provider");
-vi.mock("@/utils/email/watch-manager");
-vi.mock("@/utils/prisma");
+vi.mock("@/server/services/email/provider");
+vi.mock("@/server/services/email/watch-manager");
+vi.mock("@/server/db/client");
 vi.mock("server-only", () => ({}));
 
 import { isPremium, hasAiAccess } from "@/utils/premium";
-import { unwatchEmails } from "@/utils/email/watch-manager";
-import { createEmailProvider } from "@/utils/email/provider";
+import { unwatchEmails } from "@/server/services/email/watch-manager";
+import { createEmailProvider } from "@/server/services/email/provider";
 
 describe("validateWebhookAccount", () => {
   const mockEmailProvider = { type: "google" as const };

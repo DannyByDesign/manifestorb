@@ -1,12 +1,12 @@
 import prisma from "@/server/db/client";
 import { hasAiAccess, getPremiumUserFilter } from "@/server/utils/premium";
 import type { Logger } from "@/server/utils/logger";
-import { createEmailProvider } from "@/utils/email/provider";
+import { createEmailProvider } from "@/server/services/email/provider";
 import { captureException } from "@/server/utils/error";
 import { cleanupInvalidTokens } from "@/server/auth/cleanup-invalid-tokens";
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/services/email/types";
 import { createManagedOutlookSubscription } from "@/server/integrations/microsoft/subscription-manager";
-import { isMicrosoftProvider } from "@/utils/email/provider-types";
+import { isMicrosoftProvider } from "@/server/services/email/provider-types";
 
 export type WatchEmailAccountResult =
   | {

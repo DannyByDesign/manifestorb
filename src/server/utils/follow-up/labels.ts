@@ -1,6 +1,6 @@
-import prisma from "@/utils/prisma";
-import { withPrismaRetry } from "@/utils/prisma-retry";
-import type { EmailProvider } from "@/utils/email/types";
+import prisma from "@/server/db/client";
+import { withPrismaRetry } from "@/server/db/client-retry";
+import type { EmailProvider } from "@/server/services/email/types";
 import { FOLLOW_UP_LABEL } from "@/utils/label";
 import type { Logger } from "@/utils/logger";
 

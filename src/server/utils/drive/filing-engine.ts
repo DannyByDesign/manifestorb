@@ -1,6 +1,6 @@
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import type { DriveConnection } from "@/generated/prisma/client";
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/services/email/types";
 import type { ParsedMessage, Attachment } from "@/utils/types";
 import type { EmailAccountWithAI } from "@/utils/llms/types";
 import type { Logger } from "@/utils/logger";

@@ -6,7 +6,7 @@ import { getModel } from "@/utils/llms/model";
 import { getUnifiedCalendarAvailability } from "@/utils/calendar/unified-availability";
 import type { EmailAccountWithAI } from "@/utils/llms/types";
 import type { EmailForLLM } from "@/utils/types";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { getUserInfoPrompt } from "@/utils/ai/helpers";
 
 const timeSlotSchema = z.object({

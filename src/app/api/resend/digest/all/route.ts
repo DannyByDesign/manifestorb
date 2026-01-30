@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { subDays } from "date-fns/subDays";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { withError } from "@/utils/middleware";
 import { hasCronSecret, hasPostCronSecret } from "@/utils/cron";
 import { getInternalApiUrl } from "@/utils/internal-api";

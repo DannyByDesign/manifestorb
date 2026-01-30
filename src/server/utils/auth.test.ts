@@ -7,7 +7,7 @@ import prisma from "@/utils/__mocks__/prisma";
 import { clearSpecificErrorMessages } from "@/utils/error-messages";
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/utils/prisma");
+vi.mock("@/server/db/client");
 vi.mock("@/utils/error-messages", () => ({
   addUserErrorMessage: vi.fn().mockResolvedValue(undefined),
   clearSpecificErrorMessages: vi.fn().mockResolvedValue(undefined),

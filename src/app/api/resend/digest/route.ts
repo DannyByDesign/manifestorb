@@ -3,7 +3,7 @@ import { sendDigestEmail } from "@amodel/resend";
 import { withEmailAccount, withError } from "@/utils/middleware";
 import { env } from "@/env";
 import { captureException, SafeError } from "@/utils/error";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import type { Logger } from "@/utils/logger";
 import { createUnsubscribeToken } from "@/utils/unsubscribe";
 import { calculateNextScheduleDate } from "@/utils/schedule";
@@ -18,7 +18,7 @@ import { extractNameFromEmail } from "@/server/utils/email";
 import { getRuleName } from "@/utils/rule/consts";
 import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
 import { camelCase } from "lodash";
-import { createEmailProvider } from "@/utils/email/provider";
+import { createEmailProvider } from "@/server/services/email/provider";
 import { sleep } from "@/utils/sleep";
 
 export const maxDuration = 60;

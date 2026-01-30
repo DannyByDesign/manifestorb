@@ -13,7 +13,7 @@ vi.mock("server-only", () => ({}));
 vi.mock("next/server", () => ({
   after: vi.fn((callback) => callback()),
 }));
-vi.mock("@/utils/prisma", () => ({
+vi.mock("@/server/db/client", () => ({
   default: {
     executedRule: {
       findFirst: vi.fn().mockResolvedValue(null),

@@ -11,7 +11,7 @@ vi.mock("@/env", () => ({
     NEXT_PUBLIC_BASE_URL: "http://localhost:3000",
   },
 }));
-vi.mock("@/utils/prisma");
+vi.mock("@/server/db/client");
 vi.mock("@/utils/user/orphaned-account");
 
 describe("handleAccountLinking", () => {

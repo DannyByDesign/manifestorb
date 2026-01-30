@@ -9,14 +9,14 @@ import { createScopedLogger } from "@/utils/logger";
 const logger = createScopedLogger("test");
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/utils/prisma");
+vi.mock("@/server/db/client");
 vi.mock("@/utils/user/get", () => ({
   getEmailAccountWithAiAndTokens: vi.fn(),
 }));
 vi.mock("@/utils/ai/actions", () => ({
   runActionFunction: vi.fn(),
 }));
-vi.mock("@/utils/email/provider", () => ({
+vi.mock("@/server/services/email/provider", () => ({
   createEmailProvider: vi.fn().mockResolvedValue({
     getMessage: vi.fn().mockResolvedValue({
       id: "msg-123",
@@ -132,7 +132,7 @@ describe("executor", () => {
         },
       });
 
-      const { createEmailProvider } = await import("@/utils/email/provider");
+      const { createEmailProvider } = await import("@/server/services/email/provider");
       const mockEmailProvider = await createEmailProvider({
         emailAccountId: "account-123",
         provider: "google",
@@ -212,7 +212,7 @@ describe("executor", () => {
         },
       });
 
-      const { createEmailProvider } = await import("@/utils/email/provider");
+      const { createEmailProvider } = await import("@/server/services/email/provider");
       const mockEmailProvider = await createEmailProvider({
         emailAccountId: "account-123",
         provider: "google",
@@ -245,7 +245,7 @@ describe("executor", () => {
       );
       (getEmailAccountWithAiAndTokens as any).mockResolvedValue(null);
 
-      const { createEmailProvider } = await import("@/utils/email/provider");
+      const { createEmailProvider } = await import("@/server/services/email/provider");
       const mockEmailProvider = await createEmailProvider({
         emailAccountId: "account-123",
         provider: "google",

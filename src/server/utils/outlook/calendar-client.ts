@@ -2,7 +2,7 @@ import { env } from "@/env";
 import type { Logger } from "@/utils/logger";
 import { CALENDAR_SCOPES } from "@/utils/outlook/scopes";
 import { SafeError } from "@/utils/error";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import {
   Client,
   type AuthenticationProvider,

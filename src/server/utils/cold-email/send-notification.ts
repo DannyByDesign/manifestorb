@@ -1,7 +1,7 @@
 import { sendColdEmailNotification as sendColdEmailNotificationViaResend } from "@amodel/resend";
 import { env } from "@/env";
 import type { Logger } from "@/utils/logger";
-import { formatReplySubject } from "@/utils/email/subject";
+import { formatReplySubject } from "@/server/services/email/subject";
 
 export async function sendColdEmailNotification({
   senderEmail,

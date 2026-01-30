@@ -1,7 +1,7 @@
 "use client";
 
 import { signOut } from "@/utils/auth-client";
-import { clearLastEmailAccountAction } from "@/utils/actions/email-account-cookie";
+import { clearLastEmailAccountAction } from "@/server/services/unsubscriber/email-account-cookie";
 
 export async function logOut(callbackUrl?: string) {
   clearLastEmailAccountAction();

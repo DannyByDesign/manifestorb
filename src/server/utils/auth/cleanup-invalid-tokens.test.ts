@@ -7,7 +7,7 @@ import { addUserErrorMessage } from "@/utils/error-messages";
 
 const logger = createScopedLogger("test");
 
-vi.mock("@/utils/prisma");
+vi.mock("@/server/db/client");
 vi.mock("@amodel/resend", () => ({
   sendReconnectionEmail: vi.fn(),
 }));

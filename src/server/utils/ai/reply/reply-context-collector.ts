@@ -7,7 +7,7 @@ import type { EmailAccountWithAI } from "@/utils/llms/types";
 import type { EmailForLLM } from "@/utils/types";
 import { getTodayForLLM } from "@/utils/ai/helpers";
 import { getModel } from "@/utils/llms/model";
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/services/email/types";
 import { getEmailForLLM } from "@/utils/get-email-from-message";
 import { captureException } from "@/utils/error";
 import { getEmailListPrompt, getUserInfoPrompt } from "@/utils/ai/helpers";

@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/services/email/types";
 
 export const createMockEmailProvider = (
   overrides?: Partial<EmailProvider>,

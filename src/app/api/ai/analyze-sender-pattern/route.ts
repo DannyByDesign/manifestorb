@@ -12,8 +12,8 @@ import { getEmailForLLM } from "@/server/utils/get-email-from-message";
 import { saveLearnedPattern } from "@/utils/rule/learned-patterns";
 import { GroupItemSource } from "@/generated/prisma/enums";
 import { checkSenderRuleHistory } from "@/utils/rule/check-sender-rule-history";
-import { createEmailProvider } from "@/utils/email/provider";
-import type { EmailProvider } from "@/utils/email/types";
+import { createEmailProvider } from "@/server/services/email/provider";
+import type { EmailProvider } from "@/server/services/email/types";
 
 export const maxDuration = 60;
 

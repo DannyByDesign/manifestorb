@@ -1,5 +1,5 @@
 import { ScheduledActionStatus } from "@/generated/prisma/enums";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import type { ActionItem } from "@/utils/ai/types";
 import { createScopedLogger } from "@/utils/logger";
 import { canActionBeDelayed } from "@/utils/delayed-actions";

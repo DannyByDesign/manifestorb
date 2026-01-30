@@ -1,13 +1,13 @@
 import { describe, expect, test, vi, beforeEach } from "vitest";
 import { applyThreadStatusLabel } from "./label-helpers";
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/services/email/types";
 import prisma from "@/utils/__mocks__/prisma";
 import { createScopedLogger } from "@/utils/logger";
 
 const logger = createScopedLogger("test");
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/utils/prisma");
+vi.mock("@/server/db/client");
 
 describe("applyThreadStatusLabel", () => {
   let mockProvider: EmailProvider;

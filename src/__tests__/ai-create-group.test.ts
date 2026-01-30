@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { gmail_v1 } from "@googleapis/gmail";
 import { aiGenerateGroupItems } from "@/utils/ai/group/create-group";
-import { queryBatchMessages } from "@/utils/gmail/message";
+import { queryBatchMessages } from "@/server/integrations/google/message";
 import type { ParsedMessage } from "@/utils/types";
 import { getEmailAccount } from "@/__tests__/helpers";
 
@@ -12,7 +12,7 @@ const isAiTest = process.env.RUN_AI_TESTS === "true";
 const TIMEOUT = 15_000;
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/utils/gmail/message", () => ({
+vi.mock("@/server/integrations/google/message", () => ({
   queryBatchMessages: vi.fn(),
 }));
 

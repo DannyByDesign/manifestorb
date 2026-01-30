@@ -1,7 +1,7 @@
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { captureException } from "@/utils/error";
-import type { EmailProvider } from "@/utils/email/types";
-import { createEmailProvider } from "@/utils/email/provider";
+import type { EmailProvider } from "@/server/services/email/types";
+import { createEmailProvider } from "@/server/services/email/provider";
 import type { Logger } from "@/utils/logger";
 import {
   parseSubscriptionHistory,

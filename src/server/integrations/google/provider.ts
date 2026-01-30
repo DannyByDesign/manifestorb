@@ -11,7 +11,7 @@ import {
 import {
   publishBulkActionToTinybird,
   updateEmailMessagesForSender,
-} from "@/utils/email/bulk-action-tracking";
+} from "@/server/services/email/bulk-action-tracking";
 import {
   getLabels,
   getLabel,
@@ -71,7 +71,7 @@ import type {
   EmailLabel,
   EmailFilter,
   EmailSignature,
-} from "@/utils/email/types";
+} from "@/server/services/email/types";
 import { createScopedLogger, type Logger } from "@/server/utils/logger";
 import { getGmailSignatures } from "@/server/integrations/google/signature-settings";
 

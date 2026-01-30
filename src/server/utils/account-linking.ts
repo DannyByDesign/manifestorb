@@ -1,5 +1,5 @@
 
-import { isGoogleProvider } from "@/utils/email/provider-types";
+import { isGoogleProvider } from "@/server/services/email/provider-types";
 
 /**
  * Initiates the OAuth account linking flow for Google or Microsoft.

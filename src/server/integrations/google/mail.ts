@@ -19,9 +19,9 @@ import {
   buildReplyAllRecipients,
   formatCcList,
   mergeAndDedupeRecipients,
-} from "@/server/utils/email/reply-all";
-import { formatReplySubject } from "@/server/utils/email/subject";
-import { buildThreadingHeaders } from "@/server/utils/email/threading";
+} from "@/server/services/email/reply-all";
+import { formatReplySubject } from "@/server/services/email/subject";
+import { buildThreadingHeaders } from "@/server/services/email/threading";
 import { ensureEmailSendingEnabled } from "@/utils/mail";
 
 const logger = createScopedLogger("gmail/mail");

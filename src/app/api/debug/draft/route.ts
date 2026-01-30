@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { type NextRequest } from "next/server";
 import prisma from "@/server/db/client";
 import { env } from "@/env";
-import { createEmailProvider } from "@/server/utils/email/provider";
+import { createEmailProvider } from "@/server/services/email/provider";
 import { createScopedLogger } from "@/server/utils/logger";
 import { aiDraftReply } from "@/server/integrations/ai/reply/draft-reply";
 import type { ParsedMessage, EmailForLLM } from "@/server/types";

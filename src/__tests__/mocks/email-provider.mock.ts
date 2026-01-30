@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/services/email/types";
 import type { ParsedMessage } from "@/utils/types";
 
 /**

@@ -5,11 +5,11 @@ import { withEmailAccount, withError } from "@/utils/middleware";
 import { env } from "@/env";
 import { hasCronSecret } from "@/utils/cron";
 import { captureException } from "@/utils/error";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { SystemType, ThreadTrackerType } from "@/generated/prisma/enums";
 import type { Logger } from "@/utils/logger";
-import { getMessagesBatch } from "@/utils/gmail/message";
-import { decodeSnippet } from "@/utils/gmail/decode";
+import { getMessagesBatch } from "@/server/integrations/google/message";
+import { decodeSnippet } from "@/server/integrations/google/decode";
 import { createUnsubscribeToken } from "@/utils/unsubscribe";
 import { sendSummaryEmailBody } from "./validation";
 
@@ -171,16 +171,16 @@ async function sendEmail({
       // cold emails
       coldEmailRule
         ? prisma.executedRule.findMany({
-            where: {
-              ruleId: coldEmailRule.id,
-              automated: true,
-              createdAt: { gt: cutOffDate },
-            },
-            select: {
-              messageId: true,
-              createdAt: true,
-            },
-          })
+          where: {
+            ruleId: coldEmailRule.id,
+            automated: true,
+            createdAt: { gt: cutOffDate },
+          },
+          select: {
+            messageId: true,
+            createdAt: true,
+          },
+        })
         : Promise.resolve([]),
     ]);
 
@@ -201,9 +201,9 @@ async function sendEmail({
 
   const messages = emailAccount.account.access_token
     ? await getMessagesBatch({
-        messageIds,
-        accessToken: emailAccount.account.access_token,
-      })
+      messageIds,
+      accessToken: emailAccount.account.access_token,
+    })
     : [];
 
   const messageMap = Object.fromEntries(

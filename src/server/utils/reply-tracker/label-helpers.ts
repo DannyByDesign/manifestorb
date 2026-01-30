@@ -1,6 +1,6 @@
-import type { EmailProvider, EmailLabel } from "@/utils/email/types";
+import type { EmailProvider, EmailLabel } from "@/server/services/email/types";
 import type { Logger } from "@/utils/logger";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { ActionType } from "@/generated/prisma/enums";
 import {
   CONVERSATION_STATUS_TYPES,

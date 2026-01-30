@@ -12,7 +12,7 @@ import type {
   OAuthClientInformation,
   OAuthTokens,
 } from "@modelcontextprotocol/sdk/shared/auth.js";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { createScopedLogger } from "@/utils/logger";
 import { getIntegration, getStaticCredentials } from "./integrations";
 import type { IntegrationKey } from "./integrations";

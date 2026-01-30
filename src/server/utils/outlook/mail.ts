@@ -1,16 +1,16 @@
 import type { Message } from "@microsoft/microsoft-graph-types";
 import type { OutlookClient } from "@/utils/outlook/client";
 import type { Attachment } from "nodemailer/lib/mailer";
-import type { SendEmailBody } from "@/utils/gmail/mail";
+import type { SendEmailBody } from "@/server/integrations/google/mail";
 import type { ParsedMessage } from "@/utils/types";
 import type { EmailForAction } from "@/utils/ai/types";
 import { createOutlookReplyContent } from "@/utils/outlook/reply";
 import { escapeHtml } from "@/utils/string";
-import { forwardEmailHtml, forwardEmailSubject } from "@/utils/gmail/forward";
+import { forwardEmailHtml, forwardEmailSubject } from "@/server/integrations/google/forward";
 import {
   buildReplyAllRecipients,
   mergeAndDedupeRecipients,
-} from "@/utils/email/reply-all";
+} from "@/server/services/email/reply-all";
 import { withOutlookRetry } from "@/utils/outlook/retry";
 import { extractEmailAddress, extractNameFromEmail } from "@/utils/email";
 import { ensureEmailSendingEnabled } from "@/utils/mail";

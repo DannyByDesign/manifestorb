@@ -8,7 +8,7 @@ import { getEmailAccount, getMockMessage } from "@/__tests__/helpers";
 import { createScopedLogger } from "@/utils/logger";
 import { SystemType } from "@/generated/prisma/enums";
 
-vi.mock("@/utils/prisma");
+vi.mock("@/server/db/client");
 vi.mock("@/utils/ai/reply/determine-thread-status");
 vi.mock("./label-helpers");
 vi.mock("@/utils/reply-tracker/handle-conversation-status");

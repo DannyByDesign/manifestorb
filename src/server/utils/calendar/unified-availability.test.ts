@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { getUnifiedCalendarAvailability } from "./unified-availability";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { createGoogleAvailabilityProvider } from "./providers/google-availability";
 import { createMicrosoftAvailabilityProvider } from "./providers/microsoft-availability";
 import type { BusyPeriod } from "./availability-types";
@@ -8,7 +8,7 @@ import { getCalendarConnection } from "@/__tests__/helpers";
 import { createScopedLogger } from "@/utils/logger";
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/utils/prisma");
+vi.mock("@/server/db/client");
 vi.mock("./providers/google-availability");
 vi.mock("./providers/microsoft-availability");
 

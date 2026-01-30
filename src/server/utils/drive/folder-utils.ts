@@ -1,6 +1,6 @@
 import type { DriveProvider, DriveFolder } from "@/utils/drive/types";
 import type { Logger } from "@/utils/logger";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 
 /**
  * Create a folder path in the drive, creating intermediate folders as needed.

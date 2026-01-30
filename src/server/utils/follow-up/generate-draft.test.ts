@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { generateFollowUpDraft } from "./generate-draft";
 import type { ParsedMessage } from "@/utils/types";
 import type { EmailAccountWithAI } from "@/utils/llms/types";
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/services/email/types";
 
 vi.mock("server-only", () => ({}));
 
@@ -14,7 +14,7 @@ vi.mock("@/utils/user/get", () => ({
   getWritingStyle: vi.fn().mockResolvedValue(null),
 }));
 
-vi.mock("@/utils/prisma", () => ({
+vi.mock("@/server/db/client", () => ({
   default: {
     emailAccount: {
       findUnique: vi.fn(),
@@ -41,7 +41,7 @@ vi.mock("@/env", () => ({
   },
 }));
 
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 
 const mockLogger = {
   info: vi.fn(),

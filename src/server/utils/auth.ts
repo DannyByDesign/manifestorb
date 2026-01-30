@@ -14,7 +14,7 @@ import { trackDubSignUp } from "@/utils/dub";
 import {
   isGoogleProvider,
   isMicrosoftProvider,
-} from "@/utils/email/provider-types";
+} from "@/server/services/email/provider-types";
 import { encryptToken } from "@/utils/encryption";
 import { captureException } from "@/utils/error";
 import { SCOPES as GMAIL_SCOPES } from "@/server/integrations/google/scopes";
@@ -27,7 +27,7 @@ import {
   updateAccountSeats,
 } from "@/utils/premium/server";
 import { clearSpecificErrorMessages, ErrorType } from "@/utils/error-messages";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 
 const logger = createScopedLogger("auth");
 

@@ -36,7 +36,7 @@ vi.mock("@/utils/calendar/unified-availability", () => ({
 }));
 
 // Mock Prisma
-vi.mock("@/utils/prisma", () => ({
+vi.mock("@/server/db/client", () => ({
   default: {
     calendarConnection: {
       findMany: vi.fn(),
@@ -149,7 +149,7 @@ describe.runIf(isAiTest)("aiGetCalendarAvailability", () => {
     vi.clearAllMocks();
 
     // Setup default mocks
-    const prisma = (await import("@/utils/prisma")).default;
+    const prisma = (await import("@/server/db/client")).default;
     vi.mocked(prisma.calendarConnection.findMany).mockResolvedValue(
       getMockCalendarConnections(),
     );
@@ -304,7 +304,7 @@ describe.runIf(isAiTest)("aiGetCalendarAvailability", () => {
 
   test("handles no calendar connections", async () => {
     // Mock no calendar connections
-    const prisma = (await import("@/utils/prisma")).default;
+    const prisma = (await import("@/server/db/client")).default;
     vi.mocked(prisma.calendarConnection.findMany).mockResolvedValue([]);
 
     const messages = getSchedulingMessages();
@@ -354,7 +354,7 @@ describe.runIf(isAiTest)("aiGetCalendarAvailability", () => {
     "handles multiple calendar connections",
     async () => {
       // Mock multiple calendar connections
-      const prisma = (await import("@/utils/prisma")).default;
+      const prisma = (await import("@/server/db/client")).default;
       const multipleConnections: CalendarConnectionWithCalendars[] = [
         {
           id: "conn1",
@@ -414,7 +414,7 @@ describe.runIf(isAiTest)("aiGetCalendarAvailability", () => {
     "handles timezone-aware scheduling with EST timezone",
     async () => {
       // Mock calendar connections with EST timezone
-      const prisma = (await import("@/utils/prisma")).default;
+      const prisma = (await import("@/server/db/client")).default;
       vi.mocked(prisma.calendarConnection.findMany).mockResolvedValue(
         getMockCalendarConnectionsWithTimezone("America/New_York"),
       );
@@ -459,7 +459,7 @@ describe.runIf(isAiTest)("aiGetCalendarAvailability", () => {
     "handles timezone-aware scheduling with PST timezone",
     async () => {
       // Mock calendar connections with PST timezone
-      const prisma = (await import("@/utils/prisma")).default;
+      const prisma = (await import("@/server/db/client")).default;
       vi.mocked(prisma.calendarConnection.findMany).mockResolvedValue(
         getMockCalendarConnectionsWithTimezone("America/Los_Angeles"),
       );
@@ -504,7 +504,7 @@ describe.runIf(isAiTest)("aiGetCalendarAvailability", () => {
     "falls back to UTC when no timezone information is available",
     async () => {
       // Mock calendar connections without timezone information
-      const prisma = (await import("@/utils/prisma")).default;
+      const prisma = (await import("@/server/db/client")).default;
       vi.mocked(prisma.calendarConnection.findMany).mockResolvedValue([
         {
           id: "conn1",
@@ -555,7 +555,7 @@ describe.runIf(isAiTest)("aiGetCalendarAvailability", () => {
     "uses primary calendar timezone when multiple calendars have different timezones",
     async () => {
       // Mock calendar connections with mixed timezones, primary calendar has EST
-      const prisma = (await import("@/utils/prisma")).default;
+      const prisma = (await import("@/server/db/client")).default;
       vi.mocked(prisma.calendarConnection.findMany).mockResolvedValue([
         {
           id: "conn1",

@@ -23,7 +23,7 @@ import type {
 import { extractEmailAddress } from "@/server/integrations/google";
 import { isCalendarInvite } from "@/utils/parse/calender-event";
 import { checkSenderReplyHistory } from "@/utils/reply-tracker/check-sender-reply-history";
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/services/email/types";
 import type { ModelType } from "@/server/utils/llms/model";
 import {
   getColdEmailRule,

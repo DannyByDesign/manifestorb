@@ -3,7 +3,7 @@ import { env } from "@/env";
 import type { Logger } from "@/utils/logger";
 import { SCOPES as GOOGLE_CALENDAR_SCOPES } from "@/server/integrations/google/scopes";
 import { SafeError } from "@/utils/error";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 
 type AuthOptions = {
   accessToken?: string | null;

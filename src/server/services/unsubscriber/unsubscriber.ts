@@ -15,7 +15,7 @@ export const setNewsletterStatusAction = actionClient
     }) => {
       const email = extractEmailAddress(newsletterEmail);
 
-      return await prisma.newsletter.upsert({
+      const result = await prisma.newsletter.upsert({
         where: {
           email_emailAccountId: { email, emailAccountId },
         },

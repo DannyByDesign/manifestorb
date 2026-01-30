@@ -1,7 +1,7 @@
 /* eslint-disable no-process-env */
 import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
-import { booleanString } from "@/server/utils/zod";
+import { booleanString } from "@/utils/zod";
 
 const llmProviderEnum = z.enum([
   "anthropic",

@@ -1,6 +1,6 @@
 import { createScopedLogger } from "@/utils/logger";
 import { SafeError } from "@/utils/error";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { sleep } from "@/utils/sleep";
 import type { ExecutedRule } from "@/generated/prisma/client";
 import { validateWebhookUrl } from "@/utils/webhook-validation";

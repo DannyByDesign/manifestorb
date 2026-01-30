@@ -15,7 +15,7 @@ import {
   aiGenerateArgs,
 } from "@/utils/ai/choose-rule/ai-choose-args";
 import type { Logger } from "@/utils/logger";
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/services/email/types";
 
 const MODULE = "choose-args";
 

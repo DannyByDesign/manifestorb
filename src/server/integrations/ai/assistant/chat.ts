@@ -20,7 +20,7 @@ import { posthogCaptureEvent } from "@/utils/posthog";
 import { chatCompletionStream } from "@/server/utils/llms";
 import { filterNullProperties } from "@/utils";
 import { delayInMinutesSchema } from "@/server/services/unsubscriber/rule.validation";
-import { isMicrosoftProvider } from "@/utils/email/provider-types";
+import { isMicrosoftProvider } from "@/server/services/email/provider-types";
 import type { MessageContext } from "@/app/api/chat/validation";
 import { stringifyEmail } from "@/server/utils/stringify-email";
 import { getEmailForLLM } from "@/server/utils/get-email-from-message";

@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   reactCompiler: true,
 
-  // Turbopack config (Next.js 16 default bundler)
+  // Turbopack config (Next.js 16)
   turbopack: {
     rules: {
       '*.glsl': {
@@ -19,7 +19,13 @@ const nextConfig: NextConfig = {
         as: '*.js',
       },
     },
+    resolveAlias: {
+      "zod/v3": "zod",
+      "zod/v4": "zod",
+    },
   },
+
+
 
   // Webpack fallback (for production builds)
   webpack: (config) => {
@@ -27,6 +33,12 @@ const nextConfig: NextConfig = {
       test: /\.(glsl|vert|frag)$/,
       type: 'asset/source',
     });
+    // Fix for ai-sdk zod version resolution
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      "zod/v3": "zod",
+      "zod/v4": "zod",
+    };
     return config;
   },
 };

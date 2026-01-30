@@ -1,6 +1,6 @@
 import { SafeError } from "@/utils/error";
 import { ADMIN_ROLES } from "@/utils/organizations/roles";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 
 export async function getMemberEmailAccount(
   callerEmailAccountId: string,

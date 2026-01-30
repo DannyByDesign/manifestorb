@@ -1,6 +1,6 @@
 
 import { createScopedLogger } from "@/server/utils/logger";
-import { createEmailProvider } from "@/server/utils/email/provider";
+import { createEmailProvider } from "@/server/services/email/provider";
 import { findUnsubscribeLink } from "@/server/utils/parse/parseHtml.server";
 import { headers } from "next/headers";
 import prisma from "@/server/db/client";

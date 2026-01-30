@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { env } from "@/env";
 import { hasAiAccess, isPremium } from "@/utils/premium";
-import { unwatchEmails } from "@/utils/email/watch-manager";
-import { createEmailProvider } from "@/utils/email/provider";
-import prisma from "@/utils/prisma";
+import { unwatchEmails } from "@/server/services/email/watch-manager";
+import { createEmailProvider } from "@/server/services/email/provider";
+import prisma from "@/server/db/client";
 import type { Logger } from "@/utils/logger";
 
 export async function getWebhookEmailAccount(

@@ -1,5 +1,5 @@
-import prisma from "@/utils/prisma";
-import { isDuplicateError } from "@/utils/prisma-helpers";
+import prisma from "@/server/db/client";
+import { isDuplicateError } from "@/server/db/client-helpers";
 import { MeetingBriefingStatus } from "@/generated/prisma/enums";
 import {
   fetchUpcomingEvents,

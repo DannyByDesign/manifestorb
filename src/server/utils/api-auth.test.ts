@@ -16,7 +16,7 @@ const mockRequest = (apiKey: string | null) => ({
 } as any);
 
 // Mock dependencies
-vi.mock("@/utils/prisma");
+vi.mock("@/server/db/client");
 vi.mock("@/utils/api-key");
 vi.mock("@/server/integrations/google/client");
 vi.mock("server-only", () => ({}));

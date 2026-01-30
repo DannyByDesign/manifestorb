@@ -1,4 +1,4 @@
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/services/email/types";
 import type { Logger } from "@/utils/logger";
 import type { EmailAccountWithAI } from "@/utils/llms/types";
 import { aiDraftFollowUp } from "@/utils/ai/reply/draft-follow-up";
@@ -7,7 +7,7 @@ import { internalDateToDate } from "@/utils/date";
 import { getEmailForLLM } from "@/utils/get-email-from-message";
 import { extractEmailAddress } from "@/utils/email";
 import { escapeHtml } from "@/utils/string";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { env } from "@/env";
 import { getOrCreateReferralCode } from "@/utils/referral/referral-code";
 import { generateReferralLink } from "@/utils/referral/referral-link";

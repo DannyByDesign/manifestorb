@@ -1,4 +1,4 @@
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import type { RuleWithRelations } from "@/utils/rule/types";
 
 export type RuleHistoryTrigger = "created" | "updated";

@@ -2,11 +2,11 @@ import { isDefined, type ParsedMessage } from "@/utils/types";
 import type { Logger } from "@/utils/logger";
 import { processUserRequest } from "@/utils/ai/assistant/process-user-request";
 import { extractEmailAddress } from "@/utils/email";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { emailToContent } from "@/utils/mail";
 import { isAssistantEmail } from "@/utils/assistant/is-assistant-email";
 import { internalDateToDate } from "@/utils/date";
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/services/email/types";
 import { labelMessageAndSync } from "@/utils/label.server";
 
 type ProcessAssistantEmailArgs = {

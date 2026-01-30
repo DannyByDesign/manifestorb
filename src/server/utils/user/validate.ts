@@ -1,6 +1,6 @@
 import { SafeError } from "@/utils/error";
 import { hasAiAccess, isPremium } from "@/utils/premium";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 
 export async function validateUserAndAiAccess({
   emailAccountId,

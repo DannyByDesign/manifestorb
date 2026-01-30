@@ -1,5 +1,5 @@
 import { DEFAULT_COLD_EMAIL_PROMPT } from "@/utils/cold-email/prompt";
-import { isMicrosoftProvider } from "@/utils/email/provider-types";
+import { isMicrosoftProvider } from "@/server/services/email/provider-types";
 import { ActionType, SystemType } from "@/generated/prisma/enums";
 import { env } from "@/env";
 

@@ -1,7 +1,7 @@
 import sumBy from "lodash/sumBy";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import type { Logger } from "@/utils/logger";
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/services/email/types";
 import { extractEmailAddress } from "@/utils/email";
 import { ExecutedRuleStatus } from "@/generated/prisma/enums";
 

@@ -1,4 +1,4 @@
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import { SystemType } from "@/generated/prisma/enums";
 
 export type ColdEmailRule = NonNullable<

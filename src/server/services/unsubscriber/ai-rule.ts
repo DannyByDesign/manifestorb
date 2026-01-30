@@ -25,7 +25,7 @@ import { createRule, updateRule, deleteRule } from "@/utils/rule/rule";
 import { actionClient } from "@/server/services/unsubscriber/safe-action";
 import { getEmailAccountWithAi } from "@/utils/user/get";
 import { SafeError } from "@/server/utils/error";
-import { createEmailProvider } from "@/utils/email/provider";
+import { createEmailProvider } from "@/server/services/email/provider";
 import { aiPromptToRulesOld } from "@/server/integrations/ai/rule/prompt-to-rules-old";
 import type { CreateRuleResult } from "@/utils/rule/types";
 

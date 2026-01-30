@@ -1,5 +1,5 @@
 
-import type { CategoryAction } from "@/utils/actions/rule.validation";
+import type { CategoryAction } from "@/server/services/unsubscriber/rule.validation";
 import {
   getCategoryAction,
   getRuleConfig,

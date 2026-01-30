@@ -17,7 +17,7 @@ import type {
   ParsedMessage,
   ParsedMessageHeaders,
 } from "@/utils/types";
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/services/email/types";
 import prisma from "@/utils/__mocks__/prisma";
 import { aiChooseRule } from "@/utils/ai/choose-rule/ai-choose-rule";
 import { getEmailAccount } from "@/__tests__/helpers";
@@ -39,7 +39,7 @@ const provider = {
 } as unknown as EmailProvider;
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/utils/prisma");
+vi.mock("@/server/db/client");
 vi.mock("@/utils/ai/choose-rule/ai-choose-rule", () => ({
   aiChooseRule: vi.fn(),
 }));

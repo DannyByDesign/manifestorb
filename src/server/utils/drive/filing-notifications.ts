@@ -1,5 +1,5 @@
-import prisma from "@/utils/prisma";
-import type { EmailProvider } from "@/utils/email/types";
+import prisma from "@/server/db/client";
+import type { EmailProvider } from "@/server/services/email/types";
 import type { Logger } from "@/utils/logger";
 import { getFilebotEmail } from "@/utils/filebot/is-filebot-email";
 import { escapeHtml } from "@/utils/string";

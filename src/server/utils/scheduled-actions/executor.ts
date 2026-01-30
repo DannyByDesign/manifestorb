@@ -3,12 +3,12 @@ import {
   ScheduledActionStatus,
 } from "@/generated/prisma/enums";
 import type { ScheduledAction } from "@/generated/prisma/client";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import type { Logger } from "@/utils/logger";
 import { getEmailAccountWithAiAndTokens } from "@/utils/user/get";
 import { runActionFunction } from "@/utils/ai/actions";
 import type { ActionItem, EmailForAction } from "@/utils/ai/types";
-import type { EmailProvider } from "@/utils/email/types";
+import type { EmailProvider } from "@/server/services/email/types";
 
 const MODULE = "scheduled-actions-executor";
 

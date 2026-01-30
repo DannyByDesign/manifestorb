@@ -10,7 +10,7 @@ import {
   getAccessTokenFromClient as getOutlookAccessToken,
 } from "@/utils/outlook/client";
 import { redirect } from "next/navigation";
-import prisma from "@/utils/prisma";
+import prisma from "@/server/db/client";
 import {
   LAST_EMAIL_ACCOUNT_COOKIE,
   parseLastEmailAccountCookieValue,
