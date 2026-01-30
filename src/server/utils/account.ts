@@ -4,7 +4,7 @@ import { auth } from "@/utils/auth";
 import {
   getGmailClientWithRefresh,
   getAccessTokenFromClient,
-} from "@/utils/gmail/client";
+} from "@/server/integrations/google/client";
 import {
   getOutlookClientWithRefresh,
   getAccessTokenFromClient as getOutlookAccessToken,

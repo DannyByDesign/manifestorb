@@ -48,7 +48,10 @@ import {
   getThreadsFromSenderWithSubject,
 } from "@/utils/gmail/thread";
 import { getMessagesBatch } from "@/utils/gmail/message";
-import { getAccessTokenFromClient } from "@/utils/gmail/client";
+import {
+  getAccessTokenFromClient,
+  getGmailClient,
+} from "@/server/integrations/google/client";
 import { getGmailAttachment } from "@/utils/gmail/attachment";
 import {
   getThreadsBatch,

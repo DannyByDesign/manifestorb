@@ -18,7 +18,7 @@ const mockRequest = (apiKey: string | null) => ({
 // Mock dependencies
 vi.mock("@/utils/prisma");
 vi.mock("@/utils/api-key");
-vi.mock("@/utils/gmail/client");
+vi.mock("@/server/integrations/google/client");
 vi.mock("server-only", () => ({}));
 
 // Create a type that matches what our test expects to be returned from prisma.apiKey.findUnique

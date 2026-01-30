@@ -1,7 +1,7 @@
 import { auth, calendar, type calendar_v3 } from "@googleapis/calendar";
 import { env } from "@/env";
 import type { Logger } from "@/utils/logger";
-import { CALENDAR_SCOPES as GOOGLE_CALENDAR_SCOPES } from "@/utils/gmail/scopes";
+import { SCOPES as GOOGLE_CALENDAR_SCOPES } from "@/server/integrations/google/scopes";
 import { SafeError } from "@/utils/error";
 import prisma from "@/utils/prisma";
 

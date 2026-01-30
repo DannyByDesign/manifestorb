@@ -123,3 +123,8 @@ export const getAccessTokenFromClient = (client: gmail_v1.Gmail): string => {
   if (!accessToken) throw new Error("No access token");
   return accessToken;
 };
+
+export const getGmailClient = ({ accessToken }: { accessToken: string }) => {
+  const auth = getAuth({ accessToken });
+  return gmail({ version: "v1", auth });
+};

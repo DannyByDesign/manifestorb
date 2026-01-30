@@ -7,7 +7,7 @@ import { isColdEmail } from "@/utils/cold-email/is-cold-email";
 import {
   coldEmailBlockerBody,
   markNotColdEmailBody,
-} from "@/utils/actions/cold-email.validation";
+} from "@/server/services/unsubscriber/cold-email.validation";
 import { actionClient } from "@/utils/actions/safe-action";
 import { SafeError } from "@/utils/error";
 import { createEmailProvider } from "@/utils/email/provider";

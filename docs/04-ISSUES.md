@@ -17,7 +17,9 @@
 
 ## Critical Issues
 
-### 1. Missing Environment Variable
+### 1. [RESOLVED] Missing Environment Variable
+
+**Status:** ✅ Resolved via `src/env.ts` update.
 
 **Issue:** `BRAINTRUST_API_KEY` is used in code but not defined in the environment schema.
 
@@ -27,19 +29,21 @@
 
 **Fix:**
 ```typescript
-// Add to src/env.ts in server section
+// Added to src/env.ts in server section
 BRAINTRUST_API_KEY: z.string().optional(),
 ```
 
 ---
 
-### 2. Code Duplication - permissions.ts (Gmail)
+### 2. [RESOLVED] Code Duplication - permissions.ts (Gmail)
+
+**Status:** ✅ Resolved. Deleted `utils/gmail/` and pointed all imports to `integrations/google/`.
 
 **Issue:** Identical file exists in two locations with different import paths.
 
 **Locations:**
-- `src/server/utils/gmail/permissions.ts`
-- `src/server/integrations/google/permissions.ts`
+- `src/server/utils/gmail/permissions.ts` (DELETED)
+- `src/server/integrations/google/permissions.ts` (KEPT)
 
 **Differences:**
 ```typescript
@@ -58,13 +62,15 @@ import { prisma } from "@/server/db/client";
 
 ---
 
-### 3. Code Duplication - permissions.ts (Actions)
+### 3. [RESOLVED] Code Duplication - permissions.ts (Actions)
+
+**Status:** ✅ Resolved. Deleted `utils/actions/permissions.ts` (unused).
 
 **Issue:** Identical file exists in two locations.
 
 **Locations:**
-- `src/server/utils/actions/permissions.ts`
-- `src/server/services/unsubscriber/permissions.ts`
+- `src/server/utils/actions/permissions.ts` (DELETED)
+- `src/server/services/unsubscriber/permissions.ts` (KEPT)
 
 **Code:** 83 lines, identical functionality.
 
@@ -72,13 +78,15 @@ import { prisma } from "@/server/db/client";
 
 ---
 
-### 4. Code Duplication - cold-email.validation.ts
+### 4. [RESOLVED] Code Duplication - cold-email.validation.ts
+
+**Status:** ✅ Resolved. Consolidated to `services/unsubscriber/`.
 
 **Issue:** Identical validation schema in two locations.
 
 **Locations:**
-- `src/server/utils/actions/cold-email.validation.ts`
-- `src/server/services/unsubscriber/cold-email.validation.ts`
+- `src/server/utils/actions/cold-email.validation.ts` (DELETED)
+- `src/server/services/unsubscriber/cold-email.validation.ts` (KEPT)
 
 **Both contain a hacky fix:**
 ```typescript
@@ -96,13 +104,15 @@ internalDate: z.string().or(z.number()),
 
 ---
 
-### 5. Code Duplication - report.ts
+### 5. [RESOLVED] Code Duplication - report.ts
+
+**Status:** ✅ Resolved. Removed `utils` version in favor of `services` version.
 
 **Issue:** Both files duplicate the `fetchGmailLabels` function.
 
 **Locations:**
-- `src/server/utils/actions/report.ts`
-- `src/server/services/unsubscriber/report.ts`
+- `src/server/utils/actions/report.ts` (DELETED)
+- `src/server/services/unsubscriber/report.ts` (KEPT)
 
 **Both have TODO:**
 ```typescript
@@ -113,7 +123,9 @@ internalDate: z.string().or(z.number()),
 
 ---
 
-### 6. Import Path Inconsistency
+### 6. [KNOWN ISSUE] Import Path Inconsistency
+
+**Status:** ⚠️ Known Issue / Deferred.
 
 **Issue:** Prisma client is imported from multiple paths inconsistently.
 
@@ -141,7 +153,9 @@ export { prisma } from "@/server/db/client";
 
 ## Medium Priority Issues
 
-### 7. Incomplete Feature - Multiple Rule Matching
+### 7. [KNOWN ISSUE] Incomplete Feature - Multiple Rule Matching
+
+**Status:** ⚠️ Known Issue / Deferred.
 
 **Location:** `src/server/utils/assistant/process-assistant-email.ts` (line ~210)
 
@@ -157,7 +171,9 @@ export { prisma } from "@/server/db/client";
 
 ---
 
-### 8. Incomplete Feature - Outlook Permissions
+### 8. [KNOWN ISSUE] Incomplete Feature - Outlook Permissions
+
+**Status:** ⚠️ Known Issue / Deferred.
 
 **Location:** 
 - `src/server/utils/actions/permissions.ts` (line ~15)
@@ -177,7 +193,9 @@ if (provider !== "google") {
 
 ---
 
-### 9. Incomplete Error Handling - Permissions
+### 9. [KNOWN ISSUE] Incomplete Error Handling - Permissions
+
+**Status:** ⚠️ Known Issue / Deferred.
 
 **Location:**
 - `src/server/utils/gmail/permissions.ts` (line ~11)
@@ -194,7 +212,9 @@ if (provider !== "google") {
 
 ---
 
-### 10. Incomplete Error Handling - Middleware
+### 10. [KNOWN ISSUE] Incomplete Error Handling - Middleware
+
+**Status:** ⚠️ Known Issue / Deferred.
 
 **Location:** `src/server/utils/middleware.ts` (line ~165)
 
@@ -209,7 +229,9 @@ if (provider !== "google") {
 
 ---
 
-### 11. Type Workaround - internalDate
+### 11. [KNOWN ISSUE] Type Workaround - internalDate
+
+**Status:** ⚠️ Known Issue / Deferred.
 
 **Location:** Multiple validation files
 
@@ -228,7 +250,9 @@ internalDate: z.string().or(z.number()),
 
 ---
 
-### 12. Deprecated Fields in Schema
+### 12. [KNOWN ISSUE] Deprecated Fields in Schema
+
+**Status:** ⚠️ Known Issue / Deferred.
 
 **Location:** `src/server/db/prisma/schema.prisma`
 
@@ -256,7 +280,9 @@ internalDate: z.string().or(z.number()),
 
 ## Low Priority Issues
 
-### 13. Directory Structure Overlap
+### 13. [KNOWN ISSUE] Directory Structure Overlap
+
+**Status:** ⚠️ Known Issue / Deferred.
 
 **Issue:** `utils/actions/` and `services/unsubscriber/` have overlapping responsibilities.
 
@@ -270,7 +296,9 @@ internalDate: z.string().or(z.number()),
 
 ---
 
-### 14. Default README Not Updated
+### 14. [KNOWN ISSUE] Default README Not Updated
+
+**Status:** ⚠️ Known Issue / Deferred.
 
 **Location:** `NEXT-README.md`
 
@@ -280,7 +308,9 @@ internalDate: z.string().or(z.number()),
 
 ---
 
-### 15. Mixed Import Path Aliases
+### 15. [KNOWN ISSUE] Mixed Import Path Aliases
+
+**Status:** ⚠️ Known Issue / Deferred.
 
 **Issue:** Files use different alias patterns inconsistently.
 
@@ -300,7 +330,9 @@ import { something } from "@/utils/email/types";
 
 ---
 
-### 16. Potential Dead Code
+### 16. [KNOWN ISSUE] Potential Dead Code
+
+**Status:** ⚠️ Known Issue / Deferred.
 
 **Issue:** After import, some code may be orphaned or unused.
 
@@ -313,7 +345,9 @@ import { something } from "@/utils/email/types";
 
 ---
 
-### 17. Test Coverage Gaps
+### 17. [KNOWN ISSUE] Test Coverage Gaps
+
+**Status:** ⚠️ Known Issue / Deferred.
 
 **Issue:** Some features lack corresponding tests.
 

@@ -17,8 +17,8 @@ import {
 } from "@/utils/email/provider-types";
 import { encryptToken } from "@/utils/encryption";
 import { captureException } from "@/utils/error";
-import { getContactsClient as getGoogleContactsClient } from "@/utils/gmail/client";
-import { SCOPES as GMAIL_SCOPES } from "@/utils/gmail/scopes";
+import { SCOPES as GMAIL_SCOPES } from "@/server/integrations/google/scopes";
+import { getContactsClient as getGoogleContactsClient } from "@/server/integrations/google/client";
 import { createScopedLogger } from "@/utils/logger";
 import { createOutlookClient } from "@/utils/outlook/client";
 import { SCOPES as OUTLOOK_SCOPES } from "@/utils/outlook/scopes";
@@ -73,10 +73,10 @@ export const betterAuthConfig = betterAuth({
     // OAuth proxy for preview deployments (Google doesn't allow wildcard redirect URIs)
     ...(env.OAUTH_PROXY_URL || env.IS_OAUTH_PROXY_SERVER
       ? [
-          oAuthProxy({
-            productionURL: env.OAUTH_PROXY_URL || env.NEXT_PUBLIC_BASE_URL,
-          }),
-        ]
+        oAuthProxy({
+          productionURL: env.OAUTH_PROXY_URL || env.NEXT_PUBLIC_BASE_URL,
+        }),
+      ]
       : []),
     nextCookies(), // Must be last
   ],
@@ -512,15 +512,15 @@ export async function saveTokens({
   accountRefreshToken: string | null;
   provider: string;
 } & ( // provide one of these:
-  | {
+    | {
       providerAccountId: string;
       emailAccountId?: never;
     }
-  | {
+    | {
       emailAccountId: string;
       providerAccountId?: never;
     }
-)) {
+  )) {
   const refreshToken = tokens.refresh_token ?? accountRefreshToken;
 
   if (!refreshToken) {
