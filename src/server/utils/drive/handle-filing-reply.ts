@@ -145,7 +145,7 @@ async function handleApprove(filingId: string): Promise<void> {
   });
 }
 
-const TO_DELETE_FOLDER = "Inbox Zero - To Delete";
+const TO_DELETE_FOLDER = "Amodel - To Delete";
 
 async function handleUndo({
   filingId,

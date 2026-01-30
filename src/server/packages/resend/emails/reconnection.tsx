@@ -24,7 +24,7 @@ type ReconnectionEmailComponent = FC<ReconnectionEmailProps> & {
 };
 
 const ReconnectionEmail: ReconnectionEmailComponent = ({
-  baseUrl = "https://www.getinboxzero.com",
+  baseUrl = "https://www.getamodel.com",
   email,
   unsubscribeToken,
 }: ReconnectionEmailProps) => {
@@ -40,17 +40,17 @@ const ReconnectionEmail: ReconnectionEmailComponent = ({
             <Section className="p-4 text-center">
               <Link href={baseUrl} className="text-[15px]">
                 <Img
-                  src={"https://www.getinboxzero.com/icon.png"}
+                  src={"https://www.getamodel.com/icon.png"}
                   width="40"
                   height="40"
-                  alt="Inbox Zero"
+                  alt="Amodel"
                   className="mx-auto my-0"
                 />
               </Link>
 
               <Text className="mx-0 mb-8 mt-4 p-0 text-center text-2xl font-normal">
                 <span className="font-semibold tracking-tighter">
-                  Inbox Zero
+                  Amodel
                 </span>
               </Text>
 
@@ -64,7 +64,7 @@ const ReconnectionEmail: ReconnectionEmailComponent = ({
               <Text className="text-[16px] text-gray-700 mb-6 mt-0">Hi,</Text>
 
               <Text className="text-[16px] text-gray-700 mb-6 mt-0">
-                The connection for <strong>{email}</strong> to Inbox Zero was
+                The connection for <strong>{email}</strong> to Amodel was
                 disconnected. This usually happens after a password change, if
                 access was revoked, or if your 6-month approval period has
                 expired.
@@ -115,7 +115,7 @@ function Footer({
     <Section className="mt-8 text-center text-sm text-gray-500">
       <Text className="m-0">
         You're receiving this email because your email account is connected to
-        Inbox Zero.
+        Amodel.
       </Text>
       <div className="mt-2">
         <Link
@@ -139,7 +139,7 @@ function Footer({
 }
 
 ReconnectionEmail.PreviewProps = {
-  baseUrl: "https://www.getinboxzero.com",
+  baseUrl: "https://www.getamodel.com",
   email: "user@example.com",
   unsubscribeToken: "preview-token-123",
 };

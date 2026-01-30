@@ -1,7 +1,7 @@
-import { deleteContact as deleteLoopsContact } from "@inboxzero/loops";
-import { deleteContact as deleteResendContact } from "@inboxzero/resend";
+import { deleteContact as deleteLoopsContact } from "@amodel/loops";
+import { deleteContact as deleteResendContact } from "@amodel/resend";
 import prisma from "@/utils/prisma";
-import { deleteTinybirdAiCalls } from "@inboxzero/tinybird-ai-analytics";
+import { deleteTinybirdAiCalls } from "@amodel/tinybird-ai-analytics";
 import { deletePosthogUser, trackUserDeleted } from "@/utils/posthog";
 import { captureException } from "@/utils/error";
 import { unwatchEmails } from "@/utils/email/watch-manager";
@@ -41,10 +41,10 @@ export async function deleteUser({
     // Create email provider for unwatching
     const emailProvider = account.access_token
       ? await createEmailProvider({
-          emailAccountId: account.emailAccount.id,
-          provider: account.provider,
-          logger,
-        })
+        emailAccountId: account.emailAccount.id,
+        provider: account.provider,
+        logger,
+      })
       : null;
 
     return deleteResources({
@@ -60,7 +60,7 @@ export async function deleteUser({
   logger.info("Deleting user resources");
 
   try {
-    deleteTinybirdAiCalls({ userId }).catch((error) => {
+    deleteTinybirdAiCalls({ userId }).catch((error: any) => {
       logger.error("Error deleting Tinybird AI calls", {
         error,
         userId,
@@ -68,7 +68,7 @@ export async function deleteUser({
       captureException(error);
     });
 
-    clearCachedResearchForUser(userId).catch((error) => {
+    clearCachedResearchForUser(userId).catch((error: any) => {
       logger.error("Error clearing cached research", { error });
       captureException(error);
     });
@@ -120,11 +120,11 @@ async function deleteResources({
     deleteResendContact({ email }),
     emailProvider
       ? unwatchEmails({
-          emailAccountId,
-          provider: emailProvider,
-          subscriptionId,
-          logger,
-        })
+        emailAccountId,
+        provider: emailProvider,
+        subscriptionId,
+        logger,
+      })
       : Promise.resolve(),
   ]);
 

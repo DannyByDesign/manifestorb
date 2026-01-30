@@ -23,7 +23,7 @@ export async function listMcpTools(
   const transport = createMcpTransport(integrationConfig.serverUrl, authToken);
 
   const client = new Client({
-    name: `inbox-zero-${integration}`,
+    name: `amodel-${integration}`,
     version: "1.0.0",
   });
 

@@ -15,10 +15,10 @@ import {
   getLabels,
   getLabel,
   createLabel,
-  getOrCreateInboxZeroLabel,
+  getOrCreateAmodelLabel,
   getLabelById,
 } from "@/utils/outlook/label";
-import type { InboxZeroLabel } from "@/utils/label";
+import type { AmodelLabel } from "@/utils/label";
 // import type { ThreadsQuery } from "@/app/api/threads/validation";
 type ThreadsQuery = any;
 import {
@@ -881,8 +881,8 @@ export class OutlookProvider implements EmailProvider {
       .delete();
   }
 
-  async getOrCreateInboxZeroLabel(key: InboxZeroLabel): Promise<EmailLabel> {
-    const label = await getOrCreateInboxZeroLabel({
+  async getOrCreateAmodelLabel(key: AmodelLabel): Promise<EmailLabel> {
+    const label = await getOrCreateAmodelLabel({
       client: this.client,
       key,
       logger: this.logger,

@@ -32,7 +32,7 @@ vi.mock("@/utils/referral/referral-code", () => ({
 vi.mock("@/utils/referral/referral-link", () => ({
   generateReferralLink: vi
     .fn()
-    .mockReturnValue("https://getinboxzero.com/?ref=TEST123"),
+    .mockReturnValue("https://getamodel.com/?ref=TEST123"),
 }));
 
 vi.mock("@/env", () => ({

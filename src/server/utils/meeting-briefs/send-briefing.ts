@@ -1,13 +1,13 @@
 import { render } from "@react-email/render";
 import { env } from "@/env";
 import { createEmailProvider } from "@/utils/email/provider";
-import { sendMeetingBriefingEmail } from "@inboxzero/resend";
+import { sendMeetingBriefingEmail } from "@amodel/resend";
 import MeetingBriefingEmail, {
   generateMeetingBriefingSubject,
   type MeetingBriefingEmailProps,
   type BriefingContent,
   type InternalTeamMember,
-} from "@inboxzero/resend/emails/meeting-briefing";
+} from "@amodel/resend/emails/meeting-briefing";
 import type { CalendarEvent } from "@/utils/calendar/event-types";
 import type { Logger } from "@/utils/logger";
 import { createUnsubscribeToken } from "@/utils/unsubscribe";

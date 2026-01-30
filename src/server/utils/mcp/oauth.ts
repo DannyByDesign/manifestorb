@@ -491,14 +491,14 @@ async function getOAuthClient(
   }
 
   const clientMetadata: OAuthClientMetadata = {
-    client_name: "Inbox Zero",
+    client_name: "Amodel",
     redirect_uris: [redirectUri],
     grant_types: ["authorization_code", "refresh_token"],
     response_types: ["code"],
     token_endpoint_auth_method: "none", // Public client with PKCE
     scope: integrationConfig.scopes.join(" "),
-    logo_uri: "https://getinboxzero.com/icon.png",
-    tos_uri: "https://getinboxzero.com/terms",
+    logo_uri: "https://getamodel.com/icon.png",
+    tos_uri: "https://getamodel.com/terms",
   };
 
   const registered = await registerClient(metadata.registration_endpoint, {

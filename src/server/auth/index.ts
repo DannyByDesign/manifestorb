@@ -2,8 +2,8 @@
 
 import { sso } from "@better-auth/sso";
 import { oAuthProxy } from "better-auth/plugins";
-import { createContact as createLoopsContact } from "@inboxzero/loops";
-import { createContact as createResendContact } from "@inboxzero/resend";
+import { createContact as createLoopsContact } from "@amodel/loops";
+import { createContact as createResendContact } from "@amodel/resend";
 import type { Account, AuthContext } from "better-auth";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";

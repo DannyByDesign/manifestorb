@@ -29,7 +29,7 @@ function findRepoRoot(): string | null {
 const REPO_ROOT = findRepoRoot();
 
 // Standalone config paths (used for production Docker mode)
-const STANDALONE_CONFIG_DIR = resolve(homedir(), ".inbox-zero");
+const STANDALONE_CONFIG_DIR = resolve(homedir(), ".amodel");
 const STANDALONE_ENV_FILE = resolve(STANDALONE_CONFIG_DIR, ".env");
 const STANDALONE_COMPOSE_FILE = resolve(
   STANDALONE_CONFIG_DIR,
@@ -66,25 +66,25 @@ function checkDockerCompose(): boolean {
 
 async function main() {
   program
-    .name("inbox-zero")
-    .description("CLI tool for running Inbox Zero - AI email assistant")
+    .name("amodel")
+    .description("CLI tool for running Amodel - AI email assistant")
     .version("2.21.38");
 
   program
     .command("setup")
-    .description("Interactive setup for Inbox Zero")
+    .description("Interactive setup for Amodel")
     .option("-n, --name <name>", "Configuration name (creates .env.<name>)")
     .action(runSetup);
 
   program
     .command("start")
-    .description("Start Inbox Zero containers")
+    .description("Start Amodel containers")
     .option("--no-detach", "Run in foreground (default: runs in background)")
     .action(runStart);
 
   program
     .command("stop")
-    .description("Stop Inbox Zero containers")
+    .description("Stop Amodel containers")
     .action(runStop);
 
   program
@@ -96,12 +96,12 @@ async function main() {
 
   program
     .command("status")
-    .description("Show status of Inbox Zero containers")
+    .description("Show status of Amodel containers")
     .action(runStatus);
 
   program
     .command("update")
-    .description("Pull latest Inbox Zero image")
+    .description("Pull latest Amodel image")
     .action(runUpdate);
 
   program
@@ -129,7 +129,7 @@ async function main() {
 
 async function runSetup(options: { name?: string }) {
   const configName = options.name;
-  p.intro(`🚀 Inbox Zero Setup${configName ? ` (${configName})` : ""}`);
+  p.intro(`🚀 Amodel Setup${configName ? ` (${configName})` : ""}`);
 
   // Ask about environment mode
   const envMode = await p.select({
@@ -293,7 +293,7 @@ async function runSetup(options: { name?: string }) {
    - http://localhost:${webPort}/api/google/linking/callback
 4. Copy Client ID and Client Secret
 
-Full guide: https://docs.getinboxzero.com/self-hosting/google-oauth`,
+Full guide: https://docs.getamodel.com/self-hosting/google-oauth`,
       "Google OAuth Setup",
     );
 
@@ -327,22 +327,22 @@ Full guide: https://docs.getinboxzero.com/self-hosting/google-oauth`,
       `To receive real-time email notifications, you need to set up Google Pub/Sub:
 
 1. Go to Google Cloud Console: https://console.cloud.google.com/cloudpubsub/topic/list
-2. Create a new topic (e.g., "inbox-zero-emails")
+2. Create a new topic (e.g., "amodel-emails")
 3. Add the Gmail API service account as a publisher:
    - Click on the topic → Permissions → Add Principal
    - Add: gmail-api-push@system.gserviceaccount.com
    - Role: Pub/Sub Publisher
 4. Create a push subscription pointing to your webhook URL:
    - Endpoint: https://yourdomain.com/api/google/webhook
-5. Copy the full topic name (e.g., projects/my-project-123/topics/inbox-zero-emails)
+5. Copy the full topic name (e.g., projects/my-project-123/topics/amodel-emails)
 
-Full guide: https://docs.getinboxzero.com/self-hosting/google-pubsub`,
+Full guide: https://docs.getamodel.com/self-hosting/google-pubsub`,
       "Google Pub/Sub Setup (Required for Gmail)",
     );
 
     const pubsubTopic = await p.text({
       message: "Google Pub/Sub Topic Name",
-      placeholder: "projects/your-project-id/topics/inbox-zero-emails",
+      placeholder: "projects/your-project-id/topics/amodel-emails",
       validate: (v) => {
         if (!v) return undefined; // Allow empty to skip
         if (!v.startsWith("projects/") || !v.includes("/topics/")) {
@@ -358,7 +358,7 @@ Full guide: https://docs.getinboxzero.com/self-hosting/google-pubsub`,
     }
 
     env.GOOGLE_PUBSUB_TOPIC_NAME =
-      pubsubTopic || "projects/your-project-id/topics/inbox-zero-emails";
+      pubsubTopic || "projects/your-project-id/topics/amodel-emails";
   } else {
     env.GOOGLE_CLIENT_ID = "skipped";
     env.GOOGLE_CLIENT_SECRET = "skipped";
@@ -377,7 +377,7 @@ Full guide: https://docs.getinboxzero.com/self-hosting/google-pubsub`,
 5. Go to Certificates & secrets → New client secret
 6. Copy Application (client) ID and the secret Value
 
-Full guide: https://docs.getinboxzero.com/self-hosting/microsoft-oauth`,
+Full guide: https://docs.getamodel.com/self-hosting/microsoft-oauth`,
       "Microsoft OAuth Setup",
     );
 
@@ -572,7 +572,7 @@ Full guide: https://docs.getinboxzero.com/self-hosting/microsoft-oauth`,
     // Using Docker Compose for Postgres/Redis
     env.POSTGRES_USER = "postgres";
     env.POSTGRES_PASSWORD = isDevMode ? "password" : generateSecret(16);
-    env.POSTGRES_DB = "inboxzero";
+    env.POSTGRES_DB = "amodel";
     env.UPSTASH_REDIS_TOKEN = redisToken;
 
     if (runWebInDocker) {
@@ -590,7 +590,7 @@ Full guide: https://docs.getinboxzero.com/self-hosting/microsoft-oauth`,
     }
   } else {
     // External infrastructure - set placeholders for user to fill in
-    env.DATABASE_URL = "postgresql://user:password@your-host:5432/inboxzero";
+    env.DATABASE_URL = "postgresql://user:password@your-host:5432/amodel";
     env.DIRECT_URL = env.DATABASE_URL;
     env.UPSTASH_REDIS_URL = "https://your-redis-url";
     env.UPSTASH_REDIS_TOKEN = "your-redis-token";
@@ -607,7 +607,7 @@ Full guide: https://docs.getinboxzero.com/self-hosting/microsoft-oauth`,
   // Google PubSub topic - only set placeholder if not already configured during Google OAuth setup
   if (!env.GOOGLE_PUBSUB_TOPIC_NAME) {
     env.GOOGLE_PUBSUB_TOPIC_NAME =
-      "projects/your-project-id/topics/inbox-zero-emails";
+      "projects/your-project-id/topics/amodel-emails";
   }
 
   // App config
@@ -710,7 +710,7 @@ Full guide: https://docs.getinboxzero.com/self-hosting/microsoft-oauth`,
 NEXT_PUBLIC_BASE_URL=https://yourdomain.com ${composeCmd} --profile all up -d
 
 # View logs:
-docker logs inbox-zero-services-web-1 -f
+docker logs amodel-services-web-1 -f
 
 # Then open:
 https://yourdomain.com`;
@@ -746,13 +746,13 @@ http://localhost:${webPort}`;
 async function runStart(options: { detach: boolean }) {
   if (!existsSync(STANDALONE_COMPOSE_FILE)) {
     p.log.error(
-      "Inbox Zero is not configured for production mode.\n" +
-        "Run 'inbox-zero setup' and choose Production (Docker) first.",
+      "Amodel is not configured for production mode.\n" +
+        "Run 'amodel setup' and choose Production (Docker) first.",
     );
     process.exit(1);
   }
 
-  p.intro("🚀 Starting Inbox Zero");
+  p.intro("🚀 Starting Amodel");
 
   const spinner = p.spinner();
   spinner.start("Pulling latest image...");
@@ -811,11 +811,11 @@ async function runStart(options: { detach: boolean }) {
     }
 
     p.note(
-      `Inbox Zero is running at:\nhttp://localhost:${webPort}\n\nView logs: inbox-zero logs\nStop: inbox-zero stop`,
+      `Amodel is running at:\nhttp://localhost:${webPort}\n\nView logs: amodel logs\nStop: amodel stop`,
       "Running",
     );
 
-    p.outro("Inbox Zero started! 🎉");
+    p.outro("Amodel started! 🎉");
   }
 }
 
@@ -825,11 +825,11 @@ async function runStart(options: { detach: boolean }) {
 
 async function runStop() {
   if (!existsSync(STANDALONE_COMPOSE_FILE)) {
-    p.log.error("Inbox Zero is not configured.");
+    p.log.error("Amodel is not configured.");
     process.exit(1);
   }
 
-  p.intro("Stopping Inbox Zero");
+  p.intro("Stopping Amodel");
 
   const spinner = p.spinner();
   spinner.start("Stopping containers...");
@@ -847,7 +847,7 @@ async function runStop() {
   }
 
   spinner.stop("Containers stopped");
-  p.outro("Inbox Zero stopped");
+  p.outro("Amodel stopped");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -856,7 +856,7 @@ async function runStop() {
 
 async function runLogs(options: { follow: boolean; tail: string }) {
   if (!existsSync(STANDALONE_COMPOSE_FILE)) {
-    p.log.error("Inbox Zero is not configured.");
+    p.log.error("Amodel is not configured.");
     process.exit(1);
   }
 
@@ -892,7 +892,7 @@ async function runLogs(options: { follow: boolean; tail: string }) {
 
 async function runStatus() {
   if (!existsSync(STANDALONE_COMPOSE_FILE)) {
-    p.log.error("Inbox Zero is not configured.\nRun 'inbox-zero setup' first.");
+    p.log.error("Amodel is not configured.\nRun 'amodel setup' first.");
     process.exit(1);
   }
 
@@ -907,11 +907,11 @@ async function runStatus() {
 
 async function runUpdate() {
   if (!existsSync(STANDALONE_COMPOSE_FILE)) {
-    p.log.error("Inbox Zero is not configured.");
+    p.log.error("Amodel is not configured.");
     process.exit(1);
   }
 
-  p.intro("Updating Inbox Zero");
+  p.intro("Updating Amodel");
 
   const spinner = p.spinner();
   spinner.start("Pulling latest image...");
@@ -936,7 +936,7 @@ async function runUpdate() {
   });
 
   if (p.isCancel(restart)) {
-    p.outro("Update complete. Run 'inbox-zero start' to use the new version.");
+    p.outro("Update complete. Run 'amodel start' to use the new version.");
     return;
   }
 
@@ -965,7 +965,7 @@ async function runUpdate() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 const ENV_EXAMPLE_URL =
-  "https://raw.githubusercontent.com/elie222/inbox-zero/main/apps/web/.env.example";
+  "https://raw.githubusercontent.com/elie222/amodel/main/apps/web/.env.example";
 
 async function fetchEnvExample(): Promise<string> {
   const response = await fetch(ENV_EXAMPLE_URL);
@@ -990,7 +990,7 @@ async function getEnvTemplate(): Promise<string> {
 // ═══════════════════════════════════════════════════════════════════════════
 
 const COMPOSE_URL =
-  "https://raw.githubusercontent.com/elie222/inbox-zero/main/docker-compose.yml";
+  "https://raw.githubusercontent.com/elie222/amodel/main/docker-compose.yml";
 
 async function fetchDockerCompose(): Promise<string> {
   const response = await fetch(COMPOSE_URL);
@@ -1006,8 +1006,8 @@ async function fetchDockerCompose(): Promise<string> {
 const isMainModule =
   process.argv[1] &&
   (process.argv[1].endsWith("main.ts") ||
-    process.argv[1].endsWith("inbox-zero.js") ||
-    basename(process.argv[1]).startsWith("inbox-zero"));
+    process.argv[1].endsWith("amodel.js") ||
+    basename(process.argv[1]).startsWith("amodel"));
 
 if (isMainModule) {
   main().catch((error) => {

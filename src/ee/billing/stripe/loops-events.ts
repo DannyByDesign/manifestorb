@@ -3,7 +3,7 @@ import {
   completedTrial,
   startedTrial,
   cancelledPremium,
-} from "@inboxzero/loops";
+} from "@amodel/loops";
 import type { Logger } from "@/utils/logger";
 
 export async function handleLoopsEvents({

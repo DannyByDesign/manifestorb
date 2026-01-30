@@ -6,11 +6,11 @@ import {
   completedTrial,
   startedTrial,
   cancelledPremium,
-} from "@inboxzero/loops";
+} from "@amodel/loops";
 
 const logger = createScopedLogger("test");
 
-vi.mock("@inboxzero/loops", () => ({
+vi.mock("@amodel/loops", () => ({
   createContact: vi.fn().mockResolvedValue({ success: true }),
   completedTrial: vi.fn().mockResolvedValue(undefined),
   startedTrial: vi.fn().mockResolvedValue(undefined),

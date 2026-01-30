@@ -2,7 +2,7 @@ import { messageVisibility } from "@/utils/gmail/constants";
 import { getRuleLabel } from "@/utils/rule/consts";
 import { SystemType } from "@/generated/prisma/enums";
 
-export const PARENT_LABEL = "Inbox Zero";
+export const PARENT_LABEL = "Amodel";
 
 const blue = "#b6cff5";
 const cyan = "#98d7e4";
@@ -60,7 +60,7 @@ export const inboxZeroLabels = {
   },
 } as const;
 
-export type InboxZeroLabel = keyof typeof inboxZeroLabels;
+export type AmodelLabel = keyof typeof inboxZeroLabels;
 
 export const FOLLOW_UP_LABEL = "Follow-up";
 

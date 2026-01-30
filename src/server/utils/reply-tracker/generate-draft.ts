@@ -71,7 +71,7 @@ export async function fetchMessagesAndGenerateDraft(
       emailAccount.userId,
     );
     const referralLink = generateReferralLink(referralSignature.code);
-    const htmlSignature = `Drafted by <a href="${referralLink}">Inbox Zero</a>.`;
+    const htmlSignature = `Drafted by <a href="${referralLink}">Amodel</a>.`;
     finalResult = `${finalResult}\n\n${htmlSignature}`;
   }
 

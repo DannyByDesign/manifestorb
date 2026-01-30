@@ -9,7 +9,7 @@ export class Braintrust {
 
   constructor(dataset: string) {
     if (process.env.BRAINTRUST_API_KEY) {
-      this.dataset = initDataset("inbox-zero", { dataset });
+      this.dataset = initDataset("amodel", { dataset });
     }
   }
 

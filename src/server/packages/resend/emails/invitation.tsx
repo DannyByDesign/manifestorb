@@ -26,7 +26,7 @@ type InvitationEmailComponent = FC<InvitationEmailProps> & {
 };
 
 const InvitationEmail: InvitationEmailComponent = ({
-  baseUrl = "https://www.getinboxzero.com",
+  baseUrl = "https://www.getamodel.com",
   organizationName,
   inviterName,
   invitationId,
@@ -44,17 +44,17 @@ const InvitationEmail: InvitationEmailComponent = ({
             <Section className="p-4 text-center">
               <Link href={baseUrl} className="text-[15px]">
                 <Img
-                  src={"https://www.getinboxzero.com/icon.png"}
+                  src={"https://www.getamodel.com/icon.png"}
                   width="40"
                   height="40"
-                  alt="Inbox Zero"
+                  alt="Amodel"
                   className="mx-auto my-0"
                 />
               </Link>
 
               <Text className="mx-0 mb-8 mt-4 p-0 text-center text-2xl font-normal">
                 <span className="font-semibold tracking-tighter">
-                  Inbox Zero
+                  Amodel
                 </span>
               </Text>
 
@@ -107,7 +107,7 @@ function Footer({
     <Section className="mt-8 text-center text-sm text-gray-500">
       <Text className="m-0">
         You're receiving this email because you were invited to join an
-        organization on Inbox Zero.
+        organization on Amodel.
       </Text>
       <div className="mt-2">
         <Link
@@ -131,7 +131,7 @@ function Footer({
 }
 
 InvitationEmail.PreviewProps = {
-  baseUrl: "https://www.getinboxzero.com",
+  baseUrl: "https://www.getamodel.com",
   organizationName: "Apple Inc.",
   inviterName: "Eduardo Lelis",
   invitationId: "cmf5pzul7000lf1zrlatybrr7",

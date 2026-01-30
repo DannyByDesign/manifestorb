@@ -1,34 +1,34 @@
-# @inbox-zero/cli
+# @amodel/cli
 
-CLI tool for running [Inbox Zero](https://www.getinboxzero.com) - an open-source AI email assistant.
+CLI tool for running [Amodel](https://www.getamodel.com) - an open-source AI email assistant.
 
 ## Installation
 
 ### Homebrew (macOS/Linux)
 
 ```bash
-brew install inbox-zero/inbox-zero/inbox-zero
+brew install amodel/amodel/amodel
 ```
 
 ### Manual Installation
 
-Download the binary for your platform from [releases](https://github.com/elie222/inbox-zero/releases) and add to your PATH.
+Download the binary for your platform from [releases](https://github.com/elie222/amodel/releases) and add to your PATH.
 
 ## Quick Start
 
 ```bash
-# Configure Inbox Zero (interactive)
-inbox-zero setup
+# Configure Amodel (interactive)
+amodel setup
 
-# Start Inbox Zero
-inbox-zero start
+# Start Amodel
+amodel start
 
 # Open http://localhost:3000
 ```
 
 ## Commands
 
-### `inbox-zero setup`
+### `amodel setup`
 
 Interactive setup wizard that:
 - Configures OAuth providers (Google/Microsoft)
@@ -36,49 +36,49 @@ Interactive setup wizard that:
 - Configures ports (to avoid conflicts)
 - Generates all required secrets
 
-Configuration is stored in `~/.inbox-zero/`
+Configuration is stored in `~/.amodel/`
 
-### `inbox-zero start`
+### `amodel start`
 
 Pulls the latest Docker image and starts all containers:
 - PostgreSQL database
 - Redis cache
-- Inbox Zero web app
+- Amodel web app
 - Cron job for email sync
 
 ```bash
-inbox-zero start           # Start in background
-inbox-zero start --no-detach  # Start in foreground
+amodel start           # Start in background
+amodel start --no-detach  # Start in foreground
 ```
 
-### `inbox-zero stop`
+### `amodel stop`
 
 Stops all running containers.
 
 ```bash
-inbox-zero stop
+amodel stop
 ```
 
-### `inbox-zero logs`
+### `amodel logs`
 
 View container logs.
 
 ```bash
-inbox-zero logs            # Show last 100 lines
-inbox-zero logs -f         # Follow logs
-inbox-zero logs -n 500     # Show last 500 lines
+amodel logs            # Show last 100 lines
+amodel logs -f         # Follow logs
+amodel logs -n 500     # Show last 500 lines
 ```
 
-### `inbox-zero status`
+### `amodel status`
 
 Show status of running containers.
 
-### `inbox-zero update`
+### `amodel update`
 
-Pull the latest Inbox Zero image and optionally restart.
+Pull the latest Amodel image and optionally restart.
 
 ```bash
-inbox-zero update
+amodel update
 ```
 
 ## Requirements
@@ -89,11 +89,11 @@ inbox-zero update
 
 ## Configuration
 
-All configuration is stored in `~/.inbox-zero/`:
+All configuration is stored in `~/.amodel/`:
 - `.env` - Environment variables
 - `docker-compose.yml` - Docker Compose configuration
 
-To reconfigure, run `inbox-zero setup` again.
+To reconfigure, run `amodel setup` again.
 
 ## License
 

@@ -73,7 +73,7 @@ export const createMockEmailProvider = (
       .fn()
       .mockResolvedValue({ id: "label1", name: "Test Label", type: "user" }),
     deleteLabel: vi.fn().mockResolvedValue(undefined),
-    getOrCreateInboxZeroLabel: vi
+    getOrCreateAmodelLabel: vi
       .fn()
       .mockResolvedValue({ id: "label1", name: "Test Label", type: "user" }),
     getOriginalMessage: vi.fn().mockResolvedValue(null),

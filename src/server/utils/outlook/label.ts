@@ -1,9 +1,9 @@
 import type { OutlookClient } from "@/utils/outlook/client";
 import type { Logger } from "@/utils/logger";
-import { publishArchive, type TinybirdEmailAction } from "@inboxzero/tinybird";
+import { publishArchive, type TinybirdEmailAction } from "@amodel/tinybird";
 import { WELL_KNOWN_FOLDERS } from "./message";
 import { extractErrorInfo, withOutlookRetry } from "@/utils/outlook/retry";
-import { inboxZeroLabels, type InboxZeroLabel } from "@/utils/label";
+import { inboxZeroLabels, type AmodelLabel } from "@/utils/label";
 import type {
   OutlookCategory,
   Message,
@@ -620,13 +620,13 @@ export async function markImportantMessage({
   );
 }
 
-export async function getOrCreateInboxZeroLabel({
+export async function getOrCreateAmodelLabel({
   client,
   key,
   logger,
 }: {
   client: OutlookClient;
-  key: InboxZeroLabel;
+  key: AmodelLabel;
   logger: Logger;
 }) {
   const { name } = inboxZeroLabels[key];

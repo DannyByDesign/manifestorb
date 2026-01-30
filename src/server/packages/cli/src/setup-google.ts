@@ -29,7 +29,7 @@ export interface GoogleSetupOptions {
 // ═══════════════════════════════════════════════════════════════════════════
 
 export async function runGoogleSetup(options: GoogleSetupOptions) {
-  p.intro("Google Cloud Setup for Inbox Zero");
+  p.intro("Google Cloud Setup for Amodel");
 
   // Step 1: Check prerequisites
   const spinner = p.spinner();
@@ -136,7 +136,7 @@ export async function runGoogleSetup(options: GoogleSetupOptions) {
 
 Steps:
 1. Select "External" user type (or "Internal" for Google Workspace)
-2. App name: "Inbox Zero" (or your preferred name)
+2. App name: "Amodel" (or your preferred name)
 3. User support email: Your email
 4. Developer contact: Your email
 5. Click "Save and Continue" through the scopes section
@@ -183,7 +183,7 @@ The console will open in your browser.`,
       `Now create OAuth 2.0 credentials:
 
 1. Select "Web application" as the application type
-2. Name: "Inbox Zero" (or your preferred name)
+2. Name: "Amodel" (or your preferred name)
 3. Add Authorized redirect URIs:
 ${redirectUris}
 4. Click "Create"
@@ -235,8 +235,8 @@ The console will open in your browser.`,
   }
 
   // Step 8: Pub/Sub setup (automated)
-  const topicName = "inbox-zero-emails";
-  const subscriptionName = "inbox-zero-subscription";
+  const topicName = "amodel-emails";
+  const subscriptionName = "amodel-subscription";
   const verificationToken = generateSecret(32);
   let topicFullName = "";
   let pubsubSuccess = false;

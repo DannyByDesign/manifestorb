@@ -1,5 +1,5 @@
 {
-  "name": "@inboxzero/tinybird-ai-analytics",
+  "name": "@amodel/tinybird-ai-analytics",
   "version": "0.0.0",
   "main": "src/index.ts",
   "dependencies": {

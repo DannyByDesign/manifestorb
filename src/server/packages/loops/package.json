@@ -1,5 +1,5 @@
 {
-  "name": "@inboxzero/loops",
+  "name": "@amodel/loops",
   "version": "0.0.0",
   "main": "src/index.ts",
   "dependencies": {

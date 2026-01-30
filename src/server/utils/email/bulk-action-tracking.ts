@@ -1,4 +1,4 @@
-import { publishArchive, publishDelete } from "@inboxzero/tinybird";
+import { publishArchive, publishDelete } from "@amodel/tinybird";
 import { createScopedLogger } from "@/utils/logger";
 import prisma from "@/utils/prisma";
 

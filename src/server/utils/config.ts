@@ -23,6 +23,6 @@ export type CoreConditionType = Extract<ConditionType, "AI" | "STATIC">;
 
 export const WELCOME_PATH = "/welcome-redirect";
 
-export const EXTENSION_URL = "https://go.getinboxzero.com/extension";
+export const EXTENSION_URL = "https://go.getamodel.com/extension";
 
 export const ONBOARDING_PROCESS_EMAILS_COUNT = 20;

@@ -1,4 +1,4 @@
-import { sendColdEmailNotification as sendColdEmailNotificationViaResend } from "@inboxzero/resend";
+import { sendColdEmailNotification as sendColdEmailNotificationViaResend } from "@amodel/resend";
 import { env } from "@/env";
 import type { Logger } from "@/utils/logger";
 import { formatReplySubject } from "@/utils/email/subject";

@@ -1,5 +1,5 @@
 import type { ParsedMessage } from "@/utils/types";
-import type { InboxZeroLabel } from "@/utils/label";
+import type { AmodelLabel } from "@/utils/label";
 // import type { ThreadsQuery } from "@/app/api/threads/validation";
 type ThreadsQuery = any;
 import type { OutlookFolder } from "@/utils/outlook/folders";
@@ -170,7 +170,7 @@ export interface EmailProvider {
   ): Promise<void>;
   createLabel(name: string, description?: string): Promise<EmailLabel>;
   deleteLabel(labelId: string): Promise<void>;
-  getOrCreateInboxZeroLabel(key: InboxZeroLabel): Promise<EmailLabel>;
+  getOrCreateAmodelLabel(key: AmodelLabel): Promise<EmailLabel>;
   blockUnsubscribedEmail(messageId: string): Promise<void>;
   getOriginalMessage(
     originalMessageId: string | undefined,

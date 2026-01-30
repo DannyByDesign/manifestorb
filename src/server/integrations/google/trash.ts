@@ -1,5 +1,5 @@
 import type { gmail_v1 } from "@googleapis/gmail";
-import { publishDelete, type TinybirdEmailAction } from "@inboxzero/tinybird";
+import { publishDelete, type TinybirdEmailAction } from "@amodel/tinybird";
 import { createScopedLogger } from "@/server/utils/logger";
 import { withGmailRetry } from "@/server/integrations/google/retry";
 

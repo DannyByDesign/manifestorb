@@ -1,6 +1,6 @@
 import prisma from "@/server/db/client";
 import type { Logger } from "@/server/utils/logger";
-import { sendReconnectionEmail } from "@inboxzero/resend";
+import { sendReconnectionEmail } from "@amodel/resend";
 import { env } from "@/env";
 import { addUserErrorMessage, ErrorType } from "@/server/utils/error-messages";
 import { createUnsubscribeToken } from "@/server/utils/unsubscribe";

@@ -86,7 +86,7 @@ export type DigestEmailProps = {
 };
 export default function DigestEmail(props: DigestEmailProps) {
   const {
-    baseUrl = "https://www.getinboxzero.com",
+    baseUrl = "https://www.getamodel.com",
     unsubscribeToken,
     ruleNames,
     emailAccountId,
@@ -245,17 +245,17 @@ export default function DigestEmail(props: DigestEmailProps) {
             <Section className="p-4 text-center">
               <Link href={baseUrl} className="text-[15px]">
                 <Img
-                  src={"https://www.getinboxzero.com/icon.png"}
+                  src={"https://www.getamodel.com/icon.png"}
                   width="40"
                   height="40"
-                  alt="Inbox Zero"
+                  alt="Amodel"
                   className="mx-auto my-0"
                 />
               </Link>
 
               <Text className="mx-0 mb-8 mt-4 p-0 text-center text-2xl font-normal">
                 <span className="font-semibold tracking-tighter">
-                  Inbox Zero
+                  Amodel
                 </span>
               </Text>
 
@@ -307,7 +307,7 @@ export default function DigestEmail(props: DigestEmailProps) {
 }
 
 DigestEmail.PreviewProps = {
-  baseUrl: "https://www.getinboxzero.com",
+  baseUrl: "https://www.getamodel.com",
   unsubscribeToken: "123",
   emailAccountId: "123",
   ruleNames: {
@@ -584,7 +584,7 @@ function Footer({
     <Section className="mt-8 text-center text-sm text-gray-500">
       <Text className="m-0">
         You're receiving this email because you enabled digest emails in your
-        Inbox Zero settings.
+        Amodel settings.
       </Text>
       <div className="mt-[8px]">
         <Link

@@ -9,7 +9,7 @@ import { getEmailAccountWithAiAndTokens } from "@/utils/user/get";
 import { SafeError } from "@/server/utils/error";
 import { getEmailForLLM } from "@/server/utils/get-email-from-message";
 import { z } from "zod";
-import { updateContactRole } from "@inboxzero/loops";
+import { updateContactRole } from "@amodel/loops";
 
 export const updateEmailAccountRoleAction = actionClient
   .metadata({ name: "updateEmailAccountRole" })

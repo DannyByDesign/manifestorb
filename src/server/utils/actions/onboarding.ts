@@ -7,7 +7,7 @@ import {
 } from "@/utils/actions/onboarding.validation";
 import { actionClientUser } from "@/utils/actions/safe-action";
 import prisma from "@/utils/prisma";
-import { updateContactCompanySize, updateContactRole } from "@inboxzero/loops";
+import { updateContactCompanySize, updateContactRole } from "@amodel/loops";
 
 export const completedOnboardingAction = actionClientUser
   .metadata({ name: "completedOnboarding" })

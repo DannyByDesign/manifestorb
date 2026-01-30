@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { subHours } from "date-fns/subHours";
-import { sendSummaryEmail } from "@inboxzero/resend";
+import { sendSummaryEmail } from "@amodel/resend";
 import { withEmailAccount, withError } from "@/utils/middleware";
 import { env } from "@/env";
 import { hasCronSecret } from "@/utils/cron";

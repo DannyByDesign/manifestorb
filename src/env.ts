@@ -126,7 +126,7 @@ export const env = createEnv({
     RESEND_FROM_EMAIL: z
       .string()
       .optional()
-      .default("Inbox Zero <updates@transactional.getinboxzero.com>"),
+      .default("Amodel <updates@transactional.getamodel.com>"),
     CRON_SECRET: z.string().optional(),
     LOOPS_API_SECRET: z.string().optional(),
     FB_CONVERSION_API_ACCESS_TOKEN: z.string().optional(),
@@ -172,7 +172,7 @@ export const env = createEnv({
     NEXT_PUBLIC_STRIPE_BUSINESS_PLUS_ANNUALLY_PRICE_ID: z.string().optional(),
 
     // lemon squeezy
-    NEXT_PUBLIC_LEMON_STORE_ID: z.string().nullish().default("inboxzero"),
+    NEXT_PUBLIC_LEMON_STORE_ID: z.string().nullish().default("amodel"),
     NEXT_PUBLIC_BASIC_MONTHLY_VARIANT_ID: z.coerce.number().default(0),
     NEXT_PUBLIC_BASIC_ANNUALLY_VARIANT_ID: z.coerce.number().default(0),
     NEXT_PUBLIC_PRO_MONTHLY_VARIANT_ID: z.coerce.number().default(0),
@@ -184,7 +184,7 @@ export const env = createEnv({
     NEXT_PUBLIC_FREE_UNSUBSCRIBE_CREDITS: z.number().default(5),
     NEXT_PUBLIC_CALL_LINK: z
       .string()
-      .default("https://cal.com/team/inbox-zero/feedback"),
+      .default("https://cal.com/team/amodel/feedback"),
     NEXT_PUBLIC_POSTHOG_KEY: z.string().optional(),
     NEXT_PUBLIC_POSTHOG_API_HOST: z.string().optional(),
     NEXT_PUBLIC_POSTHOG_HERO_AB: z.string().optional(),
@@ -196,7 +196,7 @@ export const env = createEnv({
     NEXT_PUBLIC_SUPPORT_EMAIL: z
       .string()
       .optional()
-      .default("elie@getinboxzero.com"),
+      .default("elie@getamodel.com"),
     NEXT_PUBLIC_GTM_ID: z.string().optional(),
     NEXT_PUBLIC_CRISP_WEBSITE_ID: z.string().optional(),
     NEXT_PUBLIC_WELCOME_UPGRADE_ENABLED: z.coerce

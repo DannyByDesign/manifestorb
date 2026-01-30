@@ -73,7 +73,7 @@ ANTHROPIC_API_KEY=
       ...baseEnv,
       POSTGRES_USER: "postgres",
       POSTGRES_PASSWORD: "mypassword",
-      POSTGRES_DB: "inboxzero",
+      POSTGRES_DB: "amodel",
     };
 
     const templateWithPostgres = `${baseTemplate}
@@ -91,7 +91,7 @@ POSTGRES_DB=
 
     expect(result).toContain("POSTGRES_USER=postgres");
     expect(result).toContain("POSTGRES_PASSWORD=mypassword");
-    expect(result).toContain("POSTGRES_DB=inboxzero");
+    expect(result).toContain("POSTGRES_DB=amodel");
   });
 
   it("should set LLM provider API key", () => {
@@ -234,8 +234,8 @@ AUTH_SECRET=
 # =============================================================================
 # POSTGRES_USER=postgres
 # POSTGRES_PASSWORD=password
-# POSTGRES_DB=inboxzero
-# DATABASE_URL="postgresql://postgres:password@localhost:5432/inboxzero"
+# POSTGRES_DB=amodel
+# DATABASE_URL="postgresql://postgres:password@localhost:5432/amodel"
 # UPSTASH_REDIS_URL="http://localhost:8079"
 
 # =============================================================================
@@ -259,7 +259,7 @@ CRON_SECRET=
 # =============================================================================
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
-GOOGLE_PUBSUB_TOPIC_NAME=projects/your-project/topics/inbox-zero-emails
+GOOGLE_PUBSUB_TOPIC_NAME=projects/your-project/topics/amodel-emails
 GOOGLE_PUBSUB_VERIFICATION_TOKEN=
 
 # =============================================================================
@@ -289,9 +289,9 @@ UPSTASH_REDIS_TOKEN=
       // Docker
       POSTGRES_USER: "postgres",
       POSTGRES_PASSWORD: "supersecretpassword123",
-      POSTGRES_DB: "inboxzero",
+      POSTGRES_DB: "amodel",
       DATABASE_URL:
-        "postgresql://postgres:supersecretpassword123@db:5432/inboxzero",
+        "postgresql://postgres:supersecretpassword123@db:5432/amodel",
       UPSTASH_REDIS_URL: "http://serverless-redis-http:80",
       UPSTASH_REDIS_TOKEN: "redis-token-abc123",
       // App
@@ -307,7 +307,7 @@ UPSTASH_REDIS_TOKEN=
       // Google
       GOOGLE_CLIENT_ID: "123456789-abcdef.apps.googleusercontent.com",
       GOOGLE_CLIENT_SECRET: "GOCSPX-abcdefghijk",
-      GOOGLE_PUBSUB_TOPIC_NAME: "projects/my-project/topics/inbox-zero",
+      GOOGLE_PUBSUB_TOPIC_NAME: "projects/my-project/topics/amodel",
       GOOGLE_PUBSUB_VERIFICATION_TOKEN: "pubsub-token-hex",
       // Microsoft
       MICROSOFT_CLIENT_ID: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
@@ -334,8 +334,8 @@ UPSTASH_REDIS_TOKEN=
 # =============================================================================
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=supersecretpassword123
-POSTGRES_DB=inboxzero
-DATABASE_URL="postgresql://postgres:supersecretpassword123@db:5432/inboxzero"
+POSTGRES_DB=amodel
+DATABASE_URL="postgresql://postgres:supersecretpassword123@db:5432/amodel"
 UPSTASH_REDIS_URL="http://serverless-redis-http:80"
 
 # =============================================================================
@@ -359,7 +359,7 @@ CRON_SECRET=cron-secret-hex
 # =============================================================================
 GOOGLE_CLIENT_ID=123456789-abcdef.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=GOCSPX-abcdefghijk
-GOOGLE_PUBSUB_TOPIC_NAME=projects/my-project/topics/inbox-zero
+GOOGLE_PUBSUB_TOPIC_NAME=projects/my-project/topics/amodel
 GOOGLE_PUBSUB_VERIFICATION_TOKEN=pubsub-token-hex
 
 # =============================================================================

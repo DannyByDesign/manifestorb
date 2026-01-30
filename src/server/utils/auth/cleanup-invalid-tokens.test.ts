@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import prisma from "@/utils/__mocks__/prisma";
 import { cleanupInvalidTokens } from "./cleanup-invalid-tokens";
-import { sendReconnectionEmail } from "@inboxzero/resend";
+import { sendReconnectionEmail } from "@amodel/resend";
 import { createScopedLogger } from "@/utils/logger";
 import { addUserErrorMessage } from "@/utils/error-messages";
 
 const logger = createScopedLogger("test");
 
 vi.mock("@/utils/prisma");
-vi.mock("@inboxzero/resend", () => ({
+vi.mock("@amodel/resend", () => ({
   sendReconnectionEmail: vi.fn(),
 }));
 vi.mock("@/utils/error-messages", () => ({

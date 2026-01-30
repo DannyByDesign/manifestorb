@@ -243,8 +243,8 @@ async function withProcessingLabels<T>(
 ): Promise<T> {
   // Get labels first so we can reuse them
   const results = await Promise.allSettled([
-    provider.getOrCreateInboxZeroLabel("processing"),
-    provider.getOrCreateInboxZeroLabel("assistant"),
+    provider.getOrCreateAmodelLabel("processing"),
+    provider.getOrCreateAmodelLabel("assistant"),
   ]);
 
   const [processingLabelResult, assistantLabelResult] = results;

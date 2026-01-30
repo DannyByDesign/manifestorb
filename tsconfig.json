@@ -27,7 +27,7 @@
       "@/*": [
         "./src/*"
       ],
-      "@inboxzero/*": [
+      "@amodel/*": [
         "./src/server/packages/*"
       ],
       "@/generated/*": [

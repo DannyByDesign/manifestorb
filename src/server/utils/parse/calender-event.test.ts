@@ -223,7 +223,7 @@ describe("Calendar Event Detection", () => {
       const email = createTestEmail({
         headers: {
           subject: "Test event",
-          from: "demoinboxzero@outlook.com",
+          from: "demoamodel@outlook.com",
           to: "user@example.com",
           date: "2024-03-06T00:26:01Z",
         },

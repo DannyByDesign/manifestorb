@@ -173,7 +173,7 @@ export const sendInvitationEmail = async ({
   return sendEmail({
     from,
     to,
-    subject: `You're invited to join ${emailProps.organizationName} on Inbox Zero`,
+    subject: `You're invited to join ${emailProps.organizationName} on Amodel`,
     react: <InvitationEmail {...emailProps} />,
     test,
     unsubscribeToken: emailProps.unsubscribeToken,
