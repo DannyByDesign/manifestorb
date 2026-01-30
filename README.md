@@ -114,6 +114,7 @@ amodel/
 │   │   │   │   ├── assistant/  # Chat assistant
 │   │   │   │   ├── reply/      # Reply drafting
 │   │   │   │   ├── rule/       # Rule generation
+│   │   │   │   ├── tools/      # Agentic tools & providers
 │   │   │   │   └── ...
 │   │   │   ├── google/         # Gmail, Calendar, Drive
 │   │   │   ├── microsoft/      # Outlook
@@ -160,6 +161,7 @@ amodel/
 | Add client-side state | `src/lib/stores/` |
 | Create an API endpoint | `src/app/api/` |
 | Add email automation logic | `src/server/integrations/ai/` |
+| Modify Agentic Tools | `src/server/integrations/ai/tools/` |
 | Modify Gmail integration | `src/server/integrations/google/` |
 | Change database schema | `prisma/schema.prisma` |
 | Add a server action | `src/server/services/unsubscriber/` |
@@ -179,6 +181,7 @@ import { useQuality } from "@/lib/stores/qualityStore";
 // Backend  
 import { prisma } from "@/server/db/client";
 import { aiGenerateReply } from "@/server/integrations/ai/reply/draft-reply";
+import { createAgentTools } from "@/server/integrations/ai/tools";
 
 // Packages
 import { sendEmail } from "@amodel/resend";
@@ -212,6 +215,7 @@ Open [http://localhost:3000](http://localhost:3000) to see the app.
 
 ## Key Features
 
+- **Agentic Tools** - Direct AI manipulation of email and calendar
 - **Email Automation** - AI-powered rules to manage your inbox
 - **Reply Drafting** - Generate contextual replies with AI
 - **Meeting Briefings** - Get context before meetings

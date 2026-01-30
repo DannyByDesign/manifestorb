@@ -2,23 +2,24 @@
 
 > Exhaustive inventory of all features in the codebase, categorized by domain and UI requirements.
 
-**Total Features: ~107**
+**Total Features: ~113**
 - **Requires User-Facing UI: ~82 features**
-- **Backend/Infrastructure Only: ~25 features**
+- **Backend/Infrastructure Only: ~31 features**
 
 ---
 
 ## Table of Contents
 
 1. [AI-Powered Features](#1-ai-powered-features-29-features)
-2. [Email Provider Integration](#2-email-provider-integration-32-features)
-3. [Rules & Automation Engine](#3-rules--automation-engine-12-features)
-4. [Organization & User Management](#4-organization--user-management-8-features)
-5. [Calendar & Drive Integration](#5-calendar--drive-integration-6-features)
-6. [Analytics & Reporting](#6-analytics--reporting-5-features)
-7. [Premium & Billing](#7-premium--billing-6-features)
-8. [Communication & Notifications](#8-communication--notifications-4-features)
-9. [Additional Features](#9-additional-features-5-features)
+2. [Agentic Capabilities](#2-agentic-capabilities-6-features)
+3. [Email Provider Integration](#2-email-provider-integration-32-features)
+4. [Rules & Automation Engine](#3-rules--automation-engine-12-features)
+5. [Organization & User Management](#4-organization--user-management-8-features)
+6. [Calendar & Drive Integration](#5-calendar--drive-integration-6-features)
+7. [Analytics & Reporting](#6-analytics--reporting-5-features)
+8. [Premium & Billing](#7-premium--billing-6-features)
+9. [Communication & Notifications](#8-communication--notifications-4-features)
+10. [Additional Features](#9-additional-features-5-features)
 
 ---
 
@@ -62,6 +63,26 @@
 | 27 | **AI Find Newsletters** | Identify newsletter emails automatically | `server/integrations/ai/group/find-newsletters.ts` |
 | 28 | **AI Find Receipts** | Identify receipt emails automatically | `server/integrations/ai/group/find-receipts.ts` |
 | 29 | **AI Prompt Security** | Validate and secure AI prompts against injection attacks | `server/integrations/ai/security.ts` |
+
+
+---
+
+## 2. Agentic Capabilities (6 features)
+
+> **New in v0.2**: These polymorphic tools allow the AI to directly interact with backend resources (Email, Calendar) rather than just configuring rules.
+
+| # | Tool | Description | Key Files | Security Limit |
+|---|------|-------------|-----------|----------------|
+| 30 | **Query Tool** | Polymorphic search across Email, Calendar, and Automation | `server/integrations/ai/tools/query.ts` | SAFE (Read-only) |
+| 31 | **Get Tool** | Retrieve detailed item information by ID | `server/integrations/ai/tools/get.ts` | SAFE (Read-only) |
+| 32 | **Modify Tool** | Change state (Archive, Trash, Label, Mark Read) | `server/integrations/ai/tools/modify.ts` | CAUTION |
+| 33 | **Create Tool** | Create Drafts (Reply/Forward/New) and Events | `server/integrations/ai/tools/create.ts` | CAUTION (Drafts only) |
+| 34 | **Delete Tool** | Soft delete items (Trash) | `server/integrations/ai/tools/delete.ts` | CAUTION |
+| 35 | **Analyze Tool** | AI-powered analysis of content | `server/integrations/ai/tools/analyze.ts` | SAFE |
+
+**Infrastructure:**
+- **Providers**: `server/integrations/ai/tools/providers/` (Email, Calendar, Automation) abstract the underlying APIs.
+- **Executor**: `server/integrations/ai/tools/executor.ts` handles security checks, rate limiting, and audit logging.
 
 ---
 
