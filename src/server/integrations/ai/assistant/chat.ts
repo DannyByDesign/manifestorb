@@ -26,6 +26,7 @@ import { stringifyEmail } from "@/server/utils/stringify-email";
 import { getEmailForLLM } from "@/server/utils/get-email-from-message";
 import type { ParsedMessage } from "@/server/types";
 import { env } from "@/env";
+import { createAgentTools } from "@/server/integrations/ai/tools";
 
 export const maxDuration = 120;
 
@@ -680,10 +681,34 @@ export async function aiProcessAssistantChat({
   context?: MessageContext;
   logger: Logger;
 }) {
-  const system = `You are an assistant that helps create and update rules to manage a user's inbox. Our platform is called Amodel.
+  const agentSystemPrompt = `
+You now have access to a set of Agentic Tools to manage the user's Email and Calendar directly.
+You can perform actions like searching, reading, archiving, labeling, and drafting emails.
+
+Agentic Tools:
+- query: Search for emails (resource: "email") or calendar events (resource: "calendar").
+- get: Retrieve full details of specific items by ID.
+- modify: Change the state of items (archive, trash, label, mark read).
+- create: Create DRAFTS for new emails, replies, or forwards (resource: "email"). NEVER send emails directly.
+- delete: Trash items.
+- analyze: Analyze content (summarize, extract actions).
+
+Security & Safety:
+- You operate in a CAUTION mode for modifications.
+- You can create DRAFTS but cannot send emails.
+- Always confirm with the user before performing destructive actions (like bulk trashing) if unclear.
+- Use the 'analyze' tool to summarize long threads if needed.
+
+When asked to manage emails/calendar, use these tools.
+For managing Rules and Settings, continue using the specific Rule tools (createRule, etc.).
+`;
+
+  const system = `You are an assistant that helps create and update rules to manage a user's inbox AND manage the inbox directly. Our platform is called Amodel.
+
+${agentSystemPrompt}
   
-You can't perform any actions on their inbox.
-You can only adjust the rules that manage the inbox.
+You can't perform any actions on their inbox DIRECTLY via rules only. You now have tools to Modify the inbox state.
+You can only adjust the rules that manage the inbox OR use the Agentic Tools to manage it.
 
 A rule is comprised of:
 1. A condition
@@ -961,6 +986,17 @@ Examples:
     logger,
   };
 
+  const agentTools = await createAgentTools({
+    emailAccount: {
+      ...user.account, // We need to ensure user.account matches EmailAccount interface
+      provider: user.account.provider || "google", // Fallback or strict check
+      email: user.email,
+      expires_at: user.account.expires_at ? Number(user.account.expires_at) : null
+    },
+    logger,
+    userId: user.id
+  });
+
   const hiddenContextMessage =
     context && context.type === "fix-rule"
       ? [
@@ -1005,6 +1041,7 @@ Examples:
     },
     maxSteps: 10,
     tools: {
+      ...agentTools,
       getUserRulesAndSettings: getUserRulesAndSettingsTool(toolOptions),
       getLearnedPatterns: getLearnedPatternsTool(toolOptions),
       createRule: createRuleTool(toolOptions),
