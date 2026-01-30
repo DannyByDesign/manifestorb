@@ -5,7 +5,7 @@ import { ExecutedRuleStatus, ActionType } from "@/generated/prisma/enums";
 import type { Logger } from "@/server/utils/logger";
 import type { ParsedMessage } from "@/server/types";
 import { updateExecutedActionWithDraftId } from "@/server/integrations/ai/choose-rule/draft-management";
-import type { EmailProvider } from "@/server/integrations/google/types";
+import type { EmailProvider } from "@/utils/email/types";
 
 const MODULE = "ai-execute-act";
 

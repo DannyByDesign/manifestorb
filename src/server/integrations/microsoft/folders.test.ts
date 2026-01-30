@@ -397,7 +397,7 @@ describe("getOutlookRootFolders", () => {
       },
     });
 
-    const result = await getOutlookRootFolders(mockClient);
+    const result = await getOutlookRootFolders(mockClient, logger);
 
     expect(result).toEqual([
       {
@@ -430,7 +430,7 @@ describe("getOutlookRootFolders", () => {
       },
     });
 
-    const result = await getOutlookRootFolders(mockClient);
+    const result = await getOutlookRootFolders(mockClient, logger);
 
     expect(result).toEqual([
       {
@@ -468,7 +468,7 @@ describe("getOutlookChildFolders", () => {
       },
     });
 
-    const result = await getOutlookChildFolders(mockClient, "parent-id");
+    const result = await getOutlookChildFolders(mockClient, "parent-id", logger);
 
     expect(result).toHaveLength(2);
     expect(result[0].displayName).toBe("Child1");

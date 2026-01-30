@@ -70,7 +70,7 @@ Please return the existing rules that match the prompt rules in JSON format.
     }),
   });
 
-  const existingRules = result.object.existingRules.map((rule) => {
+  const existingRules = result.object.existingRules.map((rule: { ruleId: string; promptNumber: number }) => {
     const promptRule = rule.promptNumber
       ? promptRules[rule.promptNumber - 1]
       : null;
@@ -94,7 +94,7 @@ Please return the existing rules that match the prompt rules in JSON format.
   });
 
   return {
-    editedRules: existingRules.filter((rule) => rule.toEdit),
-    removedRules: existingRules.filter((rule) => rule.toRemove),
+    editedRules: existingRules.filter((rule: any) => rule.toEdit),
+    removedRules: existingRules.filter((rule: any) => rule.toRemove),
   };
 }

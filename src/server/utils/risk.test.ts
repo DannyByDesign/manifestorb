@@ -6,7 +6,8 @@ import {
   isPartiallyDynamicField,
 } from "./risk";
 import { ActionType } from "@/generated/prisma/enums";
-import type { RulesResponse } from "@/app/api/user/rules/route";
+// import type { RulesResponse } from "@/app/api/user/rules/route";
+type RulesResponse = any[];
 
 // Run with:
 // pnpm test risk.test.ts

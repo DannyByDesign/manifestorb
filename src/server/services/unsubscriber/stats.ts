@@ -8,13 +8,13 @@ import {
   extractDomainFromEmail,
   extractEmailAddress,
   extractNameFromEmail,
-} from "@/server/integrations/google";
+} from "@/server/utils/email";
 import { findUnsubscribeLink } from "@/utils/parse/parseHtml.server";
 import { internalDateToDate } from "@/server/utils/date";
 import prisma from "@/server/db/client";
 import { SafeError } from "@/server/utils/error";
 import type { Logger } from "@/server/utils/logger";
-import type { EmailProvider } from "@/server/integrations/google/types";
+import type { EmailProvider } from "@/utils/email/types";
 
 const PAGE_SIZE = 20; // avoid setting too high because it will hit the rate limit
 // const PAUSE_AFTER_RATE_LIMIT = 10_000;
@@ -161,10 +161,10 @@ async function saveBatch({
   logger: Logger;
   nextPageToken?: string;
 } & (
-  | { before: Date; after: undefined }
-  | { before: undefined; after: Date }
-  | { before: undefined; after: undefined }
-)) {
+    | { before: Date; after: undefined }
+    | { before: undefined; after: Date }
+    | { before: undefined; after: undefined }
+  )) {
   const res = await emailProvider.getMessagesWithPagination({
     maxResults: PAGE_SIZE,
     pageToken: nextPageToken,

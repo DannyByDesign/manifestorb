@@ -8,6 +8,12 @@ import prisma from "@/utils/__mocks__/prisma";
 import { hashApiKey } from "@/utils/api-key";
 import { SafeError } from "@/utils/error";
 import type { NextRequest } from "next/server";
+const mockRequest = (apiKey: string | null) => ({
+  headers: {
+    get: vi.fn().mockReturnValue(apiKey),
+  },
+  logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn(), trace: vi.fn(), with: vi.fn().mockReturnThis() },
+} as any);
 
 // Mock dependencies
 vi.mock("@/utils/prisma");
@@ -32,11 +38,7 @@ describe("api-auth", () => {
   describe("validateApiKey", () => {
     it("should throw an error if API key is missing", async () => {
       // Create a mock request with no API key
-      const request = {
-        headers: {
-          get: vi.fn().mockReturnValue(null),
-        },
-      } as unknown as NextRequest;
+      const request = mockRequest(null);
 
       await expect(validateApiKey(request)).rejects.toThrow(SafeError);
       await expect(validateApiKey(request)).rejects.toThrow("Missing API key");
@@ -44,11 +46,7 @@ describe("api-auth", () => {
 
     it("should throw an error if API key is invalid", async () => {
       // Create a mock request with an API key
-      const request = {
-        headers: {
-          get: vi.fn().mockReturnValue("test-api-key"),
-        },
-      } as unknown as NextRequest;
+      const request = mockRequest("test-api-key");
 
       // Mock getUserFromApiKey to return null (invalid API key)
       vi.mocked(hashApiKey).mockReturnValue("hashed-key");
@@ -60,11 +58,7 @@ describe("api-auth", () => {
 
     it("should return user if API key is valid", async () => {
       // Create a mock request with a valid API key
-      const request = {
-        headers: {
-          get: vi.fn().mockReturnValue("valid-api-key"),
-        },
-      } as unknown as NextRequest;
+      const request = mockRequest("valid-api-key");
 
       // Mock getUserFromApiKey to return a user
       const mockUser = {
@@ -111,11 +105,7 @@ describe("api-auth", () => {
 
   describe("validateApiKeyAndGetGmailClient", () => {
     it("should throw an error if API key is invalid", async () => {
-      const request = {
-        headers: {
-          get: vi.fn().mockReturnValue(null),
-        },
-      } as unknown as NextRequest;
+      const request = mockRequest(null);
 
       await expect(validateApiKeyAndGetEmailProvider(request)).rejects.toThrow(
         SafeError,
@@ -126,11 +116,7 @@ describe("api-auth", () => {
     });
 
     it("should throw an error if user has no Google account", async () => {
-      const request = {
-        headers: {
-          get: vi.fn().mockReturnValue("valid-api-key"),
-        },
-      } as unknown as NextRequest;
+      const request = mockRequest("valid-api-key");
 
       const mockUser = {
         id: "user-id",
@@ -152,11 +138,7 @@ describe("api-auth", () => {
     });
 
     it("should throw an error if account is missing tokens", async () => {
-      const request = {
-        headers: {
-          get: vi.fn().mockReturnValue("valid-api-key"),
-        },
-      } as unknown as NextRequest;
+      const request = mockRequest("valid-api-key");
 
       const mockUser = {
         id: "user-id",

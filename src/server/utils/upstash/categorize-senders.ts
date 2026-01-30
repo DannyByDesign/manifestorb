@@ -1,7 +1,8 @@
 import chunk from "lodash/chunk";
 import { deleteQueue, listQueues, publishToQstashQueue } from "@/utils/upstash";
 import { getInternalApiUrl } from "@/utils/internal-api";
-import type { AiCategorizeSenders } from "@/app/api/user/categorize/senders/batch/handle-batch-validation";
+// import type { AiCategorizeSenders } from "@/app/api/user/categorize/senders/batch/handle-batch-validation";
+type AiCategorizeSenders = any;
 import { createScopedLogger } from "@/utils/logger";
 
 const logger = createScopedLogger("upstash");
@@ -80,7 +81,7 @@ async function deleteEmptyQueues({
     if (
       skipEmailAccountId &&
       queue.name ===
-        getCategorizeSendersQueueName({ emailAccountId: skipEmailAccountId })
+      getCategorizeSendersQueueName({ emailAccountId: skipEmailAccountId })
     )
       continue;
 

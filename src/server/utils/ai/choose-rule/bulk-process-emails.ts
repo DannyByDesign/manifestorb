@@ -64,14 +64,13 @@ export async function bulkProcessInboxEmails({
     for (const message of uniqueMessages) {
       try {
         await runRules({
+          isTest: false,
           provider: emailProvider,
           message,
-          rules,
+          rules: rules as any,
           emailAccount,
-          isTest: false,
-          modelType: "economy",
           logger,
-          skipArchive,
+          modelType: "chat",
         });
         processedCount++;
       } catch (error) {

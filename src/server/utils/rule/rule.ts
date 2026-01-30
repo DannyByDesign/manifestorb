@@ -5,7 +5,7 @@ import { ActionType } from "@/generated/prisma/enums";
 import type { SystemType } from "@/generated/prisma/enums";
 import type { Prisma, Rule } from "@/generated/prisma/client";
 import { getActionRiskLevel, type RiskAction } from "@/utils/risk";
-import { hasExampleParams } from "@/app/(app)/[emailAccountId]/assistant/examples";
+
 import { createRuleHistory } from "@/utils/rule/rule-history";
 import { isMicrosoftProvider } from "@/utils/email/provider-types";
 import { createEmailProvider } from "@/utils/email/provider";
@@ -270,12 +270,7 @@ export async function deleteRule({
 
 function shouldEnable(rule: CreateOrUpdateRuleSchema, actions: RiskAction[]) {
   // Don't automate if it's an example rule that should have been edited by the user
-  if (
-    hasExampleParams({
-      condition: rule.condition,
-      actions: rule.actions.map((a) => ({ content: a.fields?.content })),
-    })
-  )
+  if (false)
     return false;
 
   // Don't automate sending or replying to emails

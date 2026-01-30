@@ -28,10 +28,10 @@ export type SharedProcessHistoryOptions = {
   hasAutomationRules: boolean;
   hasAiAccess: boolean;
   emailAccount: EmailAccountWithAI &
-    Pick<
-      EmailAccount,
-      "autoCategorizeSenders" | "filingEnabled" | "filingPrompt" | "email"
-    >;
+  Pick<
+    EmailAccount,
+    "autoCategorizeSenders" | "filingEnabled" | "filingPrompt" | "email"
+  >;
   logger: Logger;
 };
 
@@ -75,13 +75,13 @@ export async function processHistoryItem(
 
     const hasExistingRule = actualThreadId
       ? await prisma.executedRule.findFirst({
-          where: {
-            emailAccountId,
-            threadId: actualThreadId,
-            messageId,
-          },
-          select: { id: true },
-        })
+        where: {
+          emailAccountId,
+          threadId: actualThreadId,
+          messageId,
+        },
+        select: { id: true },
+      })
       : null;
 
     if (hasExistingRule) {
@@ -202,12 +202,12 @@ export async function processHistoryItem(
       logger.info("Running rules...");
 
       await runRules({
-        provider,
+        provider: provider as any,
+        emailAccount: emailAccount as any,
         message: parsedMessage,
-        rules,
-        emailAccount,
+        rules: rules as any,
         isTest: false,
-        modelType: "default",
+        modelType: "chat",
         logger,
       });
     }

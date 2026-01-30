@@ -509,7 +509,7 @@ describe("limitDraftEmailActions", () => {
 
     expect(result[0].rule.actions).toHaveLength(2);
     expect(
-      result[0].rule.actions.find((a) => a.type === ActionType.DRAFT_EMAIL)?.id,
+      result[0].rule.actions.find((a: any) => a.type === ActionType.DRAFT_EMAIL)?.id,
     ).toBe("draft-guest");
     expect(result[1].rule.actions).toHaveLength(1);
     expect(result[1].rule.actions[0].type).toBe(ActionType.LABEL);

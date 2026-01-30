@@ -8,7 +8,7 @@ import {
   isDefined,
 } from "@/server/types";
 import { getBatch } from "@/server/integrations/google/batch";
-import { getSearchTermForSender } from "@/server/integrations/google";
+import { getSearchTermForSender } from "@/server/utils/email";
 import { createScopedLogger } from "@/server/utils/logger";
 import { sleep } from "@/server/utils/sleep";
 import { getAccessTokenFromClient } from "@/server/integrations/google/client";

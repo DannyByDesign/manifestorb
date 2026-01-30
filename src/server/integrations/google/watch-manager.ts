@@ -4,9 +4,9 @@ import type { Logger } from "@/server/utils/logger";
 import { createEmailProvider } from "@/utils/email/provider";
 import { captureException } from "@/server/utils/error";
 import { cleanupInvalidTokens } from "@/server/auth/cleanup-invalid-tokens";
-import type { EmailProvider } from "@/server/integrations/google/types";
+import type { EmailProvider } from "@/utils/email/types";
 import { createManagedOutlookSubscription } from "@/server/integrations/microsoft/subscription-manager";
-import { isMicrosoftProvider } from "@/server/integrations/google/provider-types";
+import { isMicrosoftProvider } from "@/utils/email/provider-types";
 
 export type WatchEmailAccountResult =
   | {

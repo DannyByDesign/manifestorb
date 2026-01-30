@@ -16,7 +16,7 @@ import {
 } from "@/utils/config";
 import prisma from "@/server/db/client";
 import { createEmailProvider } from "@/utils/email/provider";
-import type { EmailProvider } from "@/server/integrations/google/types";
+import type { EmailProvider } from "@/utils/email/types";
 
 const logger = createScopedLogger("middleware");
 

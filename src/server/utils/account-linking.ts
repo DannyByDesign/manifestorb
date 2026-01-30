@@ -1,5 +1,4 @@
-import type { GetAuthLinkUrlResponse } from "@/app/api/google/linking/auth-url/route";
-import type { GetOutlookAuthLinkUrlResponse } from "@/app/api/outlook/linking/auth-url/route";
+
 import { isGoogleProvider } from "@/utils/email/provider-types";
 
 /**
@@ -23,7 +22,7 @@ export async function getAccountLinkingUrl(
     );
   }
 
-  const data: GetAuthLinkUrlResponse | GetOutlookAuthLinkUrlResponse =
+  const data: { url: string } =
     await response.json();
 
   return data.url;

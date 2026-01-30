@@ -11,7 +11,7 @@ import {
 import {
   publishBulkActionToTinybird,
   updateEmailMessagesForSender,
-} from "@/server/integrations/google/bulk-action-tracking";
+} from "@/utils/email/bulk-action-tracking";
 import {
   getLabels,
   getLabel,
@@ -23,7 +23,8 @@ import {
 } from "@/server/integrations/google/label";
 import { labelVisibility, messageVisibility } from "@/server/integrations/google/constants";
 import type { InboxZeroLabel } from "@/utils/label";
-import type { ThreadsQuery } from "@/app/api/threads/validation";
+// import type { ThreadsQuery } from "@/app/api/threads/validation";
+type ThreadsQuery = any;
 import { getMessageByRfc822Id } from "@/server/integrations/google/message";
 import {
   draftEmail,
@@ -70,7 +71,7 @@ import type {
   EmailLabel,
   EmailFilter,
   EmailSignature,
-} from "@/server/integrations/google/types";
+} from "@/utils/email/types";
 import { createScopedLogger, type Logger } from "@/server/utils/logger";
 import { getGmailSignatures } from "@/server/integrations/google/signature-settings";
 

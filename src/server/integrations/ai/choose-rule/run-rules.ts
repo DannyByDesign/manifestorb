@@ -13,7 +13,7 @@ import { findMatchingRules } from "@/server/integrations/ai/choose-rule/match-ru
 import { getActionItemsWithAiArgs } from "@/server/integrations/ai/choose-rule/choose-args";
 import { executeAct } from "@/server/integrations/ai/choose-rule/execute";
 import prisma from "@/server/db/client";
-import { withPrismaRetry } from "@/server/db/client-retry";
+import { withPrismaRetry } from "@/server/utils/prisma-retry";
 import type { MatchReason } from "@/server/integrations/ai/choose-rule/types";
 import { serializeMatchReasons } from "@/server/integrations/ai/choose-rule/types";
 import { sanitizeActionFields } from "@/utils/action-item";
@@ -25,7 +25,7 @@ import {
   cancelScheduledActions,
 } from "@/utils/scheduled-actions/scheduler";
 import groupBy from "lodash/groupBy";
-import type { EmailProvider } from "@/server/integrations/google/types";
+import type { EmailProvider } from "@/utils/email/types";
 import type { ModelType } from "@/server/utils/llms/model";
 import {
   CONVERSATION_STATUS_TYPES,

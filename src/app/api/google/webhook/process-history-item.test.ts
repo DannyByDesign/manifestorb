@@ -164,7 +164,7 @@ describe("processHistoryItem", () => {
       emailAccount: getDefaultEmailAccount(),
     };
 
-    await processHistoryItem(createHistoryItem(), options, logger);
+    await processHistoryItem(createHistoryItem(), options as any, logger);
   });
 
   it("should skip if message is an assistant email", async () => {
@@ -174,7 +174,7 @@ describe("processHistoryItem", () => {
       ...defaultOptions,
       emailAccount: getDefaultEmailAccount(),
     };
-    await processHistoryItem(createHistoryItem(), options, logger);
+    await processHistoryItem(createHistoryItem(), options as any, logger);
 
     expect(processAssistantEmail).toHaveBeenCalledWith({
       message: expect.objectContaining({
@@ -219,7 +219,7 @@ describe("processHistoryItem", () => {
       ...defaultOptions,
       emailAccount: getDefaultEmailAccount(),
     };
-    await processHistoryItem(createHistoryItem(), options, logger);
+    await processHistoryItem(createHistoryItem(), options as any, logger);
   });
 
   it("should skip if email is unsubscribed", async () => {
@@ -234,7 +234,7 @@ describe("processHistoryItem", () => {
       patternAnalyzed: false,
       lastAnalyzedAt: null,
       categoryId: null,
-    });
+    } as any);
 
     const mockProvider = {
       getMessage: vi.fn().mockResolvedValue({
@@ -264,7 +264,7 @@ describe("processHistoryItem", () => {
       ...defaultOptions,
       emailAccount: getDefaultEmailAccount(),
     };
-    await processHistoryItem(createHistoryItem(), options, logger);
+    await processHistoryItem(createHistoryItem(), options as any, logger);
 
     expect(mockProvider.blockUnsubscribedEmail).toHaveBeenCalledWith("123");
   });

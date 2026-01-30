@@ -36,8 +36,17 @@
       "@/utils/*": [
         "./src/server/utils/*"
       ],
+      "@/utils": [
+        "./src/server/utils/index.ts"
+      ],
       "@/types/*": [
         "./src/server/types/*"
+      ],
+      "@/ee/*": [
+        "./src/ee/*"
+      ],
+      "@/__tests__/*": [
+        "./src/__tests__/*"
       ]
     }
   },

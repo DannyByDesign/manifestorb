@@ -80,9 +80,9 @@ function selectModel(
       const baseOptions = providerOptions ?? {};
       const openAiProviderOptions = env.OPENAI_ZERO_DATA_RETENTION
         ? {
-            ...baseOptions,
-            openai: { ...(baseOptions.openai ?? {}), store: false },
-          }
+          ...baseOptions,
+          openai: { ...(baseOptions.openai ?? {}), store: false },
+        }
         : providerOptions;
       return {
         provider: Provider.OPEN_AI,

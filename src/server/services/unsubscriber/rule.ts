@@ -44,7 +44,7 @@ import { createEmailProvider } from "@/utils/email/provider";
 import { resolveLabelNameAndId } from "@/utils/label/resolve-label";
 import type { Logger } from "@/server/utils/logger";
 import { validateGmailLabelName } from "@/server/integrations/google/label-validation";
-import { isGoogleProvider } from "@/server/integrations/google/provider-types";
+import { isGoogleProvider } from "@/utils/email/provider-types";
 import { bulkProcessInboxEmails } from "@/server/integrations/ai/choose-rule/bulk-process-emails";
 import { getEmailAccountWithAi } from "@/utils/user/get";
 

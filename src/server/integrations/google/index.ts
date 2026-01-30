@@ -9,5 +9,10 @@ export * from './draft';
 export * from './history';
 export * from './attachment';
 
-export { extractEmailAddress } from '@/server/utils/email';
+export {
+    extractEmailAddress,
+    extractDomainFromEmail,
+    extractNameFromEmail,
+    getSearchTermForSender,
+} from '@/server/utils/email';
 

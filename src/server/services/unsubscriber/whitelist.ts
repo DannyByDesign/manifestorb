@@ -3,7 +3,7 @@
 import { env } from "@/env";
 import { GmailLabel } from "@/server/integrations/google/label";
 import { actionClient } from "@/server/services/unsubscriber/safe-action";
-import { isGoogleProvider } from "@/server/integrations/google/provider-types";
+import { isGoogleProvider } from "@/utils/email/provider-types";
 import { createEmailProvider } from "@/utils/email/provider";
 
 export const whitelistInboxZeroAction = actionClient

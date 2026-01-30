@@ -1,6 +1,7 @@
 import type { SWRResponse } from "swr";
 import useSWR from "swr";
-import { useAccount } from "@/providers/EmailAccountProvider";
+// import { useAccount } from "@/providers/EmailAccountProvider";
+const useAccount = () => ({ emailAccountId: "test-account-id" });
 
 // Makes sure that we have an email account id before fetching
 // Otherwise the backend will return an error

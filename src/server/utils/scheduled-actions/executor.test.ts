@@ -136,6 +136,7 @@ describe("executor", () => {
       const mockEmailProvider = await createEmailProvider({
         emailAccountId: "account-123",
         provider: "google",
+        logger,
       });
 
       const result = await executeScheduledAction(
@@ -215,6 +216,7 @@ describe("executor", () => {
       const mockEmailProvider = await createEmailProvider({
         emailAccountId: "account-123",
         provider: "google",
+        logger,
       });
 
       const result = await executeScheduledAction(
@@ -247,6 +249,7 @@ describe("executor", () => {
       const mockEmailProvider = await createEmailProvider({
         emailAccountId: "account-123",
         provider: "google",
+        logger,
       });
 
       await executeScheduledAction(

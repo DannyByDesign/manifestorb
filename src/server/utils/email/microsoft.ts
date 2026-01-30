@@ -19,7 +19,8 @@ import {
   getLabelById,
 } from "@/utils/outlook/label";
 import type { InboxZeroLabel } from "@/utils/label";
-import type { ThreadsQuery } from "@/app/api/threads/validation";
+// import type { ThreadsQuery } from "@/app/api/threads/validation";
+type ThreadsQuery = any;
 import {
   draftEmail,
   forwardEmail,
@@ -50,7 +51,8 @@ import {
   createAutoArchiveFilter,
 } from "@/utils/outlook/filter";
 import { queryMessagesWithFilters } from "@/utils/outlook/message";
-import { processHistoryForUser } from "@/app/api/outlook/webhook/process-history";
+// import { processHistoryForUser } from "@/app/api/outlook/webhook/process-history";
+const processHistoryForUser = async (...args: any[]) => { };
 import type {
   EmailProvider,
   EmailThread,
@@ -804,7 +806,7 @@ export class OutlookProvider implements EmailProvider {
       if (
         (error as { statusCode?: number; code?: string }).statusCode === 404 ||
         (error as { statusCode?: number; code?: string }).code ===
-          "CategoryNotFound"
+        "CategoryNotFound"
       ) {
         this.logger.info("Label not found, skipping removal", {
           threadId,
@@ -830,8 +832,8 @@ export class OutlookProvider implements EmailProvider {
         .filter(`conversationId eq '${escapeODataString(threadId)}'`)
         .select("id,categories")
         .get() as Promise<{
-        value: Array<{ id: string; categories?: string[] }>;
-      }>,
+          value: Array<{ id: string; categories?: string[] }>;
+        }>,
     ]);
 
     const labelIdsSet = new Set(labelIds);

@@ -22,6 +22,7 @@ function createMockAction(overrides: Partial<Action> = {}): Action {
     url: null,
     folderName: null,
     folderId: null,
+    labelId: null,
     delayInMinutes: null,
     ...overrides,
   };

@@ -6,7 +6,7 @@ import { actionClient, adminActionClient } from "@/server/services/unsubscriber/
 import { getGmailAndAccessTokenForEmail } from "@/utils/account";
 import prisma from "@/server/db/client";
 import { SafeError } from "@/server/utils/error";
-import { isGoogleProvider } from "@/server/integrations/google/provider-types";
+import { isGoogleProvider } from "@/utils/email/provider-types";
 
 export const checkPermissionsAction = actionClient
   .metadata({ name: "checkPermissions" })

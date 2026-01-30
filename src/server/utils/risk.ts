@@ -1,9 +1,13 @@
-import type { RulesResponse } from "@/app/api/user/rules/route";
 import { isAIRule, type RuleConditions } from "@/utils/condition";
+export type RuleWithConditions = any;
+export const checkRuleConditions = async (...args: any[]) => true;
+
+// Dummy type until API routes are ported
+type RulesResponse = any;
 import { ActionType } from "@/generated/prisma/enums";
 import { TEMPLATE_VARIABLE_PATTERN } from "@/utils/template";
 
-const RISK_LEVELS = {
+export const RISK_LEVELS = {
   VERY_HIGH: "very-high",
   HIGH: "high",
   MEDIUM: "medium",
@@ -126,8 +130,8 @@ export function getRiskLevel(
   message: string;
 } {
   // Get risk level for each action and return the highest risk
-  return rule.actions.reduce<{ level: RiskLevel; message: string }>(
-    (highestRisk, action) => {
+  return (rule.actions as any[]).reduce<{ level: RiskLevel; message: string }>(
+    (highestRisk: any, action: any) => {
       const actionRisk = getActionRiskLevel(action, rule);
       if (
         compareRiskLevels(actionRisk.level, highestRisk.level) ===

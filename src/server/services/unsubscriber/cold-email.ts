@@ -11,7 +11,7 @@ import {
 import { actionClient } from "@/server/services/unsubscriber/safe-action";
 import { SafeError } from "@/server/utils/error";
 import { createEmailProvider } from "@/utils/email/provider";
-import type { EmailProvider } from "@/server/integrations/google/types";
+import type { EmailProvider } from "@/utils/email/types";
 import { getColdEmailRule } from "@/utils/cold-email/cold-email-rule";
 import { internalDateToDate } from "@/server/utils/date";
 import { saveLearnedPattern } from "@/utils/rule/learned-patterns";

@@ -17,7 +17,7 @@ import type {
   ParsedMessage,
   ParsedMessageHeaders,
 } from "@/server/types";
-import type { EmailProvider } from "@/server/integrations/google/types";
+import type { EmailProvider } from "@/utils/email/types";
 import prisma from "@/utils/__mocks__/prisma";
 import { aiChooseRule } from "@/server/integrations/ai/choose-rule/ai-choose-rule";
 import { getEmailAccount } from "@/__tests__/helpers";

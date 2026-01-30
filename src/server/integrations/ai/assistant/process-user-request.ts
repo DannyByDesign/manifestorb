@@ -59,14 +59,13 @@ You can fix rules using these specific operations:
 - Create new rules when asked or when existing ones cannot be modified to fit the need
 - In general, you should NOT create new rules. Modify existing ones instead. If a user asked to exclude something from an existing rule, that's not a request to create a new rule, but to edit the existing rule.
 
-${
-  matchedRule?.group?.items?.length
-    ? `3. Manage Learned Patterns:
+${matchedRule?.group?.items?.length
+      ? `3. Manage Learned Patterns:
 - These are patterns that have been learned from the user's email history to always be matched (and they ignore the conditionalOperator setting)
 - Patterns are email addresses or subjects
 - You can remove patterns`
-    : ""
-}
+      : ""
+    }
 
 When fixing rules:
 - Make one precise change at a time
@@ -89,25 +88,23 @@ Use simple language and avoid jargon in your reply.
 When you've made updates, include a link to the rules page at the end of your reply: ${env.NEXT_PUBLIC_BASE_URL}/automation?tab=rules
 If you are unable to fix the rule, say so.`;
 
-  const prompt = `${
-    originalEmail
+  const prompt = `${originalEmail
       ? `<matched_rule>
 ${matchedRule ? ruleToXML(matchedRule) : "No rule matched"}
 </matched_rule>`
       : ""
-  }
+    }
 
 ${!matchedRule ? userRules : ""}
 
 ${getUserInfoPrompt({ emailAccount })}
 
-${
-  originalEmail
-    ? `<original_email>
+${originalEmail
+      ? `<original_email>
 ${stringifyEmailSimple(getEmailForLLM(originalEmail))}
 </original_email>`
-    : ""
-}`;
+      : ""
+    }`;
 
   const allMessages = [
     {
@@ -286,71 +283,71 @@ ${stringifyEmailSimple(getEmailForLLM(originalEmail))}
       // }),
       ...(matchedRule?.group
         ? {
-            remove_pattern: tool({
-              description: "Remove a pattern",
-              inputSchema: z.object({
-                type: z
-                  .enum(["from", "subject"])
-                  .describe("The type of the pattern to remove"),
-                value: z
-                  .string()
-                  .describe("The value of the pattern to remove"),
-              }),
-              execute: async ({ type, value }) => {
-                logger.info("Remove Pattern", { type, value });
-                trackToolCall({
-                  tool: "remove_pattern",
-                  email: emailAccount.email,
+          remove_pattern: tool({
+            description: "Remove a pattern",
+            inputSchema: z.object({
+              type: z
+                .enum(["from", "subject"])
+                .describe("The type of the pattern to remove"),
+              value: z
+                .string()
+                .describe("The value of the pattern to remove"),
+            }),
+            execute: async ({ type, value }) => {
+              logger.info("Remove Pattern", { type, value });
+              trackToolCall({
+                tool: "remove_pattern",
+                email: emailAccount.email,
+              });
+
+              const groupItemType = getPatternType(type);
+
+              if (!groupItemType) {
+                logger.error("Invalid pattern type", {
+                  type,
+                  value,
+                });
+                return { error: "Invalid pattern type" };
+              }
+
+              const groupItem = matchedRule?.group?.items?.find(
+                (item) => item.type === groupItemType && item.value === value,
+              );
+
+              if (!groupItem) {
+                logger.error("Pattern not found", {
+                  type,
+                  value,
+                });
+                return { error: "Pattern not found" };
+              }
+
+              try {
+                await deleteGroupItem({
+                  id: groupItem.id,
+                  emailAccountId: emailAccount.id,
+                });
+              } catch (error) {
+                const message =
+                  error instanceof Error ? error.message : String(error);
+
+                logger.error("Error while deleting pattern", {
+                  groupItemId: groupItem.id,
+                  type: groupItemType,
+                  value,
+                  error,
                 });
 
-                const groupItemType = getPatternType(type);
+                return {
+                  error: "Failed to delete pattern",
+                  message,
+                };
+              }
 
-                if (!groupItemType) {
-                  logger.error("Invalid pattern type", {
-                    type,
-                    value,
-                  });
-                  return { error: "Invalid pattern type" };
-                }
-
-                const groupItem = matchedRule?.group?.items?.find(
-                  (item) => item.type === groupItemType && item.value === value,
-                );
-
-                if (!groupItem) {
-                  logger.error("Pattern not found", {
-                    type,
-                    value,
-                  });
-                  return { error: "Pattern not found" };
-                }
-
-                try {
-                  await deleteGroupItem({
-                    id: groupItem.id,
-                    emailAccountId: emailAccount.id,
-                  });
-                } catch (error) {
-                  const message =
-                    error instanceof Error ? error.message : String(error);
-
-                  logger.error("Error while deleting pattern", {
-                    groupItemId: groupItem.id,
-                    type: groupItemType,
-                    value,
-                    error,
-                  });
-
-                  return {
-                    error: "Failed to delete pattern",
-                    message,
-                  };
-                }
-
-                return { success: true };
-              },
-            }),
-          }
+              return { success: true };
+            },
+          }),
+        }
         : {}),
       create_rule: tool({
         description: "Create a new rule",
@@ -367,20 +364,20 @@ ${stringifyEmailSimple(getEmailForLLM(originalEmail))}
               result: {
                 name,
                 condition,
-                actions: actions.map((action) => ({
+                actions: actions.map((action: any) => ({
                   ...action,
                   fields: action.fields
                     ? {
-                        ...action.fields,
-                        label: action.fields.label ?? null,
-                        to: action.fields.to ?? null,
-                        cc: action.fields.cc ?? null,
-                        bcc: action.fields.bcc ?? null,
-                        subject: action.fields.subject ?? null,
-                        content: action.fields.content ?? null,
-                        webhookUrl: action.fields.webhookUrl ?? null,
-                        folderName: action.fields.folderName ?? null,
-                      }
+                      ...action.fields,
+                      label: action.fields.label ?? null,
+                      to: action.fields.to ?? null,
+                      cc: action.fields.cc ?? null,
+                      bcc: action.fields.bcc ?? null,
+                      subject: action.fields.subject ?? null,
+                      content: action.fields.content ?? null,
+                      webhookUrl: action.fields.webhookUrl ?? null,
+                      folderName: action.fields.folderName ?? null,
+                    }
                     : null,
                 })),
               },
@@ -442,20 +439,18 @@ function ruleToXML(rule: RuleWithRelations) {
   <conditions>
     <conditional_operator>${rule.conditionalOperator}</conditional_operator>
     ${rule.instructions ? `<ai_instructions>${rule.instructions}</ai_instructions>` : ""}
-    ${
-      hasStaticConditions(rule)
-        ? `<static_conditions>
+    ${hasStaticConditions(rule)
+      ? `<static_conditions>
       ${rule.from ? `<from>${rule.from}</from>` : ""}
       ${rule.to ? `<to>${rule.to}</to>` : ""}
       ${rule.subject ? `<subject>${rule.subject}</subject>` : ""}
       ${rule.body ? `<body>${rule.body}</body>` : ""}
     </static_conditions>`
-        : ""
+      : ""
     }
   </conditions>
 
-  ${
-    rule.group?.items?.length
+  ${rule.group?.items?.length
       ? `<patterns>
       ${rule.group.items
         .map(
@@ -468,7 +463,7 @@ function ruleToXML(rule: RuleWithRelations) {
         .join("\n      ")}
   </patterns>`
       : ""
-  }
+    }
 </rule>`;
 }
 

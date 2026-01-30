@@ -132,16 +132,16 @@ export async function aiGenerateMeetingBriefing({
           description:
             "Submit the final meeting briefing. Call this when you have gathered all information about all guests.",
           inputSchema: briefingSchema,
-          execute: async (briefing) => {
+          execute: async (briefing: BriefingContent) => {
             logger.info("Finalizing briefing", {
               guestCount: briefing.guests.length,
             });
             result = briefing;
             return { success: true };
           },
-        }),
+        }) as any,
       },
-    });
+    }) as any;
   } finally {
     await cleanup();
   }
@@ -212,14 +212,14 @@ async function buildSearchTools({
             label: "Perplexity Search",
             modelOptions: {
               modelName: "sonar-pro",
-              model: perplexity("sonar-pro"),
+              model: perplexity("sonar-pro") as any,
               provider: "perplexity",
               backupModel: null,
             },
           });
 
           const searchResult = await perplexityGenerateText({
-            model: perplexity("sonar-pro"),
+            model: perplexity("sonar-pro") as any,
             prompt: query,
           });
 
@@ -241,7 +241,7 @@ async function buildSearchTools({
           return "Search failed. Try another search tool.";
         }
       },
-    });
+    }) as any;
   }
 
   // Web search (OpenAI, Google, or OpenRouter - if configured)
@@ -378,7 +378,7 @@ function createWebSearchTool({
         return "Search failed. Try another search tool.";
       }
     },
-  });
+  }) as any;
 }
 
 // Exported for testing
@@ -466,11 +466,11 @@ ${guestHeader}
   if (hasEmails) {
     sections.push(`<recent_emails>
 ${guest.recentEmails
-  .map(
-    (email) =>
-      `<email>\n${stringifyEmailSimple(getEmailForLLM(email))}\n</email>`,
-  )
-  .join("\n")}
+        .map(
+          (email) =>
+            `<email>\n${stringifyEmailSimple(getEmailForLLM(email))}\n</email>`,
+        )
+        .join("\n")}
 </recent_emails>`);
   }
 

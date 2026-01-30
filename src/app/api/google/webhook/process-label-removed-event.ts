@@ -3,7 +3,7 @@ import { GroupItemSource, ActionType } from "@/generated/prisma/enums";
 import { saveLearnedPattern } from "@/utils/rule/learned-patterns";
 import { extractEmailAddress } from "@/server/integrations/google";
 import type { EmailAccountWithAI } from "@/server/utils/llms/types";
-import type { EmailProvider } from "@/server/integrations/google/types";
+import type { EmailProvider } from "@/utils/email/types";
 import { GmailLabel } from "@/server/integrations/google/label";
 import { shouldLearnFromLabelRemoval } from "@/utils/rule/consts";
 import type { Logger } from "@/server/utils/logger";

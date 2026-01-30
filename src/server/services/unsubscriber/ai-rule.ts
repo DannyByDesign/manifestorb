@@ -55,20 +55,20 @@ export const runRulesAction = actionClient
 
       const executedRules = fetchExecutedRule
         ? await prisma.executedRule.findMany({
-            where: {
-              emailAccountId,
-              threadId,
-              messageId,
-            },
-            select: {
-              id: true,
-              reason: true,
-              actionItems: true,
-              rule: true,
-              createdAt: true,
-              status: true,
-            },
-          })
+          where: {
+            emailAccountId,
+            threadId,
+            messageId,
+          },
+          select: {
+            id: true,
+            reason: true,
+            actionItems: true,
+            rule: true,
+            createdAt: true,
+            status: true,
+          },
+        })
         : [];
 
       if (executedRules.length > 0) {
@@ -95,8 +95,8 @@ export const runRulesAction = actionClient
       const result = await runRules({
         isTest,
         provider: emailProvider,
-        message,
-        rules,
+        message: message as any,
+        rules: rules as any,
         emailAccount,
         logger,
         modelType: "chat",
@@ -133,29 +133,31 @@ export const testAiCustomContentAction = actionClient
         include: { actions: true },
       });
 
+      const message = {
+        id: `testMessageId-${Date.now()}`,
+        threadId: `testThreadId-${Date.now()}`,
+        snippet: content,
+        textPlain: content,
+        headers: {
+          date: new Date().toISOString(),
+          from: "",
+          to: "",
+          subject: "",
+        },
+        historyId: "",
+        inline: [],
+        internalDate: new Date().toISOString(),
+        subject: "",
+        date: new Date().toISOString(),
+      };
+
       const result = await runRules({
         isTest: true,
         provider: emailProvider,
-        logger,
-        message: {
-          id: `testMessageId-${Date.now()}`,
-          threadId: `testThreadId-${Date.now()}`,
-          snippet: content,
-          textPlain: content,
-          headers: {
-            date: new Date().toISOString(),
-            from: "",
-            to: "",
-            subject: "",
-          },
-          historyId: "",
-          inline: [],
-          internalDate: new Date().toISOString(),
-          subject: "",
-          date: new Date().toISOString(),
-        },
-        rules,
+        message: message as any,
+        rules: rules as any,
         emailAccount,
+        logger,
         modelType: "chat",
       });
 
@@ -350,7 +352,7 @@ export const saveRulesPromptAction = actionClient
             emailAccount,
             promptFile: existingRules.editedRules
               .map(
-                (r) => `Rule ID: ${r.rule?.id}. Prompt: ${r.updatedPromptRule}`,
+                (r: any) => `Rule ID: ${r.rule?.id}. Prompt: ${r.updatedPromptRule}`,
               )
               .join("\n\n"),
             isEditing: true,
@@ -571,7 +573,7 @@ export const generateRulesPromptAction = actionClient
     const result = await aiGenerateRulesPrompt({
       emailAccount,
       lastSentEmails,
-      snippets: snippetsResult.snippets.map((snippet) => snippet.text),
+      snippets: snippetsResult.snippets.map((snippet: any) => snippet.text),
       userLabels: labelsWithCounts.map((label) => label.label),
     });
 

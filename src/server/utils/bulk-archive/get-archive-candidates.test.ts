@@ -10,6 +10,7 @@ function createEmailGroup(
 ): EmailGroup {
   return {
     address,
+    name: address,
     category: categoryName
       ? ({ id: "cat-1", name: categoryName, description: null } as any)
       : null,
@@ -152,6 +153,7 @@ describe("getArchiveCandidates", () => {
       const groups = [
         {
           address: "test@example.com",
+          name: "test@example.com",
           category: { id: "cat-1", name: "", description: null } as any,
         },
       ];
@@ -175,7 +177,7 @@ describe("getArchiveCandidates", () => {
         name: "Marketing",
         description: "Marketing emails",
       } as any;
-      const groups = [{ address: "test@example.com", category }];
+      const groups = [{ address: "test@example.com", name: "test@example.com", category }];
       const result = getArchiveCandidates(groups);
 
       expect(result[0].category).toBe(category);

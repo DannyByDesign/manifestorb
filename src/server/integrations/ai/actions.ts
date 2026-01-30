@@ -4,7 +4,7 @@ import type { ExecutedRule } from "@/generated/prisma/client";
 import type { Logger } from "@/server/utils/logger";
 import { callWebhook } from "@/utils/webhook";
 import type { ActionItem, EmailForAction } from "@/server/integrations/ai/types";
-import type { EmailProvider } from "@/server/integrations/google/types";
+import type { EmailProvider } from "@/utils/email/types";
 import { enqueueDigestItem } from "@/utils/digest/index";
 import { filterNullProperties } from "@/utils";
 import { labelMessageAndSync } from "@/utils/label.server";

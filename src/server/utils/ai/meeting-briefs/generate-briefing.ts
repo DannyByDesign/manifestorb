@@ -1,4 +1,5 @@
 import { tool, type ToolSet } from "ai";
+import type { LanguageModelV2 } from "@ai-sdk/provider";
 import { z } from "zod";
 import { createPerplexity } from "@ai-sdk/perplexity";
 import { openai } from "@ai-sdk/openai";
@@ -112,6 +113,7 @@ export async function aiGenerateMeetingBriefing({
 
   try {
     await generateText({
+
       ...modelOptions,
       system: AGENTIC_SYSTEM_PROMPT,
       prompt,
@@ -132,14 +134,14 @@ export async function aiGenerateMeetingBriefing({
           description:
             "Submit the final meeting briefing. Call this when you have gathered all information about all guests.",
           inputSchema: briefingSchema,
-          execute: async (briefing) => {
+          execute: async (briefing: BriefingContent) => {
             logger.info("Finalizing briefing", {
               guestCount: briefing.guests.length,
             });
             result = briefing;
             return { success: true };
           },
-        }),
+        }) as any,
       },
     });
   } finally {
@@ -212,14 +214,14 @@ async function buildSearchTools({
             label: "Perplexity Search",
             modelOptions: {
               modelName: "sonar-pro",
-              model: perplexity("sonar-pro"),
+              model: perplexity("sonar-pro") as unknown as LanguageModelV2,
               provider: "perplexity",
               backupModel: null,
             },
           });
 
           const searchResult = await perplexityGenerateText({
-            model: perplexity("sonar-pro"),
+            model: perplexity("sonar-pro") as unknown as LanguageModelV2,
             prompt: query,
           });
 
@@ -241,7 +243,7 @@ async function buildSearchTools({
           return "Search failed. Try another search tool.";
         }
       },
-    });
+    }) as any;
   }
 
   // Web search (OpenAI, Google, or OpenRouter - if configured)
@@ -253,7 +255,7 @@ async function buildSearchTools({
       providerName: webSearchConfig.providerName,
       getSearchTools: webSearchConfig.getSearchTools,
       useOnlineVariant: webSearchConfig.useOnlineVariant,
-    });
+    }) as any;
   }
 
   // MCP tools (CRM, databases, etc.)
@@ -355,7 +357,7 @@ function createWebSearchTool({
         });
 
         const searchResult = await webGenerateText({
-          model: modelOptions.model,
+          model: modelOptions.model as unknown as LanguageModelV2,
           prompt: query,
           ...(getSearchTools && { tools: getSearchTools() }),
         });
@@ -466,11 +468,11 @@ ${guestHeader}
   if (hasEmails) {
     sections.push(`<recent_emails>
 ${guest.recentEmails
-  .map(
-    (email) =>
-      `<email>\n${stringifyEmailSimple(getEmailForLLM(email))}\n</email>`,
-  )
-  .join("\n")}
+        .map(
+          (email) =>
+            `<email>\n${stringifyEmailSimple(getEmailForLLM(email))}\n</email>`,
+        )
+        .join("\n")}
 </recent_emails>`);
   }
 

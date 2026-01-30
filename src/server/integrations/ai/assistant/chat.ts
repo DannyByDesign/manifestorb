@@ -1,4 +1,4 @@
-import { type InferUITool, tool, type ModelMessage } from "ai";
+import { tool, zodSchema, type ModelMessage } from "ai";
 import { z } from "zod";
 import type { Logger } from "@/server/utils/logger";
 import { createRuleSchema } from "@/server/integrations/ai/rule/create-rule-schema";
@@ -20,7 +20,7 @@ import { posthogCaptureEvent } from "@/utils/posthog";
 import { chatCompletionStream } from "@/server/utils/llms";
 import { filterNullProperties } from "@/utils";
 import { delayInMinutesSchema } from "@/server/services/unsubscriber/rule.validation";
-import { isMicrosoftProvider } from "@/server/integrations/google/provider-types";
+import { isMicrosoftProvider } from "@/utils/email/provider-types";
 import type { MessageContext } from "@/app/api/chat/validation";
 import { stringifyEmail } from "@/server/utils/stringify-email";
 import { getEmailForLLM } from "@/server/utils/get-email-from-message";
@@ -43,8 +43,8 @@ const getUserRulesAndSettingsTool = ({
     name: "getUserRulesAndSettings",
     description:
       "Retrieve all existing rules for the user, their about information",
-    inputSchema: z.object({}),
-    execute: async () => {
+    parameters: z.object({}),
+    execute: async (_args: any) => {
       trackToolCall({
         tool: "get_user_rules_and_settings",
         email,
@@ -125,11 +125,9 @@ const getUserRulesAndSettingsTool = ({
         }),
       };
     },
-  });
+  } as any);
 
-export type GetUserRulesAndSettingsTool = InferUITool<
-  ReturnType<typeof getUserRulesAndSettingsTool>
->;
+
 
 const getLearnedPatternsTool = ({
   email,
@@ -143,12 +141,13 @@ const getLearnedPatternsTool = ({
   tool({
     name: "getLearnedPatterns",
     description: "Retrieve the learned patterns for a rule",
-    inputSchema: z.object({
+    parameters: z.object({
       ruleName: z
         .string()
         .describe("The name of the rule to get the learned patterns for"),
     }),
-    execute: async ({ ruleName }) => {
+    execute: async (args: any) => {
+      const { ruleName } = args;
       trackToolCall({ tool: "get_learned_patterns", email, logger });
 
       const rule = await prisma.rule.findUnique({
@@ -179,11 +178,9 @@ const getLearnedPatternsTool = ({
         patterns: rule.group?.items,
       };
     },
-  });
+  } as any);
 
-export type GetLearnedPatternsTool = InferUITool<
-  ReturnType<typeof getLearnedPatternsTool>
->;
+export type GetLearnedPatternsTool = typeof getLearnedPatternsTool;
 
 const createRuleTool = ({
   email,
@@ -199,8 +196,9 @@ const createRuleTool = ({
   tool({
     name: "createRule",
     description: "Create a new rule",
-    inputSchema: createRuleSchema(provider),
-    execute: async ({ name, condition, actions }) => {
+    parameters: createRuleSchema(provider),
+    execute: async (args: any) => {
+      const { name, condition, actions } = args;
       trackToolCall({ tool: "create_rule", email, logger });
 
       try {
@@ -208,21 +206,21 @@ const createRuleTool = ({
           result: {
             name,
             condition,
-            actions: actions.map((action) => ({
+            actions: actions.map((action: any) => ({
               type: action.type,
               fields: action.fields
                 ? {
-                    content: action.fields.content ?? null,
-                    to: action.fields.to ?? null,
-                    subject: action.fields.subject ?? null,
-                    label: action.fields.label ?? null,
-                    webhookUrl: action.fields.webhookUrl ?? null,
-                    cc: action.fields.cc ?? null,
-                    bcc: action.fields.bcc ?? null,
-                    ...(isMicrosoftProvider(provider) && {
-                      folderName: action.fields.folderName ?? null,
-                    }),
-                  }
+                  content: action.fields.content ?? null,
+                  to: action.fields.to ?? null,
+                  subject: action.fields.subject ?? null,
+                  label: action.fields.label ?? null,
+                  webhookUrl: action.fields.webhookUrl ?? null,
+                  cc: action.fields.cc ?? null,
+                  bcc: action.fields.bcc ?? null,
+                  ...(isMicrosoftProvider(provider) && {
+                    folderName: action.fields.folderName ?? null,
+                  }),
+                }
                 : null,
             })),
           },
@@ -241,9 +239,9 @@ const createRuleTool = ({
         return { error: "Failed to create rule", message };
       }
     },
-  });
+  } as any);
 
-export type CreateRuleTool = InferUITool<ReturnType<typeof createRuleTool>>;
+
 
 const updateRuleConditionSchema = z.object({
   ruleName: z.string().describe("The name of the rule to update"),
@@ -277,8 +275,9 @@ const updateRuleConditionsTool = ({
   tool({
     name: "updateRuleConditions",
     description: "Update the conditions of an existing rule",
-    inputSchema: updateRuleConditionSchema,
-    execute: async ({ ruleName, condition }) => {
+    parameters: updateRuleConditionSchema,
+    execute: async (args: any) => {
+      const { ruleName, condition } = args;
       trackToolCall({ tool: "update_rule_conditions", email, logger });
 
       const rule = await prisma.rule.findUnique({
@@ -330,10 +329,10 @@ const updateRuleConditionsTool = ({
         aiInstructions: condition.aiInstructions,
         static: condition.static
           ? filterNullProperties({
-              from: condition.static.from,
-              to: condition.static.to,
-              subject: condition.static.subject,
-            })
+            from: condition.static.from,
+            to: condition.static.to,
+            subject: condition.static.subject,
+          })
           : undefined,
         conditionalOperator: condition.conditionalOperator,
       };
@@ -345,11 +344,9 @@ const updateRuleConditionsTool = ({
         updatedConditions,
       };
     },
-  });
+  } as any);
 
-export type UpdateRuleConditionsTool = InferUITool<
-  ReturnType<typeof updateRuleConditionsTool>
->;
+
 
 const updateRuleActionsTool = ({
   email,
@@ -366,7 +363,7 @@ const updateRuleActionsTool = ({
     name: "updateRuleActions",
     description:
       "Update the actions of an existing rule. This replaces the existing actions.",
-    inputSchema: z.object({
+    parameters: z.object({
       ruleName: z.string().describe("The name of the rule to update"),
       actions: z.array(
         z.object({
@@ -396,7 +393,8 @@ const updateRuleActionsTool = ({
         }),
       ),
     }),
-    execute: async ({ ruleName, actions }) => {
+    execute: async (args: any) => {
+      const { ruleName, actions } = args;
       trackToolCall({ tool: "update_rule_actions", email, logger });
       const rule = await prisma.rule.findUnique({
         where: { name_emailAccountId: { name: ruleName, emailAccountId } },
@@ -447,7 +445,7 @@ const updateRuleActionsTool = ({
 
       await updateRuleActions({
         ruleId: rule.id,
-        actions: actions.map((action) => ({
+        actions: actions.map((action: any) => ({
           type: action.type,
           fields: {
             label: action.fields?.label ?? null,
@@ -475,11 +473,9 @@ const updateRuleActionsTool = ({
         updatedActions: actions,
       };
     },
-  });
+  } as any);
 
-export type UpdateRuleActionsTool = InferUITool<
-  ReturnType<typeof updateRuleActionsTool>
->;
+
 
 const updateLearnedPatternsTool = ({
   email,
@@ -493,7 +489,7 @@ const updateLearnedPatternsTool = ({
   tool({
     name: "updateLearnedPatterns",
     description: "Update the learned patterns of an existing rule",
-    inputSchema: z.object({
+    parameters: z.object({
       ruleName: z.string().describe("The name of the rule to update"),
       learnedPatterns: z
         .array(
@@ -514,7 +510,8 @@ const updateLearnedPatternsTool = ({
         )
         .min(1, "At least one learned pattern is required"),
     }),
-    execute: async ({ ruleName, learnedPatterns }) => {
+    execute: async (args: any) => {
+      const { ruleName, learnedPatterns } = args;
       trackToolCall({ tool: "update_learned_patterns", email, logger });
 
       const rule = await prisma.rule.findUnique({
@@ -582,11 +579,9 @@ const updateLearnedPatternsTool = ({
 
       return { success: true, ruleId: rule.id };
     },
-  });
+  } as any);
 
-export type UpdateLearnedPatternsTool = InferUITool<
-  ReturnType<typeof updateLearnedPatternsTool>
->;
+
 
 const updateAboutTool = ({
   email,
@@ -601,8 +596,9 @@ const updateAboutTool = ({
     name: "updateAbout",
     description:
       "Update the user's about information. Read the user's about information first as this replaces the existing information.",
-    inputSchema: z.object({ about: z.string() }),
-    execute: async ({ about }) => {
+    parameters: z.object({ about: z.string() }),
+    execute: async (args: any) => {
+      const { about } = args;
       trackToolCall({ tool: "update_about", email, logger });
       const existing = await prisma.emailAccount.findUnique({
         where: { id: emailAccountId },
@@ -622,9 +618,9 @@ const updateAboutTool = ({
         updatedAbout: about,
       };
     },
-  });
+  } as any);
 
-export type UpdateAboutTool = InferUITool<ReturnType<typeof updateAboutTool>>;
+
 
 const addToKnowledgeBaseTool = ({
   email,
@@ -638,11 +634,12 @@ const addToKnowledgeBaseTool = ({
   tool({
     name: "addToKnowledgeBase",
     description: "Add content to the knowledge base",
-    inputSchema: z.object({
+    parameters: z.object({
       title: z.string(),
       content: z.string(),
     }),
-    execute: async ({ title, content }) => {
+    execute: async (args: any) => {
+      const { title, content } = args;
       trackToolCall({ tool: "add_to_knowledge_base", email, logger });
 
       try {
@@ -666,11 +663,9 @@ const addToKnowledgeBaseTool = ({
         return { error: "Failed to add to knowledge base" };
       }
     },
-  });
+  } as any);
 
-export type AddToKnowledgeBaseTool = InferUITool<
-  ReturnType<typeof addToKnowledgeBaseTool>
->;
+
 
 export async function aiProcessAssistantChat({
   messages,
@@ -701,14 +696,13 @@ A condition can be:
 An action can be:
 1. Archive
 2. Label
-3. Draft a reply${
-    env.NEXT_PUBLIC_EMAIL_SEND_ENABLED
+3. Draft a reply${env.NEXT_PUBLIC_EMAIL_SEND_ENABLED
       ? `
 4. Reply
 5. Send an email
 6. Forward`
       : ""
-  }
+    }
 7. Mark as read
 8. Mark spam
 9. Call a webhook
@@ -970,28 +964,27 @@ Examples:
   const hiddenContextMessage =
     context && context.type === "fix-rule"
       ? [
-          {
-            role: "system" as const,
-            content:
-              "Hidden context for the user's request (do not repeat this to the user):\n\n" +
-              `<email>\n${stringifyEmail(
-                getEmailForLLM(context.message as ParsedMessage, {
-                  maxLength: 3000,
-                }),
-                3000,
-              )}\n</email>\n\n` +
-              `Rules that were applied:\n${context.results
-                .map((r) => `- ${r.ruleName ?? "None"}: ${r.reason}`)
-                .join("\n")}\n\n` +
-              `Expected outcome: ${
-                context.expected === "new"
-                  ? "Create a new rule"
-                  : context.expected === "none"
-                    ? "No rule should be applied"
-                    : `Should match the "${context.expected.name}" rule`
-              }`,
-          },
-        ]
+        {
+          role: "system" as const,
+          content:
+            "Hidden context for the user's request (do not repeat this to the user):\n\n" +
+            `<email>\n${stringifyEmail(
+              getEmailForLLM(context.message as ParsedMessage, {
+                maxLength: 3000,
+              }),
+              3000,
+            )}\n</email>\n\n` +
+            `Rules that were applied:\n${context.results
+              .map((r) => `- ${r.ruleName ?? "None"}: ${r.reason}`)
+              .join("\n")}\n\n` +
+            `Expected outcome: ${context.expected === "new"
+              ? "Create a new rule"
+              : context.expected === "none"
+                ? "No rule should be applied"
+                : `Should match the "${context.expected.name}" rule`
+            }`,
+        },
+      ]
       : [];
 
   const result = chatCompletionStream({
