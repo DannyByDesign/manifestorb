@@ -203,9 +203,9 @@ export class ChannelRouter {
                     messageId: dedupeKey, // Use our internal key or the provider id? Executor expects messageId for thread?
                     // Actually executor context is type { ... messageId? ... }. 
                     // Let's pass the real providerMessageId for reference, but usage in executor should change.
-                    threadId: (message.context as any).threadId || undefined,
-                    // history: message.history // REMOVED: We use DB now.
-                });
+                    threadId: (message.context as any).threadId || undefined
+                }
+            });
 
             // 3. Construct Output
             const outbound: OutboundMessage = {
@@ -237,6 +237,55 @@ export class ChannelRouter {
                 targetChannelId: message.context.channelId,
                 content: "I encountered an error processing your request."
             }];
+        }
+    }
+
+    /**
+     * Pushes a message to the user's active channel (Slack/Discord).
+     * Uses the most recent conversation to determine where to send.
+     */
+    async pushMessage(userId: string, content: string): Promise<boolean> {
+        try {
+            // Find the most recent conversation on a supported platform
+            const conversation = await prisma.conversation.findFirst({
+                where: {
+                    userId: userId,
+                    provider: { in: ["slack", "discord"] }
+                },
+                orderBy: { updatedAt: "desc" }
+            });
+
+            if (!conversation) {
+                logger.warn("No active conversation found for push", { userId });
+                return false;
+            }
+
+            const surfaceUrl = process.env.SURFACES_API_URL || "http://localhost:3001";
+
+            const response = await fetch(`${surfaceUrl}/notify`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    platform: conversation.provider,
+                    channelId: conversation.channelId,
+                    content: content
+                })
+            });
+
+            if (!response.ok) {
+                logger.error("Failed to push message to surface", {
+                    status: response.status,
+                    userId,
+                    provider: conversation.provider
+                });
+                return false;
+            }
+
+            return true;
+
+        } catch (error) {
+            logger.error("Error in pushMessage", { error, userId });
+            return false;
         }
     }
 }

@@ -224,6 +224,7 @@ Open [http://localhost:3000](http://localhost:3000) to see the app.
 - **Smart Categorization** - Auto-organize senders
 - **One-click Unsubscribe** - Clean up unwanted emails
 - **Multi-provider Support** - Gmail and Outlook
+- **Smart Notifications** - Agentic "Heads-up" alerts for important items
 - **Beautiful 3D UI** - GPU-accelerated visual experience
 
 ---

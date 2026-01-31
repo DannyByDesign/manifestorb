@@ -45,6 +45,10 @@ This is where 90% of the logic lives.
     *   Orchestrates the "One-Shot" agent for Surfaces.
     *   Injects **Personal Instructions** (`about`) and **Conversation Context** (`history`).
     *   INTERCEPTS sensitive tool calls (`modify`, `create`) to generate **Approval Requests**.
+*   **`context-manager.ts`**: The **Recursive Memory (RLM)** layer.
+    *   Retrieves relevant past `ConversationMessage` rows (Deduplicated).
+    *   Injects long-term `MemoryFact` items ("About Me").
+    *   Compresses history using `ConversationSummary`.
 
 #### `src/server/channels` (The Router)
 *   **`router.ts`**: The logic that receives messages from Surfaces, authenticates the user (via Magic Link token logic), and calls the Executor.
@@ -69,6 +73,8 @@ This is where 90% of the logic lives.
     *   `rule.ts`: CRUD for automation rules.
     *   `engine.ts`: The **Rule Engine** that processes incoming emails against rules.
     *   `stats.ts`: Analytics aggregation.
+*   **`src/server/services/notification`**:
+    *   `generator.ts`: The Centralized Content Factory for "Agentic Push".
 *   **`src/server/approvals`**:
     *   `service.ts`: Manages the lifecycle of Tool Approval Requests.
 *   **`src/server/utils/linking`**: Logic for generating magic links to connect Slack/Discord accounts to Amodel users.
@@ -130,7 +136,7 @@ This is where 90% of the logic lives.
 ### **How to add a new Rule Action**
 1.  Update `ActionType` enum in `prisma/schema.prisma`.
 2.  Run `bunx prisma generate`.
-3.  Update the **Rule Engine** in `src/server/services/unsubscriber/engine.ts` to handle the new action.
+3.  Update the **Rule Engine** in `src/server/integrations/ai/choose-rule/run-rules.ts` (Real Engine) or `engine.ts` (Legacy).
 4.  Update the **AI Tool** (`modify.ts` or `create.ts`) if the agent needs to perform it manually.
 
 ---

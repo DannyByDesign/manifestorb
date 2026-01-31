@@ -15,6 +15,7 @@ export async function startSlack() {
         appToken: process.env.SLACK_APP_TOKEN,
         socketMode: true,
     });
+    slackApp = app;
 
 
     // Handle Approvals
@@ -138,3 +139,27 @@ export async function startSlack() {
     await app.start();
     console.log("⚡️ Surfaces: Slack Socket Mode running");
 }
+
+export async function sendSlackMessage(channelId: string, text: string, blocks?: any[]) {
+    // We need access to the app instance. 
+    // Since startSlack initializes it, we should lift 'app' to module scope or re-architect slightly.
+    // For now, let's assume single instance and use a singleton pattern if needed, 
+    // but the cleanest way is to export the sender from the closure if we can, or just expose `app`.
+    // Actually, let's just use the `app` if it was exported, but it's not.
+    // Let's modify startSlack to assign to a module-level variable.
+    if (!slackApp) {
+        console.error("Slack app not initialized");
+        return;
+    }
+    try {
+        await slackApp.client.chat.postMessage({
+            channel: channelId,
+            text: text,
+            blocks: blocks
+        });
+    } catch (error) {
+        console.error("Failed to send Slack message", error);
+    }
+}
+
+let slackApp: App | undefined;

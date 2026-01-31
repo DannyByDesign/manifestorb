@@ -35,7 +35,7 @@ vi.mock("@/utils/cold-email/is-cold-email", () => ({
 vi.mock("@/utils/categorize/senders/categorize", () => ({
   categorizeSender: vi.fn(),
 }));
-vi.mock("@/utils/ai/choose-rule/run-rules", () => ({
+vi.mock("@/server/integrations/ai/choose-rule/run-rules", () => ({
   runRules: vi.fn(),
 }));
 vi.mock("@/utils/assistant/process-assistant-email", () => ({

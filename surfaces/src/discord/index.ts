@@ -18,6 +18,7 @@ export function startDiscord() {
         ],
         partials: [Partials.Channel], // Required for DMs
     });
+    discordClient = client;
 
     client.once("ready", () => {
         console.log(`[Surfaces] Discord Connected as ${client.user?.tag}`);
@@ -128,4 +129,24 @@ export function startDiscord() {
     client.login(token).catch(err => {
         console.error("[Surfaces] Discord Login Error:", err);
     });
+}
+
+let discordClient: Client | undefined;
+
+export async function sendDiscordMessage(channelId: string, content: string) {
+    if (!discordClient) {
+        console.error("Discord client not initialized");
+        return;
+    }
+    try {
+        const channel = await discordClient.channels.fetch(channelId);
+        // Only send if it's a text-based channel (TextChannel, DMChannel, Thread, etc.)
+        // @ts-ignore - isTextBased() exists on all sendable channels but types are tricky
+        if (channel && channel.isTextBased()) {
+            // @ts-ignore
+            await channel.send(content);
+        }
+    } catch (error) {
+        console.error("Failed to send Discord message", error);
+    }
 }

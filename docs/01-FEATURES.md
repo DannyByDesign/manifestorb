@@ -146,7 +146,7 @@
 
 | 🚀/🕒/🗑️ | Feature | Description | Key Files | Primary UX Surface | Agentic Supported? |
 |---|---|---|---|---|---|
-| 🚀 | **Rule CRUD** | Create/update/delete rules | `server/services/unsubscriber/rule.ts` | **UI-first** (simple) + Chat | Yes |
+| ✅ | **AI Rule Selection** | Choose applicable rules (Real Engine) | `server/integrations/ai/choose-rule/run-rules.ts` | Core automation engine |
 | 🚀 | **AI Conditions** | Natural language match instructions | `Rule.instructions` | **Chat-first** + preview | Yes |
 | 🕒 | **Static Conditions** | from/to/subject/body regex | Prisma `Rule` fields | UI-first (advanced) | Yes |
 | 🕒 | **Group Conditions** | Sender groups/patterns | `Rule.groupId` | UI-first (advanced) | Yes |
@@ -267,6 +267,13 @@
 |---|---|---|---|---|
 | ✅ | **Telegram Bot** | Long Polling | Chat-first | `surfaces/` |
 | ✅ | **DM Chat** | Chat with Agent | Chat-first | `telegraf` |
+
+### 11.4 Shared Infrastructure (Implemented)
+
+| 🚀/🕒/🗑️ | Feature | Description | Primary UX Surface | Notes |
+|---|---|---|---|---|
+| ✅ | **Safe Account Linking** | Magic Link Auth for Surfaces | Hybrid | `utils/linking.ts` |
+| ✅ | **Unified Executor** | One-Shot Agent Runtime | Backend-only | `agent/executor.ts` |
 
 ---
 
@@ -399,15 +406,14 @@ To become “calendar + task agent + push assistant,” you are missing:
 
 > Without push, “assistant” feels passive. Push is how you get “ClaudeBot-like” responsiveness.
 
-### Web Push (fastest path)
+### Web Push (Implemented)
 
-| 🚀/🕒/🗑️ | Feature | Description | Primary UX Surface | Notes |
-|---|---|---|---|---|
-| 🚀 | **Web Push Setup** | VAPID keys + permission UI | UI-first | Fastest “push” before mobile |
+| 🚀/🕒/🗑️ | Feature | Description | Key Files | Primary UX Surface | Notes |
+|---|---|---|---|---|---|
+| ✅ | **Web Push Setup** | Surfaces Sidecar (`/notify`) | `surfaces/` | UI-first | HTTP Server ready |
+| ✅ | **Agentic Push** | AI-generated "Heads Up" notifications | `server/services/notification/generator.ts` | Backend-only | "Triple-Safe" Filtering |
 | 🚀 | **Actionable Notifications** | Approve/reject proposed action | Hybrid | Requires secure action tokens |
 | 🚀 | **Notification Preferences** | Quiet hours, categories, urgency | UI-first | Prevent spam |
-| 🚀 | **Digest vs Real-time Policy** | Some alerts immediate, others batched | UI-first | Controls fatigue |
-| 🕒 | **Rich Context Push** | Expandable details | Hybrid | Later |
 
 ### Mobile Push (later)
 

@@ -1,6 +1,6 @@
 import { after } from "next/server";
 import prisma from "@/server/db/client";
-import { runRules } from "@/utils/ai/choose-rule/run-rules";
+import { runRules } from "@/server/integrations/ai/choose-rule/run-rules";
 import { categorizeSender } from "@/utils/categorize/senders/categorize";
 import { isAssistantEmail } from "@/utils/assistant/is-assistant-email";
 import { processAssistantEmail } from "@/utils/assistant/process-assistant-email";
@@ -12,7 +12,7 @@ import {
 } from "@/utils/drive/filing-engine";
 import { handleOutboundMessage } from "@/utils/reply-tracker/handle-outbound";
 import { clearFollowUpLabel } from "@/utils/follow-up/labels";
-import { NewsletterStatus } from "@/generated/prisma/enums";
+import { ActionType, NewsletterStatus } from "@/generated/prisma/enums";
 import type { EmailAccount } from "@/generated/prisma/client";
 import { extractEmailAddress, extractNameFromEmail } from "@/utils/email";
 import { isIgnoredSender } from "@/utils/filter-ignored-senders";
@@ -201,7 +201,7 @@ export async function processHistoryItem(
     if (hasAutomationRules && hasAiAccess) {
       logger.info("Running rules...");
 
-      await runRules({
+      const ruleResults = await runRules({
         provider: provider as any,
         emailAccount: emailAccount as any,
         message: parsedMessage,
@@ -210,6 +210,23 @@ export async function processHistoryItem(
         modelType: "chat",
         logger,
       });
+
+      // Check if any rule archived or deleted the message
+      const shouldSuppressNotification = ruleResults.some((result) => {
+        const isSkipped = result.status === "SKIPPED";
+        if (isSkipped) return false;
+
+        return result.actionItems?.some(
+          (action) =>
+            action.type === ActionType.ARCHIVE ||
+            action.type === ActionType.MARK_READ
+        );
+      });
+
+      if (shouldSuppressNotification) {
+        logger.info("Suppressing notification due to rule outcome (Archive/Delete/Read)");
+        return;
+      }
     }
 
     // Process attachments for document filing (runs in parallel with rules if both enabled)
@@ -262,6 +279,54 @@ export async function processHistoryItem(
     } catch (error) {
       logger.error("Error removing follow-up label on inbound", { error });
       captureException(error, { emailAccountId });
+    }
+
+    // 5. Smart Push Notification (Open Claw Logic)
+    // Only push if it's an inbound message and we haven't filtered it out already
+    // 5. Smart Push Notification (Open Claw Logic)
+    // Only push if it's an inbound message and we haven't filtered it out already
+    // Filtering Logic:
+    // 1. Must be inbound (checked above)
+    // 2. Must NOT be archived/deleted by rules (checked above)
+    // 3. Must be IMPORTANT (Gmail Label) OR explicitly marked as Personal/Updates
+    const isImportant = parsedMessage.labelIds?.includes("IMPORTANT");
+    const isCategoryPersonal = parsedMessage.labelIds?.includes("CATEGORY_PERSONAL");
+
+    // We allow CATEGORY_UPDATES too generally, but let's restrict to Important for now to match user request
+    const shouldPush = !isOutbound && (isImportant || isCategoryPersonal);
+
+    if (shouldPush) {
+      try {
+        const { ChannelRouter } = await import("@/server/channels/router");
+        const { generateNotification } = await import(
+          "@/server/services/notification/generator"
+        );
+        const router = new ChannelRouter();
+
+        // Extract basic details
+        const fromName = extractNameFromEmail(parsedMessage.headers.from) || parsedMessage.headers.from;
+        const subject = parsedMessage.headers.subject || "(No Subject)";
+        const snippet = parsedMessage.snippet || "";
+
+        // Generate conversational content using LLM
+        const text = await generateNotification(
+          {
+            type: "email",
+            source: fromName,
+            title: subject,
+            detail: snippet,
+            importance: "medium", // Default for now
+          },
+          { emailAccount }
+        );
+
+        // Fire and forget - don't block the webhook response
+        void router.pushMessage(emailAccount.userId, text).catch(err => {
+          logger.error("Failed to push notification", { error: err });
+        });
+      } catch (err) {
+        logger.error("Error initiating push notification", { error: err });
+      }
     }
   } catch (error: unknown) {
     // Handle provider-specific "not found" errors
