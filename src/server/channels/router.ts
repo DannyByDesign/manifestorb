@@ -59,9 +59,31 @@ export class ChannelRouter {
         });
 
         if (!account || !account.user) {
+            const { createLinkToken } = await import("@/server/utils/linking");
+            const { env } = await import("@/env");
+
+            const token = await createLinkToken({
+                provider: message.provider,
+                providerAccountId: message.context.userId,
+                providerTeamId: (message.context as any).teamId, // If available
+                metadata: {
+                    channelId: message.context.channelId
+                }
+            });
+
+            const linkUrl = `${env.NEXT_PUBLIC_BASE_URL}/link?token=${token}`;
+
             return [{
                 targetChannelId: message.context.channelId,
-                content: `Account not linked. Please link your ${message.provider} account to continues.`
+                content: `Welcome! I don't recognize this ${message.provider} account yet.\n\nPlease [Link Your Account](${linkUrl}) to enable AI features.`,
+                interactive: {
+                    type: "approval_request", // Reusing this type for now to show a button if possible, but the link is primary
+                    approvalId: "link-account",
+                    summary: "Link Account",
+                    actions: [
+                        { label: "Link Account", style: "primary", value: linkUrl, url: linkUrl }
+                    ]
+                }
             }];
         }
 
@@ -72,34 +94,53 @@ export class ChannelRouter {
         if (!emailAccount) {
             return [{
                 targetChannelId: message.context.channelId,
-                content: "No connected email account found for your user."
+                content: "Your account is linked, but you haven't connected a Gmail/Outlook account yet.\n\nPlease go to the Amodel Web App to connect your email."
             }];
         }
 
-        // 2. Prepare LLM Context
-        const modelOptions = getModel(user, "chat");
-
+        // 2. Run Unified Agent
         try {
-            const { text } = await createGenerateText({
-                emailAccount: emailAccount as any, // Cast for now, generic chat needs less
-                label: "channel-chat",
-                modelOptions
-            })({
-                ...modelOptions,
-                messages: [
-                    { role: "system", content: "You are a helpful AI assistant connected via " + message.provider + ". Answer the user's questions concisely." },
-                    { role: "user", content: message.content }
-                ]
+            const { runOneShotAgent } = await import("@/server/agent/executor");
+
+            const { text, approvals } = await runOneShotAgent({
+                user: user,
+                emailAccount: emailAccount,
+                message: message.content,
+                context: {
+                    channelId: message.context.channelId,
+                    provider: message.provider,
+                    userId: message.context.userId,
+                    teamId: (message.context as any).teamId
+                },
+                history: message.history
             });
 
-            // 3. Return Response
-            return [{
+            // 3. Construct Output
+            const outbound: OutboundMessage = {
                 targetChannelId: message.context.channelId,
                 content: text
-            }];
+            };
+
+            // Attach interactive approval UI if generated
+            if (approvals && approvals.length > 0) {
+                const approval = approvals[0]; // Just show the first one for simplicity
+                const { env } = await import("@/env");
+
+                outbound.interactive = {
+                    type: "approval_request",
+                    approvalId: approval.id,
+                    summary: "Approval Requested",
+                    actions: [
+                        { label: "Approve", style: "primary", value: "approve", url: `${env.NEXT_PUBLIC_BASE_URL}/approvals/${approval.id}` },
+                        { label: "Deny", style: "danger", value: "deny" }
+                    ]
+                };
+            }
+
+            return [outbound];
 
         } catch (error) {
-            logger.error("Error generating response", { error });
+            logger.error("Error running agent", { error });
             return [{
                 targetChannelId: message.context.channelId,
                 content: "I encountered an error processing your request."

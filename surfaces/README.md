@@ -96,3 +96,11 @@ bun run dev
 
 When Core returns an `InteractivePayload` (e.g. Approval Request), the Sidecar renders platform-specific buttons.
 Clicking a button triggers a callback which the Sidecar routes to `POST /api/approvals/:id/(approve|deny)` on the Core.
+    
+## Memory & Context
+
+To provide a conversational experience:
+-   **Context Fetching**: Should fetch the last 30 messages of the current thread/channel.
+-   **Forwarding**: Passes this history in the `history` array to the Brain.
+-   **Privacy**: This history is NOT stored in the Amodel database long-term; it is only used transiently for the current inference window.
+

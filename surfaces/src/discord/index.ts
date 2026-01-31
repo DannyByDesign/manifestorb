@@ -65,6 +65,18 @@ export function startDiscord() {
         // Determine channel ID format (e.g. "discord:channel_id" or just "channel_id")
         // For now we send raw ID and provider identifies the namespace
 
+        // Fetch History
+        let history: { role: "user" | "assistant"; content: string }[] = [];
+        try {
+            const messages = await message.channel.messages.fetch({ limit: 30, before: message.id });
+            history = messages.reverse().map(msg => ({
+                role: (msg.author.bot ? "assistant" : "user") as "user" | "assistant",
+                content: msg.content
+            })).filter(msg => msg.content !== "");
+        } catch (err) {
+            console.error("[Surfaces] Failed to fetch Discord history", err);
+        }
+
         const brainResponse = await forwardToBrain({
             provider: "discord",
             content: message.content,
@@ -76,6 +88,7 @@ export function startDiscord() {
                 isDirectMessage: isDM,
                 guildId: message.guildId,
             },
+            history
         });
 
         if (brainResponse && brainResponse.responses) {

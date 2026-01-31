@@ -62,6 +62,32 @@ export async function startSlack() {
 
         console.log(`[Surfaces] Received Slack message: ${message.text}`);
 
+        // Fetch History
+        let history: { role: "user" | "assistant"; content: string }[] = [];
+        try {
+            const threadTs = (message as any).thread_ts;
+            // If in a thread, get thread replies. If in channel/DM, get history.
+            // For simplicity, we just look at conversations.history (which gets channel stream) or replies if threaded.
+            // But getting context for "just this channel" is usually safest.
+
+            const result = await app.client.conversations.history({
+                channel: message.channel,
+                limit: 30,
+                latest: message.ts, // Get messages BEFORE this one
+                inclusive: false
+            });
+
+            if (result.messages) {
+                // Reverse to default chronological order
+                history = result.messages.reverse().map(msg => ({
+                    role: (msg.bot_id ? "assistant" : "user") as "user" | "assistant",
+                    content: msg.text || ""
+                })).filter(msg => msg.content !== "");
+            }
+        } catch (err) {
+            console.error("[Surfaces] Failed to fetch Slack history", err);
+        }
+
         const brainResponse = await forwardToBrain({
             provider: "slack",
             content: message.text,
@@ -71,6 +97,7 @@ export async function startSlack() {
                 messageId: message.ts,
                 isDirectMessage: message.channel_type === "im",
             },
+            history
         });
 
         if (brainResponse && brainResponse.responses) {

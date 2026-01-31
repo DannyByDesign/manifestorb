@@ -30,8 +30,24 @@ Amodel is a **Next.js** application with a heavy **Server-Side** focus. It funct
 *   **`src/app/(dashboard)`**: The main logged-in UI pages.
 *   **`components/`**: React UI components (Buttons, Inputs, localized views).
 
+### `surfaces/` (The Sidecar Service)
+*   **Node.js App**: A standalone process that connects to real-time chat APIs (Slack Socket Mode, Discord Gateway, Telegram Polling).
+*   **Role**:
+    *   Ingests messages + fetches thread history (for context).
+    *   Forwards normalized messages via HTTP to `src/app/api/surfaces/inbound`.
+    *   Renders interactive elements (Buttons) for Approvals.
+
 ### `src/server` (The Backend Core)
 This is where 90% of the logic lives.
+
+#### `src/server/agent` (The Executive Brain)
+*   **`executor.ts`**: The **Unified Agent Executor**.
+    *   Orchestrates the "One-Shot" agent for Surfaces.
+    *   Injects **Personal Instructions** (`about`) and **Conversation Context** (`history`).
+    *   INTERCEPTS sensitive tool calls (`modify`, `create`) to generate **Approval Requests**.
+
+#### `src/server/channels` (The Router)
+*   **`router.ts`**: The logic that receives messages from Surfaces, authenticates the user (via Magic Link token logic), and calls the Executor.
 
 #### `src/server/integrations` (The "Hands")
 *   **`src/server/integrations/ai`**: **The AI Brain.**
@@ -53,7 +69,11 @@ This is where 90% of the logic lives.
     *   `rule.ts`: CRUD for automation rules.
     *   `engine.ts`: The **Rule Engine** that processes incoming emails against rules.
     *   `stats.ts`: Analytics aggregation.
+*   **`src/server/approvals`**:
+    *   `service.ts`: Manages the lifecycle of Tool Approval Requests.
+*   **`src/server/utils/linking`**: Logic for generating magic links to connect Slack/Discord accounts to Amodel users.
 *   **`src/server/db`**: Database schema (`schema.prisma`) and client.
+
 
 ---
 
@@ -65,6 +85,10 @@ This is where 90% of the logic lives.
 | **Chat Logic** | `src/server/integrations/ai/assistant/chat.ts` | The main loop handling user messages and tool calls. |
 | **Agent Tools** | `src/server/integrations/ai/tools/` | Definitions of what the AI *can* do (Search, Read, Modify). |
 | **Tool Security** | `src/server/integrations/ai/tools/security.ts` | Permissions check (Safe vs Caution mode). |
+| **Unified Executor** | `src/server/agent/executor.ts` | Shared agent logic for Surfaces (Slack/Discord). |
+| **Surfaces (Slack/Discord)** | `surfaces/src` | The Node.js Sidecar app handling incoming messages. |
+| **Account Linking** | `src/server/utils/linking` | Magic link token generation. |
+| **Approval System** | `src/server/approvals/service.ts` | Managing human-in-the-loop approvals for sensitive tools. |
 
 ### 📧 Email Features
 | Feature | Key File / Directory | Description |

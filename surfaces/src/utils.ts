@@ -23,6 +23,7 @@ export async function forwardToBrain(params: {
     provider: "slack" | "discord" | "telegram";
     content: string;
     context: any;
+    history?: { role: "user" | "assistant"; content: string }[];
 }) {
     try {
         console.log(`[Surfaces] Forwarding to Brain (${params.provider}): ${params.content.substring(0, 50)}...`);

@@ -799,6 +799,22 @@ model CleanupThread {
   @@index([jobId])
 }
 
+model SurfaceLinkToken {
+  id                String    @id @default(cuid())
+  tokenHash         String    @unique
+  provider          String
+  providerAccountId String
+  providerTeamId    String?
+  expiresAt         DateTime
+  consumedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  metadata          Json? // Store source IP, etc.
+
+  // Fast lookup for "do I already have an active token?"
+  @@index([provider, providerAccountId, expiresAt])
+}
+
+
 model Knowledge {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
