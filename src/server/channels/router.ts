@@ -16,6 +16,23 @@ export class ChannelRouter {
             userId: message.context.userId
         });
 
+        // 0. Demo Bypass: Intercept "request approval" BEFORE auth check
+        if (message.content.toLowerCase().includes("request approval")) {
+            return [{
+                targetChannelId: message.context.channelId,
+                content: "I need your approval for this action.",
+                interactive: {
+                    type: "approval_request",
+                    approvalId: "demo-request-123", // In real world this comes from ApprovalService.create
+                    summary: "Demo Action: Deploy to Production",
+                    actions: [
+                        { label: "Approve", style: "primary", value: "approve" },
+                        { label: "Deny", style: "danger", value: "deny" }
+                    ]
+                }
+            }];
+        }
+
         // 1. Fetch User via Account Link
         // We must look up the user by their external provider ID (Account table)
         // rather than assuming message.context.userId is already a UUID.
@@ -59,24 +76,7 @@ export class ChannelRouter {
             }];
         }
 
-        // 2. Prepare LLM Context or Hardcoded Command for Demo
-        // For testing purposes, we interception "request approval"
-        if (message.content.toLowerCase().includes("request approval")) {
-            return [{
-                targetChannelId: message.context.channelId,
-                content: "I need your approval for this action.",
-                interactive: {
-                    type: "approval_request",
-                    approvalId: "demo-request-123", // In real world this comes from ApprovalService.create
-                    summary: "Demo Action: Deploy to Production",
-                    actions: [
-                        { label: "Approve", style: "primary", value: "approve" },
-                        { label: "Deny", style: "danger", value: "deny" }
-                    ]
-                }
-            }];
-        }
-
+        // 2. Prepare LLM Context
         const modelOptions = getModel(user, "chat");
 
         try {
