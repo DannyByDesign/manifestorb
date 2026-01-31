@@ -24,6 +24,8 @@
 8. [Premium & Billing](#8-premium--billing-6-features)
 9. [Communication & Notifications](#9-communication--notifications-4-features)
 10. [Additional Features](#10-additional-features-5-features)
+11. [Surfaces & Channels](#11-surfaces--channels-implemented)
+12. [RLM Context & Memory](#12-rlm-context--memory-phase-5---implemented)
 
 ---
 
@@ -268,6 +270,19 @@
 
 ---
 
+## 12. RLM Context & Memory (Phase 5 - Implemented)
+
+> The "Recursive Language Model" (RLM) context layer provides unified memory and privacy controls across all surfaces.
+
+| 🚀/🕒/🗑️ | Feature | Description | Key Files | Primary UX Surface | Notes |
+|---|---|---|---|---|---|
+| ✅ | **Unified Conversation History** | Database-backed history for Slack/Discord/Web | `Conversation`, `ConversationMessage` | Backend-only | Ground truth for context |
+| ✅ | **Privacy Controls** | User toggle for `recordHistory` | `PrivacySettings` | UI-first (Settings) | Prevents DB persistence |
+| ✅ | **Rolling Summaries** | Background compression of long threads | `ConversationSummary`, `SummaryService` | Backend-only | Keeps context efficient |
+| ✅ | **Web Chat Integration** | Persistent web chat linked to RLM | `/api/chat` | Chat-first | Parity with Slack/Discord |
+
+---
+
 # Launch Bundle Recommendation (what to ship + market first)
 
 ### 🚀 Launch (core loop)
@@ -473,5 +488,5 @@ Your current tool set covers Email/Calendar/Automation in concept, but calendar/
 - Overly complex team features before you have teams
 - Deep channel-based Slack workflows before DM is great
 
----
+
 

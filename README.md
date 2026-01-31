@@ -144,6 +144,7 @@ amodel/
 │   └── prisma/                 # Generated Prisma types
 ├── public/                     # Static assets
 ├── docs/                       # Documentation
+│   ├── 01-FEATURES.md          # Feature list & status
 ├── scripts/                    # Utility scripts
 ├── surfaces/                   # Sidecar service (Slack/Discord/Telegram)
 └── .env                        # Environment variables

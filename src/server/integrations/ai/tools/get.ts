@@ -10,7 +10,7 @@ export const getTool: ToolDefinition<any> = {
         resource: z.enum([
             "email", "calendar", "automation"
         ]),
-        ids: z.array(z.string()).max(10),
+        ids: z.array(z.string()).max(20), // Max 20 objects per step as per Hardening Budget
     }),
 
     execute: async ({ resource, ids }, { providers }) => {

@@ -5,6 +5,7 @@ import prisma from "@/server/db/client";
 import { createGenerateText } from "@/server/utils/llms";
 import { convertToCoreMessages, streamText } from "ai";
 import { getModel } from "@/server/utils/llms/model";
+import { createHash } from "crypto";
 
 const logger = createScopedLogger("ChannelRouter");
 
@@ -90,12 +91,99 @@ export class ChannelRouter {
         const user = account.user;
         const emailAccount = user.emailAccounts[0];
 
-        // If no email account, we might have limited capability
         if (!emailAccount) {
             return [{
                 targetChannelId: message.context.channelId,
                 content: "Your account is linked, but you haven't connected a Gmail/Outlook account yet.\n\nPlease go to the Amodel Web App to connect your email."
             }];
+        }
+
+        const threadId = (message.context as any).threadId || null;
+        const channelId = message.context.channelId;
+        const providerMessageId = (message.context as any).messageId;
+
+        // 1.5 Ensure Stable Conversation
+        // We find or create the conversation based on the external context.
+        // Prisma's "connectOrCreate" or upsert is good here if we have a unique constraint.
+        // schema: @@unique([userId, provider, channelId, threadId]) - Note: Postgres unique with NULLs works (distinct), 
+        // BUT strict equality on NULL varies. Prisma handles this well typically? 
+        // Actually, for safety, if threadId is missing, we must be careful.
+        // To avoid complex nullable unique issues, we can check first.
+
+        let conversation = await prisma.conversation.findFirst({
+            where: {
+                userId: user.id,
+                provider: message.provider,
+                channelId: channelId,
+                threadId: threadId // Prisma treats undefined/null as NULL match
+            }
+        });
+
+        if (!conversation) {
+            conversation = await prisma.conversation.create({
+                data: {
+                    userId: user.id,
+                    provider: message.provider,
+                    channelId: channelId,
+                    threadId: threadId,
+                }
+            });
+        }
+
+        // 1.6 Persist Inbound Message (Unified History) with Dedupe
+        // Dedupe Key: SHA-256(provider : channelId : messageId)
+        // Fallback for web/transient: content hash
+        let dedupeKey = "";
+        if (providerMessageId) {
+            dedupeKey = createHash("sha256")
+                .update(`${message.provider}:${channelId}:${providerMessageId}`)
+                .digest("hex");
+        } else {
+            dedupeKey = createHash("sha256")
+                .update(`${message.provider}:${channelId}:${message.content}:${Date.now()}`) // Transient fallback
+                .digest("hex");
+        }
+
+        try {
+            const { PrivacyService } = await import("@/server/privacy/service");
+            const shouldRecord = await PrivacyService.shouldRecord(user.id);
+
+            if (shouldRecord) {
+                await prisma.conversationMessage.upsert({
+                    where: {
+                        dedupeKey: dedupeKey
+                    },
+                    update: {}, // Idempotent
+                    create: {
+                        // id: default cuid is fine
+                        userId: user.id,
+                        conversationId: conversation.id, // Linked!
+                        dedupeKey: dedupeKey,
+                        role: "user",
+                        content: message.content,
+                        toolCalls: undefined, // Fix null error: InputJsonValue | undefined
+
+                        provider: message.provider,
+                        providerMessageId: providerMessageId,
+                        channelId: channelId,
+                        threadId: threadId,
+
+                        emailAccountId: emailAccount.id
+                    }
+                });
+            }
+        } catch (err) {
+            logger.error("Failed to persist inbound message", { error: err });
+        }
+
+        // 3. Trigger Summarization (Async)
+        try {
+            const { SummaryService } = await import("@/server/summaries/service");
+            if (await SummaryService.shouldSummarize(conversation.id)) {
+                await SummaryService.enqueueSummarizeConversation(conversation.id);
+            }
+        } catch (e) {
+            logger.error("Failed to trigger summarization", { error: e });
         }
 
         // 2. Run Unified Agent
@@ -107,13 +195,17 @@ export class ChannelRouter {
                 emailAccount: emailAccount,
                 message: message.content,
                 context: {
+                    conversationId: conversation.id, // Include this!
                     channelId: message.context.channelId,
                     provider: message.provider,
                     userId: message.context.userId,
-                    teamId: (message.context as any).teamId
-                },
-                history: message.history
-            });
+                    teamId: (message.context as any).teamId,
+                    messageId: dedupeKey, // Use our internal key or the provider id? Executor expects messageId for thread?
+                    // Actually executor context is type { ... messageId? ... }. 
+                    // Let's pass the real providerMessageId for reference, but usage in executor should change.
+                    threadId: (message.context as any).threadId || undefined,
+                    // history: message.history // REMOVED: We use DB now.
+                });
 
             // 3. Construct Output
             const outbound: OutboundMessage = {

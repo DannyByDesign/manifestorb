@@ -107,6 +107,11 @@ model User {
 
   approvalRequests  ApprovalRequest[]
   approvalDecisions ApprovalDecision[]
+
+  conversations        Conversation[]
+  conversationMessages ConversationMessage[]
+  memoryFacts          MemoryFact[]
+  privacySettings      PrivacySettings?
 }
 
 // Migrating over to the new settings model. Currently most settings are in the User model, but will be moved to this model in the future.
@@ -828,6 +833,27 @@ model Knowledge {
   @@unique([emailAccountId, title])
 }
 
+model Conversation {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  provider  String // "slack" | "discord" | "web"
+  channelId String?
+  threadId  String?
+
+  isPrimary Boolean  @default(false)
+
+  messages ConversationMessage[]
+  summary  ConversationSummary?
+
+  @@unique([userId, provider, channelId, threadId])
+  @@index([userId, updatedAt])
+}
+
 model ApiKey {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
@@ -1363,4 +1389,79 @@ model ApprovalDecision {
 
   @@index([approvalRequestId])
   @@index([decidedByUserId])
+}
+
+// -- RLM Context Models --
+
+// Migrated to link with Conversation
+model ConversationMessage {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  // Identity
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Link to Stable Conversation
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  // Deduplication
+  dedupeKey String @unique
+
+  // Content
+  role      String   // "user" | "assistant" | "system" | "tool"
+  content   String   @db.Text
+  toolCalls Json?    // Structured tool usage
+
+  // Provenance
+  provider          String  // "slack", "discord", "web"
+  providerMessageId String? // External ID (Slack ts, Discord msgId)
+  channelId         String? // External Channel ID
+  threadId          String? // External Thread ID (if applicable)
+
+  emailAccountId String? // Optional linkage
+
+  @@index([userId, conversationId, createdAt])
+}
+
+model MemoryFact {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+
+  key       String   // e.g., "dietary_preference", "project_deadline"
+  value     String   // e.g., "vegan", "Q3 2026"
+  scope     String   // "global", "domain_specific"
+  confidence Float   @default(1.0)
+
+  // Provenance: Where did we learn this?
+  sourceMessageId String?
+
+  @@unique([userId, key])
+}
+
+model PrivacySettings {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  recordHistory Boolean  @default(true)
+  retentionDays Int      @default(90)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model ConversationSummary {
+  id             String       @id @default(cuid())
+  conversationId String       @unique
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  summary        String    @db.Text
+  updatedAt      DateTime  @updatedAt
+  lastMessageAt  DateTime?
 }
