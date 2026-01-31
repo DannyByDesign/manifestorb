@@ -1,6 +1,6 @@
 import { isDefined, type ParsedMessage } from "@/utils/types";
 import type { Logger } from "@/utils/logger";
-import { processUserRequest } from "@/utils/ai/assistant/process-user-request";
+import { processUserRequest } from "@/server/integrations/ai/assistant/process-user-request";
 import { extractEmailAddress } from "@/utils/email";
 import prisma from "@/server/db/client";
 import { emailToContent } from "@/utils/mail";
@@ -8,6 +8,7 @@ import { isAssistantEmail } from "@/utils/assistant/is-assistant-email";
 import { internalDateToDate } from "@/utils/date";
 import type { EmailProvider } from "@/server/services/email/types";
 import { labelMessageAndSync } from "@/utils/label.server";
+import type { RuleWithRelations } from "@/server/utils/rule/types";
 
 type ProcessAssistantEmailArgs = {
   emailAccountId: string;
@@ -141,21 +142,21 @@ async function processAssistantEmailInternal({
     }),
     originalMessage
       ? prisma.executedRule.findMany({
-          where: {
-            emailAccountId,
-            threadId: originalMessage.threadId,
-            messageId: originalMessage.id,
-          },
-          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-          select: {
-            rule: {
-              include: {
-                actions: true,
-                group: true,
-              },
+        where: {
+          emailAccountId,
+          threadId: originalMessage.threadId,
+          messageId: originalMessage.id,
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: {
+          rule: {
+            include: {
+              actions: true,
+              group: true,
             },
           },
-        })
+        },
+      })
       : null,
   ]);
 
@@ -207,7 +208,9 @@ async function processAssistantEmailInternal({
     rules: emailAccount.rules,
     originalEmail: originalMessage,
     messages,
-    matchedRule: executedRules?.length ? executedRules[0].rule : null, // TODO: support multiple rule matching
+    matchedRules: executedRules?.length
+      ? (executedRules.map((er) => er.rule).filter(isDefined) as unknown as RuleWithRelations[])
+      : [],
     logger,
   });
 

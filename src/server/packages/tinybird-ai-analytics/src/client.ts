@@ -1,14 +1,15 @@
 import { Tinybird } from "@chronark/zod-bird";
+import { env } from "./env";
 
 let tb: Tinybird;
 
 export const getTinybird = () => {
-  if (!process.env.TINYBIRD_TOKEN) return;
+  if (!env.TINYBIRD_TOKEN) return;
 
   if (!tb) {
     tb = new Tinybird({
-      token: process.env.TINYBIRD_TOKEN,
-      baseUrl: process.env.TINYBIRD_BASE_URL,
+      token: env.TINYBIRD_TOKEN,
+      baseUrl: env.TINYBIRD_BASE_URL,
     });
   }
 

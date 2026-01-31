@@ -20,7 +20,7 @@ export async function createLinkToken({
     provider: string;
     providerAccountId: string;
     providerTeamId?: string;
-    metadata?: any;
+    metadata?: Record<string, unknown>;
 }) {
     // 1. Check for existing active token (Rate Limit / Spam Prevention)
     const activeToken = await prisma.surfaceLinkToken.findFirst({
@@ -55,7 +55,7 @@ export async function createLinkToken({
             providerAccountId,
             providerTeamId,
             expiresAt,
-            metadata: metadata ?? {},
+            metadata: (metadata ?? {}) as any,
         }
     });
 

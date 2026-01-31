@@ -140,6 +140,7 @@ export const env = createEnv({
     WHITELIST_FROM: z.string().optional(),
     USE_BACKUP_MODEL: z.coerce.boolean().optional().default(false),
     HEALTH_API_KEY: z.string().optional(),
+    JOBS_SHARED_SECRET: z.string().optional(),
     OAUTH_PROXY_URL: z.string().url().optional(),
     // Set to true on the server that acts as the OAuth proxy (e.g., staging)
     IS_OAUTH_PROXY_SERVER: booleanString.optional().default(false),

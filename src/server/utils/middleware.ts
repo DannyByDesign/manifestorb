@@ -162,7 +162,8 @@ function withMiddleware<T extends NextRequest>(
         );
       }
 
-      // Quick fix: log full error in development. TODO: handle properly
+      // In development, log the full error to the console for immediate visibility.
+      // In production, the logger below handles structured logging and Sentry capture.
       if (env.NODE_ENV === "development") {
         // biome-ignore lint/suspicious/noConsole: helpful for debugging
         console.error(error);

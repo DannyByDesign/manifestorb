@@ -101,7 +101,7 @@ export async function aliasPosthogUser({
 export async function posthogCaptureEvent(
   email: string,
   event: string,
-  properties?: Record<string, any>,
+  properties?: Record<string, unknown>,
   sendFeatureFlags?: boolean,
 ) {
   try {
@@ -174,7 +174,7 @@ export async function trackError({
   });
 }
 
-export async function trackTrialStarted(email: string, attributes: any) {
+export async function trackTrialStarted(email: string, attributes: Record<string, unknown>) {
   return posthogCaptureEvent(email, "Premium trial started", {
     ...attributes,
     $set: {
@@ -185,7 +185,7 @@ export async function trackTrialStarted(email: string, attributes: any) {
   });
 }
 
-export async function trackUpgradedToPremium(email: string, attributes: any) {
+export async function trackUpgradedToPremium(email: string, attributes: Record<string, unknown>) {
   return posthogCaptureEvent(email, "Upgraded to premium", {
     ...attributes,
     $set: {
@@ -198,7 +198,7 @@ export async function trackUpgradedToPremium(email: string, attributes: any) {
 
 export async function trackSubscriptionTrialStarted(
   email: string,
-  attributes: any,
+  attributes: Record<string, unknown>,
 ) {
   return posthogCaptureEvent(email, "Premium subscription trial started", {
     ...attributes,
@@ -213,7 +213,7 @@ export async function trackSubscriptionTrialStarted(
 export async function trackSubscriptionCustom(
   email: string,
   status: string,
-  attributes: any,
+  attributes: Record<string, unknown>,
 ) {
   const event = `Premium subscription ${status}`;
 
@@ -229,7 +229,7 @@ export async function trackSubscriptionCustom(
 
 export async function trackSubscriptionStatusChanged(
   email: string,
-  attributes: any,
+  attributes: Record<string, unknown>,
 ) {
   return posthogCaptureEvent(email, "Subscription status changed", {
     ...attributes,
@@ -244,7 +244,7 @@ export async function trackSubscriptionStatusChanged(
 export async function trackSubscriptionCancelled(
   email: string,
   status: string,
-  attributes: any,
+  attributes: Record<string, unknown>,
 ) {
   return posthogCaptureEvent(email, "Cancelled premium subscription", {
     ...attributes,
@@ -259,7 +259,7 @@ export async function trackSubscriptionCancelled(
 export async function trackSwitchedPremiumPlan(
   email: string,
   status: string,
-  attributes: any,
+  attributes: Record<string, unknown>,
 ) {
   return posthogCaptureEvent(email, "Switched premium plan", {
     ...attributes,
@@ -286,7 +286,7 @@ export async function trackPaymentSuccess({
   });
 }
 
-export async function trackStripeEvent(email: string, data: any) {
+export async function trackStripeEvent(email: string, data: Record<string, unknown>) {
   return posthogCaptureEvent(email, "Stripe event", data);
 }
 

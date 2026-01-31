@@ -8,7 +8,6 @@ import prisma from "@/server/db/client";
 
 const logger = createScopedLogger("Gmail Permissions");
 
-// TODO: this can also error on network error
 async function checkGmailPermissions({
   accessToken,
   emailAccountId,
@@ -34,6 +33,25 @@ async function checkGmailPermissions({
       `https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=${accessToken}`,
     );
 
+    if (!response.ok) {
+      const text = await response.text();
+      let error = `Google API Error: ${response.status} ${response.statusText}`;
+      try {
+        const data = JSON.parse(text);
+        if (data.error) error = data.error;
+        if (data.error_description) error += `: ${data.error_description}`;
+      } catch {
+        // ignore JSON parse error, use text/status
+      }
+
+      logger.error("Google Token Info Failed", { emailAccountId, status: response.status, body: text });
+      return {
+        hasAllPermissions: false,
+        missingScopes: SCOPES,
+        error,
+      };
+    }
+
     const data = await response.json();
 
     if (data.error) {
@@ -43,7 +61,7 @@ async function checkGmailPermissions({
       });
       return {
         hasAllPermissions: false,
-        missingScopes: SCOPES, // Assume all scopes are missing if we can't check
+        missingScopes: SCOPES,
         error: data.error,
       };
     }
@@ -63,11 +81,12 @@ async function checkGmailPermissions({
 
     return { hasAllPermissions, missingScopes };
   } catch (error) {
-    logger.error("Error checking Gmail permissions", { emailAccountId, error });
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error("Error checking Gmail permissions", { emailAccountId, error: message });
     return {
       hasAllPermissions: false,
-      missingScopes: SCOPES, // Assume all scopes are missing if we can't check
-      error: "Failed to check permissions",
+      missingScopes: SCOPES,
+      error: "Failed to check permissions due to network or server error",
     };
   }
 }

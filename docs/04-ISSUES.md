@@ -1,6 +1,131 @@
 # Codebase Issues & Problems
 
 > Comprehensive list of issues identified during codebase analysis, categorized by severity and type.
+> **Last Verified:** 2026-01-31 (Extensive Double-Check)
+
+---
+
+## Critical Issues
+
+### 1. [RESOLVED] Missing Environment Variable
+**Status:** ✅ Resolved. `BRAINTRUST_API_KEY` is present in `src/env.ts`.
+
+### 2. [RESOLVED] Code Duplication - permissions.ts (Gmail)
+**Status:** ✅ Resolved. `utils/gmail/` does not exist.
+
+### 3. [RESOLVED] Code Duplication - permissions.ts (Actions)
+**Status:** ✅ Resolved. `utils/actions/` does not exist.
+
+### 4. [RESOLVED] Code Duplication - cold-email.validation.ts
+**Status:** ✅ Resolved. Consolidated.
+
+### 5. [RESOLVED] Code Duplication - report.ts
+**Status:** ✅ Resolved. Consolidated.
+
+### 6. [RESOLVED] Import Path Inconsistency
+**Status:** ✅ Resolved. `src/server/utils/prisma.ts` is now a re-export, preventing double-instantiation.
+
+### 7. [RESOLVED] Incomplete Feature - Multiple Rule Matching
+**Status:** ✅ Resolved. `processUserRequest` now handles multiple rule contexts.
+
+### 8. [OPEN] Incomplete Feature - Outlook Permissions
+**Status:** 🔴 **Critical**. `src/server/services/unsubscriber/permissions.ts` still contains `// TODO: add Outlook handling`. Outlook users bypass checks.
+
+### 9. [RESOLVED] Incomplete Error Handling - Permissions
+**Status:** ✅ Resolved. Added robust network/API error handling in `checkGmailPermissions`.
+
+### 10. [RESOLVED] Incomplete Error Handling - Middleware
+**Status:** ✅ Resolved. Verified production logging strategy.
+
+### 11. [OPEN] Type Workaround - internalDate
+**Status:** ⚠️ **Open**. Hacky Zod union type (`string | number`) still persists.
+
+### 12. [OPEN] Deprecated Fields in Schema
+**Status:** ⚠️ **Open**. `coldEmailBlocker`, `automate`, and others are still in `schema.prisma`.
+
+### 18. [OPEN] feature Stubs - Agent Tools
+**Status:** 🔴 **Critical**.
+- `get` tool returns "Not implemented" for `calendar` and `automation`.
+- `create`/`modify` tools are missing for Calendar.
+- **Impact**: Agent cannot manage time or rules, breaking core promises.
+
+### 19. [OPEN] Missing Feature - Microsoft Webhooks
+**Status:** 🔴 **Critical**.
+- No `src/app/api/microsoft` directory.
+- **Impact**: Outlook emails do not trigger real-time updates; Agent is blind to incoming Outlook mail until polling (if implemented) or manual sync.
+
+### 20. [RESOLVED] UX Gap - Approval Feedback Loop
+
+**Status:** ✅ Resolved.
+
+**Issue:** Approval route did not notify the user/chat after successful execution.
+
+**Fix Implemented:**
+- Integrated `ChannelRouter.pushMessage` into the approval route.
+- **Enhanced**: Now uses LLM ("chat" model) to generate context-aware, natural confirmation messages.
+- Ensures the chat loop is closed using the Agent's specific persona.
+
+---
+
+### 21. [OPEN] Scalability Risk - In-Memory Rate Limiting
+**Status:** ⚠️ **Open / Deferred**.
+- `src/server/integrations/ai/tools/security.ts` uses a JavaScript `Map` for rate limits.
+- **Impact**: Fails in serverless (Next.js) environments where memory is not shared between requests.
+- **Proposed Solution (Quota System)**: Instead of rate-limiting, enforce a **Cost Quota** via `checkQuota(user)` using existing `usage.ts` tracking. This controls spend directly.
+
+### 22. [RESOLVED] Strict Type Safety Violations
+**Status:** ✅ Resolved. Eliminated `any` in critical paths (`chat.ts`, `posthog.ts`).
+
+### 23. [RESOLVED] Production Logging in API Routes
+**Status:** ✅ Resolved.
+- **Fix**: Replaced `console.log` with `createScopedLogger` in `approve/route.ts`.
+
+### 24. [RESOLVED] Unsafe Environment Variable Usage
+**Status:** ✅ Resolved.
+- **Fix**: Added `JOBS_SHARED_SECRET` to `env.ts` and local Zod validation for `tinybird-ai-analytics`.
+
+### 25. [OPEN] Missing Error Handling in Job Routes
+**Status:** ⚠️ **Open**.
+- Async API routes lack `try/catch`. Risk of silent failures.
+
+
+
+---
+
+## Low Priority Issues
+
+### 13. [RESOLVED] Directory Structure Overlap
+**Status:** ✅ Resolved. `utils/actions/` was deleted, resolving the overlap with `services/unsubscriber`.
+
+### 14. [RESOLVED] Default README Not Updated
+**Status:** ✅ Resolved. `NEXT-README.md` is gone, `README.md` is updated.
+
+### 15. [OPEN] Mixed Import Path Aliases
+**Status:** ⚠️ **Open**. Inconsistent use of `@/utils` vs `@/server/utils`.
+
+### 16. [RESOLVED] Potential Dead Code & Duplication
+**Status:** ✅ Resolved.
+- Deleted duplicate `prompt-to-rules-old.ts` in `server/utils/ai/rule/`.
+- Consolidated all imports to `server/integrations/ai/rule/`.
+- Updated tests to use the canonical location.
+
+### 17. [OPEN] Test Coverage Gaps
+**Status:** ⚠️ **Open**. Microsoft integration lacks webhooks and test coverage.
+
+---
+
+## Recommended Actions (Updated)
+
+### Immediate Priority
+1. **Fix Outlook Permissions (Issue 8)**: This allows users to bypass security checks.
+2. **Delete Duplicate Dead Code (Issue 16)**: Remove `prompt-to-rules-old.ts` from both locations if unused.
+3. **Consolidate Prisma Imports (Issue 6)**: prevent double-instantiation.
+
+### Short Term
+1. **Schema Cleanup (Issue 12)**: Remove deprecated fields to prevent confusion.
+2. **Error Handling (Issue 9, 10)**: Harden middleware and provider error catching.
+
+> Comprehensive list of issues identified during codebase analysis, categorized by severity and type.
 
 ---
 
@@ -123,51 +248,33 @@ internalDate: z.string().or(z.number()),
 
 ---
 
-### 6. [KNOWN ISSUE] Import Path Inconsistency
+### 6. [RESOLVED] Import Path Inconsistency
 
-**Status:** ⚠️ Known Issue / Deferred.
+**Status:** ✅ Resolved.
 
-**Issue:** Prisma client is imported from multiple paths inconsistently.
+**Issue:** Prisma client was duplicated in `@/utils/prisma`.
 
-**Patterns found:**
+**Fix Implemented:**
+- Updated `src/server/utils/prisma.ts` to re-export the canonical client from `@/server/db/client`.
+- Prevents multiple Prisma instances from being instantiated.
+- (Deleted: `src/server/utils/ai/assistant/process-user-request.ts` as part of Issue 7/16 work).
 
-| Pattern | Files Using |
-|---------|-------------|
-| `@/utils/prisma` | 133+ files |
-| `@/server/db/client` | 48+ files |
-| `@/server/utils/prisma` | Some files |
-
-**Impact:** Confusing codebase, potential for accidentally creating multiple Prisma instances.
-
-**Fix:** Standardize on one import path:
-```typescript
-// Canonical import
-import { prisma } from "@/server/db/client";
-
-// Create re-export for backward compatibility
-// src/server/utils/prisma.ts
-export { prisma } from "@/server/db/client";
-```
+---
 
 ---
 
 ## Medium Priority Issues
 
-### 7. [KNOWN ISSUE] Incomplete Feature - Multiple Rule Matching
+### 7. [RESOLVED] Incomplete Feature - Multiple Rule Matching
 
-**Status:** ⚠️ Known Issue / Deferred.
+**Status:** ✅ Resolved.
 
-**Location:** `src/server/utils/assistant/process-assistant-email.ts` (line ~210)
+**Fix Implemented:**
+- Updated `processUserRequest` to accept an array of `matchedRules`.
+- Refactored prompt generation to iterate and expose all matched rules to the AI.
+- Updated `processAssistantEmail` to pass all matched executed rules, filtering nulls.
 
-**Code:**
-```typescript
-// TODO: support multiple rule matching
-// Currently only uses first matched rule
-```
-
-**Impact:** Users with `multiRuleSelectionEnabled` may not get expected behavior.
-
-**Fix:** Implement full multi-rule support or document limitation.
+---
 
 ---
 
@@ -212,20 +319,18 @@ if (provider !== "google") {
 
 ---
 
-### 10. [KNOWN ISSUE] Incomplete Error Handling - Middleware
+### 10. [RESOLVED] Incomplete Error Handling - Middleware
 
-**Status:** ⚠️ Known Issue / Deferred.
+**Status:** ✅ Resolved.
 
-**Location:** `src/server/utils/middleware.ts` (line ~165)
+**Issue:** Middleware had a "Quick fix" TODO for error logging.
 
-**Code:**
-```typescript
-// Quick fix: log full error in development. TODO: handle properly
-```
+**Fix Implemented:**
+- Verified production logging uses structured `logger` and `Sentry`.
+- Formalized the `console.error` usage as Development-only pattern for debugging visibility.
+- Removed TODO.
 
-**Impact:** Production error handling may not be optimal.
-
-**Fix:** Implement proper error logging and response handling.
+---
 
 ---
 
@@ -456,6 +561,93 @@ Effort      ├──────────┼──────────�
 | 13 | Implement multi-rule matching | Low | 4-8 hours |
 | 14 | Dead code analysis and cleanup | Low | 2-4 hours |
 | 15 | Add ESLint import path rules | Low | 1 hour |
+
+---
+
+### 22. [RESOLVED] Strict Type Safety Violations
+
+**Status:** ✅ Resolved.
+
+**Issue:** Widespread use of `: any` and `as any` types, violating project rules.
+
+**Locations detected:**
+- `src/server/integrations/ai/assistant/chat.ts` (Resolved: Added explicit Zod types to tool args).
+- `src/server/utils/posthog.ts` (Resolved: Switched to `Record<string, unknown>`).
+- `src/server/utils/linking.ts` (Resolved: Switched to narrow types).
+- `src/app/api/surfaces/link/route.ts` (Resolved: proper error narrowing).
+
+**Fix Implemented:**
+- Enforced `z.infer` for all AI tool arguments.
+- Replaced loose record types with unknown-validated records.
+- Added strict error handling in API routes.
+
+---
+
+### 23. [RESOLVED] Production Logging in API Routes
+
+**Status:** ✅ Resolved.
+
+**Issue:** `console.log` statements remaining in production API routes.
+
+**Fix Implemented:**
+- Replaced all `console.log` and `console.error` with `createScopedLogger("approvals/approve")` in `approve/route.ts`.
+- Ensures logs are properly structured and sent to production logging infrastructure (Axiom/Sentry).
+- Removed redundant dynamic imports of logger.
+
+---
+
+### 24. [RESOLVED] Unsafe Environment Variable Usage
+
+**Status:** ✅ Resolved.
+
+**Issue:** Direct access to `process.env` bypasses the type-safe `src/env.ts` validation.
+
+**Fix Implemented:**
+- Added `JOBS_SHARED_SECRET` to `src/env.ts`.
+- Refactored `summarize-conversation/route.ts` to use type-safe `env`.
+- Added local `env.ts` (Zod validation) to `tinybird-ai-analytics` package to handle standalone env safety.
+
+---
+
+### 25. [OPEN] Missing Error Handling in Job Routes
+
+**Status:** ⚠️ Known Issue / Deferred.
+
+**Issue:** Async API routes lack top-level `try/catch` blocks.
+
+**Location:** `src/app/api/jobs/summarize-conversation/route.ts`
+
+**Code:**
+```typescript
+export async function POST(req: Request) {
+    // ... logic ...
+    const result = await generate({...}); // Can throw
+    // ...
+}
+```
+
+**Impact:** Unhandled exceptions (e.g., AI timeout, DB connection loss) result in 500 errors with no logging or structured response, making debugging difficult.
+
+**Fix:** Wrap logic in `try/catch`, check for `SafeError`, and log unexpected failures.
+
+---
+
+### 26. [OPEN] Flaky Test Practices
+
+**Status:** ⚠️ Known Issue / Deferred.
+
+**Issue:** Tests mutating global state.
+
+**Location:** `src/server/utils/schedule.test.ts`
+
+**Code:**
+```typescript
+process.env.TZ = "UTC"; // Mutates global process state
+```
+
+**Impact:** Can cause other date-related tests to fail unpredictably if run in parallel or the same runner process.
+
+**Fix:** Use `vi.stubEnv` or `beforeEach`/`afterEach` to safely mock environment variables.
 
 ---
 

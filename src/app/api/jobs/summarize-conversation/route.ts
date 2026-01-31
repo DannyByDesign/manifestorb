@@ -3,10 +3,11 @@ import { NextResponse } from "next/server";
 import prisma from "@/server/db/client";
 import { createGenerateText } from "@/server/utils/llms";
 import { getModel } from "@/server/utils/llms/model";
+import { env } from "@/env";
 
 export async function POST(req: Request) {
     const authHeader = req.headers.get("Authorization");
-    if (authHeader !== `Bearer ${process.env.JOBS_SHARED_SECRET}`) {
+    if (authHeader !== `Bearer ${env.JOBS_SHARED_SECRET}`) {
         return new NextResponse("Unauthorized", { status: 401 });
     }
 

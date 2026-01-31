@@ -45,7 +45,7 @@ const getUserRulesAndSettingsTool = ({
     description:
       "Retrieve all existing rules for the user, their about information",
     parameters: z.object({}),
-    execute: async (_args: any) => {
+    execute: async (_args: {}) => {
       trackToolCall({
         tool: "get_user_rules_and_settings",
         email,
@@ -147,7 +147,7 @@ const getLearnedPatternsTool = ({
         .string()
         .describe("The name of the rule to get the learned patterns for"),
     }),
-    execute: async (args: any) => {
+    execute: async (args: { ruleName: string }) => {
       const { ruleName } = args;
       trackToolCall({ tool: "get_learned_patterns", email, logger });
 
@@ -198,7 +198,7 @@ const createRuleTool = ({
     name: "createRule",
     description: "Create a new rule",
     parameters: createRuleSchema(provider),
-    execute: async (args: any) => {
+    execute: async (args: z.infer<ReturnType<typeof createRuleSchema>>) => {
       const { name, condition, actions } = args;
       trackToolCall({ tool: "create_rule", email, logger });
 
@@ -277,7 +277,7 @@ const updateRuleConditionsTool = ({
     name: "updateRuleConditions",
     description: "Update the conditions of an existing rule",
     parameters: updateRuleConditionSchema,
-    execute: async (args: any) => {
+    execute: async (args: z.infer<typeof updateRuleConditionSchema>) => {
       const { ruleName, condition } = args;
       trackToolCall({ tool: "update_rule_conditions", email, logger });
 
@@ -349,6 +349,37 @@ const updateRuleConditionsTool = ({
 
 
 
+const updateRuleActionSchema = z.object({
+  ruleName: z.string().describe("The name of the rule to update"),
+  actions: z.array(
+    z.object({
+      type: z.enum([
+        ActionType.ARCHIVE,
+        ActionType.LABEL,
+        ActionType.DRAFT_EMAIL,
+        ActionType.FORWARD,
+        ActionType.REPLY,
+        ActionType.SEND_EMAIL,
+        ActionType.MARK_READ,
+        ActionType.MARK_SPAM,
+        ActionType.CALL_WEBHOOK,
+        ActionType.DIGEST,
+      ]),
+      fields: z.object({
+        label: z.string().nullish(),
+        content: z.string().nullish(),
+        webhookUrl: z.string().nullish(),
+        to: z.string().nullish(),
+        cc: z.string().nullish(),
+        bcc: z.string().nullish(),
+        subject: z.string().nullish(),
+        folderName: z.string().nullish(),
+      }),
+      delayInMinutes: delayInMinutesSchema,
+    }),
+  ),
+});
+
 const updateRuleActionsTool = ({
   email,
   emailAccountId,
@@ -364,37 +395,8 @@ const updateRuleActionsTool = ({
     name: "updateRuleActions",
     description:
       "Update the actions of an existing rule. This replaces the existing actions.",
-    parameters: z.object({
-      ruleName: z.string().describe("The name of the rule to update"),
-      actions: z.array(
-        z.object({
-          type: z.enum([
-            ActionType.ARCHIVE,
-            ActionType.LABEL,
-            ActionType.DRAFT_EMAIL,
-            ActionType.FORWARD,
-            ActionType.REPLY,
-            ActionType.SEND_EMAIL,
-            ActionType.MARK_READ,
-            ActionType.MARK_SPAM,
-            ActionType.CALL_WEBHOOK,
-            ActionType.DIGEST,
-          ]),
-          fields: z.object({
-            label: z.string().nullish(),
-            content: z.string().nullish(),
-            webhookUrl: z.string().nullish(),
-            to: z.string().nullish(),
-            cc: z.string().nullish(),
-            bcc: z.string().nullish(),
-            subject: z.string().nullish(),
-            folderName: z.string().nullish(),
-          }),
-          delayInMinutes: delayInMinutesSchema,
-        }),
-      ),
-    }),
-    execute: async (args: any) => {
+    parameters: updateRuleActionSchema,
+    execute: async (args: z.infer<typeof updateRuleActionSchema>) => {
       const { ruleName, actions } = args;
       trackToolCall({ tool: "update_rule_actions", email, logger });
       const rule = await prisma.rule.findUnique({
@@ -478,6 +480,28 @@ const updateRuleActionsTool = ({
 
 
 
+const updateLearnedPatternsSchema = z.object({
+  ruleName: z.string().describe("The name of the rule to update"),
+  learnedPatterns: z
+    .array(
+      z.object({
+        include: z
+          .object({
+            from: z.string().optional(),
+            subject: z.string().optional(),
+          })
+          .optional(),
+        exclude: z
+          .object({
+            from: z.string().optional(),
+            subject: z.string().optional(),
+          })
+          .optional(),
+      }),
+    )
+    .min(1, "At least one learned pattern is required"),
+});
+
 const updateLearnedPatternsTool = ({
   email,
   emailAccountId,
@@ -490,28 +514,8 @@ const updateLearnedPatternsTool = ({
   tool({
     name: "updateLearnedPatterns",
     description: "Update the learned patterns of an existing rule",
-    parameters: z.object({
-      ruleName: z.string().describe("The name of the rule to update"),
-      learnedPatterns: z
-        .array(
-          z.object({
-            include: z
-              .object({
-                from: z.string().optional(),
-                subject: z.string().optional(),
-              })
-              .optional(),
-            exclude: z
-              .object({
-                from: z.string().optional(),
-                subject: z.string().optional(),
-              })
-              .optional(),
-          }),
-        )
-        .min(1, "At least one learned pattern is required"),
-    }),
-    execute: async (args: any) => {
+    parameters: updateLearnedPatternsSchema,
+    execute: async (args: z.infer<typeof updateLearnedPatternsSchema>) => {
       const { ruleName, learnedPatterns } = args;
       trackToolCall({ tool: "update_learned_patterns", email, logger });
 
@@ -598,7 +602,7 @@ const updateAboutTool = ({
     description:
       "Update the user's about information. Read the user's about information first as this replaces the existing information.",
     parameters: z.object({ about: z.string() }),
-    execute: async (args: any) => {
+    execute: async (args: { about: string }) => {
       const { about } = args;
       trackToolCall({ tool: "update_about", email, logger });
       const existing = await prisma.emailAccount.findUnique({
@@ -639,7 +643,7 @@ const addToKnowledgeBaseTool = ({
       title: z.string(),
       content: z.string(),
     }),
-    execute: async (args: any) => {
+    execute: async (args: { title: string; content: string }) => {
       const { title, content } = args;
       trackToolCall({ tool: "add_to_knowledge_base", email, logger });
 
