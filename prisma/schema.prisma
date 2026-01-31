@@ -104,6 +104,9 @@ model User {
   // Referral relationships
   referralsMade    Referral[] @relation("ReferrerUser")
   referralReceived Referral?  @relation("ReferredUser")
+
+  approvalRequests  ApprovalRequest[]
+  approvalDecisions ApprovalDecision[]
 }
 
 // Migrating over to the new settings model. Currently most settings are in the User model, but will be moved to this model in the future.
@@ -1297,4 +1300,51 @@ enum GroupItemSource {
   AI
   USER
   LABEL_REMOVED
+}
+
+// Approvals
+// -----------------------------------------------------------------------------
+
+model ApprovalRequest {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  provider       String   // e.g. "slack", "discord", "telegram", "web"
+  status         String   // PENDING, APPROVED, DENIED, EXPIRED, CANCELED
+  
+  // JSON Blobs
+  externalContext Json    // { workspaceId, channelId, messageTs, etc. }
+  requestPayload  Json    // { actionType: "delete_event", args: { ... } }
+  
+  payloadHash    String   // SHA256 of requestPayload for auditing
+  idempotencyKey String   @unique // Prevents duplicate requests
+  correlationId  String?  // For tracing across systems
+  
+  decisions      ApprovalDecision[]
+
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+model ApprovalDecision {
+  id                String          @id @default(cuid())
+  approvalRequestId String
+  approvalRequest   ApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+  
+  decidedByUserId   String
+  decider           User            @relation(fields: [decidedByUserId], references: [id])
+  
+  decision          String          // "APPROVE" | "DENY"
+  decisionPayload   Json?           // Optional extra data (e.g. "reason": "unsafe")
+  
+  decidedAt         DateTime        @default(now())
+
+  @@index([approvalRequestId])
+  @@index([decidedByUserId])
 }

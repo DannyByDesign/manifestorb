@@ -145,6 +145,7 @@ amodel/
 ├── public/                     # Static assets
 ├── docs/                       # Documentation
 ├── scripts/                    # Utility scripts
+├── surfaces/                   # Sidecar service (Slack/Discord/Telegram)
 └── .env                        # Environment variables
 ```
 

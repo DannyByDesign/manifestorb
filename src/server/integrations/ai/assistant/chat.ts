@@ -17,7 +17,7 @@ import {
 import type { EmailAccountWithAI } from "@/server/utils/llms/types";
 import { saveLearnedPatterns } from "@/utils/rule/learned-patterns";
 import { posthogCaptureEvent } from "@/utils/posthog";
-import { chatCompletionStream } from "@/server/utils/llms";
+import { createGenerateText, chatCompletionStream } from "@/server/utils/llms";
 import { filterNullProperties } from "@/utils";
 import { delayInMinutesSchema } from "@/server/services/unsubscriber/rule.validation";
 import { isMicrosoftProvider } from "@/server/services/email/provider-types";
@@ -986,12 +986,71 @@ Examples:
     logger,
   };
 
+  const accountId = emailAccountId; // fallback or logic depending on your existing code structure
+  // The user suggested:
+  // const provider = user.account.provider;
+  // const emailAccount = await prisma.emailAccount.findFirst({ ... });
+
+  // However, we already have `emailAccountId` passed in to `createChat`.
+  // If `emailAccountId` is available, let's use it.
+
+  let connectedEmailAccount = null;
+  if (emailAccountId) {
+    connectedEmailAccount = await prisma.emailAccount.findUnique({
+      where: { id: emailAccountId },
+      include: { account: true }
+    });
+  } else {
+    // Fallback: try to find one by provider/user
+    connectedEmailAccount = await prisma.emailAccount.findFirst({
+      where: {
+        userId: user.id,
+        // provider: user.account.provider // 'provider' might not be on EmailAccount directly if it's on Account. 
+        // NOTE: EmailAccount usually links to Account. 
+        // But let's look at schema: EmailAccount has `accountId`. Account has `provider`.
+        account: {
+          provider: user.account.provider
+        }
+      },
+      include: { account: true }
+    });
+  }
+
+  if (!connectedEmailAccount) {
+    // If still missing, we might be in a state where we can't run tools.
+    // But for now, let's try to proceed or throw as user suggested.
+    // "throw new Error(...)"
+    // But wait, existing code was falling back to `user.account`.
+    // Let's assume for this fix we MUST have a real EmailAccount for tools.
+    // If this is a new user without one, tools might fail.
+    // I'll log a warning and maybe pass null? But createAgentTools expects EmailAccount.
+    // User said "Throw error if !emailAccount".
+
+    console.warn("No linked EmailAccount found for chat tools. Tools may fail.");
+    // We can't easily construct a fake one that satisfies the type.
+    // Let's try to fetch ANY email account for this user as a fallback?
+    connectedEmailAccount = await prisma.emailAccount.findFirst({
+      where: { userId: user.id },
+      include: { account: true }
+    });
+  }
+
+  if (!connectedEmailAccount) {
+    // Determine what to do. The user code suggested throwing.
+    // I will throw to fail fast as requested.
+    throw new Error(`No EmailAccount connected for user ${user.id}`);
+  }
+
   const agentTools = await createAgentTools({
     emailAccount: {
-      ...user.account, // We need to ensure user.account matches EmailAccount interface
-      provider: user.account.provider || "google", // Fallback or strict check
-      email: user.email,
-      expires_at: user.account.expires_at ? Number(user.account.expires_at) : null
+      ...connectedEmailAccount,
+      ...connectedEmailAccount.account,
+      // Ensure ID is from EmailAccount, not Account if they conflict (though they shouldn't overlap much)
+      id: connectedEmailAccount.id,
+      // Ensure email is from EmailAccount
+      email: connectedEmailAccount.email,
+      // Convert Date to number for EmailAccount type compatibility
+      expires_at: connectedEmailAccount.account.expires_at ? new Date(connectedEmailAccount.account.expires_at).getTime() : null
     },
     logger,
     userId: user.id

@@ -1,0 +1,25 @@
+{
+    "name": "surfaces-sidecar",
+    "version": "1.0.0",
+    "description": "Sidecar service for handling Slack/Discord/Telegram connections",
+    "main": "src/index.ts",
+    "engines": {
+        "bun": ">=1.0.0"
+    },
+    "scripts": {
+        "dev": "bun run --watch src/index.ts",
+        "start": "bun run src/index.ts",
+        "typecheck": "tsc --noEmit"
+    },
+    "dependencies": {
+        "@slack/bolt": "^3.12.2",
+        "discord.js": "^14.25.1",
+        "dotenv": "^16.3.1",
+        "telegraf": "^4.16.3",
+        "zod": "^3.22.4"
+    },
+    "devDependencies": {
+        "@types/node": "^20.10.0",
+        "typescript": "^5.3.3"
+    }
+}

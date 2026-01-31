@@ -5,6 +5,7 @@
   "packageManager": "bun@1.2.2",
   "scripts": {
     "preinstall": "node -e 'if(!/bun/.test(process.env.npm_config_user_agent || \"\")) { console.error(\"\\u001b[31mError: This project uses Bun. Please use `bun install` or `bun add`.\\u001b[0m\"); process.exit(1); }'",
+    "postinstall": "prisma generate",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

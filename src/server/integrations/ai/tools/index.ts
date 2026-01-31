@@ -1,4 +1,4 @@
-import { tool } from "ai";
+import { tool, zodSchema, type Schema } from "ai";
 import { type z } from "zod";
 import { type Logger } from "@/server/utils/logger";
 import { type EmailAccount } from "@/server/integrations/ai/tools/providers/email";
@@ -46,14 +46,17 @@ export async function createAgentTools({
     // Our `executeTool` takes the definition and params.
     // We should return implementations that call `executeTool`.
 
-    const wrap = (def: ToolDefinition<any>) =>
-        tool({
+    const wrap = (def: ToolDefinition<any>) => {
+        const schema = zodSchema(def.parameters);
+        return tool({
             description: def.description,
-            parameters: def.parameters as unknown as z.Schema<any>,
+            parameters: schema,
+            // @ts-expect-error Zod v4 vs v3 mismatch causes overload resolution failure
             execute: async (params: any) => {
                 return await executeTool(def, params, context);
             }
         });
+    };
 
     return {
         query: wrap(queryTool),

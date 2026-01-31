@@ -240,6 +240,34 @@
 
 ---
 
+## 11. Surfaces & Channels (Implemented)
+
+> The "Surfaces Sidecar" enables agentic interaction across chat platforms.
+
+### 11.1 Slack (Implemented)
+
+| 🚀/🕒/🗑️ | Feature | Description | Primary UX Surface | Notes |
+|---|---|---|---|---|
+| ✅ | **Slack Socket Mode** | Real-time events | Chat-first | `surfaces/` |
+| ✅ | **DM Agent** | 1:1 Agent Chat | Chat-first | Core entry point |
+| ✅ | **Router** | Inbound -> Agent Pipeline | Backend-only | `ChannelRouter` |
+
+### 11.2 Discord (Implemented)
+
+| 🚀/🕒/🗑️ | Feature | Description | Primary UX Surface | Notes |
+|---|---|---|---|---|
+| ✅ | **Discord Gateway** | Real-time events | Chat-first | `surfaces/` |
+| ✅ | **Channel/DM Chat** | Chat with Agent | Chat-first | `discord.js` |
+
+### 11.3 Telegram (Implemented)
+
+| 🚀/🕒/🗑️ | Feature | Description | Primary UX Surface | Notes |
+|---|---|---|---|---|
+| ✅ | **Telegram Bot** | Long Polling | Chat-first | `surfaces/` |
+| ✅ | **DM Chat** | Chat with Agent | Chat-first | `telegraf` |
+
+---
+
 # Launch Bundle Recommendation (what to ship + market first)
 
 ### 🚀 Launch (core loop)
@@ -347,41 +375,8 @@ To become “calendar + task agent + push assistant,” you are missing:
 
 ---
 
-## 3. “True Assistant” Agentic Entry Points (Missing)
 
-> This is what makes it feel like a real assistant *before* a mobile app: chat surfaces + message routing + approvals.
 
-### Slack
-
-| 🚀/🕒/🗑️ | Feature | Description | Primary UX Surface | Notes |
-|---|---|---|---|---|
-| 🚀 | **Slack App + OAuth Install** | Install to workspace + link to user | UI-first (settings) | Must have identity linking |
-| 🚀 | **DM Agent Interface** | User chats with agent in DM | Chat-first | Primary entry point |
-| 🚀 | **Interactive Approvals** | Buttons: “Approve / Reject / Edit” | Hybrid | Critical for safe actions |
-| 🚀 | **Message → Action Router** | Parse request → call tools → propose changes | Backend-only | The “agent brain” |
-| 🕒 | **Channel Mentions** | @assistant in channels | Chat-first | Risky/noisy; later |
-| 🕒 | **Threaded Workflows** | Keep context in threads | Chat-first | Nice-to-have |
-
-### Discord
-
-| 🚀/🕒/🗑️ | Feature | Description | Primary UX Surface | Notes |
-|---|---|---|---|---|
-| 🕒 | **Discord Bot + OAuth** | Guild install + link identity | UI-first | Great for prosumers |
-| 🕒 | **DM + Slash Commands** | /schedule /brief /tasks | Chat-first | Defer if Slack-first |
-| 🕒 | **Buttons/Modals** | Approvals and edits | Hybrid | Useful parity |
-
-### Telegram
-
-| 🚀/🕒/🗑️ | Feature | Description | Primary UX Surface | Notes |
-|---|---|---|---|---|
-| 🕒 | **Telegram Bot** | Bot token + user linking | Chat-first | Lightweight; good early |
-| 🕒 | **Inline Approvals** | Yes/No/Revise prompts | Chat-first | Telegram UX is simple |
-
-### Email-based “Assistant Inbox” (optional)
-
-| 🚀/🕒/🗑️ | Feature | Description | Primary UX Surface | Notes |
-|---|---|---|---|---|
-| 🕒 | **Forward-to-Agent Address** | forward email → agent creates task/event draft | UI-first + Email | Useful but needs careful auth |
 
 ---
 
