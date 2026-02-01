@@ -42,6 +42,30 @@ export class OneDriveProvider implements DriveProvider {
   // Folder Operations
   // -------------------------------------------------------------------------
 
+  async searchFiles(query: string): Promise<DriveFile[]> {
+    this.logger.trace("Searching files", { query });
+
+    try {
+      // https://learn.microsoft.com/en-us/graph/api/driveitem-search?view=graph-rest-1.0
+      // /me/drive/root/search(q='{text}')
+      const response = await this.client
+        .api(`/me/drive/root/search(q='${encodeURIComponent(query)}')`)
+        .select("id,name,file,size,parentReference,webUrl,createdDateTime")
+        .top(50)
+        .get();
+
+      const items: DriveItem[] = response.value || [];
+
+      // Filter for files only
+      return items
+        .filter((item) => item.file) // Ensure it's a file
+        .map((item) => this.convertToFile(item));
+    } catch (error) {
+      this.logger.error("Error searching files", { error, query });
+      throw error;
+    }
+  }
+
   async listFolders(parentId?: string): Promise<DriveFolder[]> {
     this.logger.trace("Listing folders", { parentId });
 

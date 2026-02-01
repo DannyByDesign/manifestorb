@@ -19,6 +19,8 @@ Agentic tools are a set of polymorphic operations that abstract actions across d
 Search for items across different resources.
 *   **Email**: Search messages (supports Gmail/Outlook query syntax).
 *   **Calendar**: Search events by date range, attendees, title.
+*   **Drive**: Search files via natural language query.
+*   **Contacts**: Search Google/Outlook contacts.
 *   **Automation**: List rules.
 
 ### `get` (SAFE)
@@ -34,13 +36,24 @@ Modify the state of existing items.
     *   `trash`: boolean (move to/from trash).
     *   `read`: boolean (mark read/unread).
     *   `labels`: Add/remove labels.
+    *   `bulk_archive_senders`: Archive all emails from list of senders.
+    *   `bulk_trash_senders`: Trash all emails from list of senders.
+    *   `bulk_label_senders`: Apply label to all emails from list of senders.
+    *   `unsubscribe`: Unsubscribe from sender.
+    *   `tracking`: Enable/disable reply tracking.
+*   **Drive**: Move files (`targetFolderId`).
+*   **Approval**: Execute decision (`APPROVE` / `DENY`).
 *   **Calendar**: Change event details (not yet implemented).
 
 ### `create` (CAUTION)
 Create new items.
 *   **Email**: Create **DRAFTS** (new, reply, forward). Users must manually send from the UI.
+*   **Drive**: Create folders or file attachments (Document Filing).
+*   **Notification**: Send push notifications to user.
+*   **Knowledge**: Create knowledge base entries.
+*   **Contacts**: Create new contacts.
+*   **Automation**: Create rules.
 *   **Calendar**: Create events (not yet implemented).
-*   **Automation**: Create rules (not yet implemented).
 
 ### `delete` (CAUTION)
 Remove items (typically soft delete/trash).

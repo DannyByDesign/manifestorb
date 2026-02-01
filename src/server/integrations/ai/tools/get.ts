@@ -1,6 +1,7 @@
 
 import { z } from "zod";
 import { type ToolDefinition } from "./types";
+import prisma from "@/server/db/client";
 
 export const getTool: ToolDefinition<any> = {
     name: "get",
@@ -8,7 +9,7 @@ export const getTool: ToolDefinition<any> = {
 
     parameters: z.object({
         resource: z.enum([
-            "email", "calendar", "automation"
+            "email", "calendar", "automation", "approval"
         ]),
         ids: z.array(z.string()).max(20), // Max 20 objects per step as per Hardening Budget
     }),
@@ -35,6 +36,16 @@ export const getTool: ToolDefinition<any> = {
                     success: true,
                     data: [],
                     error: "Automation get not implemented yet"
+                };
+
+            case "approval":
+                const approvals = await prisma.approvalRequest.findMany({
+                    where: { id: { in: ids } },
+                    include: { decisions: true }
+                });
+                return {
+                    success: true,
+                    data: approvals
                 };
 
             default:

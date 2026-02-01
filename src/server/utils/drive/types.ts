@@ -54,6 +54,11 @@ export interface DriveProvider {
   // -------------------------------------------------------------------------
 
   /**
+   * Search for files by name or content
+   */
+  searchFiles(query: string): Promise<DriveFile[]>;
+
+  /**
    * List folders in a parent folder (or root if no parentId)
    */
   listFolders(parentId?: string): Promise<DriveFolder[]>;

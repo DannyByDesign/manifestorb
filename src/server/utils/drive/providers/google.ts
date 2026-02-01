@@ -45,6 +45,27 @@ export class GoogleDriveProvider implements DriveProvider {
   // Folder Operations
   // -------------------------------------------------------------------------
 
+  async searchFiles(query: string): Promise<DriveFile[]> {
+    this.logger.trace("Searching files", { query });
+
+    try {
+      const escapedQuery = this.escapeDriveQueryValue(query);
+      // Search for files (not folders) matching name
+      const q = `name contains '${escapedQuery}' and mimeType != 'application/vnd.google-apps.folder' and trashed = false`;
+
+      const response = await this.client.files.list({
+        q,
+        fields: "files(id, name, mimeType, size, parents, webViewLink, createdTime)",
+        pageSize: 50, // Limit search results
+      });
+
+      return (response.data.files || []).map((file) => this.convertToFile(file));
+    } catch (error) {
+      this.logger.error("Error searching files", { error, query });
+      throw error;
+    }
+  }
+
   async listFolders(parentId?: string): Promise<DriveFolder[]> {
     this.logger.trace("Listing folders", { parentId });
 

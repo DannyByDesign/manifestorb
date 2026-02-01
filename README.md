@@ -4,6 +4,41 @@ AI-powered email management and automation platform with a stunning 3D visual in
 
 ---
 
+## Capabilities
+
+The system is powered by an **Agentic AI** (`src/server/integrations/ai`) that interacts with your data through a set of polymorphic tools. Below are the verified capabilities implemented in the codebase:
+
+### 1. Email Management ("The Hands")
+-   **Drafting & Replies**: The Agent can create drafts (`create.ts`) and implicitly gathering historical context for replies (`reply-context-collector.ts`).
+-   **Bulk Actions**: Supports bulk archiving, trashing, and labeling of specific senders (`modify.ts`).
+-   **Reply Tracking**: Can monitor threads for replies and update status (`AWAITING_REPLY` via `modify.ts`).
+-   **Unsubscribe**: One-click unsubscribe functionality that handles the logic server-side (`modify.ts`).
+-   **Cleanup**: AI-powered suggestions for cleaning up the inbox (`analyze.ts` -> `aiClean`).
+-   **Categorization**: Intelligent sender categorization (`analyze.ts` -> `aiCategorizeSenders`).
+
+### 2. Calendar Intelligence ("The Brain")
+-   **Meeting Briefings**: Generates detailed briefings for upcoming events by analyzing related emails and documents (`analyze.ts` -> `gatherMeetingContext`).
+-   *(Note: Calendar features not built out fully).*
+
+### 3. File System ("The Archivist")
+-   **Document Filing**: Automatically processes email attachments, analyzes them, and files them to Google Drive (`create.ts` -> `processAttachment`).
+-   **Search**: Natural language search for files in Google Drive & OneDrive (`query.ts` -> `searchFiles`).
+-   **Management**: Create folders and move files to organize your cloud storage (`create.ts`, `modify.ts`).
+
+### 4. Contacts System ("The Network")
+-   **Search**: Find people across Google Contacts and Outlook (`query.ts` -> `searchContacts`).
+-   **Management**: Create new contacts directly from conversation context (`create.ts` -> `createContact`).
+
+### 4. Notifications & Approvals ("The Guardrails")
+-   **Smart Notifications**: Generates and sends context-aware push notifications to the user (`create.ts` -> `generateNotification`).
+-   **Approvals**: Manages sensitive actions via an approval system. The Agent can list, view, and execute decisions on approval requests (`modify.ts` -> `ApprovalService`).
+
+### 5. Automation ("The Second Brain")
+-   **Pattern Detection**: Analyzes email history to detect recurring patterns and suggest new rules (`analyze.ts` -> `aiDetectRecurringPattern`).
+-   **Rule Engine**: Deterministic rules that act as guardrails for the AI, ensuring consistent behavior (`tools/providers/automation.ts`).
+
+---
+
 ## Tech Stack
 
 | Layer | Technology | Purpose |
@@ -22,45 +57,6 @@ AI-powered email management and automation platform with a stunning 3D visual in
 | **Email** | Resend, Loops | Transactional & marketing email |
 | **Analytics** | Tinybird, PostHog | Event tracking & analytics |
 | **Payments** | Stripe | Subscription billing |
-
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         FRONTEND                                 │
-│  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐        │
-│  │  components/  │  │     lib/      │  │   shaders/    │        │
-│  │  React + R3F  │  │ Stores/Hooks  │  │     GLSL      │        │
-│  └───────────────┘  └───────────────┘  └───────────────┘        │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      app/ (Next.js)                              │
-│  ┌───────────────────────┐    ┌───────────────────────┐         │
-│  │   Pages (*.tsx)       │    │   API Routes          │         │
-│  │   React components    │    │   app/api/**          │         │
-│  │   rendered on client  │    │   runs on server      │         │
-│  └───────────────────────┘    └───────────────────────┘         │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                         BACKEND                                  │
-│  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐        │
-│  │    server/    │  │ integrations/ │  │   services/   │        │
-│  │   db, utils   │  │ Google, AI    │  │ Business logic│        │
-│  └───────────────┘  └───────────────┘  └───────────────┘        │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      EXTERNAL SERVICES                           │
-│  PostgreSQL │ Gmail API │ Outlook API │ AI Providers │ Redis    │
-└─────────────────────────────────────────────────────────────────┘
-```
 
 ---
 
@@ -202,7 +198,6 @@ bun install
 
 # Set up environment
 cp .env.example .env
-# Edit .env with your credentials
 
 # Run database migrations
 bunx prisma migrate dev
@@ -212,36 +207,3 @@ bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) to see the app.
-
----
-
-## Key Features
-
-- **Agentic Tools** - Direct AI manipulation of email and calendar
-- **Email Automation** - AI-powered rules to manage your inbox
-- **Reply Drafting** - Generate contextual replies with AI
-- **Meeting Briefings** - Get context before meetings
-- **Smart Categorization** - Auto-organize senders
-- **One-click Unsubscribe** - Clean up unwanted emails
-- **Multi-provider Support** - Gmail and Outlook
-- **Smart Notifications** - Agentic "Heads-up" alerts for important items
-- **Beautiful 3D UI** - GPU-accelerated visual experience
-
----
-
-## Environment Variables
-
-Required for basic functionality:
-
-```bash
-DATABASE_URL              # PostgreSQL connection
-GOOGLE_CLIENT_ID          # Google OAuth
-GOOGLE_CLIENT_SECRET      # Google OAuth  
-EMAIL_ENCRYPT_SECRET      # Token encryption
-EMAIL_ENCRYPT_SALT        # Token encryption
-GOOGLE_PUBSUB_TOPIC_NAME  # Gmail webhooks
-INTERNAL_API_KEY          # Server-to-server auth
-NEXT_PUBLIC_BASE_URL      # App URL
-```
-
-See `src/env.ts` for the complete list with validation.

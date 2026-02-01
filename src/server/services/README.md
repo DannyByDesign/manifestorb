@@ -1,21 +1,25 @@
-# Server Services (`src/server/services`)
+# Services Layer (`src/server/services/`)
 
-This directory contains the **Business Logic Engines**. These modules process data, execute rules, and manage the state of the application. They are distinct from "Integrations" (which just fetch data) and "API Routes" (which just serve it).
+The Services layer contains the core business logic of the application. It is designed to be provider-agnostic where possible, handling domain operations independent of the mechanism (API, AI) that triggered them.
 
-## 1. `unsubscriber/` (The "Ferrari Engine")
-This is the largest and most complex service module (>60 files). It handles the automated "assistant" logic.
+## Modules
 
--   **`rule.ts`**: CRUD for User Rules. The core logic for "Where does this email go?".
--   **`execute.ts`**: Logic for actually performing the Unsubscribe action (Header parsing, Link clicking).
--   **`cold-email.ts`**: LLM-based detection of sales outreach.
--   **`report.ts`**: Generates the weekly "Executive Summary" and "User Persona".
--   **`mail-bulk-action.ts`**: Logic for "Archive All from Sender".
--   **`onboarding.ts`**: Processes initial account setup and user survey data.
--   **`calendar.ts`**: Manages Calendar connection *settings* (not the events themselves).
+### 1. `email/`
+Abstracts email operations.
+- **Provider Factory**: `provider.ts` selects between Gmail and Outlook implementations.
+- **Threading**: Logic for grouping messages into threads.
 
-## 2. `email/` (The Sync Engine)
--   **`process-history.ts`**: The core loop. Receives a `historyId` from a Webhook, fetches the delta, updates the DB, and triggers Rules.
--   **`watch-manager.ts`**: Ensures push notifications remain active (renewing every 24h).
+### 2. `unsubscriber/`
+The "Ferrari" engine for automation rules and bulk actions.
+- **Rules**: CRUD operations for automation rules (`rule.ts`).
+- **Execution**: Bulk processing logic (`execute.ts`).
+- **Reporting**: Analytical data for Unsubscriber reports (`report.ts`).
+- **Knowledge**: Knowledge base management (`knowledge/`).
 
-## 3. `notification/` (The Push Engine)
--   **`generator.ts`**: Uses a fast LLM to generate conversational, short push notifications ("You spent $45 at Uber").
+### 3. `notification/`
+Handles user alerts and approvals.
+- **Push**: Web push notification logic.
+- **Approvals**: Secure token generation for actionable notifications.
+
+### 4. `billing/`
+Stripe integration and subscription management.

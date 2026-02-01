@@ -11,6 +11,8 @@ export const SCOPES = [
   "Mail.ReadWrite", // Read and write access to mailbox
   ...(env.NEXT_PUBLIC_EMAIL_SEND_ENABLED ? ["Mail.Send"] : []), // Send emails
   "MailboxSettings.ReadWrite", // Read and write mailbox settings
+  "Contacts.Read", // Read contacts
+  "Contacts.ReadWrite", // Create/Update contacts
 ] as const;
 
 export const CALENDAR_SCOPES = [

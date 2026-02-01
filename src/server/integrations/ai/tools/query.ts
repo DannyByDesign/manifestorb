@@ -1,6 +1,8 @@
 
 import { z } from "zod";
 import { type ToolDefinition } from "./types";
+import prisma from "@/server/db/client";
+import { getEmailAccountWithAi } from "@/server/utils/user/get";
 
 export const queryTool: ToolDefinition<any> = {
     name: "query",
@@ -13,19 +15,21 @@ Resources:
 
     parameters: z.object({
         resource: z.enum([
-            "email", "calendar", "automation"
+            "email", "calendar", "drive", "automation", "knowledge", "report", "patterns", "contacts"
         ]),
         filter: z.object({
             query: z.string().optional(),      // Search query
+            id: z.string().optional(),         // Specific ID (for patterns)
             dateRange: z.object({
                 after: z.string().optional(),    // ISO date
                 before: z.string().optional(),
             }).optional(),
             limit: z.number().max(50).default(20),
+            status: z.enum(["PENDING", "APPROVED", "DENIED", "EXPIRED", "CANCELLED"]).optional(),
         }).optional(),
     }),
 
-    execute: async ({ resource, filter }, { providers }) => {
+    execute: async ({ resource, filter }, { emailAccountId, providers }) => {
         const limit = filter?.limit || 20;
 
         switch (resource) {
@@ -42,6 +46,67 @@ Resources:
                         source: "email",
                         from: e.from
                     })),
+                };
+
+            case "drive":
+                // If drive is undefined (not connected), generic error?
+                // executeTool allows providers to be missing if optional but code invokes it.
+                // We should check if provider exists.
+                // Types say `drive?`.
+                if (!providers.drive) {
+                    return { success: false, error: "Drive not connected. Please connect Google Drive or OneDrive." };
+                }
+
+                let driveItems: any[] = [];
+                if (filter?.query) {
+                    driveItems = await providers.drive.searchFiles(filter.query);
+                } else {
+                    driveItems = await providers.drive.listFolders(filter?.id || undefined); // Use ID filter for parentId? Or just default root.
+                    // Default query generic usually implies search.
+                    // If no query, maybe list root folders?
+                    // `filter.id` is documented as `Specific ID`.
+                    // If filter.id provided, list children (folders) of that ID?
+                    // If no filter, list root folders.
+                }
+
+                return {
+                    success: true,
+                    data: driveItems.map((item: any) => ({
+                        id: item.id,
+                        title: item.name,
+                        snippet: item.mimeType || "Folder",
+                        date: item.createdAt,
+                        source: "drive",
+                        data: item
+                    }))
+                };
+
+            case "approval":
+                const emailAccount = await getEmailAccountWithAi({ emailAccountId });
+                if (!emailAccount) return { success: false, error: "Email account not found" };
+
+                const where: any = { userId: emailAccount.userId };
+                if (filter?.status) {
+                    // Filter definition needs to match Prisma enum roughly, or cast
+                    where.status = filter.status;
+                }
+
+                const approvals = await prisma.approvalRequest.findMany({
+                    where,
+                    orderBy: { createdAt: "desc" },
+                    take: limit
+                });
+
+                return {
+                    success: true,
+                    data: approvals.map((a: any) => ({
+                        id: a.id,
+                        title: a.externalContext?.summary || "Approval Request",
+                        snippet: `Status: ${a.status}. ID: ${a.idempotencyKey}`,
+                        date: a.createdAt,
+                        source: "approval",
+                        data: a
+                    }))
                 };
 
             case "calendar":
@@ -65,10 +130,79 @@ Resources:
                 return {
                     success: true,
                     data: rules.map((r: any) => ({
-                        id: r.id, // Ensure Rule has ID or use name
+                        id: r.id,
                         title: r.name,
                         snippet: `Enabled: ${r.enabled}. Actions: ${r.actions?.map((a: any) => a.type).join(", ")}`,
+                        date: r.updatedAt,
                         source: "automation"
+                    }))
+                };
+
+            case "knowledge":
+                const knowledges = await providers.automation.listKnowledge();
+                return {
+                    success: true,
+                    data: knowledges.map((k: any) => ({
+                        id: k.id,
+                        title: k.title,
+                        snippet: k.content.substring(0, 150),
+                        date: k.updatedAt,
+                        source: "knowledge"
+                    }))
+                };
+
+            case "report":
+                const report = await providers.automation.generateReport();
+                return {
+                    success: true,
+                    data: [
+                        {
+                            id: "executive-summary",
+                            title: "Executive Summary",
+                            snippet: report.executiveSummary || "No summary generated",
+                            source: "report",
+                            data: report // Include full data in the 'data' field (typed as any in DomainObjectRef?) 
+                            // DomainObjectRef usually flat, but we can pass object.
+                        },
+                        {
+                            id: "user-persona",
+                            title: "User Persona",
+                            snippet: JSON.stringify(report.userPersona, null, 2),
+                            source: "report"
+                        }
+                    ]
+                };
+
+            case "patterns":
+                if (!filter?.id) return { success: false, error: "ID is required for patterns" };
+                const matchResult = await providers.automation.matchRules(filter.id);
+                return {
+                    success: true,
+                    data: matchResult.matches.map((m: any) => {
+                        return {
+                            id: m.rule.id,
+                            title: m.rule.name,
+                            snippet: `Match Reason: ${m.matchReasons?.map((r: any) => r.type).join(", ")}. Instructions: ${m.rule.instructions}`,
+                            source: "patterns",
+                            data: {
+                                rule: m.rule,
+                                reasons: m.matchReasons,
+                                reasoning: matchResult.reasoning
+                            }
+                        };
+                    })
+                };
+
+            case "contacts":
+                const contacts = await providers.email.searchContacts(filter?.query || "");
+                return {
+                    success: true,
+                    data: contacts.map((c: any) => ({
+                        id: c.id,
+                        title: c.name,
+                        snippet: `Email: ${c.email || "N/A"}. Phone: ${c.phone || "N/A"}. Company: ${c.company || "N/A"}`,
+                        source: "contacts",
+                        data: c
                     }))
                 };
 

@@ -43,6 +43,16 @@ export interface EmailSignature {
   displayName?: string;
 }
 
+export interface Contact {
+  id?: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  company?: string;
+  jobTitle?: string;
+  source: "google" | "microsoft";
+}
+
 export interface EmailProvider {
   readonly name: "google" | "microsoft";
   toJSON(): { name: string; type: string };
@@ -90,6 +100,12 @@ export interface EmailProvider {
     fromEmails: string[],
     ownerEmail: string,
     emailAccountId: string,
+  ): Promise<void>;
+  bulkLabelFromSenders(
+    fromEmails: string[],
+    ownerEmail: string,
+    emailAccountId: string,
+    labelName: string,
   ): Promise<void>;
   trashThread(
     threadId: string,
@@ -275,5 +291,8 @@ export interface EmailProvider {
     folderName: string,
   ): Promise<void>;
   getOrCreateFolderIdByName(folderName: string): Promise<string>;
+  getOrCreateFolderIdByName(folderName: string): Promise<string>;
   getSignatures(): Promise<EmailSignature[]>;
+  searchContacts(query: string): Promise<Contact[]>;
+  createContact(contact: Partial<Contact>): Promise<Contact>;
 }

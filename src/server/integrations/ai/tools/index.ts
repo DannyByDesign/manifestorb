@@ -5,6 +5,7 @@ import { type EmailAccount } from "@/server/integrations/ai/tools/providers/emai
 import { createEmailProvider } from "./providers/email";
 import { createCalendarProvider } from "./providers/calendar";
 import { createAutomationProvider } from "./providers/automation";
+import { createToolDriveProvider } from "./providers/drive";
 import { type ToolContext, type ToolDefinition } from "./types";
 import { executeTool } from "./executor";
 
@@ -29,6 +30,14 @@ export async function createAgentTools({
     const calendarProvider = await createCalendarProvider(emailAccount, logger);
     const automationProvider = await createAutomationProvider(userId, logger);
 
+    // Drive might fail if not connected
+    let driveProvider;
+    try {
+        driveProvider = await createToolDriveProvider(emailAccount.id, logger);
+    } catch (e) {
+        logger.warn("Drive not connected or failed to initialize", { error: e });
+    }
+
     const context: ToolContext = {
         userId,
         emailAccountId: emailAccount.id,
@@ -36,7 +45,8 @@ export async function createAgentTools({
         providers: {
             email: emailProvider,
             calendar: calendarProvider,
-            automation: automationProvider
+            automation: automationProvider,
+            drive: driveProvider
         }
     };
 

@@ -6,6 +6,8 @@ import { env } from "@/env";
 import type { Logger } from "@/server/utils/logger";
 import { SCOPES } from "@/server/integrations/microsoft/scopes";
 import { SafeError } from "@/server/utils/error";
+import { getEmailAccountWithAi, getEmailAccountWithAiAndTokens } from "@/server/utils/user/get";
+import { createScopedLogger } from "@/server/utils/logger";
 
 // Add buffer time to prevent token expiry during long-running operations
 const TOKEN_REFRESH_BUFFER_MS = 10 * 60 * 1000; // 10 minutes
@@ -266,3 +268,17 @@ export function getLinkingOAuth2Url() {
 
 // Helper types for common Microsoft Graph operations
 export type { Client as GraphClient };
+
+// Helper to get client by ID (fetching tokens from DB)
+export const getClient = async (emailAccountId: string): Promise<OutlookClient> => {
+  const account = await getEmailAccountWithAiAndTokens({ emailAccountId });
+  if (!account || !account.tokens.access_token) throw new SafeError(`Email account not found or missing tokens: ${emailAccountId}`);
+
+  return getOutlookClientWithRefresh({
+    accessToken: account.tokens.access_token,
+    refreshToken: account.tokens.refresh_token,
+    expiresAt: account.tokens.expires_at,
+    emailAccountId,
+    logger: createScopedLogger("outlook-client")
+  });
+};

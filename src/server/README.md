@@ -1,20 +1,33 @@
-# Server-Side Architecture (`src/server`)
+# Server-Side Architecture
 
-This directory contains the core backend logic, separated into distinct architectural layers.
+The `src/server` directory contains the backend logic of the application, organized into distinct layers to separate concerns.
 
 ## Directory Structure
 
-| Directory | Purpose |
-| :--- | :--- |
-| **`agent/`** | **The Executive Brain.** Contains `executor.ts` which runs the AI agent loop (Plan -> Act -> Observation). It decides *which* tool to call based on user intent. |
-| **`channels/`** | **The Nervous System (Router).** Handles inbound/outbound messages from external platforms (Slack, Discord, Web). Manages the "Active Channel" state. |
-| **`conversations/`** | **Memory storage.** Manages `Conversation` and `ConversationMessage` records. Handles deduplication of inbound messages. |
-| **`summaries/`** | **Long-term Memory.** Compression service that summarizes older conversations to maintain context without blowing up token context windows. |
-| **`integrations/`** | **The Limbs.** External API wrappers. Contains `google` (Gmail), `microsoft` (Outlook), `ai` (LLM Models), and `qstash`. |
-| **`services/`** | **The Business Engines.** Reusable business logic completely decoupled from the API layer. Includes `unsubscriber`, `email` sync, and `notification`. |
-| **`approvals/`** | **Human-in-the-loop.** Service for managing `ApprovalRequest`s. Allows certain AI actions (like "Delete Email") to pause and wait for human confirmation. |
-| **`auth/`** | **Authentication.** NextAuth.js configuration and helpers. |
-| **`db/`** | **Data Persistence.** Prisma Client initialization and Schema. |
-| **`privacy/`** | **Safety Filter.** Logic for PII redaction and retention policies. |
-| **`utils/`** | **Shared Toolkit.** Extensive collection of helper functions (String manipulation, Date parsing, specific AI utilities). |
-| **`scripts/`** | **Maintenance.** Standalone scripts for ops or data migration. |
+### 1. `integrations/` (The "Connector" Layer)
+Handlers for external APIs and the AI brain.
+-   **`ai/`**: The Core Agent, Tools, and Rule Engine.
+-   **`google/`**: Gmail and Google Calendar clients.
+-   **`microsoft/`**: Outlook and Microsoft Graph clients.
+-   **`slack/`, `discord/`, `telegram/`**: Chat platform adapters.
+
+### 2. `services/` (The "Business Logic" Layer)
+Pure domain logic, decoupled from specific API transports or AI tooling.
+-   **`email/`**: Provider-agnostic email operations.
+-   **`unsubscriber/`**: Rules, Reporting, and Bulk Actions.
+-   **`notification/`**: Push notifications and approval flows.
+-   **`billing/`**: Stripe integration.
+
+### 3. `utils/` (The "Shared" Layer)
+Helper functions and shared utilities.
+-   **`ai/`**: Low-level LLM calls and prompt templates.
+-   **`logger`**: Structured logging.
+
+### 4. `db/` (The "Data" Layer)
+Prisma client and schema definitions.
+-   `client.ts`: The Prisma client instance.
+
+### 5. `api/` (The "Transport" Layer)
+Found in `src/app/api` (Next.js App Router), but relies heavily on `server/` logic.
+-   **`routers/`**: tRPC routers (if applicable).
+-   **`webhooks/`**: Incoming webhook handlers.

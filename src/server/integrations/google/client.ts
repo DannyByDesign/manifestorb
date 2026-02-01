@@ -107,6 +107,8 @@ export const getGmailClientWithRefresh = async ({
 
 // doesn't handle refreshing the access token
 // should probably use the same auth object as getGmailClientWithRefresh but not critical for now
+// doesn't handle refreshing the access token
+// should probably use the same auth object as getGmailClientWithRefresh but not critical for now
 export const getContactsClient = ({
   accessToken,
   refreshToken,
@@ -115,6 +117,64 @@ export const getContactsClient = ({
   const contacts = people({ version: "v1", auth });
 
   return contacts;
+};
+
+export const getContactsClientWithRefresh = async ({
+  accessToken,
+  refreshToken,
+  expiresAt,
+  emailAccountId,
+  logger,
+}: {
+  accessToken?: string | null;
+  refreshToken: string | null;
+  expiresAt: number | null;
+  emailAccountId: string;
+  logger: Logger;
+}) => {
+  if (!refreshToken) {
+    logger.error("No refresh token", { emailAccountId });
+    throw new SafeError("No refresh token");
+  }
+
+  const auth = getAuth({ accessToken, refreshToken });
+  const contacts = people({ version: "v1", auth });
+
+  const expiryDate = expiresAt ? expiresAt : null;
+  if (expiryDate && expiryDate > Date.now()) return contacts;
+
+  try {
+    const tokens = await auth.refreshAccessToken();
+    const newAccessToken = tokens.credentials.access_token;
+
+    if (newAccessToken !== accessToken) {
+      await saveTokens({
+        tokens: {
+          access_token: newAccessToken ?? undefined,
+          expires_at: tokens.credentials.expiry_date
+            ? Math.floor(tokens.credentials.expiry_date / 1000)
+            : undefined,
+        },
+        accountRefreshToken: refreshToken,
+        emailAccountId,
+        provider: "google",
+      });
+    }
+
+    return contacts;
+  } catch (error) {
+    const isInvalidGrantError =
+      error instanceof Error && error.message.includes("invalid_grant");
+
+    if (isInvalidGrantError) {
+      logger.warn("Error refreshing Google Contacts access token", {
+        emailAccountId,
+        error: error.message,
+      });
+    }
+
+    throw error;
+  }
 };
 
 export const getAccessTokenFromClient = (client: gmail_v1.Gmail): string => {

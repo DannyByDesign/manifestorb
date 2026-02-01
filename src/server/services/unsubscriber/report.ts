@@ -26,7 +26,7 @@ export const generateReportAction = actionClient
     return getEmailReportData({ emailAccountId, logger });
   });
 
-async function getEmailReportData({
+export async function getEmailReportData({
   emailAccountId,
   logger,
 }: {
@@ -120,12 +120,12 @@ async function getEmailReportData({
 
   const actionableRecommendations = userPersona
     ? await aiGenerateActionableRecommendations(
-        receivedSummaries,
-        emailAccount,
-        userPersona,
-      ).catch((error) => {
-        logger.error("Error generating actionable recommendations", { error });
-      })
+      receivedSummaries,
+      emailAccount,
+      userPersona,
+    ).catch((error) => {
+      logger.error("Error generating actionable recommendations", { error });
+    })
     : null;
 
   return {

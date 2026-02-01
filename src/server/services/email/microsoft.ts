@@ -59,6 +59,7 @@ import type {
   EmailLabel,
   EmailFilter,
   EmailSignature,
+  Contact,
 } from "@/server/services/email/types";
 import { unwatchOutlook, watchOutlook } from "@/utils/outlook/watch";
 import { escapeODataString } from "@/utils/outlook/odata-escape";
@@ -1851,6 +1852,14 @@ export class OutlookProvider implements EmailProvider {
 
   async getFolders() {
     return await getOutlookFolderTree(this.client, undefined, this.logger);
+  }
+
+  async searchContacts(query: string): Promise<Contact[]> {
+    return searchContacts(this.id, query);
+  }
+
+  async createContact(contact: Partial<Contact>): Promise<Contact> {
+    return createContact(this.id, contact);
   }
 
   async getSignatures(): Promise<EmailSignature[]> {

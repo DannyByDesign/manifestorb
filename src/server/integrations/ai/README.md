@@ -1,39 +1,34 @@
-# AI Integration Layer (`src/server/integrations/ai`)
+# AI Integration Module
 
-This directory houses the "Brain" of the application—the AI systems, prompt chains, and tool definitions.
+This module houses the core logic for the AI Agent, including the tool definitions, rule engine connections, and model configuration.
 
-## Subdirectories
+## 1. The Polymorphic Toolset (`tools/`)
+We use a standardized set of 5 "Polymorphic" tools to interact with all backend resources. This simplifies the Agent's decision-making process.
 
-### 1. `assistant/` (The Chatbot)
--   **`chat.ts`**: The main entry point for the standard "Chat Assistant". It manages the Vercel AI SDK `streamText` loop.
--   **Capabilities**: Unlike the Agent, this Assistant has **full access** to the Rules Engine (Create Rule, Knowledge Base).
+| Tool | Purpose | Key Resources |
+| :--- | :--- | :--- |
+| `query` | Search and list items | `email`, `calendar`, `automation`, `patterns`, `approval`, `drive`, `contacts` |
+| `get` | Retrieve item details | `email`, `approval` |
+| `create` | Create new items (Drafts) | `email`, `automation`, `knowledge`, `drive` (Filing), `notification` (Push), `contacts` |
+| `modify` | Update item state | `email` (archive/label/track), `automation`, `approval` (decide) |
+| `analyze` | Pure logic/extraction | `email` (clean/categorize), `calendar` (briefing), `patterns` |
 
-### 2. `tools/` (The Agent Toolkit)
--   **`index.ts`**: Exports `createAgentTools` which bundles tools for the Executor.
--   **`providers/`**: Interface definitions for `email`, `calendar`, `automation`.
--   **Tools**:
-    -   `query`: Search for emails/events.
-    -   `get`: Retrieve full details by ID.
-    -   `modify`: Archive, Trash, Label.
-    -   `create`: Draft emails.
-    -   `analyze`: Analyze content (Stub).
+### Key Files
+- `tools/index.ts`: Tool registry and export.
+- `tools/query.ts`: Implementation of the `query` tool.
+- `tools/create.ts`: Implementation of the `create` tool.
+- `tools/modify.ts`: Implementation of the `modify` tool.
+- `tools/types.ts`: TypeScript definitions for Tool arguments and Resources.
 
-### 3. `choose-rule/` (The Classifier)
--   Logic for determining if an incoming email matches an existing user rule.
--   Used by the `Unsubscriber` service to process inbox rules.
+## 2. The Third Brain (`tools/providers/automation.ts`)
+The `AutomationProvider` acts as the bridge between the Agent and the user's defined rules.
+- **Match Rules**: Exposes `matchRules(messageId)` to the Agent via `query({ resource: "patterns" })`.
+- **Enforcement**: The System Prompt requires the Agent to check for rules before taking action on emails.
 
-### 4. `report/` (The Analyst)
--   Prompts and logic for generating the `Executive Summary`, `User Persona`, and `Behavior Analysis`.
+## 3. Providers (`tools/providers/`)
+Tools delegate actual execution to these Providers to maintain clear boundaries.
+- `automation.ts`: Rules, Knowledge, Unsubscriber, Reports.
+- `email.ts`: Wraps the Service Layer Email Provider for Tool compatibility.
 
-### 5. `categorize-sender/`
--   Logic for clustering senders (e.g., "Newsletters", "Receipts").
-
-### 6. `mcp/` (Model Context Protocol)
--   Experimental support for connecting to external MCP servers.
-
-### 7. `reply/`
--   Generates AI suggested replies for emails.
-
-## Key Files
--   **`actions.ts`**: Server Actions for UI interaction with AI features.
--   **`security.ts`**: Utilities for prompt injection defense.
+## 4. Assistant (`assistant/`)
+- `chat.ts`: The main entry point for the Vercel AI SDK chat loop. Contains the **System Prompt**.

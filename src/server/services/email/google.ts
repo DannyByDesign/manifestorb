@@ -51,7 +51,12 @@ import { getMessagesBatch } from "@/server/integrations/google/message";
 import {
   getAccessTokenFromClient,
   getGmailClient,
+  getContactsClient,
 } from "@/server/integrations/google/client";
+import {
+  searchGoogleContacts,
+  createGoogleContact
+} from "@/server/integrations/google/contact";
 import { getGmailAttachment } from "@/server/integrations/google/attachment";
 import {
   getThreadsBatch,
@@ -74,6 +79,7 @@ import type {
   EmailLabel,
   EmailFilter,
   EmailSignature,
+  Contact,
 } from "@/server/services/email/types";
 import { createScopedLogger, type Logger } from "@/utils/logger";
 import { getGmailSignatures } from "@/server/integrations/google/signature-settings";
@@ -94,9 +100,11 @@ export class GmailProvider implements EmailProvider {
   readonly name = "google";
   private readonly client: gmail_v1.Gmail;
   private readonly logger: Logger;
+  private readonly emailAccountId: string;
 
-  constructor(client: gmail_v1.Gmail, logger?: Logger) {
+  constructor(client: gmail_v1.Gmail, emailAccountId: string, logger?: Logger) {
     this.client = client;
+    this.emailAccountId = emailAccountId;
     this.logger = (logger || createScopedLogger("gmail-provider")).with({
       provider: "google",
     });
@@ -336,6 +344,27 @@ export class GmailProvider implements EmailProvider {
     }
   }
 
+  private async labelMessagesBulk(messageIds: string[], labelId: string): Promise<void> {
+    const log = this.logger.with({
+      action: "labelMessagesBulk",
+      messageIds,
+      labelId
+    });
+
+    try {
+      await this.client.users.messages.batchModify({
+        userId: "me",
+        requestBody: {
+          ids: messageIds,
+          addLabelIds: [labelId],
+        },
+      });
+    } catch (error) {
+      log.error("Failed to label messages bulk", { error });
+      throw error;
+    }
+  }
+
   // We don't have permissions for Gmail bulkDelete, so we have to do it one thread at a time
   private async archiveMessagesFromSenders(
     senders: string[],
@@ -532,6 +561,71 @@ export class GmailProvider implements EmailProvider {
     log.info("Completed bulk trash from senders");
   }
 
+  private async labelMessagesFromSenders(
+    senders: string[],
+    ownerEmail: string,
+    emailAccountId: string,
+    labelName: string
+  ): Promise<void> {
+    const log = this.logger.with({
+      action: "labelMessagesFromSenders",
+      emailAccountId,
+      email: ownerEmail,
+      sendersCount: senders.length,
+      labelName
+    });
+
+    if (senders.length === 0) return;
+
+    // 1. Resolve Label ID
+    const label = await getOrCreateLabel({
+      gmail: this.client,
+      name: labelName,
+    });
+    const labelId = label.id!;
+
+    for (const sender of senders) {
+      if (!sender) continue;
+
+      let nextPageToken: string | undefined;
+
+      do {
+        try {
+          // Search for ALL messages from this sender (not just inbox)
+          const { messages, nextPageToken: token } = await getMessages(
+            this.client,
+            {
+              query: `from:${sender}`,
+              maxResults: 500,
+              pageToken: nextPageToken,
+            },
+          );
+
+          const batchMessageIds = messages.map((msg) => msg.id);
+
+          if (batchMessageIds.length > 0) {
+            await this.labelMessagesBulk(batchMessageIds, labelId);
+
+            // Should we track this in Tinybird? 
+            // Existing bulk actions track 'archive' and 'trash'.
+            // Let's track 'label' if supported, otherwise skip.
+            // execute.ts seems to support generic actions?
+          }
+
+          nextPageToken = token;
+        } catch (error) {
+          log.error("Failed to label messages from sender", {
+            sender,
+            error,
+          });
+          nextPageToken = undefined;
+        }
+      } while (nextPageToken);
+    }
+
+    log.info("Completed bulk label from senders");
+  }
+
   async bulkArchiveFromSenders(
     fromEmails: string[],
     ownerEmail: string,
@@ -550,6 +644,15 @@ export class GmailProvider implements EmailProvider {
     emailAccountId: string,
   ): Promise<void> {
     await this.trashThreadsFromSenders(fromEmails, ownerEmail, emailAccountId);
+  }
+
+  async bulkLabelFromSenders(
+    fromEmails: string[],
+    ownerEmail: string,
+    emailAccountId: string,
+    labelName: string,
+  ): Promise<void> {
+    await this.labelMessagesFromSenders(fromEmails, ownerEmail, emailAccountId, labelName);
   }
 
   async trashThread(
@@ -1448,6 +1551,14 @@ export class GmailProvider implements EmailProvider {
   async getOrCreateFolderIdByName(_folderName: string): Promise<string> {
     this.logger.warn("Moving to folder is not supported for Gmail");
     return "";
+  }
+
+  async searchContacts(query: string): Promise<Contact[]> {
+    return searchGoogleContacts(this.emailAccountId, query);
+  }
+
+  async createContact(contact: Partial<Contact>): Promise<Contact> {
+    return createGoogleContact(this.emailAccountId, contact);
   }
 
   async getSignatures(): Promise<EmailSignature[]> {
