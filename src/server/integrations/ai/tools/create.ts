@@ -198,9 +198,22 @@ Automation: Create Rules & Knowledge supported.`,
                 }, { emailAccount: emailAccountNotif });
 
                 // 2. Push
-                const pushed = await router.pushMessage(emailAccountNotif.userId, notifText);
 
-                return { success: pushed, data: { text: notifText, pushed } };
+                // 2. Schedule Omnichannel Notification
+                const { createInAppNotification } = await import("@/server/notifications/create");
+                await createInAppNotification({
+                    userId: emailAccountNotif.userId,
+                    title: data.title,
+                    body: notifText,
+                    type: "info",
+                    metadata: {
+                        source: data.source,
+                        detail: data.detail,
+                        type: data.type
+                    }
+                });
+
+                return { success: true, data: { text: notifText, pushed: true } };
 
             case "calendar":
                 return { success: false, error: "Calendar create not implemented" };
