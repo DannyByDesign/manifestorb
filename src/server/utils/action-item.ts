@@ -6,15 +6,15 @@ export const actionInputs: Record<
   {
     fields: {
       name:
-        | "labelId"
-        | "subject"
-        | "content"
-        | "to"
-        | "cc"
-        | "bcc"
-        | "url"
-        | "folderName"
-        | "folderId";
+      | "labelId"
+      | "subject"
+      | "content"
+      | "to"
+      | "cc"
+      | "bcc"
+      | "url"
+      | "folderName"
+      | "folderId";
       label: string;
       textArea?: boolean;
       expandable?: boolean;
@@ -279,6 +279,9 @@ export function sanitizeActionFields(
       };
     }
     case ActionType.NOTIFY_SENDER: {
+      return base;
+    }
+    case ActionType.NOTIFY_USER: {
       return base;
     }
     default:

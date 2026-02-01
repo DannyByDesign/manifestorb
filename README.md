@@ -30,7 +30,7 @@ The system is powered by an **Agentic AI** (`src/server/integrations/ai`) that i
 -   **Management**: Create new contacts directly from conversation context (`create.ts` -> `createContact`).
 
 ### 4. Notifications & Approvals ("The Guardrails")
--   **Smart Notifications**: Generates and sends context-aware push notifications to the user (`create.ts` -> `generateNotification`).
+-   **Omnichannel Delivery**: "Atomic Race" system ensuring zero duplicates across Web (Toast) and Slack/Discord (Push) (`server/notifications/`).
 -   **Approvals**: Manages sensitive actions via an approval system. The Agent can list, view, and execute decisions on approval requests (`modify.ts` -> `ApprovalService`).
 
 ### 5. Automation ("The Second Brain")

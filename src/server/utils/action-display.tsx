@@ -79,6 +79,8 @@ export function getActionDisplay(
       return "Call Webhook";
     case ActionType.NOTIFY_SENDER:
       return "Notify Sender";
+    case ActionType.NOTIFY_USER:
+      return "Notify User";
     default: {
       const exhaustiveCheck: never = action.type;
       return exhaustiveCheck;

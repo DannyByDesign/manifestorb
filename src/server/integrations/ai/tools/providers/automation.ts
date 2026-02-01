@@ -124,6 +124,7 @@ export async function createAutomationProvider(
                             // It maps `zodField` to string.
                             folderName: a.folderName?.value,
                             labelId: a.labelId?.value,
+                            delayInMinutes: a.delayInMinutes,
                             // etc.
                         }))
                     }

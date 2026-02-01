@@ -107,6 +107,7 @@ model User {
 
   approvalRequests  ApprovalRequest[]
   approvalDecisions ApprovalDecision[]
+  inAppNotifications InAppNotification[]
 
   conversations        Conversation[]
   conversationMessages ConversationMessage[]
@@ -1193,6 +1194,7 @@ enum ActionType {
   DIGEST
   MOVE_FOLDER
   NOTIFY_SENDER // Sends notification from Amodel (not user's email). Only for cold email rules.
+  NOTIFY_USER // @deprecated - No longer used. We rely on rule SystemType instead to run this.
   // SUMMARIZE
   // SNOOZE
   // ADD_TO_DO
@@ -1464,4 +1466,33 @@ model ConversationSummary {
   summary        String    @db.Text
   updatedAt      DateTime  @updatedAt
   lastMessageAt  DateTime?
+}
+
+model InAppNotification {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Content
+  title     String
+  body      String?
+  type      String   // "info", "warning", "success", "error"
+  metadata  Json?    // { source: "agent", actionUrl: "..." }
+
+  // Atomic State Flags
+  isRead          Boolean   @default(false) // User manually dismissed/read it
+  readAt          DateTime? // When it was marked as read by user interaction
+  
+  claimedAt       DateTime? // Web client successfully fetched it (Delivery receipt)
+
+  pushedToSurface Boolean   @default(false) // Fallback sent it to Slack
+  pushedAt        DateTime?
+  
+  dedupeKey       String?   @unique // Encryption/Hash for idempotency
+  
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
 }

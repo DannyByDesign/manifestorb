@@ -226,6 +226,7 @@
 | 🚀 | **Email Digests** | Periodic summaries of actions | `Digest*`, `server/packages/resend/` | UI-first (digest view) |
 | 🕒 | **Summary Emails** | Weekly/daily summaries | `src/app/api/resend/summary/` | UI-first |
 | 🕒 | **Transactional Emails** | Invites/notifications | `server/packages/resend/emails/` | Backend-only |
+| 🚀 | **Omnichannel Notifications** | "Atomic Race" (Web Toast -> Slack Fallback) | `src/server/notifications/`, `hooks/use-notification-poll.ts` | **Hybrid** (Toast + History + Push) |
 | 🗑️ | **Marketing Emails** | Loops integration | `server/packages/loops/` | (Not a core product feature) |
 
 ---

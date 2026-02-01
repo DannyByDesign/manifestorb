@@ -82,6 +82,8 @@ export const runActionFunction = async (options: {
       return move_folder(opts);
     case ActionType.NOTIFY_SENDER:
       return notify_sender(opts);
+    case ActionType.NOTIFY_USER:
+      return notify_user(opts);
     default:
       throw new Error(`Unknown action: ${action}`);
   }
@@ -472,3 +474,21 @@ async function lazyUpdateActionFolderId({
     });
   }
 }
+
+const notify_user: ActionFunction<{
+  content?: string | null;
+}> = async ({
+  args,
+  userId,
+}) => {
+    if (!args.content) return;
+
+    const { createInAppNotification } = await import("@/server/notifications/create");
+
+    await createInAppNotification({
+      userId,
+      title: "Agent Notification",
+      body: args.content,
+      type: "info"
+    });
+  };

@@ -9,7 +9,7 @@ import { createScopedLogger } from "@/server/utils/logger";
 
 const logger = createScopedLogger("upstash");
 
-function getQstashClient() {
+export function getQstashClient() {
   if (!env.QSTASH_TOKEN) return null;
   return new Client({ token: env.QSTASH_TOKEN });
 }
