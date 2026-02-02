@@ -14,6 +14,7 @@ import { sendColdEmailNotification } from "@/features/cold-email/send-notificati
 import { extractEmailAddress } from "@/server/integrations/google";
 import { captureException } from "@/server/lib/error";
 import { ensureEmailSendingEnabled } from "@/server/lib/mail";
+import { getEmailAccountWithAi } from "@/server/lib/user/get";
 
 const MODULE = "ai-actions";
 
@@ -82,6 +83,8 @@ export const runActionFunction = async (options: {
       return move_folder(opts);
     case ActionType.NOTIFY_SENDER:
       return notify_sender(opts);
+    case ActionType.NOTIFY_USER:
+      return notify_user(opts);
     default:
       throw new Error(`Unknown action: ${action}`);
   }
@@ -400,6 +403,74 @@ const notify_sender: ActionFunction<Record<string, unknown>> = async ({
       },
     );
     return;
+  }
+};
+
+const notify_user: ActionFunction<Record<string, unknown>> = async ({
+  email,
+  userId,
+  emailAccountId,
+  logger,
+}) => {
+  try {
+    const { generateNotification } = await import(
+      "@/features/notifications/generator"
+    );
+    const { createInAppNotification } = await import(
+      "@/features/notifications/create"
+    );
+
+    const fromName =
+      extractEmailAddress(email.headers.from) || email.headers.from;
+    const subject = email.headers.subject || "(No Subject)";
+    const snippet = email.snippet || email.textPlain?.substring(0, 150) || "";
+
+    // Get email account for AI notification generation
+    const emailAccount = await getEmailAccountWithAi({ emailAccountId });
+    if (!emailAccount) {
+      logger.error("Could not find email account for notify_user action");
+      return;
+    }
+
+    // Generate AI-powered notification text
+    const text = await generateNotification(
+      {
+        type: "email",
+        source: fromName,
+        title: subject,
+        detail: snippet,
+        importance: "medium",
+      },
+      { emailAccount }
+    );
+
+    // Create in-app notification (with surfaces fallback via QStash)
+    await createInAppNotification({
+      userId,
+      title: `New Email from ${fromName}`,
+      body: text,
+      type: "info",
+      dedupeKey: `email-rule-${email.id}`,
+      metadata: {
+        messageId: email.id,
+        threadId: email.threadId,
+        emailAccountId,
+      },
+    });
+
+    logger.info("Push notification sent via NOTIFY_USER action", {
+      messageId: email.id,
+      from: fromName,
+    });
+  } catch (error) {
+    logger.error("Error sending push notification via NOTIFY_USER action", {
+      error,
+    });
+    captureException(error instanceof Error ? error : new Error(String(error)), {
+      emailAccountId,
+      extra: { actionType: ActionType.NOTIFY_USER },
+      sampleRate: 0.1,
+    });
   }
 };
 

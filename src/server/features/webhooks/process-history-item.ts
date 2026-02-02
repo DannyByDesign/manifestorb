@@ -281,69 +281,8 @@ export async function processHistoryItem(
       captureException(error, { emailAccountId });
     }
 
-    // 5. Smart Push Notification (Open Claw Logic)
-    // Only push if it's an inbound message and we haven't filtered it out already
-    // 5. Smart Push Notification (Open Claw Logic)
-    // Only push if it's an inbound message and we haven't filtered it out already
-    // Filtering Logic:
-    // 1. Must be inbound (checked above)
-    // 2. Must NOT be archived/deleted by rules (checked above)
-    // 3. Must be IMPORTANT (Gmail Label) OR explicitly marked as Personal/Updates
-    const isImportant = parsedMessage.labelIds?.includes("IMPORTANT");
-    const isCategoryPersonal = parsedMessage.labelIds?.includes("CATEGORY_PERSONAL");
-
-    // We allow CATEGORY_UPDATES too generally, but let's restrict to Important for now to match user request
-    const shouldPush = !isOutbound && (isImportant || isCategoryPersonal);
-
-    if (shouldPush) {
-
-      if (shouldPush) {
-        try {
-          const { generateNotification } = await import(
-            "@/features/notifications/generator"
-          );
-          const { createInAppNotification } = await import(
-            "@/features/notifications/create"
-          );
-
-          // Extract basic details
-          const fromName = extractNameFromEmail(parsedMessage.headers.from) || parsedMessage.headers.from;
-          const subject = parsedMessage.headers.subject || "(No Subject)";
-          const snippet = parsedMessage.snippet || "";
-
-          // Generate conversational content using LLM
-          const text = await generateNotification(
-            {
-              type: "email",
-              source: fromName,
-              title: subject,
-              detail: snippet,
-              importance: "medium", // Default for now
-            },
-            { emailAccount }
-          );
-
-          // Use the Omnichannel System (Atomic Race)
-          // This ensures if the user is ON the web app, they see a toast and we DON'T ping Slack.
-          // If they are away, QStash will trigger the fallback to ChannelRouter after 15s.
-          await createInAppNotification({
-            userId: emailAccount.userId,
-            title: `New Email from ${fromName}`,
-            body: text,
-            type: "info",
-            dedupeKey: `email-${messageId}`, // Ensure we don't duplicate valid notifications
-            metadata: {
-              messageId,
-              threadId: actualThreadId,
-              emailAccountId
-            }
-          });
-
-        } catch (err) {
-          logger.error("Error initiating push notification", { error: err });
-        }
-      }
-    }
+    // Push notifications are now handled via the NOTIFY_USER rule action
+    // Users control which emails trigger notifications by creating rules
   } catch (error: unknown) {
     // Handle provider-specific "not found" errors
     if (error instanceof Error) {

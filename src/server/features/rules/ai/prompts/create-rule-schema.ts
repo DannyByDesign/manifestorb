@@ -44,6 +44,7 @@ export function getAvailableActions(provider: string) {
       ? [ActionType.REPLY, ActionType.FORWARD, ActionType.SEND_EMAIL]
       : []),
     ActionType.MARK_SPAM,
+    ActionType.NOTIFY_USER,
   ].filter(isDefined);
   return availableActions as [ActionType, ...ActionType[]];
 }
@@ -58,7 +59,7 @@ const actionSchema = (provider: string) =>
     type: z
       .enum([...getAvailableActions(provider), ...getExtraActions()])
       .describe(
-        `The type of the action. '${ActionType.DIGEST}' means emails will be added to the digest email the user receives. ${isMicrosoftProvider(provider) ? `'${ActionType.LABEL}' means emails will be categorized in Outlook.` : ""}`,
+        `The type of the action. '${ActionType.DIGEST}' means emails will be added to the digest email the user receives. '${ActionType.NOTIFY_USER}' sends a push notification to the user when the rule matches. ${isMicrosoftProvider(provider) ? `'${ActionType.LABEL}' means emails will be categorized in Outlook.` : ""}`,
       ),
     fields: z
       .object({
