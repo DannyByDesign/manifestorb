@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { generateObject } from "ai";
 import prisma from "@/server/db/client";
-import { getModel } from "@/server/utils/llms/model";
-import { createScopedLogger } from "@/server/utils/logger";
+import { getModel } from "@/server/lib/llms/model";
+import { createScopedLogger } from "@/server/lib/logger";
 
 const logger = createScopedLogger("MigrateAbout");
 

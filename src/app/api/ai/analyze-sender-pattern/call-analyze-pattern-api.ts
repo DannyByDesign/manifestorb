@@ -2,9 +2,9 @@ import type { AnalyzeSenderPatternBody } from "@/app/api/ai/analyze-sender-patte
 import {
   INTERNAL_API_KEY_HEADER,
   getInternalApiUrl,
-} from "@/server/utils/internal-api";
+} from "@/server/lib/internal-api";
 import { env } from "@/env";
-import type { Logger } from "@/server/utils/logger";
+import type { Logger } from "@/server/lib/logger";
 
 export async function analyzeSenderPattern(
   body: AnalyzeSenderPatternBody,

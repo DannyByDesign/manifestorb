@@ -3,17 +3,17 @@ import { env } from "@/env";
 import prisma from "@/server/db/client";
 import { getLinkingOAuth2Client } from "@/server/integrations/google/client";
 import { GOOGLE_LINKING_STATE_COOKIE_NAME } from "@/server/integrations/google/constants";
-import { withError } from "@/server/utils/middleware";
-import { validateOAuthCallback } from "@/utils/oauth/callback-validation";
-import { handleAccountLinking } from "@/utils/oauth/account-linking";
-import { mergeAccount } from "@/utils/user/merge-account";
-import { handleOAuthCallbackError } from "@/utils/oauth/error-handler";
+import { withError } from "@/server/lib/middleware";
+import { validateOAuthCallback } from "@/server/lib/oauth/callback-validation";
+import { handleAccountLinking } from "@/server/lib/oauth/account-linking";
+import { mergeAccount } from "@/server/lib/user/merge-account";
+import { handleOAuthCallbackError } from "@/server/lib/oauth/error-handler";
 import {
   acquireOAuthCodeLock,
   getOAuthCodeResult,
   setOAuthCodeResult,
   clearOAuthCode,
-} from "@/utils/redis/oauth-code";
+} from "@/server/lib/redis/oauth-code";
 import { isDuplicateError } from "@/server/db/client-helpers";
 
 export const GET = withError("google/linking/callback", async (request) => {

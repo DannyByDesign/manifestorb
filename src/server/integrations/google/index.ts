@@ -14,5 +14,5 @@ export {
     extractDomainFromEmail,
     extractNameFromEmail,
     getSearchTermForSender,
-} from '@/server/utils/email';
+} from '@/server/lib/email';
 

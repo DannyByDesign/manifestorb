@@ -8,12 +8,12 @@ import {
   isDefined,
 } from "@/server/types";
 import { getBatch } from "@/server/integrations/google/batch";
-import { getSearchTermForSender } from "@/server/utils/email";
-import { createScopedLogger } from "@/server/utils/logger";
-import { sleep } from "@/server/utils/sleep";
+import { getSearchTermForSender } from "@/server/lib/email";
+import { createScopedLogger } from "@/server/lib/logger";
+import { sleep } from "@/server/lib/sleep";
 import { getAccessTokenFromClient } from "@/server/integrations/google/client";
 import { GmailLabel } from "@/server/integrations/google/label";
-import { isIgnoredSender } from "@/utils/filter-ignored-senders";
+import { isIgnoredSender } from "@/server/lib/filter-ignored-senders";
 import parse from "gmail-api-parse-message";
 import { isRetryableError, withGmailRetry } from "@/server/integrations/google/retry";
 

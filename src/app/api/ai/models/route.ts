@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import prisma from "@/server/db/client";
-import { withEmailAccount } from "@/server/utils/middleware";
-import { Provider } from "@/server/utils/llms/config";
+import { withEmailAccount } from "@/server/lib/middleware";
+import { Provider } from "@/server/lib/llms/config";
 
 export type OpenAiModelsResponse = Awaited<ReturnType<typeof getOpenAiModels>>;
 

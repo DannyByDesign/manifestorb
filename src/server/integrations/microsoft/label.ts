@@ -1,9 +1,9 @@
 import type { OutlookClient } from "@/server/integrations/microsoft/client";
-import type { Logger } from "@/server/utils/logger";
+import type { Logger } from "@/server/lib/logger";
 import { publishArchive, type TinybirdEmailAction } from "@amodel/tinybird";
 import { WELL_KNOWN_FOLDERS } from "./message";
 import { extractErrorInfo, withOutlookRetry } from "@/server/integrations/microsoft/retry";
-import { inboxZeroLabels, type AmodelLabel } from "@/utils/label";
+import { inboxZeroLabels, type AmodelLabel } from "@/server/lib/label";
 import type {
   OutlookCategory,
   Message,

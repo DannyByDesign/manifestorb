@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { OutlookSubscriptionManager } from "@/server/integrations/microsoft/subscription-manager";
 import prisma from "@/server/db/client";
-import type { EmailProvider } from "@/server/services/email/types";
+import type { EmailProvider } from "@/features/email/types";
 import type { SubscriptionHistoryEntry } from "@/server/integrations/microsoft/subscription-history";
-import { createScopedLogger } from "@/server/utils/logger";
+import { createScopedLogger } from "@/server/lib/logger";
 
 const logger = createScopedLogger("test");
 
@@ -19,7 +19,7 @@ vi.mock("@/server/db/client", () => ({
   },
 }));
 
-vi.mock("@/server/utils/error", () => ({
+vi.mock("@/server/lib/error", () => ({
   captureException: vi.fn(),
 }));
 

@@ -1,13 +1,13 @@
 import { Client } from "@microsoft/microsoft-graph-client";
 import type { User } from "@microsoft/microsoft-graph-types";
-import { saveTokens } from "@/utils/auth";
-import { cleanupInvalidTokens } from "@/utils/auth/cleanup-invalid-tokens";
+import { saveTokens } from "@/server/lib/auth";
+import { cleanupInvalidTokens } from "@/server/lib/auth/cleanup-invalid-tokens";
 import { env } from "@/env";
-import type { Logger } from "@/server/utils/logger";
+import type { Logger } from "@/server/lib/logger";
 import { SCOPES } from "@/server/integrations/microsoft/scopes";
-import { SafeError } from "@/server/utils/error";
-import { getEmailAccountWithAi, getEmailAccountWithAiAndTokens } from "@/server/utils/user/get";
-import { createScopedLogger } from "@/server/utils/logger";
+import { SafeError } from "@/server/lib/error";
+import { getEmailAccountWithAi, getEmailAccountWithAiAndTokens } from "@/server/lib/user/get";
+import { createScopedLogger } from "@/server/lib/logger";
 
 // Add buffer time to prevent token expiry during long-running operations
 const TOKEN_REFRESH_BUFFER_MS = 10 * 60 * 1000; // 10 minutes

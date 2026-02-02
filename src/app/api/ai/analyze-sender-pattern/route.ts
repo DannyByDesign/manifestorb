@@ -1,19 +1,19 @@
 import { NextResponse, after } from "next/server";
 import { headers } from "next/headers";
 import { z } from "zod";
-import { withError } from "@/server/utils/middleware";
+import { withError } from "@/server/lib/middleware";
 import prisma from "@/server/db/client";
-import type { Logger } from "@/server/utils/logger";
+import type { Logger } from "@/server/lib/logger";
 import type { ParsedMessage } from "@/server/types";
-import { aiDetectRecurringPattern } from "@/server/integrations/ai/choose-rule/ai-detect-recurring-pattern";
-import { isValidInternalApiKey } from "@/server/utils/internal-api";
+import { aiDetectRecurringPattern } from "@/features/rules/ai/ai-detect-recurring-pattern";
+import { isValidInternalApiKey } from "@/server/lib/internal-api";
 import { extractEmailAddress } from "@/server/integrations/google";
-import { getEmailForLLM } from "@/server/utils/get-email-from-message";
-import { saveLearnedPattern } from "@/utils/rule/learned-patterns";
+import { getEmailForLLM } from "@/server/lib/get-email-from-message";
+import { saveLearnedPattern } from "@/features/rules/learned-patterns";
 import { GroupItemSource } from "@/generated/prisma/enums";
-import { checkSenderRuleHistory } from "@/utils/rule/check-sender-rule-history";
-import { createEmailProvider } from "@/server/services/email/provider";
-import type { EmailProvider } from "@/server/services/email/types";
+import { checkSenderRuleHistory } from "@/features/rules/check-sender-rule-history";
+import { createEmailProvider } from "@/features/email/provider";
+import type { EmailProvider } from "@/features/email/types";
 
 export const maxDuration = 60;
 

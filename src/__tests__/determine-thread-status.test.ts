@@ -1,5 +1,5 @@
 import { describe, expect, test, vi, beforeEach } from "vitest";
-import { aiDetermineThreadStatus } from "@/utils/ai/reply/determine-thread-status";
+import { aiDetermineThreadStatus } from "@/features/reply-tracker/ai/determine-thread-status";
 import {
   getEmailAccount,
   getEmail,

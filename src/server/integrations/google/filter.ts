@@ -1,8 +1,8 @@
 import type { gmail_v1 } from "@googleapis/gmail";
 import { GmailLabel } from "@/server/integrations/google/label";
 import { extractErrorInfo, withGmailRetry } from "@/server/integrations/google/retry";
-import { SafeError } from "@/server/utils/error";
-import type { Logger } from "@/server/utils/logger";
+import { SafeError } from "@/server/lib/error";
+import type { Logger } from "@/server/lib/logger";
 
 export async function createFilter(options: {
   gmail: gmail_v1.Gmail;

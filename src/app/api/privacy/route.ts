@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/server/auth";
-import { PrivacyService } from "@/server/privacy/service";
+import { PrivacyService } from "@/features/privacy/service";
 import prisma from "@/server/db/client";
 
 export async function GET(req: Request) {

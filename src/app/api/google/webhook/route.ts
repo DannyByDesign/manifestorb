@@ -1,10 +1,10 @@
 import { after, NextResponse } from "next/server";
-import { withError } from "@/server/utils/middleware";
+import { withError } from "@/server/lib/middleware";
 import { env } from "@/env";
 import { processHistoryForUser } from "@/app/api/google/webhook/process-history";
-import type { Logger } from "@/server/utils/logger";
-import { handleWebhookError } from "@/utils/webhook/error-handler";
-import { getWebhookEmailAccount } from "@/utils/webhook/validate-webhook-account";
+import type { Logger } from "@/server/lib/logger";
+import { handleWebhookError } from "@/features/webhooks/error-handler";
+import { getWebhookEmailAccount } from "@/features/webhooks/validate-webhook-account";
 
 export const maxDuration = 300;
 

@@ -3,9 +3,9 @@ import { NextResponse } from "next/server";
 import { type NextRequest } from "next/server";
 import prisma from "@/server/db/client";
 import { env } from "@/env";
-import { createEmailProvider } from "@/server/services/email/provider";
-import { createScopedLogger } from "@/server/utils/logger";
-import { aiDraftReply } from "@/server/integrations/ai/reply/draft-reply";
+import { createEmailProvider } from "@/features/email/provider";
+import { createScopedLogger } from "@/server/lib/logger";
+import { aiDraftReply } from "@/features/reply-tracker/ai/draft-reply";
 import type { ParsedMessage, EmailForLLM } from "@/server/types";
 
 export const maxDuration = 60; // AI might take time

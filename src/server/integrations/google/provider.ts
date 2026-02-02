@@ -11,7 +11,7 @@ import {
 import {
   publishBulkActionToTinybird,
   updateEmailMessagesForSender,
-} from "@/server/services/email/bulk-action-tracking";
+} from "@/features/email/bulk-action-tracking";
 import {
   getLabels,
   getLabel,
@@ -22,7 +22,7 @@ import {
   GmailLabel,
 } from "@/server/integrations/google/label";
 import { labelVisibility, messageVisibility } from "@/server/integrations/google/constants";
-import type { AmodelLabel } from "@/utils/label";
+import type { AmodelLabel } from "@/server/lib/label";
 // import type { ThreadsQuery } from "@/app/api/threads/validation";
 type ThreadsQuery = any;
 import { getMessageByRfc822Id } from "@/server/integrations/google/message";
@@ -42,7 +42,7 @@ import {
 } from "@/server/integrations/google/label";
 import { trashThread } from "@/server/integrations/google/trash";
 import { markSpam } from "@/server/integrations/google/spam";
-import { handlePreviousDraftDeletion } from "@/server/integrations/ai/choose-rule/draft-management";
+import { handlePreviousDraftDeletion } from "@/features/rules/ai/draft-management";
 import {
   getThreadMessages,
   getThreadsFromSenderWithSubject,
@@ -72,8 +72,8 @@ import type {
   EmailFilter,
   EmailSignature,
   Contact,
-} from "@/server/services/email/types";
-import { createScopedLogger, type Logger } from "@/server/utils/logger";
+} from "@/features/email/types";
+import { createScopedLogger, type Logger } from "@/server/lib/logger";
 import { getGmailSignatures } from "@/server/integrations/google/signature-settings";
 import {
   searchGoogleContacts,

@@ -1,11 +1,11 @@
 
 import { NextResponse } from "next/server";
 import prisma from "@/server/db/client";
-import { createGenerateText } from "@/server/utils/llms";
-import { getModel } from "@/server/utils/llms/model";
+import { createGenerateText } from "@/server/lib/llms";
+import { getModel } from "@/server/lib/llms/model";
 import { env } from "@/env";
 import { z } from "zod";
-import { createScopedLogger } from "@/server/utils/logger";
+import { createScopedLogger } from "@/server/lib/logger";
 
 const logger = createScopedLogger("api/jobs/summarize-conversation");
 

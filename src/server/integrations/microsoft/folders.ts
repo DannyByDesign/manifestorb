@@ -1,6 +1,6 @@
 import type { MailFolder } from "@microsoft/microsoft-graph-types";
 import type { OutlookClient } from "./client";
-import type { Logger } from "@/server/utils/logger";
+import type { Logger } from "@/server/lib/logger";
 import { withOutlookRetry } from "@/server/integrations/microsoft/retry";
 
 // Should not use a common separator like "/|\>" as it may be used in the folder name.

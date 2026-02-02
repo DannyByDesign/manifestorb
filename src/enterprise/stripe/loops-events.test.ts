@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { handleLoopsEvents } from "./loops-events";
-import { createScopedLogger } from "@/utils/logger";
+import { createScopedLogger } from "@/server/lib/logger";
 import {
   createContact,
   completedTrial,

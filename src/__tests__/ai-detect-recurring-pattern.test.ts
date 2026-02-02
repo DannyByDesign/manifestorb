@@ -1,8 +1,8 @@
 /** biome-ignore-all lint/style/noMagicNumbers: test */
 import { describe, expect, test, vi, beforeEach } from "vitest";
-import { aiDetectRecurringPattern } from "@/utils/ai/choose-rule/ai-detect-recurring-pattern";
-import type { EmailForLLM } from "@/utils/types";
-import { getRuleName, getRuleConfig } from "@/utils/rule/consts";
+import { aiDetectRecurringPattern } from "@/features/rules/ai/ai-detect-recurring-pattern";
+import type { EmailForLLM } from "@/server/lib/types";
+import { getRuleName, getRuleConfig } from "@/features/rules/consts";
 import { SystemType } from "@/generated/prisma/enums";
 import { getEmailAccount } from "@/__tests__/helpers";
 
@@ -11,7 +11,7 @@ import { getEmailAccount } from "@/__tests__/helpers";
 const TIMEOUT = 15_000;
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/utils/braintrust", () => ({
+vi.mock("@/server/lib/braintrust", () => ({
   Braintrust: class {
     insertToDataset() { }
   },

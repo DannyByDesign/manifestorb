@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { aiChooseRule } from "@/utils/ai/choose-rule/ai-choose-rule";
+import { aiChooseRule } from "@/features/rules/ai/ai-choose-rule";
 import { ActionType } from "@/generated/prisma/enums";
 import { getEmail, getEmailAccount, getRule } from "@/__tests__/helpers";
 

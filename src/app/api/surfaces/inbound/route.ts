@@ -1,8 +1,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
-import { ChannelRouter } from "@/server/channels/router";
+import { ChannelRouter } from "@/features/channels/router";
 import { z } from "zod";
-import { createScopedLogger } from "@/server/utils/logger";
+import { createScopedLogger } from "@/server/lib/logger";
 
 const logger = createScopedLogger("api/surfaces/inbound");
 

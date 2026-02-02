@@ -23,38 +23,38 @@ vi.mock("@/server/integrations/google/client", () => ({
 
 const mockGetEmailAccountWithAiAndTokens = vi.fn();
 const mockGetUserPremium = vi.fn();
-vi.mock("@/utils/user/get", () => ({
+vi.mock("@/server/lib/user/get", () => ({
   getEmailAccountWithAiAndTokens: (...args: unknown[]) =>
     mockGetEmailAccountWithAiAndTokens(...args),
   getUserPremium: (...args: unknown[]) => mockGetUserPremium(...args),
 }));
 
-vi.mock("@/utils/redis/clean", () => ({
+vi.mock("@/server/lib/redis/clean", () => ({
   saveThread: vi.fn().mockResolvedValue(undefined),
   updateThread: vi.fn().mockResolvedValue(undefined),
 }));
 
 const mockAiClean = vi.fn();
-vi.mock("@/server/integrations/ai/clean/ai-clean", () => ({
+vi.mock("@/features/clean/ai/ai-clean", () => ({
   aiClean: (...args: unknown[]) => mockAiClean(...args),
 }));
 
-vi.mock("@/server/integrations/ai/group/find-newsletters", () => ({
+vi.mock("@/features/groups/ai/find-newsletters", () => ({
   isNewsletterSender: vi.fn().mockReturnValue(false),
 }));
 
-vi.mock("@/server/integrations/ai/group/find-receipts", () => ({
+vi.mock("@/features/groups/ai/find-receipts", () => ({
   isReceipt: vi.fn().mockReturnValue(false),
   isMaybeReceipt: vi.fn().mockImplementation((message: ParsedMessage) => {
     return message.headers.subject.toLowerCase().includes("payment");
   }),
 }));
 
-vi.mock("@/utils/parse/parseHtml.server", () => ({
+vi.mock("@/server/lib/parse/parseHtml.server", () => ({
   findUnsubscribeLink: vi.fn().mockReturnValue(null),
 }));
 
-vi.mock("@/utils/parse/calender-event", () => ({
+vi.mock("@/server/lib/parse/calender-event", () => ({
   getCalendarEventStatus: vi.fn().mockReturnValue({ isEvent: false }),
 }));
 

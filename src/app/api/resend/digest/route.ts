@@ -1,25 +1,25 @@
 import { NextResponse } from "next/server";
 import { sendDigestEmail } from "@amodel/resend";
-import { withEmailAccount, withError } from "@/utils/middleware";
+import { withEmailAccount, withError } from "@/server/lib/middleware";
 import { env } from "@/env";
-import { captureException, SafeError } from "@/utils/error";
+import { captureException, SafeError } from "@/server/lib/error";
 import prisma from "@/server/db/client";
-import type { Logger } from "@/utils/logger";
-import { createUnsubscribeToken } from "@/utils/unsubscribe";
-import { calculateNextScheduleDate } from "@/utils/schedule";
-import type { ParsedMessage } from "@/utils/types";
+import type { Logger } from "@/server/lib/logger";
+import { createUnsubscribeToken } from "@/server/lib/unsubscribe";
+import { calculateNextScheduleDate } from "@/server/lib/schedule";
+import type { ParsedMessage } from "@/server/lib/types";
 import {
   sendDigestEmailBody,
   storedDigestContentSchema,
   type Digest,
 } from "./validation";
 import { DigestStatus, SystemType } from "@/generated/prisma/enums";
-import { extractNameFromEmail } from "@/server/utils/email";
-import { getRuleName } from "@/utils/rule/consts";
+import { extractNameFromEmail } from "@/server/lib/email";
+import { getRuleName } from "@/features/rules/consts";
 import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
 import { camelCase } from "lodash";
-import { createEmailProvider } from "@/server/services/email/provider";
-import { sleep } from "@/utils/sleep";
+import { createEmailProvider } from "@/features/email/provider";
+import { sleep } from "@/server/lib/sleep";
 
 export const maxDuration = 60;
 

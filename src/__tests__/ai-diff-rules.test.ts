@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { aiDiffRules } from "@/utils/ai/rule/diff-rules";
+import { aiDiffRules } from "@/features/rules/ai/prompts/diff-rules";
 import { getEmailAccount } from "@/__tests__/helpers";
 
 // RUN_AI_TESTS=true bun test-ai ai-diff-rules

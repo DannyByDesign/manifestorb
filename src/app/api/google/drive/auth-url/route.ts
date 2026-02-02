@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { withEmailAccount } from "@/server/utils/middleware";
-import { getGoogleDriveOAuth2Url } from "@/utils/drive/client";
-import { DRIVE_STATE_COOKIE_NAME } from "@/utils/drive/constants";
+import { withEmailAccount } from "@/server/lib/middleware";
+import { getGoogleDriveOAuth2Url } from "@/features/drive/client";
+import { DRIVE_STATE_COOKIE_NAME } from "@/features/drive/constants";
 import {
   generateOAuthState,
   oauthStateCookieOptions,
-} from "@/utils/oauth/state";
+} from "@/server/lib/oauth/state";
 
 export type GetDriveAuthUrlResponse = { url: string };
 

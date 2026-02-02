@@ -1,0 +1,205 @@
+import { deleteContact as deleteLoopsContact } from "@amodel/loops";
+import { deleteContact as deleteResendContact } from "@amodel/resend";
+import prisma from "@/server/db/client";
+import { deleteTinybirdAiCalls } from "@amodel/tinybird-ai-analytics";
+import { deletePosthogUser, trackUserDeleted } from "@/server/lib/posthog";
+import { captureException } from "@/server/lib/error";
+import { unwatchEmails } from "@/features/email/watch-manager";
+import { createEmailProvider } from "@/features/email/provider";
+import type { EmailProvider } from "@/features/email/types";
+import type { Logger } from "@/server/lib/logger";
+import { sleep } from "@/server/lib/sleep";
+import { clearCachedResearchForUser } from "@/server/lib/redis/research-cache";
+
+export async function deleteUser({
+  userId,
+  logger,
+}: {
+  userId: string;
+  logger: Logger;
+}) {
+  const accounts = await prisma.account.findMany({
+    where: { userId },
+    select: {
+      provider: true,
+      access_token: true,
+      refresh_token: true,
+      expires_at: true,
+      emailAccount: {
+        select: {
+          id: true,
+          email: true,
+          watchEmailsSubscriptionId: true,
+        },
+      },
+    },
+  });
+
+  const resourcesPromise = accounts.map(async (account) => {
+    if (!account.emailAccount) return Promise.resolve();
+
+    // Create email provider for unwatching
+    const emailProvider = account.access_token
+      ? await createEmailProvider({
+        emailAccountId: account.emailAccount.id,
+        provider: account.provider,
+        logger,
+      })
+      : null;
+
+    return deleteResources({
+      emailAccountId: account.emailAccount.id,
+      email: account.emailAccount.email,
+      userId,
+      emailProvider,
+      subscriptionId: account.emailAccount.watchEmailsSubscriptionId,
+      logger,
+    });
+  });
+
+  logger.info("Deleting user resources");
+
+  try {
+    deleteTinybirdAiCalls({ userId }).catch((error: any) => {
+      logger.error("Error deleting Tinybird AI calls", {
+        error,
+        userId,
+      });
+      captureException(error);
+    });
+
+    clearCachedResearchForUser(userId).catch((error: any) => {
+      logger.error("Error clearing cached research", { error });
+      captureException(error);
+    });
+
+    // Then proceed with the regular deletion process
+    const results = await Promise.allSettled(resourcesPromise);
+
+    logger.info("User resources deleted");
+
+    // Log any failures
+    const failures = results.filter((r) => r.status === "rejected");
+    if (failures.length > 0) {
+      logger.error("Some deletion operations failed", {
+        failures: failures.map((f) => (f as PromiseRejectedResult).reason),
+      });
+
+      const originalError = (failures[0] as PromiseRejectedResult)?.reason;
+      const customError = new Error("User deletion error");
+      customError.cause = originalError;
+
+      captureException(customError, { extra: { failures } });
+    }
+  } catch (error) {
+    logger.error("Error during user resources deletion process", {
+      error,
+    });
+    captureException(error);
+  }
+}
+
+async function deleteResources({
+  emailAccountId,
+  email,
+  userId,
+  emailProvider,
+  subscriptionId,
+  logger,
+}: {
+  emailAccountId: string;
+  email: string;
+  userId: string;
+  emailProvider: EmailProvider | null;
+  subscriptionId: string | null;
+  logger: Logger;
+}) {
+  const resourcesPromise = Promise.allSettled([
+    deleteLoopsContact(emailAccountId),
+    deletePosthogUser({ email }),
+    deleteResendContact({ email }),
+    emailProvider
+      ? unwatchEmails({
+        emailAccountId,
+        provider: emailProvider,
+        subscriptionId,
+        logger,
+      })
+      : Promise.resolve(),
+  ]);
+
+  try {
+    // First delete ExecutedRules and their associated ExecutedActions in batches
+    // If we try do this in one go for a user with a lot of executed rules, this will fail
+    logger.info("Deleting ExecutedRules in batches");
+    await deleteExecutedRulesInBatches({ emailAccountId, logger });
+
+    logger.info("Deleting user");
+    await prisma.user.delete({ where: { id: userId } });
+
+    // posthod track deleted events
+    await trackUserDeleted(userId);
+  } catch (error) {
+    logger.error("Error during database user deletion process", {
+      error,
+    });
+    captureException(error, { emailAccountId, userEmail: email });
+    throw error;
+  }
+
+  return resourcesPromise;
+}
+
+/**
+ * Delete ExecutedRules and their associated ExecutedActions in batches
+ */
+async function deleteExecutedRulesInBatches({
+  emailAccountId,
+  batchSize = 100,
+  logger,
+}: {
+  emailAccountId: string;
+  batchSize?: number;
+  logger: Logger;
+}) {
+  let deletedTotal = 0;
+
+  while (true) {
+    // 1. Get a batch of ExecutedRule IDs
+    const executedRules = await prisma.executedRule.findMany({
+      where: { emailAccountId },
+      select: { id: true },
+      take: batchSize,
+    });
+
+    if (executedRules.length === 0) {
+      logger.info("Completed deletion of ExecutedRules", {
+        total: deletedTotal,
+      });
+      break;
+    }
+
+    const ruleIds = executedRules.map((rule) => rule.id);
+
+    // 2. Delete ExecutedActions for these rules
+    await prisma.executedAction.deleteMany({
+      where: { executedRuleId: { in: ruleIds } },
+    });
+
+    // 3. Delete the ExecutedRules
+    const { count } = await prisma.executedRule.deleteMany({
+      where: { id: { in: ruleIds } },
+    });
+
+    deletedTotal += count;
+    logger.info("Deleted batch of ExecutedRules", {
+      deletedCount: count,
+      total: deletedTotal,
+    });
+
+    // Small delay to prevent database overload (optional)
+    await sleep(100);
+  }
+
+  return deletedTotal;
+}

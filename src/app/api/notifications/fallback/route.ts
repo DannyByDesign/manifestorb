@@ -1,7 +1,7 @@
 
 import { NextResponse } from "next/server";
 import prisma from "@/server/db/client";
-import { createScopedLogger } from "@/server/utils/logger";
+import { createScopedLogger } from "@/server/lib/logger";
 import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
 
 export const dynamic = 'force-dynamic';
@@ -43,7 +43,7 @@ export const POST = verifySignatureAppRouter(async (req: Request) => {
         if (!notification) return NextResponse.json({ error: "Not found after update??" }, { status: 500 });
 
         // Import Router dynamically
-        const { ChannelRouter } = await import("@/server/channels/router");
+        const { ChannelRouter } = await import("@/features/channels/router");
         const router = new ChannelRouter();
 
         const success = await router.pushMessage(notification.userId, notification.body || notification.title);

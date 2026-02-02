@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { aiFindSnippets } from "@/utils/ai/snippets/find-snippets";
+import { aiFindSnippets } from "@/features/snippets/ai/find-snippets";
 import { getEmail, getEmailAccount } from "@/__tests__/helpers";
 // bun test-ai ai-find-snippets
 

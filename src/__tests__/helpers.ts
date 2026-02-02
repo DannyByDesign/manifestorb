@@ -1,8 +1,8 @@
-import type { EmailAccountWithAI } from "@/utils/llms/types";
-import type { EmailForLLM } from "@/utils/types";
+import type { EmailAccountWithAI } from "@/server/lib/llms/types";
+import type { EmailForLLM } from "@/server/lib/types";
 import { ActionType, LogicalOperator } from "@/generated/prisma/enums";
 import type { Action, Prisma } from "@/generated/prisma/client";
-import { isGoogleProvider } from "@/server/services/email/provider-types";
+import { isGoogleProvider } from "@/features/email/provider-types";
 
 type EmailAccountSelect = {
   id: string;

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/server/auth";
-import { consumeLinkToken } from "@/server/utils/linking";
-import { createScopedLogger } from "@/server/utils/logger";
+import { consumeLinkToken } from "@/server/lib/linking";
+import { createScopedLogger } from "@/server/lib/logger";
 
 const logger = createScopedLogger("API/Surfaces/Link");
 

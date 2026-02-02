@@ -1,7 +1,7 @@
-import { chatCompletionStream } from "@/server/utils/llms";
-import type { EmailAccountWithAI } from "@/server/utils/llms/types";
-import { expire } from "@/utils/redis";
-import { saveSummary } from "@/utils/redis/summary";
+import { chatCompletionStream } from "@/server/lib/llms";
+import type { EmailAccountWithAI } from "@/server/lib/llms/types";
+import { expire } from "@/server/lib/redis";
+import { saveSummary } from "@/server/lib/redis/summary";
 
 export async function summarise({
   text,

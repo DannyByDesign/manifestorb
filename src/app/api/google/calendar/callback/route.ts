@@ -1,6 +1,6 @@
-import { withError } from "@/server/utils/middleware";
-import { handleCalendarCallback } from "@/utils/calendar/handle-calendar-callback";
-import { createGoogleCalendarProvider } from "@/utils/calendar/providers/google";
+import { withError } from "@/server/lib/middleware";
+import { handleCalendarCallback } from "@/features/calendar/handle-calendar-callback";
+import { createGoogleCalendarProvider } from "@/features/calendar/providers/google";
 
 export const GET = withError("google/calendar/callback", async (request) => {
   return handleCalendarCallback(

@@ -1,9 +1,9 @@
 
 import { NextRequest, NextResponse } from "next/server";
-import { ApprovalService } from "@/server/approvals/service";
+import { ApprovalService } from "@/features/approvals/service";
 import prisma from "@/server/db/client";
 import { auth } from "@/server/auth";
-import { createScopedLogger } from "@/server/utils/logger";
+import { createScopedLogger } from "@/server/lib/logger";
 
 const logger = createScopedLogger("approvals/deny");
 
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
         });
 
         if (request && request.user && request.user.emailAccounts[0]) {
-            const { ChannelRouter } = await import("@/server/channels/router");
+            const { ChannelRouter } = await import("@/features/channels/router");
             const router = new ChannelRouter();
             const emailAccount = request.user.emailAccounts[0];
             const payload = request.requestPayload as { tool: string };
@@ -73,8 +73,8 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
             let userMessage = "I've cancelled that request.";
 
             try {
-                const { createGenerateText } = await import("@/server/utils/llms");
-                const { getModel } = await import("@/server/utils/llms/model");
+                const { createGenerateText } = await import("@/server/lib/llms");
+                const { getModel } = await import("@/server/lib/llms/model");
 
                 const modelOptions = getModel(
                     request.user as any,

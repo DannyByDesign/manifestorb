@@ -1,10 +1,10 @@
 
 import { type NextRequest, NextResponse } from "next/server";
-import { executeScheduledAction } from "@/server/utils/scheduled-actions/executor";
-import { createScopedLogger } from "@/server/utils/logger";
-import { hasCronSecret } from "@/server/utils/cron";
+import { executeScheduledAction } from "@/features/scheduled/executor";
+import { createScopedLogger } from "@/server/lib/logger";
+import { hasCronSecret } from "@/server/lib/cron";
 import prisma from "@/server/db/client";
-import { createEmailProvider } from "@/server/services/email/provider";
+import { createEmailProvider } from "@/features/email/provider";
 
 export const maxDuration = 300; // 5 minutes
 

@@ -1,6 +1,6 @@
 import type { Message } from "@microsoft/microsoft-graph-types";
 import type { OutlookClient } from "@/server/integrations/microsoft/client";
-import type { Logger } from "@/server/utils/logger";
+import type { Logger } from "@/server/lib/logger";
 import { isNotFoundError } from "@/server/integrations/microsoft/errors";
 import {
   convertMessage,

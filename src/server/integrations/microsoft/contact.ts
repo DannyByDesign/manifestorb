@@ -1,5 +1,5 @@
 
-import type { Contact } from "@/server/services/email/types";
+import type { Contact } from "@/features/email/types";
 import { getClient } from "./client";
 
 export async function searchContacts(

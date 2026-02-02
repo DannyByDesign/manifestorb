@@ -1,9 +1,9 @@
 import { google } from "googleapis";
 import { getContactsClientWithRefresh } from "./client";
-import type { Contact } from "@/server/services/email/types";
-import { getEmailAccountWithAiAndTokens } from "@/server/utils/user/get";
-import { SafeError } from "@/server/utils/error";
-import { createScopedLogger } from "@/server/utils/logger";
+import type { Contact } from "@/features/email/types";
+import { getEmailAccountWithAiAndTokens } from "@/server/lib/user/get";
+import { SafeError } from "@/server/lib/error";
+import { createScopedLogger } from "@/server/lib/logger";
 
 export async function searchGoogleContacts(
     emailAccountId: string,

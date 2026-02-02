@@ -1,8 +1,8 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { describe, expect, test, vi, beforeEach } from "vitest";
-import { mcpAgent } from "@/utils/ai/mcp/mcp-agent";
-import type { EmailAccountWithAI } from "@/utils/llms/types";
+import { mcpAgent } from "@/features/mcp/ai/mcp-agent";
+import type { EmailAccountWithAI } from "@/server/lib/llms/types";
 import { getEmailAccount, getEmail } from "@/__tests__/helpers";
 
 // Run with: bun test-ai ai-mcp-agent
@@ -10,7 +10,7 @@ import { getEmailAccount, getEmail } from "@/__tests__/helpers";
 vi.mock("server-only", () => ({}));
 
 // Mock the MCP tools creation to return actual tools for testing
-vi.mock("@/utils/ai/mcp/mcp-tools", () => ({
+vi.mock("@/features/mcp/ai/mcp-tools", () => ({
   createMcpToolsForAgent: vi.fn(),
 }));
 
@@ -280,7 +280,7 @@ The requested page "${id}" could not be found or you don't have access to it.`;
 
         // Mock MCP tools to return HubSpot tools
         const { createMcpToolsForAgent } = await import(
-          "@/utils/ai/mcp/mcp-tools"
+          "@/features/mcp/ai/mcp-tools"
         );
         vi.mocked(createMcpToolsForAgent).mockResolvedValue({
           tools: getMockHubSpotTools(),
@@ -320,7 +320,7 @@ The requested page "${id}" could not be found or you don't have access to it.`;
 
         // Mock MCP tools to return Notion tools
         const { createMcpToolsForAgent } = await import(
-          "@/utils/ai/mcp/mcp-tools"
+          "@/features/mcp/ai/mcp-tools"
         );
         vi.mocked(createMcpToolsForAgent).mockResolvedValue({
           tools: getMockNotionTools(),
@@ -363,7 +363,7 @@ The requested page "${id}" could not be found or you don't have access to it.`;
 
         // Mock MCP tools to return both HubSpot and Notion tools
         const { createMcpToolsForAgent } = await import(
-          "@/utils/ai/mcp/mcp-tools"
+          "@/features/mcp/ai/mcp-tools"
         );
         vi.mocked(createMcpToolsForAgent).mockResolvedValue({
           tools: {
@@ -407,7 +407,7 @@ The requested page "${id}" could not be found or you don't have access to it.`;
 
         // Mock MCP tools to return empty object (no tools available)
         const { createMcpToolsForAgent } = await import(
-          "@/utils/ai/mcp/mcp-tools"
+          "@/features/mcp/ai/mcp-tools"
         );
         vi.mocked(createMcpToolsForAgent).mockResolvedValue({
           tools: {},

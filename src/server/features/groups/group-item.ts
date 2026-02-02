@@ -1,0 +1,33 @@
+import prisma from "@/server/db/client";
+import { isDuplicateError } from "@/server/db/client-helpers";
+import type { GroupItemType } from "@/generated/prisma/enums";
+import { captureException } from "@/server/lib/error";
+
+export async function addGroupItem(data: {
+  groupId: string;
+  type: GroupItemType;
+  value: string;
+  exclude?: boolean;
+}) {
+  try {
+    return await prisma.groupItem.create({ data });
+  } catch (error) {
+    if (isDuplicateError(error)) {
+      captureException(error, { extra: { items: data } });
+    } else {
+      throw error;
+    }
+  }
+}
+
+export async function deleteGroupItem({
+  id,
+  emailAccountId,
+}: {
+  id: string;
+  emailAccountId: string;
+}) {
+  await prisma.groupItem.delete({
+    where: { id, group: { emailAccountId } },
+  });
+}

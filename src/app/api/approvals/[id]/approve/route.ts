@@ -1,8 +1,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
-import { ApprovalService } from "@/server/approvals/service";
+import { ApprovalService } from "@/features/approvals/service";
 import prisma from "@/server/db/client";
-import { createScopedLogger } from "@/server/utils/logger";
+import { createScopedLogger } from "@/server/lib/logger";
 import { auth } from "@/server/auth";
 
 const logger = createScopedLogger("approvals/approve");
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
             const { tool: toolName, args } = payload;
 
             // Instantiate Tools
-            const { createAgentTools } = await import("@/server/integrations/ai/tools");
+            const { createAgentTools } = await import("@/features/ai/tools");
             // Logger already initialized globally as 'logger'
 
             // We use a logger specific to this execution if needed, but the global one is fine.
@@ -106,14 +106,14 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
                 logger.info(`[Approval] Tool execution success:`, { executionResult });
 
                 // Notify ChannelRouter of success (Push Notification)
-                const { ChannelRouter } = await import("@/server/channels/router");
+                const { ChannelRouter } = await import("@/features/channels/router");
                 const router = new ChannelRouter();
 
                 let userMessage = "I've completed the request.";
 
                 try {
-                    const { createGenerateText } = await import("@/server/utils/llms");
-                    const { getModel } = await import("@/server/utils/llms/model");
+                    const { createGenerateText } = await import("@/server/lib/llms");
+                    const { getModel } = await import("@/server/lib/llms/model");
 
                     const modelOptions = getModel(
                         request.user as any, // Generated type compatibility

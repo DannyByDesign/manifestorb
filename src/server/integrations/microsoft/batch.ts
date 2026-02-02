@@ -1,10 +1,10 @@
-import type { Logger } from "@/server/utils/logger";
+import type { Logger } from "@/server/lib/logger";
 import type { OutlookClient } from "@/server/integrations/microsoft/client";
 import { escapeODataString } from "@/server/integrations/microsoft/odata-escape";
 import {
   publishBulkActionToTinybird,
   updateEmailMessagesForSender,
-} from "@/server/services/email/bulk-action-tracking";
+} from "@/features/email/bulk-action-tracking";
 
 const GRAPH_JSON_BATCH_LIMIT = 20; // Microsoft Graph JSON batching limit
 

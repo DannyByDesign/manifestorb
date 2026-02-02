@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import { type NextRequest } from "next/server";
 import { ensureEmailAccountsWatched } from "@/server/integrations/google/watch-manager";
-import { createScopedLogger } from "@/server/utils/logger";
+import { createScopedLogger } from "@/server/lib/logger";
 import { env } from "@/env";
 
 // Maximum duration for Vercel/Next.js functions

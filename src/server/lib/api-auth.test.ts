@@ -1,0 +1,167 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import {
+  validateApiKey,
+  getUserFromApiKey,
+  validateApiKeyAndGetEmailProvider,
+} from "./api-auth";
+import prisma from "@/server/lib/__mocks__/prisma";
+import { hashApiKey } from "@/server/lib/api-key";
+import { SafeError } from "@/server/lib/error";
+import type { NextRequest } from "next/server";
+const mockRequest = (apiKey: string | null) => ({
+  headers: {
+    get: vi.fn().mockReturnValue(apiKey),
+  },
+  logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn(), trace: vi.fn(), with: vi.fn().mockReturnThis() },
+} as any);
+
+// Mock dependencies
+vi.mock("@/server/db/client");
+vi.mock("@/server/lib/api-key");
+vi.mock("@/server/integrations/google/client");
+vi.mock("server-only", () => ({}));
+
+// Create a type that matches what our test expects to be returned from prisma.apiKey.findUnique
+type MockApiKeyResult = {
+  user: {
+    id: string;
+    accounts: Array<any>;
+  };
+  isActive: boolean;
+};
+
+describe("api-auth", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe("validateApiKey", () => {
+    it("should throw an error if API key is missing", async () => {
+      // Create a mock request with no API key
+      const request = mockRequest(null);
+
+      await expect(validateApiKey(request)).rejects.toThrow(SafeError);
+      await expect(validateApiKey(request)).rejects.toThrow("Missing API key");
+    });
+
+    it("should throw an error if API key is invalid", async () => {
+      // Create a mock request with an API key
+      const request = mockRequest("test-api-key");
+
+      // Mock getUserFromApiKey to return null (invalid API key)
+      vi.mocked(hashApiKey).mockReturnValue("hashed-key");
+      prisma.apiKey.findUnique.mockResolvedValue(null);
+
+      await expect(validateApiKey(request)).rejects.toThrow(SafeError);
+      await expect(validateApiKey(request)).rejects.toThrow("Invalid API key");
+    });
+
+    it("should return user if API key is valid", async () => {
+      // Create a mock request with a valid API key
+      const request = mockRequest("valid-api-key");
+
+      // Mock getUserFromApiKey to return a user
+      const mockUser = {
+        id: "user-id",
+        accounts: [],
+      };
+
+      vi.mocked(hashApiKey).mockReturnValue("hashed-key");
+      (prisma.apiKey.findUnique as any).mockResolvedValue({
+        user: mockUser,
+        isActive: true,
+      } as MockApiKeyResult);
+
+      const result = await validateApiKey(request);
+      expect(result).toEqual({ user: mockUser });
+    });
+  });
+
+  describe("getUserFromApiKey", () => {
+    it("should return null if API key is not found", async () => {
+      vi.mocked(hashApiKey).mockReturnValue("hashed-key");
+      prisma.apiKey.findUnique.mockResolvedValue(null);
+
+      const result = await getUserFromApiKey("invalid-key");
+      expect(result).toBeNull();
+    });
+
+    it("should return user if API key is valid", async () => {
+      const mockUser = {
+        id: "user-id",
+        accounts: [],
+      };
+
+      vi.mocked(hashApiKey).mockReturnValue("hashed-key");
+      (prisma.apiKey.findUnique as any).mockResolvedValue({
+        user: mockUser,
+        isActive: true,
+      } as MockApiKeyResult);
+
+      const result = await getUserFromApiKey("valid-key");
+      expect(result).toEqual(mockUser);
+    });
+  });
+
+  describe("validateApiKeyAndGetGmailClient", () => {
+    it("should throw an error if API key is invalid", async () => {
+      const request = mockRequest(null);
+
+      await expect(validateApiKeyAndGetEmailProvider(request)).rejects.toThrow(
+        SafeError,
+      );
+      await expect(validateApiKeyAndGetEmailProvider(request)).rejects.toThrow(
+        "Missing API key",
+      );
+    });
+
+    it("should throw an error if user has no Google account", async () => {
+      const request = mockRequest("valid-api-key");
+
+      const mockUser = {
+        id: "user-id",
+        accounts: [], // Empty accounts array
+      };
+
+      vi.mocked(hashApiKey).mockReturnValue("hashed-key");
+      (prisma.apiKey.findUnique as any).mockResolvedValue({
+        user: mockUser,
+        isActive: true,
+      } as MockApiKeyResult);
+
+      await expect(validateApiKeyAndGetEmailProvider(request)).rejects.toThrow(
+        SafeError,
+      );
+      await expect(validateApiKeyAndGetEmailProvider(request)).rejects.toThrow(
+        "Missing account",
+      );
+    });
+
+    it("should throw an error if account is missing tokens", async () => {
+      const request = mockRequest("valid-api-key");
+
+      const mockUser = {
+        id: "user-id",
+        accounts: [
+          {
+            // Missing tokens
+            providerAccountId: "google-account-id",
+          },
+        ],
+      };
+
+      vi.mocked(hashApiKey).mockReturnValue("hashed-key");
+      (prisma.apiKey.findUnique as any).mockResolvedValue({
+        user: mockUser,
+        isActive: true,
+      } as MockApiKeyResult);
+
+      await expect(validateApiKeyAndGetEmailProvider(request)).rejects.toThrow(
+        SafeError,
+      );
+      await expect(validateApiKeyAndGetEmailProvider(request)).rejects.toThrow(
+        "Missing access token",
+      );
+    });
+  });
+});

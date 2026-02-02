@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import type { gmail_v1 } from "@googleapis/gmail";
-import { aiGenerateGroupItems } from "@/utils/ai/group/create-group";
+import { aiGenerateGroupItems } from "@/features/groups/ai/create-group";
 import { queryBatchMessages } from "@/server/integrations/google/message";
-import type { ParsedMessage } from "@/utils/types";
+import type { ParsedMessage } from "@/server/lib/types";
 import { getEmailAccount } from "@/__tests__/helpers";
 
 // bun test-ai ai-create-group

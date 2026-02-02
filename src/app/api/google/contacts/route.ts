@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { NextResponse } from "next/server";
-import { withEmailAccount } from "@/server/utils/middleware";
+import { withEmailAccount } from "@/server/lib/middleware";
 import { searchGoogleContacts } from "@/server/integrations/google/contact";
 import { env } from "@/env";
 

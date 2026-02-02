@@ -1,9 +1,9 @@
 import { describe, expect, test, vi } from "vitest";
-import type { ParsedMessage } from "@/utils/types";
-import { getActionItemsWithAiArgs } from "@/utils/ai/choose-rule/choose-args";
+import type { ParsedMessage } from "@/server/lib/types";
+import { getActionItemsWithAiArgs } from "@/features/rules/ai/choose-args";
 import { getEmailAccount, getAction, getRule } from "@/__tests__/helpers";
 import { ActionType } from "@/generated/prisma/enums";
-import { createScopedLogger } from "@/utils/logger";
+import { createScopedLogger } from "@/server/lib/logger";
 
 // bun test-ai ai-choose-args
 

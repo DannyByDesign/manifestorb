@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { withEmailAccount } from "@/server/utils/middleware";
-import { getCalendarOAuth2Client } from "@/utils/calendar/client";
-import { CALENDAR_STATE_COOKIE_NAME } from "@/utils/calendar/constants";
+import { withEmailAccount } from "@/server/lib/middleware";
+import { getCalendarOAuth2Client } from "@/features/calendar/client";
+import { CALENDAR_STATE_COOKIE_NAME } from "@/features/calendar/constants";
 import { CALENDAR_SCOPES } from "@/server/integrations/google/scopes";
 import {
   generateOAuthState,
   oauthStateCookieOptions,
-} from "@/utils/oauth/state";
+} from "@/server/lib/oauth/state";
 
 export type GetCalendarAuthUrlResponse = { url: string };
 

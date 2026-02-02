@@ -1,6 +1,6 @@
 import { vi } from "vitest";
-import type { EmailProvider } from "@/server/services/email/types";
-import type { ParsedMessage } from "@/utils/types";
+import type { EmailProvider } from "@/features/email/types";
+import type { ParsedMessage } from "@/server/lib/types";
 
 /**
  * Creates a mock ParsedMessage for testing

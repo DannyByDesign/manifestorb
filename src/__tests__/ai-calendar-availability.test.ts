@@ -1,11 +1,11 @@
 /** biome-ignore-all lint/style/noMagicNumbers: test */
 import { describe, expect, test, vi, beforeEach } from "vitest";
-import { aiGetCalendarAvailability } from "@/utils/ai/calendar/availability";
-import type { EmailForLLM } from "@/utils/types";
+import { aiGetCalendarAvailability } from "@/features/calendar/ai/availability";
+import type { EmailForLLM } from "@/server/lib/types";
 import { getEmailAccount } from "@/__tests__/helpers";
 import type { Prisma } from "@/generated/prisma/client";
-import { createScopedLogger } from "@/utils/logger";
-import type { BusyPeriod } from "@/utils/calendar/availability-types";
+import { createScopedLogger } from "@/server/lib/logger";
+import type { BusyPeriod } from "@/features/calendar/availability-types";
 
 const logger = createScopedLogger("test");
 
@@ -31,7 +31,7 @@ type CalendarConnectionWithCalendars = Prisma.CalendarConnectionGetPayload<{
 }>;
 
 // Mock the calendar availability function
-vi.mock("@/utils/calendar/unified-availability", () => ({
+vi.mock("@/features/calendar/unified-availability", () => ({
   getUnifiedCalendarAvailability: vi.fn(),
 }));
 
@@ -155,7 +155,7 @@ describe.runIf(isAiTest)("aiGetCalendarAvailability", () => {
     );
 
     const { getUnifiedCalendarAvailability } = vi.mocked(
-      await import("@/utils/calendar/unified-availability"),
+      await import("@/features/calendar/unified-availability"),
     );
     getUnifiedCalendarAvailability.mockResolvedValue(getMockBusyPeriods());
   });
@@ -267,7 +267,7 @@ describe.runIf(isAiTest)("aiGetCalendarAvailability", () => {
     async () => {
       // Mock busy periods that conflict with requested times
       const { getUnifiedCalendarAvailability } = vi.mocked(
-        await import("@/utils/calendar/unified-availability"),
+        await import("@/features/calendar/unified-availability"),
       );
       getUnifiedCalendarAvailability.mockResolvedValue([
         {
@@ -444,7 +444,7 @@ describe.runIf(isAiTest)("aiGetCalendarAvailability", () => {
 
       // Verify that getUnifiedCalendarAvailability was called with the correct timezone
       const { getUnifiedCalendarAvailability } = vi.mocked(
-        await import("@/utils/calendar/unified-availability"),
+        await import("@/features/calendar/unified-availability"),
       );
       expect(getUnifiedCalendarAvailability).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -489,7 +489,7 @@ describe.runIf(isAiTest)("aiGetCalendarAvailability", () => {
 
       // Verify that getUnifiedCalendarAvailability was called with the correct timezone
       const { getUnifiedCalendarAvailability } = vi.mocked(
-        await import("@/utils/calendar/unified-availability"),
+        await import("@/features/calendar/unified-availability"),
       );
       expect(getUnifiedCalendarAvailability).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -540,7 +540,7 @@ describe.runIf(isAiTest)("aiGetCalendarAvailability", () => {
 
       // Verify that getUnifiedCalendarAvailability was called with UTC timezone
       const { getUnifiedCalendarAvailability } = vi.mocked(
-        await import("@/utils/calendar/unified-availability"),
+        await import("@/features/calendar/unified-availability"),
       );
       expect(getUnifiedCalendarAvailability).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -605,7 +605,7 @@ describe.runIf(isAiTest)("aiGetCalendarAvailability", () => {
 
       // Verify that getUnifiedCalendarAvailability was called with the primary calendar's timezone
       const { getUnifiedCalendarAvailability } = vi.mocked(
-        await import("@/utils/calendar/unified-availability"),
+        await import("@/features/calendar/unified-availability"),
       );
       expect(getUnifiedCalendarAvailability).toHaveBeenCalledWith(
         expect.objectContaining({

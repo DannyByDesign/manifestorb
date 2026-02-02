@@ -3,18 +3,18 @@ import type { OutlookClient } from "@/server/integrations/microsoft/client";
 import type { Attachment } from "nodemailer/lib/mailer";
 import type { SendEmailBody } from "@/server/integrations/google/mail";
 import type { ParsedMessage } from "@/server/types";
-import type { EmailForAction } from "@/utils/ai/types";
+import type { EmailForAction } from "@/features/ai/types";
 import { createOutlookReplyContent } from "@/server/integrations/microsoft/reply";
-import { escapeHtml } from "@/server/utils/string";
+import { escapeHtml } from "@/server/lib/string";
 import { forwardEmailHtml, forwardEmailSubject } from "@/server/integrations/google/forward";
 import {
   buildReplyAllRecipients,
   mergeAndDedupeRecipients,
-} from "@/server/services/email/reply-all";
+} from "@/features/email/reply-all";
 import { withOutlookRetry } from "@/server/integrations/microsoft/retry";
-import { extractEmailAddress, extractNameFromEmail } from "@/utils/email";
-import { ensureEmailSendingEnabled } from "@/utils/mail";
-import type { Logger } from "@/server/utils/logger";
+import { extractEmailAddress, extractNameFromEmail } from "@/server/lib/email";
+import { ensureEmailSendingEnabled } from "@/server/lib/mail";
+import type { Logger } from "@/server/lib/logger";
 
 interface OutlookMessageRequest {
   subject: string;

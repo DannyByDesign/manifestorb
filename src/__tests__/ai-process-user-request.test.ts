@@ -1,12 +1,12 @@
 import { describe, expect, test, vi } from "vitest";
 import stripIndent from "strip-indent";
-import { processUserRequest } from "@/utils/ai/assistant/process-user-request";
-import type { ParsedMessage, ParsedMessageHeaders } from "@/utils/types";
+import { processUserRequest } from "@/features/web-chat/ai/process-user-request";
+import type { ParsedMessage, ParsedMessageHeaders } from "@/server/lib/types";
 import type { GroupItem, Prisma } from "@/generated/prisma/client";
 import { GroupItemType, LogicalOperator } from "@/generated/prisma/enums";
 import { getEmailAccount } from "@/__tests__/helpers";
-import { createScopedLogger } from "@/utils/logger";
-import type { RuleWithRelations } from "@/utils/rule/types";
+import { createScopedLogger } from "@/server/lib/logger";
+import type { RuleWithRelations } from "@/features/rules/types";
 
 // bun test-ai ai-process-user-request
 
@@ -16,7 +16,7 @@ const logger: ReturnType<typeof createScopedLogger> =
 const isAiTest = process.env.RUN_AI_TESTS === "true";
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/utils/gmail/mail", () => ({ replyToEmail: vi.fn() }));
+vi.mock("@/server/lib/gmail/mail", () => ({ replyToEmail: vi.fn() }));
 
 describe(
   "processUserRequest",

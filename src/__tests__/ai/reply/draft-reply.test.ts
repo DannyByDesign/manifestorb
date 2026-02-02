@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
-import { aiDraftReply } from "@/utils/ai/reply/draft-reply";
-import type { EmailForLLM } from "@/utils/types";
+import { aiDraftReply } from "@/features/reply-tracker/ai/draft-reply";
+import type { EmailForLLM } from "@/server/lib/types";
 import { getEmailAccount } from "@/__tests__/helpers";
 
 const TIMEOUT = 60_000;

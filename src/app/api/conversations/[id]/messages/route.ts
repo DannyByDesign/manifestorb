@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/server/db/client";
 import { auth } from "@/server/auth";
 import { z } from "zod";
-import { createScopedLogger } from "@/server/utils/logger";
+import { createScopedLogger } from "@/server/lib/logger";
 
 const logger = createScopedLogger("api/conversations/messages");
 

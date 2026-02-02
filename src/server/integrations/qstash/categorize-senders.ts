@@ -1,12 +1,12 @@
 import chunk from "lodash/chunk";
 import { deleteQueue, listQueues, publishToQstashQueue } from "@/server/integrations/qstash";
-import { getInternalApiUrl } from "@/server/utils/internal-api";
+import { getInternalApiUrl } from "@/server/lib/internal-api";
 // import type { AiCategorizeSenders } from "@/app/api/user/categorize/senders/batch/handle-batch-validation";
 type AiCategorizeSenders = {
   emailAccountId: string;
   senders: string[];
 };
-import { createScopedLogger } from "@/server/utils/logger";
+import { createScopedLogger } from "@/server/lib/logger";
 
 const logger = createScopedLogger("upstash");
 

@@ -1,7 +1,7 @@
 import { describe, expect, test, vi, beforeEach } from "vitest";
-import { aiSummarizeEmailForDigest } from "@/utils/ai/digest/summarize-email-for-digest";
-import type { EmailAccountWithAI } from "@/utils/llms/types";
-import type { EmailForLLM } from "@/utils/types";
+import { aiSummarizeEmailForDigest } from "@/features/digest/ai/summarize-email-for-digest";
+import type { EmailAccountWithAI } from "@/server/lib/llms/types";
+import type { EmailForLLM } from "@/server/lib/types";
 
 const TIMEOUT = 15_000;
 

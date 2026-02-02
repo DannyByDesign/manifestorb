@@ -4,7 +4,7 @@ import MailComposer from "nodemailer/lib/mail-composer";
 import type Mail from "nodemailer/lib/mailer";
 import type { Attachment } from "nodemailer/lib/mailer";
 import { zodAttachment } from "@/server/types/mail";
-import { convertEmailHtmlToText } from "@/utils/mail";
+import { convertEmailHtmlToText } from "@/server/lib/mail";
 import {
   forwardEmailHtml,
   forwardEmailSubject,
@@ -12,17 +12,17 @@ import {
 } from "@/server/integrations/google/forward";
 import type { ParsedMessage } from "@/server/types";
 import { createReplyContent } from "@/server/integrations/google/reply";
-import type { EmailForAction } from "@/server/integrations/ai/types";
-import { createScopedLogger } from "@/server/utils/logger";
+import type { EmailForAction } from "@/features/ai/types";
+import { createScopedLogger } from "@/server/lib/logger";
 import { withGmailRetry } from "@/server/integrations/google/retry";
 import {
   buildReplyAllRecipients,
   formatCcList,
   mergeAndDedupeRecipients,
-} from "@/server/services/email/reply-all";
-import { formatReplySubject } from "@/server/services/email/subject";
-import { buildThreadingHeaders } from "@/server/services/email/threading";
-import { ensureEmailSendingEnabled } from "@/utils/mail";
+} from "@/features/email/reply-all";
+import { formatReplySubject } from "@/features/email/subject";
+import { buildThreadingHeaders } from "@/features/email/threading";
+import { ensureEmailSendingEnabled } from "@/server/lib/mail";
 
 const logger = createScopedLogger("gmail/mail");
 

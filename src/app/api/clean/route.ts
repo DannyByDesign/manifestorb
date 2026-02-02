@@ -1,29 +1,29 @@
 import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
 import { z } from "zod";
 import { NextResponse } from "next/server";
-import { withError, type RequestWithLogger } from "@/server/utils/middleware";
+import { withError, type RequestWithLogger } from "@/server/lib/middleware";
 import { publishToQstash } from "@/server/integrations/qstash";
 import { getThreadMessages } from "@/server/integrations/google/thread";
 import { getGmailClientWithRefresh } from "@/server/integrations/google/client";
 import type { CleanGmailBody } from "@/app/api/clean/gmail/route";
-import { SafeError } from "@/server/utils/error";
-import type { Logger } from "@/server/utils/logger";
-import { aiClean } from "@/server/integrations/ai/clean/ai-clean";
-import { getEmailForLLM } from "@/server/utils/get-email-from-message";
+import { SafeError } from "@/server/lib/error";
+import type { Logger } from "@/server/lib/logger";
+import { aiClean } from "@/features/clean/ai/ai-clean";
+import { getEmailForLLM } from "@/server/lib/get-email-from-message";
 import {
   getEmailAccountWithAiAndTokens,
   getUserPremium,
-} from "@/utils/user/get";
-import { findUnsubscribeLink } from "@/utils/parse/parseHtml.server";
-import { getCalendarEventStatus } from "@/utils/parse/calender-event";
+} from "@/server/lib/user/get";
+import { findUnsubscribeLink } from "@/server/lib/parse/parseHtml.server";
+import { getCalendarEventStatus } from "@/server/lib/parse/calender-event";
 import { GmailLabel } from "@/server/integrations/google/label";
-import { isNewsletterSender } from "@/server/integrations/ai/group/find-newsletters";
-import { isMaybeReceipt, isReceipt } from "@/server/integrations/ai/group/find-receipts";
-import { saveThread, updateThread } from "@/utils/redis/clean";
-import { internalDateToDate } from "@/server/utils/date";
+import { isNewsletterSender } from "@/features/groups/ai/find-newsletters";
+import { isMaybeReceipt, isReceipt } from "@/features/groups/ai/find-receipts";
+import { saveThread, updateThread } from "@/server/lib/redis/clean";
+import { internalDateToDate } from "@/server/lib/date";
 import { CleanAction } from "@/generated/prisma/enums";
 import type { ParsedMessage } from "@/server/types";
-import { isActivePremium } from "@/server/utils/premium";
+import { isActivePremium } from "@/features/premium";
 
 const cleanThreadBody = z.object({
   emailAccountId: z.string(),

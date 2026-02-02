@@ -1,6 +1,6 @@
 
 import { encryptToken, decryptToken } from "../src/server/db/encryption";
-import { createScopedLogger } from "../src/server/utils/logger";
+import { createScopedLogger } from "../src/server/lib/logger";
 import { env } from "../src/env";
 
 const logger = createScopedLogger("sanity-check");

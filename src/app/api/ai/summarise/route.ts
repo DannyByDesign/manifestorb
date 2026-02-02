@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { summarise } from "@/app/api/ai/summarise/controller";
-import { withEmailAccount } from "@/server/utils/middleware";
+import { withEmailAccount } from "@/server/lib/middleware";
 import { summariseBody } from "@/app/api/ai/summarise/validation";
-import { getSummary } from "@/utils/redis/summary";
-import { emailToContent } from "@/utils/mail";
-import { getEmailAccountWithAi } from "@/utils/user/get";
+import { getSummary } from "@/server/lib/redis/summary";
+import { emailToContent } from "@/server/lib/mail";
+import { getEmailAccountWithAi } from "@/server/lib/user/get";
 
 export const POST = withEmailAccount(async (request) => {
   const emailAccountId = request.auth.emailAccountId;

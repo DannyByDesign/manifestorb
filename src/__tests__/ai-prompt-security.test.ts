@@ -1,5 +1,5 @@
 import { describe, expect, test, vi, beforeEach } from "vitest";
-import { aiChooseRule } from "@/utils/ai/choose-rule/ai-choose-rule";
+import { aiChooseRule } from "@/features/rules/ai/ai-choose-rule";
 import { getEmailAccount, getEmail, getRule } from "./helpers";
 
 // Run with: bun test-ai ai-prompt-security

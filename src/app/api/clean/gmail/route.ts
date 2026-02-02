@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server";
 import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
 import { z } from "zod";
-import { withError, type RequestWithLogger } from "@/server/utils/middleware";
+import { withError, type RequestWithLogger } from "@/server/lib/middleware";
 import { getGmailClientWithRefresh } from "@/server/integrations/google/client";
 import { GmailLabel, labelThread } from "@/server/integrations/google/label";
-import { SafeError } from "@/server/utils/error";
+import { SafeError } from "@/server/lib/error";
 import prisma from "@/server/db/client";
 import { isDefined } from "@/server/types";
-import type { Logger } from "@/server/utils/logger";
+import type { Logger } from "@/server/lib/logger";
 import { CleanAction } from "@/generated/prisma/enums";
-import { updateThread } from "@/utils/redis/clean";
+import { updateThread } from "@/server/lib/redis/clean";
 
 const cleanGmailSchema = z.object({
   emailAccountId: z.string(),

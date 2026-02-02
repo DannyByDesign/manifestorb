@@ -4,14 +4,14 @@ import { getBatch } from "@/server/integrations/google/batch";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/server/integrations/google/batch");
-vi.mock("@/server/utils/logger", () => ({
+vi.mock("@/server/lib/logger", () => ({
   createScopedLogger: () => ({
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
   }),
 }));
-vi.mock("@/server/utils/sleep", () => ({
+vi.mock("@/server/lib/sleep", () => ({
   sleep: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("gmail-api-parse-message", () => ({

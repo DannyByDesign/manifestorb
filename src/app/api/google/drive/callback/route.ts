@@ -1,6 +1,6 @@
-import { withError } from "@/server/utils/middleware";
-import { handleDriveCallback } from "@/utils/drive/handle-drive-callback";
-import { exchangeGoogleDriveCode } from "@/utils/drive/client";
+import { withError } from "@/server/lib/middleware";
+import { handleDriveCallback } from "@/features/drive/handle-drive-callback";
+import { exchangeGoogleDriveCode } from "@/features/drive/client";
 
 export const GET = withError("google/drive/callback", async (request) => {
   return handleDriveCallback(

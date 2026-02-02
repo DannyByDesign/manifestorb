@@ -1,11 +1,11 @@
 import type { gmail_v1 } from "@googleapis/gmail";
 import type { ProcessHistoryOptions } from "@/app/api/google/webhook/types";
 import { HistoryEventType } from "@/app/api/google/webhook/types";
-import { createEmailProvider } from "@/server/services/email/provider";
+import { createEmailProvider } from "@/features/email/provider";
 import { handleLabelRemovedEvent } from "@/app/api/google/webhook/process-label-removed-event";
-import { processHistoryItem as processHistoryItemShared } from "@/utils/webhook/process-history-item";
-import { markMessageAsProcessing } from "@/utils/redis/message-processing";
-import type { Logger } from "@/server/utils/logger";
+import { processHistoryItem as processHistoryItemShared } from "@/features/webhooks/process-history-item";
+import { markMessageAsProcessing } from "@/server/lib/redis/message-processing";
+import type { Logger } from "@/server/lib/logger";
 
 export async function processHistoryItem(
   historyItem: {

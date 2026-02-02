@@ -28,12 +28,10 @@
       "zod/v4": ["./node_modules/zod"],
 
       "@/server/*": ["./src/server/*"],
-      "@/db/*": ["./src/server/db/*"],
       "@/integrations/*": ["./src/server/integrations/*"],
-      "@/services/*": ["./src/server/services/*"],
-      "@/utils/email/*": ["./src/server/services/email/*"],
-      "@/utils/*": ["./src/server/utils/*"],
-      "@/utils": ["./src/server/utils/index.ts"],
+      
+      "@/features/*": ["./src/server/features/*"],
+      "@/actions/*": ["./src/server/actions/*"],
       "@/types/*": ["./src/server/types/*"],
 
       "@/components/*": ["./src/components/*"],
@@ -45,9 +43,6 @@
       "@/__tests__/*": ["./src/__tests__/*"],
       "@amodel/*": ["./src/server/packages/*"],
       "@/generated/*": ["./generated/*"],
-
-      "@/backend/*": ["./src/server/*"],
-      "@/ee/*": ["./src/enterprise/*"],
 
       "@/*": ["./src/*"]
     }

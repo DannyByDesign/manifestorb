@@ -1,6 +1,6 @@
 import Stripe from "stripe";
 import { env } from "@/env";
-import type { Logger } from "@/utils/logger";
+import type { Logger } from "@/server/lib/logger";
 
 let stripe: Stripe | null = null;
 

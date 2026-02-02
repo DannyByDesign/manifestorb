@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { aiCollectReplyContext } from "@/utils/ai/reply/reply-context-collector";
-import type { EmailForLLM, ParsedMessage } from "@/utils/types";
-import type { EmailProvider } from "@/server/services/email/types";
+import { aiCollectReplyContext } from "@/features/reply-tracker/ai/reply-context-collector";
+import type { EmailForLLM, ParsedMessage } from "@/server/lib/types";
+import type { EmailProvider } from "@/features/email/types";
 import { getEmailAccount } from "@/__tests__/helpers";
 
 // Run with: bun test-ai reply-context-collector

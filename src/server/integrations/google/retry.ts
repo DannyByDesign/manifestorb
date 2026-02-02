@@ -1,7 +1,7 @@
 import pRetry from "p-retry";
-import { createScopedLogger } from "@/server/utils/logger";
-import { sleep } from "@/server/utils/sleep";
-import { isFetchError } from "@/utils/retry/is-fetch-error";
+import { createScopedLogger } from "@/server/lib/logger";
+import { sleep } from "@/server/lib/sleep";
+import { isFetchError } from "@/server/lib/retry/is-fetch-error";
 
 const logger = createScopedLogger("gmail-retry");
 

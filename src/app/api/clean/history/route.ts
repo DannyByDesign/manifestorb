@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/server/db/client";
-import { withEmailAccount } from "@/server/utils/middleware";
+import { withEmailAccount } from "@/server/lib/middleware";
 
 export type CleanHistoryResponse = Awaited<ReturnType<typeof getCleanHistory>>;
 

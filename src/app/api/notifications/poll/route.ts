@@ -1,8 +1,8 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 import prisma from "@/server/db/client";
-import { auth } from "@/server/utils/auth";
-import { createScopedLogger } from "@/server/utils/logger";
+import { auth } from "@/server/lib/auth";
+import { createScopedLogger } from "@/server/lib/logger";
 
 export const dynamic = 'force-dynamic';
 

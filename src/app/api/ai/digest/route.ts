@@ -2,13 +2,13 @@ import { NextResponse } from "next/server";
 import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
 import { digestBody } from "./validation";
 import { DigestStatus } from "@/generated/prisma/enums";
-import type { Logger } from "@/server/utils/logger";
+import type { Logger } from "@/server/lib/logger";
 import prisma from "@/server/db/client";
-import { aiSummarizeEmailForDigest } from "@/server/integrations/ai/digest/summarize-email-for-digest";
-import { getEmailAccountWithAi } from "@/utils/user/get";
+import { aiSummarizeEmailForDigest } from "@/features/digest/ai/summarize-email-for-digest";
+import { getEmailAccountWithAi } from "@/server/lib/user/get";
 import type { StoredDigestContent } from "@/app/api/resend/digest/validation";
-import { withError } from "@/server/utils/middleware";
-import { isAssistantEmail } from "@/utils/assistant/is-assistant-email";
+import { withError } from "@/server/lib/middleware";
+import { isAssistantEmail } from "@/features/web-chat/is-assistant-email";
 import { env } from "@/env";
 
 export const POST = verifySignatureAppRouter(

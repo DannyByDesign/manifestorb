@@ -5,14 +5,14 @@ import {
   inboxZeroLabels,
   PARENT_LABEL,
   type AmodelLabel,
-} from "@/utils/label";
+} from "@/server/lib/label";
 import {
   labelVisibility,
   messageVisibility,
   type LabelVisibility,
   type MessageVisibility,
 } from "@/server/integrations/google/constants";
-import { createScopedLogger } from "@/server/utils/logger";
+import { createScopedLogger } from "@/server/lib/logger";
 import { extractErrorInfo, withGmailRetry } from "@/server/integrations/google/retry";
 
 const logger = createScopedLogger("gmail/label");

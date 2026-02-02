@@ -1,6 +1,6 @@
 import { formatEmailDate } from "@/server/integrations/google/reply";
 import type { ParsedMessage } from "@/server/types";
-import { escapeHtml } from "@/server/utils/string";
+import { escapeHtml } from "@/server/lib/string";
 
 export const forwardEmailSubject = (subject: string) => {
   return `Fwd: ${subject}`;

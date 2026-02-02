@@ -1,18 +1,18 @@
 import type { gmail_v1 } from "@googleapis/gmail";
 import { GroupItemSource, ActionType } from "@/generated/prisma/enums";
-import { saveLearnedPattern } from "@/utils/rule/learned-patterns";
+import { saveLearnedPattern } from "@/features/rules/learned-patterns";
 import { extractEmailAddress } from "@/server/integrations/google";
-import type { EmailAccountWithAI } from "@/server/utils/llms/types";
-import type { EmailProvider } from "@/server/services/email/types";
+import type { EmailAccountWithAI } from "@/server/lib/llms/types";
+import type { EmailProvider } from "@/features/email/types";
 import { GmailLabel } from "@/server/integrations/google/label";
-import { shouldLearnFromLabelRemoval } from "@/utils/rule/consts";
-import type { Logger } from "@/server/utils/logger";
+import { shouldLearnFromLabelRemoval } from "@/features/rules/consts";
+import type { Logger } from "@/server/lib/logger";
 import prisma from "@/server/db/client";
 import {
   isGmailRateLimitExceededError,
   isGmailQuotaExceededError,
   isGmailInsufficientPermissionsError,
-} from "@/server/utils/error";
+} from "@/server/lib/error";
 
 const SYSTEM_LABELS = [
   GmailLabel.INBOX,

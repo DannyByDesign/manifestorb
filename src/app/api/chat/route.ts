@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/server/auth";
 import prisma from "@/server/db/client";
-import { ConversationService } from "@/server/conversations/service";
-import { PrivacyService } from "@/server/privacy/service";
-import { runOneShotAgent } from "@/server/agent/executor";
+import { ConversationService } from "@/features/conversations/service";
+import { PrivacyService } from "@/features/privacy/service";
+import { runOneShotAgent } from "@/features/surfaces/executor";
 import { z } from "zod";
-import { createScopedLogger } from "@/server/utils/logger";
+import { createScopedLogger } from "@/server/lib/logger";
 
 const logger = createScopedLogger("api/chat");
 
@@ -109,7 +109,7 @@ export async function POST(req: Request) {
         // 6. Trigger Summarization (Fire & Forget)
         (async () => {
             try {
-                const { SummaryService } = await import("@/server/summaries/service");
+                const { SummaryService } = await import("@/features/summaries/service");
                 if (await SummaryService.shouldSummarize(conversation.id)) {
                     await SummaryService.enqueueSummarizeConversation(conversation.id);
                 }

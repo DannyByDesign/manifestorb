@@ -1,5 +1,5 @@
 import { Prisma } from "@/generated/prisma/client";
-import type { Logger } from "@/server/utils/logger";
+import type { Logger } from "@/server/lib/logger";
 
 /**
  * Wraps a Prisma operation with retry logic for specific transient errors.

@@ -3,7 +3,7 @@ import {
   getAccessTokenFromClient,
   getGmailClientWithRefresh,
 } from "@/server/integrations/google/client";
-import { createScopedLogger } from "@/server/utils/logger";
+import { createScopedLogger } from "@/server/lib/logger";
 import prisma from "@/server/db/client";
 
 const logger = createScopedLogger("Gmail Permissions");

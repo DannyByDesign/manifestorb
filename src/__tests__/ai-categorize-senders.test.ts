@@ -2,9 +2,9 @@ import { describe, it, expect, vi } from "vitest";
 import {
   aiCategorizeSenders,
   REQUEST_MORE_INFORMATION_CATEGORY,
-} from "@/utils/ai/categorize-sender/ai-categorize-senders";
-import { defaultCategory } from "@/utils/categories";
-import { aiCategorizeSender } from "@/utils/ai/categorize-sender/ai-categorize-single-sender";
+} from "@/features/categorize/ai/ai-categorize-senders";
+import { defaultCategory } from "@/server/lib/categories";
+import { aiCategorizeSender } from "@/features/categorize/ai/ai-categorize-single-sender";
 import { getEmailAccount } from "@/__tests__/helpers";
 
 // bun test-ai ai-categorize-senders

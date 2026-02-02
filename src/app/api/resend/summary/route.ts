@@ -1,16 +1,16 @@
 import { NextResponse } from "next/server";
 import { subHours } from "date-fns/subHours";
 import { sendSummaryEmail } from "@amodel/resend";
-import { withEmailAccount, withError } from "@/utils/middleware";
+import { withEmailAccount, withError } from "@/server/lib/middleware";
 import { env } from "@/env";
-import { hasCronSecret } from "@/utils/cron";
-import { captureException } from "@/utils/error";
+import { hasCronSecret } from "@/server/lib/cron";
+import { captureException } from "@/server/lib/error";
 import prisma from "@/server/db/client";
 import { SystemType, ThreadTrackerType } from "@/generated/prisma/enums";
-import type { Logger } from "@/utils/logger";
+import type { Logger } from "@/server/lib/logger";
 import { getMessagesBatch } from "@/server/integrations/google/message";
 import { decodeSnippet } from "@/server/integrations/google/decode";
-import { createUnsubscribeToken } from "@/utils/unsubscribe";
+import { createUnsubscribeToken } from "@/server/lib/unsubscribe";
 import { sendSummaryEmailBody } from "./validation";
 
 export const maxDuration = 60;

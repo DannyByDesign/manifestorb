@@ -4,7 +4,7 @@ import {
   startedTrial,
   cancelledPremium,
 } from "@amodel/loops";
-import type { Logger } from "@/utils/logger";
+import type { Logger } from "@/server/lib/logger";
 
 export async function handleLoopsEvents({
   currentPremium,

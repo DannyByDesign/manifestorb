@@ -3,13 +3,13 @@ import { processHistoryItem } from "./process-history-item";
 import { HistoryEventType } from "./types";
 import { NewsletterStatus } from "@/generated/prisma/enums";
 import type { gmail_v1 } from "@googleapis/gmail";
-import { isAssistantEmail } from "@/utils/assistant/is-assistant-email";
-import { markMessageAsProcessing } from "@/utils/redis/message-processing";
+import { isAssistantEmail } from "@/features/web-chat/is-assistant-email";
+import { markMessageAsProcessing } from "@/server/lib/redis/message-processing";
 import { GmailLabel } from "@/server/integrations/google/label";
-import { processAssistantEmail } from "@/utils/assistant/process-assistant-email";
+import { processAssistantEmail } from "@/features/web-chat/process-assistant-email";
 import { getEmailAccount } from "@/__tests__/helpers";
-import { createEmailProvider } from "@/server/services/email/provider";
-import { createScopedLogger } from "@/server/utils/logger";
+import { createEmailProvider } from "@/features/email/provider";
+import { createScopedLogger } from "@/server/lib/logger";
 
 const logger = createScopedLogger("test");
 
@@ -18,7 +18,7 @@ vi.mock("next/server", () => ({
   after: vi.fn((callback) => callback()),
 }));
 vi.mock("@/server/db/client");
-vi.mock("@/utils/redis/message-processing", () => ({
+vi.mock("@/server/lib/redis/message-processing", () => ({
   markMessageAsProcessing: vi.fn().mockResolvedValue(true),
 }));
 
@@ -39,24 +39,24 @@ vi.mock("@/server/integrations/google/thread", () => ({
     },
   ]),
 }));
-vi.mock("@/utils/assistant/is-assistant-email", () => ({
+vi.mock("@/features/web-chat/is-assistant-email", () => ({
   isAssistantEmail: vi.fn().mockReturnValue(false),
 }));
-vi.mock("@/utils/cold-email/is-cold-email", () => ({
+vi.mock("@/features/cold-email/is-cold-email", () => ({
   runColdEmailBlocker: vi
     .fn()
     .mockResolvedValue({ isColdEmail: false, reason: "hasPreviousEmail" }),
 }));
-vi.mock("@/utils/categorize/senders/categorize", () => ({
+vi.mock("@/features/categorize/senders/categorize", () => ({
   categorizeSender: vi.fn(),
 }));
-vi.mock("@/server/integrations/ai/choose-rule/run-rules", () => ({
+vi.mock("@/features/rules/ai/run-rules", () => ({
   runRules: vi.fn(),
 }));
-vi.mock("@/utils/assistant/process-assistant-email", () => ({
+vi.mock("@/features/web-chat/process-assistant-email", () => ({
   processAssistantEmail: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock("@/utils/digest/index", () => ({
+vi.mock("@/features/digest/index", () => ({
   enqueueDigestItem: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@/server/integrations/google/provider", () => ({
@@ -99,7 +99,7 @@ vi.mock("@/server/integrations/google/label", async () => {
   };
 });
 
-vi.mock("@/utils/rule/learned-patterns", () => ({
+vi.mock("@/features/rules/learned-patterns", () => ({
   saveLearnedPatterns: vi.fn().mockResolvedValue(undefined),
 }));
 

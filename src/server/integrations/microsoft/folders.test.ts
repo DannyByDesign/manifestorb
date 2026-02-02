@@ -5,7 +5,7 @@ import {
   getOutlookChildFolders,
 } from "./folders";
 import type { OutlookClient } from "./client";
-import { createScopedLogger } from "@/server/utils/logger";
+import { createScopedLogger } from "@/server/lib/logger";
 
 const logger = createScopedLogger("outlook/folders");
 

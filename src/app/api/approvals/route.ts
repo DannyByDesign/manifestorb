@@ -1,9 +1,9 @@
 
 import { NextRequest, NextResponse } from "next/server";
-import { ApprovalService } from "@/server/approvals/service";
+import { ApprovalService } from "@/features/approvals/service";
 import prisma from "@/server/db/client";
 import { z } from "zod";
-import { createScopedLogger } from "@/server/utils/logger";
+import { createScopedLogger } from "@/server/lib/logger";
 
 const logger = createScopedLogger("api/approvals");
 

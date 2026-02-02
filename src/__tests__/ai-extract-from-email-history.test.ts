@@ -1,7 +1,7 @@
 /** biome-ignore-all lint/style/noMagicNumbers: test */
 import { describe, expect, test, vi, beforeEach } from "vitest";
-import { aiExtractFromEmailHistory } from "@/utils/ai/knowledge/extract-from-email-history";
-import type { EmailForLLM } from "@/utils/types";
+import { aiExtractFromEmailHistory } from "@/features/knowledge/ai/extract-from-email-history";
+import type { EmailForLLM } from "@/server/lib/types";
 import { getEmailAccount } from "@/__tests__/helpers";
 
 // bun test-ai extract-from-email-history

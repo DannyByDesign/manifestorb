@@ -4,11 +4,11 @@ import {
   buildPrompt,
   formatMeetingForContext,
   type BriefingContent,
-} from "@/utils/ai/meeting-briefs/generate-briefing";
-import type { MeetingBriefingData } from "@/utils/meeting-briefs/gather-context";
-import type { CalendarEvent } from "@/utils/calendar/event-types";
+} from "@/features/meeting-briefs/ai/generate-briefing";
+import type { MeetingBriefingData } from "@/features/meeting-briefs/gather-context";
+import type { CalendarEvent } from "@/features/calendar/event-types";
 import { getEmailAccount, getMockMessage } from "@/__tests__/helpers";
-import { createScopedLogger } from "@/utils/logger";
+import { createScopedLogger } from "@/server/lib/logger";
 
 // bun test-ai ai-meeting-briefing
 

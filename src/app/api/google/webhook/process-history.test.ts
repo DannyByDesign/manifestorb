@@ -4,8 +4,8 @@ import { getHistory } from "@/server/integrations/google/history";
 import {
   getWebhookEmailAccount,
   validateWebhookAccount,
-} from "@/utils/webhook/validate-webhook-account";
-import { createScopedLogger } from "@/server/utils/logger";
+} from "@/features/webhooks/validate-webhook-account";
+import { createScopedLogger } from "@/server/lib/logger";
 import prisma from "@/server/db/client";
 
 const logger = createScopedLogger("test");
@@ -22,7 +22,7 @@ vi.mock("@/server/integrations/google/history", () => ({
   getHistory: vi.fn(),
 }));
 
-vi.mock("@/utils/webhook/validate-webhook-account", () => ({
+vi.mock("@/features/webhooks/validate-webhook-account", () => ({
   getWebhookEmailAccount: vi.fn(),
   validateWebhookAccount: vi.fn(),
 }));
@@ -36,7 +36,7 @@ vi.mock("@/server/db/client", () => ({
   },
 }));
 
-vi.mock("@/server/utils/error", () => ({
+vi.mock("@/server/lib/error", () => ({
   captureException: vi.fn(),
 }));
 

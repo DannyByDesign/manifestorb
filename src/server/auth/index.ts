@@ -10,23 +10,23 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { nextCookies } from "better-auth/next-js";
 import { cookies, headers } from "next/headers";
 import { env } from "@/env";
-import { trackDubSignUp } from "@/server/utils/dub";
+import { trackDubSignUp } from "@/server/lib/dub";
 import {
   isGoogleProvider,
   isMicrosoftProvider,
-} from "@/server/services/email/provider-types";
-import { encryptToken } from "@/utils/encryption";
-import { captureException } from "@/server/utils/error";
+} from "@/features/email/provider-types";
+import { encryptToken } from "@/server/lib/encryption";
+import { captureException } from "@/server/lib/error";
 import { getContactsClient as getGoogleContactsClient } from "@/server/integrations/google/client";
 import { SCOPES as GMAIL_SCOPES } from "@/server/integrations/google/scopes";
-import { createScopedLogger } from "@/server/utils/logger";
+import { createScopedLogger } from "@/server/lib/logger";
 import { createOutlookClient } from "@/server/integrations/microsoft/client";
 import { SCOPES as OUTLOOK_SCOPES } from "@/server/integrations/microsoft/scopes";
 import {
   claimPendingPremiumInvite,
   updateAccountSeats,
-} from "@/server/utils/premium/server";
-import { clearSpecificErrorMessages, ErrorType } from "@/server/utils/error-messages";
+} from "@/features/premium/server";
+import { clearSpecificErrorMessages, ErrorType } from "@/server/lib/error-messages";
 import prisma from "@/server/db/client";
 
 const logger = createScopedLogger("auth");
@@ -310,7 +310,7 @@ export async function handleReferralOnSignUp({
     });
 
     // Import the createReferral function
-    const { createReferral } = await import("@/server/utils/referral/referral-code");
+    const { createReferral } = await import("@/features/referrals/referral-code");
     await createReferral(userId, referralCode);
     logger.info("Successfully created referral", {
       email,

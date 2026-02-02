@@ -1,18 +1,18 @@
 import { NextResponse } from "next/server";
 import { subDays } from "date-fns/subDays";
 import prisma from "@/server/db/client";
-import { withError } from "@/utils/middleware";
-import { getInternalApiUrl } from "@/utils/internal-api";
+import { withError } from "@/server/lib/middleware";
+import { getInternalApiUrl } from "@/server/lib/internal-api";
 import {
   getCronSecretHeader,
   hasCronSecret,
   hasPostCronSecret,
-} from "@/utils/cron";
+} from "@/server/lib/cron";
 import { Frequency } from "@/generated/prisma/enums";
-import { captureException } from "@/utils/error";
-import type { Logger } from "@/utils/logger";
-import { publishToQstashQueue } from "@/utils/upstash";
-import { getPremiumUserFilter } from "@/utils/premium";
+import { captureException } from "@/server/lib/error";
+import type { Logger } from "@/server/lib/logger";
+import { publishToQstashQueue } from "@/server/lib/upstash";
+import { getPremiumUserFilter } from "@/features/premium";
 import type { SendSummaryEmailBody } from "../validation";
 
 export const dynamic = "force-dynamic";

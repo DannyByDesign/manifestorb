@@ -1,2 +1,2 @@
 // export * from './mail';
-export * from '../utils/types';
+export * from '../lib/types';

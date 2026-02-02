@@ -1,5 +1,5 @@
 import { describe, expect, test, vi, beforeEach } from "vitest";
-import { aiAnalyzeWritingStyle } from "@/utils/ai/knowledge/writing-style";
+import { aiAnalyzeWritingStyle } from "@/features/knowledge/ai/writing-style";
 import { getEmailAccount } from "@/__tests__/helpers";
 
 // Run with: bun test-ai ai-writing-style

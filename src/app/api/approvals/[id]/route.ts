@@ -1,6 +1,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
-import { ApprovalService } from "@/server/approvals/service";
+import { ApprovalService } from "@/features/approvals/service";
 import prisma from "@/server/db/client";
 
 export async function GET(req: NextRequest, context: { params: Promise<{ id: string }> }) {
