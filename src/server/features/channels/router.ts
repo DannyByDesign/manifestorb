@@ -190,7 +190,7 @@ export class ChannelRouter {
         try {
             const { runOneShotAgent } = await import("@/features/surfaces/executor");
 
-            const { text, approvals } = await runOneShotAgent({
+            const { text, approvals, interactivePayloads } = await runOneShotAgent({
                 user: user,
                 emailAccount: emailAccount,
                 message: message.content,
@@ -213,8 +213,12 @@ export class ChannelRouter {
                 content: text
             };
 
-            // Attach interactive approval UI if generated
-            if (approvals && approvals.length > 0) {
+            // Priority 1: Attach interactive payload from tool results (e.g., draft buttons)
+            if (interactivePayloads && interactivePayloads.length > 0) {
+                outbound.interactive = interactivePayloads[0]; // Use first interactive payload
+            }
+            // Priority 2: Attach interactive approval UI if generated
+            else if (approvals && approvals.length > 0) {
                 const approval = approvals[0]; // Just show the first one for simplicity
                 const { env } = await import("@/env");
 

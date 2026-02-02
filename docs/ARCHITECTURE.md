@@ -35,6 +35,8 @@ src/
     ├── features/             # Feature modules (domain logic)
     │   ├── ai/               # AI orchestration & tools
     │   │   ├── tools/        # AI tool definitions (query, get, modify, etc.)
+    │   │   ├── system-prompt.ts # Unified system prompt (single source of truth)
+    │   │   ├── rule-tools.ts # Shared rule management tools
     │   │   ├── helpers.ts    # Shared AI helpers
     │   │   ├── security.ts   # Prompt injection protection
     │   │   └── types.ts      # AI types
@@ -206,11 +208,16 @@ Self-contained feature modules. Each feature should:
 
 Key features include:
 - **ai/** - Core AI orchestration, agent executor, and tool definitions
+  - `system-prompt.ts` - Unified system prompt (single source of truth for all agents)
+  - `rule-tools.ts` - Shared rule management tools
+  - `tools/` - Polymorphic agentic tools (query, get, create, modify, delete, analyze)
 - **approvals/** - Human-in-the-loop approval workflow for AI actions
 - **channels/** - Multi-channel communication (Slack, Discord, Telegram, Web)
 - **conversations/** - Conversation state and history management
 - **privacy/** - User privacy settings and data retention
 - **summaries/** - Automatic conversation summarization
+- **surfaces/** - Multi-channel agent executor (Slack, Discord, Telegram)
+- **web-chat/** - Web UI chat assistant
 
 ### `/server/integrations/`
 External API clients ONLY. No business logic here - just API wrappers:
@@ -284,3 +291,70 @@ When adding a new feature:
 - `drive/` - Drive/document integration
 - `mcp/` - Model Context Protocol
 - `meeting-briefs/` - Meeting briefings
+
+---
+
+## Agent Architecture
+
+### Unified System Prompt
+
+All AI agents (web-chat, surfaces) use the same system prompt built by `buildAgentSystemPrompt()` in `features/ai/system-prompt.ts`. This ensures consistent AI behavior across all platforms.
+
+```typescript
+import { buildAgentSystemPrompt } from "@/features/ai/system-prompt";
+
+const prompt = buildAgentSystemPrompt({
+  platform: "web" | "slack" | "discord" | "telegram",
+  emailSendEnabled: boolean, // Controls draft send button visibility
+});
+```
+
+### Agent Platforms
+
+| Platform | Entry Point | Features |
+|----------|-------------|----------|
+| Web Chat | `features/web-chat/ai/chat.ts` | Full rule management, draft review |
+| Slack | `features/surfaces/executor.ts` | DM chat, interactive buttons |
+| Discord | `features/surfaces/executor.ts` | Channel/DM chat, embeds |
+| Telegram | `features/surfaces/executor.ts` | Bot chat, inline keyboard |
+
+### Draft Review & Send Flow
+
+AI creates drafts but NEVER sends emails. Users must explicitly send:
+
+```
+User Request → AI creates draft → Interactive preview + buttons → User clicks Send
+```
+
+**API Endpoints:**
+- `GET /api/drafts` - List all user drafts
+- `GET /api/drafts/:id` - Get draft details
+- `POST /api/drafts/:id/send` - Send a draft (user-initiated only)
+- `DELETE /api/drafts/:id` - Discard a draft
+
+**Surfaces Interactive Payload:**
+
+When AI creates a draft, it returns an `InteractivePayload` with preview data:
+
+```typescript
+{
+  type: "draft_created",
+  draftId: "...",
+  summary: "Draft to john@example.com - Subject",
+  preview: {
+    to: ["john@example.com"],
+    subject: "Re: Meeting",
+    body: "Hi John, ..."
+  },
+  actions: [
+    { label: "Send", value: "send" },
+    { label: "Edit in Gmail", value: "edit", url: "..." },
+    { label: "Discard", value: "discard" }
+  ]
+}
+```
+
+Surfaces render this as:
+- **Slack**: Block Kit with header, fields, body section, and action buttons
+- **Discord**: Embed with fields and button row
+- **Telegram**: Markdown message with inline keyboard

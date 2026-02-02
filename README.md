@@ -6,36 +6,40 @@ AI-powered email management and automation platform with a stunning 3D visual in
 
 ## Capabilities
 
-The system is powered by an **Agentic AI** (`src/server/integrations/ai`) that interacts with your data through a set of polymorphic tools. Below are the verified capabilities implemented in the codebase:
+The system is powered by an **Agentic AI** that interacts with your data through a set of polymorphic tools. Below are the verified capabilities:
 
-### 1. Email Management ("The Hands")
--   **Drafting & Replies**: The Agent can create drafts (`create.ts`) and implicitly gathering historical context for replies (`reply-context-collector.ts`).
--   **Bulk Actions**: Supports bulk archiving, trashing, and labeling of specific senders (`modify.ts`).
--   **Reply Tracking**: Can monitor threads for replies and update status (`AWAITING_REPLY` via `modify.ts`).
--   **Unsubscribe**: One-click unsubscribe functionality that handles the logic server-side (`modify.ts`).
--   **Cleanup**: AI-powered suggestions for cleaning up the inbox (`analyze.ts` -> `aiClean`).
--   **Categorization**: Intelligent sender categorization (`analyze.ts` -> `aiCategorizeSenders`).
+### 1. Email Management
+- **Drafting & Replies**: Create drafts and contextual replies
+- **Bulk Actions**: Archive, trash, and label operations
+- **Reply Tracking**: Monitor threads for responses
+- **Cleanup**: AI-powered inbox cleanup suggestions
+- **Categorization**: Intelligent sender categorization
 
-### 2. Calendar Intelligence ("The Brain")
--   **Meeting Briefings**: Generates detailed briefings for upcoming events by analyzing related emails and documents (`analyze.ts` -> `gatherMeetingContext`).
--   *(Note: Calendar features not built out fully).*
+### 2. Calendar Intelligence
+- **Meeting Briefings**: Generate briefings by analyzing related emails
+- *(Note: Calendar features still in development)*
 
-### 3. File System ("The Archivist")
--   **Document Filing**: Automatically processes email attachments, analyzes them, and files them to Google Drive (`create.ts` -> `processAttachment`).
--   **Search**: Natural language search for files in Google Drive & OneDrive (`query.ts` -> `searchFiles`).
--   **Management**: Create folders and move files to organize your cloud storage (`create.ts`, `modify.ts`).
+### 3. File System
+- **Document Filing**: Auto-file attachments to Google Drive
+- **Search**: Natural language search for files
+- **Management**: Create folders and organize storage
 
-### 4. Contacts System ("The Network")
--   **Search**: Find people across Google Contacts and Outlook (`query.ts` -> `searchContacts`).
--   **Management**: Create new contacts directly from conversation context (`create.ts` -> `createContact`).
+### 4. Contacts System
+- **Search**: Find people across Google/Outlook contacts
+- **Management**: Create contacts from conversation context
 
-### 4. Notifications & Approvals ("The Guardrails")
--   **Omnichannel Delivery**: "Atomic Race" system ensuring zero duplicates across Web (Toast) and Slack/Discord (Push) (`server/notifications/`).
--   **Approvals**: Manages sensitive actions via an approval system. The Agent can list, view, and execute decisions on approval requests (`modify.ts` -> `ApprovalService`).
+### 5. Notifications & Approvals
+- **Omnichannel Delivery**: Notifications across Web, Slack, Discord, Telegram
+- **Approvals**: Human-in-the-loop approval system for sensitive actions
 
-### 5. Automation ("The Second Brain")
--   **Pattern Detection**: Analyzes email history to detect recurring patterns and suggest new rules (`analyze.ts` -> `aiDetectRecurringPattern`).
--   **Rule Engine**: Deterministic rules that act as guardrails for the AI, ensuring consistent behavior (`tools/providers/automation.ts`).
+### 6. Multi-Channel AI Agent
+- **Unified Agent**: Same AI personality across Web, Slack, Discord, and Telegram
+- **Draft Review**: AI creates drafts, users review and send via interactive buttons
+- **Interactive Surfaces**: Rich previews with Send/Edit/Discard actions
+
+### 7. Automation
+- **Pattern Detection**: Suggest automation rules from email patterns
+- **Rule Engine**: Deterministic rules as guardrails for AI
 
 ---
 
@@ -44,9 +48,9 @@ The system is powered by an **Agentic AI** (`src/server/integrations/ai`) that i
 | Layer | Technology | Purpose |
 |-------|------------|---------|
 | **Runtime** | Bun | Fast JavaScript runtime & package manager |
-| **Framework** | Next.js 16 (App Router) | Full-stack React framework |
-| **Frontend** | React 19, React Three Fiber, Three.js | UI & 3D graphics |
-| **Styling** | Tailwind CSS 4 | Utility-first CSS |
+| **Framework** | Next.js (App Router) | Full-stack React framework |
+| **Frontend** | React, React Three Fiber, Three.js | UI & 3D graphics |
+| **Styling** | Tailwind CSS | Utility-first CSS |
 | **Animation** | GSAP | Smooth animations |
 | **State** | Zustand | Lightweight state management |
 | **Database** | PostgreSQL + Prisma | Data persistence & ORM |
@@ -66,104 +70,80 @@ The system is powered by an **Agentic AI** (`src/server/integrations/ai`) that i
 amodel/
 ├── src/
 │   ├── app/                    # Next.js App Router
-│   │   ├── api/                # API routes (BACKEND)
-│   │   │   ├── ai/             # AI endpoints
-│   │   │   ├── google/         # Google OAuth & webhooks
-│   │   │   ├── clean/          # Email cleanup
-│   │   │   └── resend/         # Email sending
-│   │   ├── page.tsx            # Main page (FRONTEND)
-│   │   ├── layout.tsx          # Root layout
-│   │   └── globals.css         # Global styles
+│   │   ├── api/                # API routes
+│   │   ├── (dashboard)/        # Dashboard pages
+│   │   └── page.tsx            # Main page
 │   │
-│   ├── components/             # React components (FRONTEND)
-│   │   └── experience/         # 3D experience
-│   │       ├── Scene.tsx       # Main canvas setup
-│   │       ├── Orb.tsx         # Raymarched glass orb
-│   │       ├── Sparkles.tsx    # GPU particle system
-│   │       ├── Effects.tsx     # Post-processing
-│   │       └── HaloDust.tsx    # Particle halo
+│   ├── components/             # React components
+│   │   └── experience/         # 3D experience (Orb, Sparkles, etc.)
 │   │
-│   ├── lib/                    # Frontend utilities (FRONTEND)
+│   ├── lib/                    # Frontend utilities
 │   │   ├── stores/             # Zustand state stores
-│   │   │   ├── qualityStore.ts # Quality tier management
-│   │   │   └── shapeStore.ts   # Shape morphing state
 │   │   ├── audio.ts            # Web Audio API
-│   │   ├── capabilities.ts     # WebGL detection
-│   │   └── particleCompute.ts  # GPU particle simulation
+│   │   └── capabilities.ts     # WebGL detection
 │   │
-│   ├── shaders/                # GLSL shaders (FRONTEND)
+│   ├── shaders/                # GLSL shaders
 │   │   ├── lib/                # Shader utilities
-│   │   │   ├── common.glsl     # Math functions
-│   │   │   ├── noise.glsl      # Noise functions
-│   │   │   └── sdf.glsl        # SDF primitives
-│   │   ├── orb.vert/frag       # Orb shaders
-│   │   ├── sparkles.vert/frag  # Particle shaders
 │   │   └── sim/                # Simulation shaders
 │   │
-│   ├── server/                 # Server-only code (BACKEND)
-│   │   ├── auth/               # Authentication
-│   │   ├── db/                 # Database
-│   │   │   ├── client.ts       # Prisma client
-│   │   │   └── encryption.ts   # Token encryption
-│   │   ├── integrations/       # External services
-│   │   │   ├── ai/             # AI features
-│   │   │   │   ├── assistant/  # Chat assistant
-│   │   │   │   ├── reply/      # Reply drafting
-│   │   │   │   ├── rule/       # Rule generation
-│   │   │   │   ├── tools/      # Agentic tools & providers
-│   │   │   │   └── ...
+│   ├── hooks/                  # React hooks
+│   │
+│   ├── server/                 # Server-only code
+│   │   ├── actions/            # Server actions (next-safe-action)
+│   │   ├── auth/               # Authentication (better-auth)
+│   │   ├── db/                 # Database (Prisma client)
+│   │   ├── features/           # Feature modules
+│   │   │   ├── ai/             # AI orchestration & tools
+│   │   │   ├── web-chat/       # Web UI chat assistant
+│   │   │   ├── surfaces/       # Multi-channel agent (Slack/Discord/Telegram)
+│   │   │   ├── email/          # Email provider abstraction
+│   │   │   ├── calendar/       # Calendar integration
+│   │   │   ├── drive/          # Drive integration
+│   │   │   ├── rules/          # Automation rules
+│   │   │   ├── approvals/      # Human-in-the-loop approvals
+│   │   │   └── ...             # Other features
+│   │   ├── integrations/       # External API clients
 │   │   │   ├── google/         # Gmail, Calendar, Drive
-│   │   │   ├── microsoft/      # Outlook
-│   │   │   └── qstash/         # Queue
-│   │   ├── services/           # Business logic
-│   │   │   ├── email/          # Email operations
-│   │   │   └── unsubscriber/   # Server actions
-│   │   ├── packages/           # Standalone packages
-│   │   │   ├── cli/            # CLI tool
-│   │   │   ├── resend/         # Email templates
-│   │   │   └── tinybird/       # Analytics
-│   │   ├── types/              # TypeScript types
-│   │   └── utils/              # Server utilities
+│   │   │   ├── microsoft/      # Outlook, Graph API
+│   │   │   └── qstash/         # Queue service
+│   │   ├── lib/                # Server utilities
+│   │   ├── packages/           # Internal packages (@amodel/*)
+│   │   ├── scripts/            # Utility scripts
+│   │   └── types/              # TypeScript types
 │   │
-│   ├── enterprise/             # Premium features (BACKEND)
-│   │   └── billing/
-│   │       ├── stripe/         # Stripe integration
-
+│   ├── enterprise/             # Premium features
 │   │
-│   ├── __tests__/              # Test files
-│   └── env.ts                  # Environment config
+│   └── __tests__/              # Test files
 │
-├── prisma/                     # Prisma schema & migrations (source of truth)
-│   ├── schema.prisma           # Database schema
-│   └── migrations/             # Database migrations
-├── generated/                  # Auto-generated code (don't edit)
-│   └── prisma/                 # Generated Prisma types
-├── public/                     # Static assets
-├── docs/                       # Documentation
-│   ├── 01-FEATURES.md          # Feature list & status
-├── scripts/                    # Utility scripts
+├── generated/                  # Auto-generated code
+│   └── prisma/                 # Prisma types
+│
 ├── surfaces/                   # Sidecar service (Slack/Discord/Telegram)
-└── .env                        # Environment variables
+│
+├── docs/                       # Documentation
+│   ├── ARCHITECTURE.md         # Codebase architecture (source of truth)
+│   ├── 01-FEATURES.md          # Feature list
+│   └── ...
+│
+└── scripts/                    # Root-level scripts
 ```
 
 ---
 
-## Frontend vs Backend Quick Reference
+## Quick Reference
 
 | I want to... | Look in... |
 |--------------|------------|
 | Edit the 3D orb | `src/components/experience/Orb.tsx` |
-| Change particle behavior | `src/lib/particleCompute.ts` |
 | Modify shaders | `src/shaders/` |
 | Add a React component | `src/components/` |
 | Add client-side state | `src/lib/stores/` |
 | Create an API endpoint | `src/app/api/` |
-| Add email automation logic | `src/server/integrations/ai/` |
-| Modify Agentic Tools | `src/server/integrations/ai/tools/` |
-| Modify Gmail integration | `src/server/integrations/google/` |
-| Change database schema | `prisma/schema.prisma` |
-| Add a server action | `src/server/services/unsubscriber/` |
-| Modify billing | `src/enterprise/stripe/` |
+| Add AI logic | `src/server/features/ai/` |
+| Modify email integration | `src/server/integrations/google/` or `microsoft/` |
+| Add server action | `src/server/actions/` |
+| Change database schema | `generated/prisma/` (schema in Prisma Studio) |
+| Add a new feature | `src/server/features/[feature-name]/` |
 
 ---
 
@@ -176,10 +156,14 @@ Import paths are configured in `tsconfig.json`:
 import { Scene } from "@/components/experience/Scene";
 import { useQuality } from "@/lib/stores/qualityStore";
 
-// Backend  
-import { prisma } from "@/server/db/client";
-import { aiGenerateReply } from "@/server/integrations/ai/reply/draft-reply";
-import { createAgentTools } from "@/server/integrations/ai/tools";
+// Backend
+import prisma from "@/server/db/client";
+import { createAgentTools } from "@/features/ai/tools";
+import { createRuleManagementTools } from "@/features/ai/rule-tools";
+
+// Features
+import { aiProcessAssistantChat } from "@/features/web-chat/ai/chat";
+import { runOneShotAgent } from "@/features/surfaces/executor";
 
 // Packages
 import { sendEmail } from "@amodel/resend";
@@ -207,3 +191,11 @@ bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) to see the app.
+
+---
+
+## Documentation
+
+- **[Architecture](docs/ARCHITECTURE.md)** - Codebase organization and conventions
+- **[Features](docs/01-FEATURES.md)** - Complete feature list with implementation status
+- **[Issues](docs/04-ISSUES.md)** - Known issues and their status

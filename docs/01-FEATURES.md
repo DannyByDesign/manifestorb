@@ -35,40 +35,40 @@
 
 | 🚀/🕒/🗑️ | Feature | Description | Key Files | Primary UX Surface | Agentic Supported? |
 |---|---|---|---|---|---|
-| 🚀 | **AI Assistant/Chat** | Interactive chat interface for email actions + refining rules | `server/integrations/ai/assistant/*` | **Chat-first** (core product) | N/A |
-| 🚀 | **AI Reply Drafting** | Generate contextual replies based on thread + style | `server/integrations/ai/reply/draft-reply.ts` | **Hybrid** (chat + draft editor) | Yes (`create`) |
-| 🚀 | **AI Follow-up Generation** | Draft follow-ups for threads awaiting response | `server/integrations/ai/reply/draft-follow-up.ts` | **UI-first** (queue) + Chat assist | Yes (`create`) |
-| 🚀 | **AI Clean/Archive Suggestions** | Suggest safe archiving (Inbox Zero loop) | `server/integrations/ai/clean/ai-clean.ts` | **UI-first** (triage list) + Chat | Yes (`query`/`analyze`) |
-| 🚀 | **AI Email Summarization** | Summaries for threads/digests | `server/integrations/ai/digest/*` | **Hybrid** (inline + chat) | Yes (`analyze`) |
-| 🚀 | **AI Rule Generation** | NL → structured automation rules | `server/integrations/ai/rule/prompt-to-rules.ts` | **Hybrid** (chat → rule preview/confirm) | Yes (`create`) |
-| 🕒 | **AI Rule Diffing** | Compare differences between rule versions | `server/integrations/ai/rule/diff-rules.ts` | **UI-first** (power user) | Yes (`analyze`) |
-| 🕒 | **AI Sender Categorization** | Auto-categorize senders (newsletter/marketing/etc.) | `server/integrations/ai/categorize-sender/*` | **UI-first** (manage categories) | Yes (`modify`) |
-| 🕒 | **AI Find Snippets** | Mine recurring canned responses from sent mail | `server/integrations/ai/snippets/find-snippets.ts` | **UI-first** (library) + Chat | Yes (`query`/`analyze`) |
-| 🕒 | **AI Nudge Generation** | Generate polite nudges | `server/integrations/ai/reply/generate-nudge.ts` | **Hybrid** | Yes (`create`) |
-| 🕒 | **AI Knowledge Extraction** | Extract knowledge from email history for replies | `server/integrations/ai/knowledge/*` | **Chat-first** + light “memory” UI | Yes (`analyze`) |
-| 🕒 | **AI Writing Style Analysis** | Learn user style traits | `server/integrations/ai/knowledge/writing-style.ts` | **UI-first** (settings/profile) | Partial |
-| 🕒 | **AI Persona Analysis** | Infer user role/industry from email | `server/integrations/ai/knowledge/persona.ts` | **UI-first** (optional) | Partial |
-| 🕒 | **AI Meeting Briefings** | Context about attendees from email history | `server/integrations/ai/meeting-briefs/*` | **UI-first** (calendar context) | Yes (`analyze`) |
-| 🕒 | **AI Email Reports** | Executive summaries + behavior recs | `server/integrations/ai/report/*` | **UI-first** (dashboard) | Yes (`analyze`) |
-| 🕒 | **AI Label Optimization** | Suggest label cleanup/consolidation | `server/integrations/ai/report/analyze-label-optimization.ts` | **UI-first** | Yes (`analyze`) |
-| 🕒 | **AI Response Patterns** | Analyze response patterns + template suggestions | `server/integrations/ai/report/response-patterns.ts` | **UI-first** | Yes (`analyze`) |
-| 🕒 | **AI Document Filing** | Auto-file attachments to Drive folders | `server/integrations/ai/document-filing/*` | **UI-first** (preview/confirm) | Yes (`analyze`/`modify`) |
-| 🕒 | **AI Create Group** | Create email groups from NL prompts | `server/integrations/ai/group/create-group.ts` | **Hybrid** | Yes (`create`) |
+| 🚀 | **AI Assistant/Chat** | Interactive chat interface for email actions + refining rules | `server/features/web-chat/*` | **Chat-first** (core product) | N/A |
+| 🚀 | **AI Reply Drafting** | Generate contextual replies based on thread + style | `server/features/reply-tracker/ai/draft-reply.ts` | **Hybrid** (chat + draft editor) | Yes (`create`) |
+| 🚀 | **AI Follow-up Generation** | Draft follow-ups for threads awaiting response | `server/features/reply-tracker/ai/draft-follow-up.ts` | **UI-first** (queue) + Chat assist | Yes (`create`) |
+| 🚀 | **AI Clean/Archive Suggestions** | Suggest safe archiving (Inbox Zero loop) | `server/features/clean/ai/ai-clean.ts` | **UI-first** (triage list) + Chat | Yes (`query`/`analyze`) |
+| 🚀 | **AI Email Summarization** | Summaries for threads/digests | `server/features/digest/ai/*` | **Hybrid** (inline + chat) | Yes (`analyze`) |
+| 🚀 | **AI Rule Generation** | NL → structured automation rules | `server/features/rules/ai/prompt-to-rules.ts` | **Hybrid** (chat → rule preview/confirm) | Yes (`create`) |
+| 🕒 | **AI Rule Diffing** | Compare differences between rule versions | `server/features/rules/ai/diff-rules.ts` | **UI-first** (power user) | Yes (`analyze`) |
+| 🕒 | **AI Sender Categorization** | Auto-categorize senders (newsletter/marketing/etc.) | `server/features/categorize/ai/*` | **UI-first** (manage categories) | Yes (`modify`) |
+| 🕒 | **AI Find Snippets** | Mine recurring canned responses from sent mail | `server/features/snippets/ai/find-snippets.ts` | **UI-first** (library) + Chat | Yes (`query`/`analyze`) |
+| 🕒 | **AI Nudge Generation** | Generate polite nudges | `server/features/reply-tracker/ai/generate-nudge.ts` | **Hybrid** | Yes (`create`) |
+| 🕒 | **AI Knowledge Extraction** | Extract knowledge from email history for replies | `server/features/knowledge/ai/*` | **Chat-first** + light “memory” UI | Yes (`analyze`) |
+| 🕒 | **AI Writing Style Analysis** | Learn user style traits | `server/features/knowledge/ai/writing-style.ts` | **UI-first** (settings/profile) | Partial |
+| 🕒 | **AI Persona Analysis** | Infer user role/industry from email | `server/features/knowledge/ai/persona.ts` | **UI-first** (optional) | Partial |
+| 🕒 | **AI Meeting Briefings** | Context about attendees from email history | `server/features/meeting-briefs/ai/*` | **UI-first** (calendar context) | Yes (`analyze`) |
+| 🕒 | **AI Email Reports** | Executive summaries + behavior recs | `server/features/reports/ai/*` | **UI-first** (dashboard) | Yes (`analyze`) |
+| 🕒 | **AI Label Optimization** | Suggest label cleanup/consolidation | `server/features/reports/ai/analyze-label-optimization.ts` | **UI-first** | Yes (`analyze`) |
+| 🕒 | **AI Response Patterns** | Analyze response patterns + template suggestions | `server/features/reports/ai/response-patterns.ts` | **UI-first** | Yes (`analyze`) |
+| 🕒 | **AI Document Filing** | Auto-file attachments to Drive folders | `server/features/document-filing/ai/*` | **UI-first** (preview/confirm) | Yes (`analyze`/`modify`) |
+| 🕒 | **AI Create Group** | Create email groups from NL prompts | `server/features/groups/ai/create-group.ts` | **Hybrid** | Yes (`create`) |
 | 🗑️ | **AI Compose Autocomplete** | Real-time compose autocomplete | `src/app/api/ai/compose-autocomplete/route.ts` | **UI-first** but high-latency risk | No |
-| 🕒 | **AI MCP Agent** | External tools via MCP (HubSpot/Notion/etc.) | `server/integrations/ai/mcp/*` | **UI-first** (integrations) + Chat | Partial |
+| 🕒 | **AI MCP Agent** | External tools via MCP (HubSpot/Notion/etc.) | `server/features/mcp/ai/*` | **UI-first** (integrations) + Chat | Partial |
 
 ### Backend-Only AI Features (8)
 
 | 🚀/🕒/🗑️ | Feature | Description | Key Files | Notes |
 |---|---|---|---|---|
-| 🚀 | **AI Rule Selection** | Choose applicable rules for incoming email | `server/integrations/ai/choose-rule/ai-choose-rule.ts` | Core automation engine |
-| 🕒 | **AI Pattern Detection** | Detect recurring patterns → learning rules | `server/integrations/ai/choose-rule/ai-detect-recurring-pattern.ts` | Nice-to-have learning |
-| 🚀 | **AI Thread Status** | Determine TO_REPLY / FYI / etc. | `server/integrations/ai/reply/determine-thread-status.ts` | Drives triage UX |
-| 🚀 | **AI Reply Context Collector** | Gather context from history for better drafts | `server/integrations/ai/reply/reply-context-collector.ts` | Draft quality |
-| 🚀 | **AI Check If Needs Reply** | Decide reply tracking | `server/integrations/ai/reply/check-if-needs-reply.ts` | Follow-up loop |
-| 🕒 | **AI Find Newsletters** | Identify newsletters | `server/integrations/ai/group/find-newsletters.ts` | Complement system rules |
-| 🕒 | **AI Find Receipts** | Identify receipts | `server/integrations/ai/group/find-receipts.ts` | Complement system rules |
-| 🚀 | **AI Prompt Security** | Prompt injection hardening | `server/integrations/ai/security.ts` | Ship early for safety |
+| 🚀 | **AI Rule Selection** | Choose applicable rules for incoming email | `server/features/rules/ai/ai-choose-rule.ts` | Core automation engine |
+| 🕒 | **AI Pattern Detection** | Detect recurring patterns → learning rules | `server/features/rules/ai/ai-detect-recurring-pattern.ts` | Nice-to-have learning |
+| 🚀 | **AI Thread Status** | Determine TO_REPLY / FYI / etc. | `server/features/reply-tracker/ai/determine-thread-status.ts` | Drives triage UX |
+| 🚀 | **AI Reply Context Collector** | Gather context from history for better drafts | `server/features/reply-tracker/ai/reply-context-collector.ts` | Draft quality |
+| 🚀 | **AI Check If Needs Reply** | Decide reply tracking | `server/features/reply-tracker/ai/check-if-needs-reply.ts` | Follow-up loop |
+| 🕒 | **AI Find Newsletters** | Identify newsletters | `server/features/groups/ai/find-newsletters.ts` | Complement system rules |
+| 🕒 | **AI Find Receipts** | Identify receipts | `server/features/groups/ai/find-receipts.ts` | Complement system rules |
+| 🚀 | **AI Prompt Security** | Prompt injection hardening | `server/features/ai/security.ts` | Ship early for safety |
 
 ---
 
@@ -78,12 +78,12 @@
 
 | 🚀/🕒/🗑️ | Tool | Description | Key Files | Security Limit | Primary UX Surface |
 |---|---|---|---|---|---|
-| 🚀 | **Query Tool** | Search across Email/Calendar/Automation | `server/integrations/ai/tools/query.ts` | SAFE | **Chat-first** (with results UI) |
-| 🚀 | **Get Tool** | Retrieve item by ID | `server/integrations/ai/tools/get.ts` | SAFE | **Chat-first** |
-| 🚀 | **Analyze Tool** | AI analysis of content | `server/integrations/ai/tools/analyze.ts` | SAFE | **Chat-first** |
-| 🚀 | **Create Tool** | Create drafts (reply/forward/new) + events | `server/integrations/ai/tools/create.ts` | CAUTION | **Hybrid** (preview/confirm) |
-| 🚀 | **Modify Tool** | Archive/label/mark read etc. | `server/integrations/ai/tools/modify.ts` | CAUTION | **Hybrid** (fast actions UI) |
-| 🕒 | **Delete Tool** | Trash items | `server/integrations/ai/tools/delete.ts` | CAUTION | **Hybrid** (confirmations) |
+| 🚀 | **Query Tool** | Search across Email/Calendar/Automation | `server/features/ai/tools/query.ts` | SAFE | **Chat-first** (with results UI) |
+| 🚀 | **Get Tool** | Retrieve item by ID | `server/features/ai/tools/get.ts` | SAFE | **Chat-first** |
+| 🚀 | **Analyze Tool** | AI analysis of content | `server/features/ai/tools/analyze.ts` | SAFE | **Chat-first** |
+| 🚀 | **Create Tool** | Create drafts (reply/forward/new) + events | `server/features/ai/tools/create.ts` | CAUTION | **Hybrid** (preview/confirm) |
+| 🚀 | **Modify Tool** | Archive/label/mark read etc. | `server/features/ai/tools/modify.ts` | CAUTION | **Hybrid** (fast actions UI) |
+| 🕒 | **Delete Tool** | Trash items | `server/features/ai/tools/delete.ts` | CAUTION | **Hybrid** (confirmations) |
 
 ---
 
@@ -146,7 +146,7 @@
 
 | 🚀/🕒/🗑️ | Feature | Description | Key Files | Primary UX Surface | Agentic Supported? |
 |---|---|---|---|---|---|
-| ✅ | **AI Rule Selection** | Choose applicable rules (Real Engine) | `server/integrations/ai/choose-rule/run-rules.ts` | Core automation engine |
+| ✅ | **AI Rule Selection** | Choose applicable rules (Real Engine) | `server/features/rules/ai/run-rules.ts` | Core automation engine |
 | 🚀 | **AI Conditions** | Natural language match instructions | `Rule.instructions` | **Chat-first** + preview | Yes |
 | 🕒 | **Static Conditions** | from/to/subject/body regex | Prisma `Rule` fields | UI-first (advanced) | Yes |
 | 🕒 | **Group Conditions** | Sender groups/patterns | `Rule.groupId` | UI-first (advanced) | Yes |
@@ -199,7 +199,7 @@
 |---|---|---|---|---|
 | 🕒 | **Email Statistics** | Usage + behavior analytics | `server/services/unsubscriber/stats.ts` | UI-first |
 | 🕒 | **Response Time Tracking** | Response patterns | `ResponseTime` | UI-first |
-| 🕒 | **Executive Reports** | AI summaries | `server/integrations/ai/report/` | UI-first |
+| 🕒 | **Executive Reports** | AI summaries | `server/features/reports/ai/` | UI-first |
 | 🕒 | **Tinybird Analytics** | Data pipeline | `server/packages/tinybird/` | Backend-only |
 | 🕒 | **AI Call Tracking** | AI usage tracking | `server/packages/tinybird-ai-analytics/` | Backend-only |
 
@@ -245,36 +245,54 @@
 
 ## 11. Surfaces & Channels (Implemented)
 
-> The "Surfaces Sidecar" enables agentic interaction across chat platforms.
+> The "Surfaces Sidecar" enables agentic interaction across chat platforms with unified AI behavior.
 
-### 11.1 Slack (Implemented)
+### 11.1 Unified Agent Architecture
+
+| Feature | Description | Key Files | Notes |
+|---------|-------------|-----------|-------|
+| **Unified System Prompt** | Same AI personality across all platforms | `features/ai/system-prompt.ts` | Single source of truth |
+| **Shared Rule Tools** | Rule management available on all platforms | `features/ai/rule-tools.ts` | Full parity with web |
+| **Draft Review & Send** | AI creates drafts, users send via buttons | `app/api/drafts/` | Human-in-the-loop |
+| **Interactive Payloads** | Rich previews with Send/Edit/Discard | `features/channels/types.ts` | Platform-specific rendering |
+
+### 11.2 Slack (Implemented)
 
 | 🚀/🕒/🗑️ | Feature | Description | Primary UX Surface | Notes |
 |---|---|---|---|---|
 | ✅ | **Slack Socket Mode** | Real-time events | Chat-first | `surfaces/` |
 | ✅ | **DM Agent** | 1:1 Agent Chat | Chat-first | Core entry point |
 | ✅ | **Router** | Inbound -> Agent Pipeline | Backend-only | `ChannelRouter` |
+| ✅ | **Draft Preview** | Block Kit sections with full draft | Hybrid | Rich formatting |
+| ✅ | **Interactive Buttons** | Send/Edit/Discard actions | Hybrid | `@slack/bolt` |
 
-### 11.2 Discord (Implemented)
+### 11.3 Discord (Implemented)
 
 | 🚀/🕒/🗑️ | Feature | Description | Primary UX Surface | Notes |
 |---|---|---|---|---|
 | ✅ | **Discord Gateway** | Real-time events | Chat-first | `surfaces/` |
 | ✅ | **Channel/DM Chat** | Chat with Agent | Chat-first | `discord.js` |
+| ✅ | **Draft Preview** | Embed with To/Subject/Body | Hybrid | `EmbedBuilder` |
+| ✅ | **Interactive Buttons** | Send/Edit/Discard actions | Hybrid | `ButtonBuilder` |
 
-### 11.3 Telegram (Implemented)
+### 11.4 Telegram (Implemented)
 
 | 🚀/🕒/🗑️ | Feature | Description | Primary UX Surface | Notes |
 |---|---|---|---|---|
 | ✅ | **Telegram Bot** | Long Polling | Chat-first | `surfaces/` |
 | ✅ | **DM Chat** | Chat with Agent | Chat-first | `telegraf` |
+| ✅ | **Draft Preview** | Markdown formatted preview | Hybrid | Bold headers, body |
+| ✅ | **Inline Keyboard** | Send/Edit/Discard buttons | Hybrid | `Markup.inlineKeyboard` |
 
-### 11.4 Shared Infrastructure (Implemented)
+### 11.5 Shared Infrastructure (Implemented)
 
 | 🚀/🕒/🗑️ | Feature | Description | Primary UX Surface | Notes |
 |---|---|---|---|---|
-| ✅ | **Safe Account Linking** | Magic Link Auth for Surfaces | Hybrid | `utils/linking.ts` |
-| ✅ | **Unified Executor** | One-Shot Agent Runtime | Backend-only | `agent/executor.ts` |
+| ✅ | **Safe Account Linking** | Magic Link Auth for Surfaces | Hybrid | `lib/linking.ts` |
+| ✅ | **Unified Executor** | One-Shot Agent Runtime | Backend-only | `features/surfaces/executor.ts` |
+| ✅ | **Draft Send API** | `POST /api/drafts/:id/send` | Backend-only | User-initiated only |
+| ✅ | **Draft List API** | `GET /api/drafts` | Backend-only | For web app UI |
+| ✅ | **Draft Discard API** | `DELETE /api/drafts/:id` | Backend-only | Cleanup drafts |
 
 ---
 

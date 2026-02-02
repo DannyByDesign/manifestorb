@@ -6,7 +6,7 @@ This document tracks issues found during the comprehensive codebase audit.
 
 ### CRITICAL: ID Type Mismatch in Email Provider Adapter
 
-**File:** `src/server/integrations/ai/tools/providers/email.ts`
+**File:** `src/server/features/ai/tools/providers/email.ts`
 **Lines:** 90-97
 
 **Issue:** The `modify()` method receives IDs from the tools layer which are **message IDs** (from `get()` which calls `getMessagesBatch`), but passes them directly to `archiveThread()` and `trashThread()` which expect **thread IDs**.
@@ -43,7 +43,7 @@ modify: async (ids: string[], changes: EmailChanges) => {
 
 ### LOW: Duplicate Method Declaration
 
-**File:** `src/server/services/email/types.ts`
+**File:** `src/server/features/email/types.ts`
 **Line:** 294
 
 **Issue:** `getOrCreateFolderIdByName` is declared twice in the `EmailProvider` interface.

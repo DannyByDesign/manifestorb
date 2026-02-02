@@ -35,14 +35,26 @@ export type OutboundMessage = {
     interactive?: InteractivePayload;
 };
 
+export type DraftPreview = {
+    to: string[];
+    cc?: string[];
+    bcc?: string[];
+    subject: string;
+    body: string;
+};
+
 export type InteractivePayload = {
-    type: "approval_request";
-    approvalId: string;
+    type: "approval_request" | "draft_created";
+    approvalId?: string;   // For approval_request
+    draftId?: string;      // For draft_created
+    emailAccountId?: string; // For draft_created
+    userId?: string;       // For draft_created
     summary: string;
     actions: {
         label: string;
         style: "primary" | "danger";
-        value: string; // e.g. "approve" via webhook
-        url?: string; // if a direct link
+        value: string; // e.g. "approve" via webhook, or "send" for drafts
+        url?: string; // if a direct link (e.g., Edit in Gmail)
     }[];
+    preview?: DraftPreview; // For draft_created - full draft content for review
 };

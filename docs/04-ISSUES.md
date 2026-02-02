@@ -23,13 +23,13 @@
 **Status:** ✅ Resolved. Consolidated.
 
 ### 6. [RESOLVED] Import Path Inconsistency
-**Status:** ✅ Resolved. `src/server/utils/prisma.ts` is now a re-export, preventing double-instantiation.
+**Status:** ✅ Resolved. `src/server/lib/prisma.ts` is now a re-export, preventing double-instantiation.
 
 ### 7. [RESOLVED] Incomplete Feature - Multiple Rule Matching
 **Status:** ✅ Resolved. `processUserRequest` now handles multiple rule contexts.
 
 ### 8. [OPEN] Incomplete Feature - Outlook Permissions
-**Status:** 🔴 **Critical**. `src/server/services/unsubscriber/permissions.ts` still contains `// TODO: add Outlook handling`. Outlook users bypass checks.
+**Status:** 🔴 **Critical**. `src/server/actions/permissions.ts` still contains `// TODO: add Outlook handling`. Outlook users bypass checks.
 
 ### 9. [RESOLVED] Incomplete Error Handling - Permissions
 **Status:** ✅ Resolved. Added robust network/API error handling in `checkGmailPermissions`.
@@ -69,7 +69,7 @@
 
 ### 21. [OPEN] Scalability Risk - In-Memory Rate Limiting
 **Status:** ⚠️ **Open / Deferred**.
-- `src/server/integrations/ai/tools/security.ts` uses a JavaScript `Map` for rate limits.
+- `src/server/features/ai/tools/security.ts` uses a JavaScript `Map` for rate limits.
 - **Impact**: Fails in serverless (Next.js) environments where memory is not shared between requests.
 - **Proposed Solution (Quota System)**: Instead of rate-limiting, enforce a **Cost Quota** via `checkQuota(user)` using existing `usage.ts` tracking. This controls spend directly.
 
@@ -148,7 +148,7 @@
 
 **Issue:** `BRAINTRUST_API_KEY` is used in code but not defined in the environment schema.
 
-**Location:** `src/server/utils/braintrust.ts` (line ~11)
+**Location:** `src/server/lib/braintrust.ts` (line ~11)
 
 **Impact:** Runtime errors if Braintrust functionality is invoked without the env var being defined.
 
@@ -167,7 +167,7 @@ BRAINTRUST_API_KEY: z.string().optional(),
 **Issue:** Identical file exists in two locations with different import paths.
 
 **Locations:**
-- `src/server/utils/gmail/permissions.ts` (DELETED)
+- `src/server/lib/gmail/permissions.ts` (DELETED)
 - `src/server/integrations/google/permissions.ts` (KEPT)
 
 **Differences:**
@@ -194,8 +194,8 @@ import { prisma } from "@/server/db/client";
 **Issue:** Identical file exists in two locations.
 
 **Locations:**
-- `src/server/utils/actions/permissions.ts` (DELETED)
-- `src/server/services/unsubscriber/permissions.ts` (KEPT)
+- `src/server/lib/actions/permissions.ts` (DELETED)
+- `src/server/actions/permissions.ts` (KEPT)
 
 **Code:** 83 lines, identical functionality.
 
@@ -210,8 +210,8 @@ import { prisma } from "@/server/db/client";
 **Issue:** Identical validation schema in two locations.
 
 **Locations:**
-- `src/server/utils/actions/cold-email.validation.ts` (DELETED)
-- `src/server/services/unsubscriber/cold-email.validation.ts` (KEPT)
+- `src/server/lib/actions/cold-email.validation.ts` (DELETED)
+- `src/server/actions/cold-email.validation.ts` (KEPT)
 
 **Both contain a hacky fix:**
 ```typescript
@@ -236,8 +236,8 @@ internalDate: z.string().or(z.number()),
 **Issue:** Both files duplicate the `fetchGmailLabels` function.
 
 **Locations:**
-- `src/server/utils/actions/report.ts` (DELETED)
-- `src/server/services/unsubscriber/report.ts` (KEPT)
+- `src/server/lib/actions/report.ts` (DELETED)
+- `src/server/actions/report.ts` (KEPT)
 
 **Both have TODO:**
 ```typescript
@@ -255,9 +255,9 @@ internalDate: z.string().or(z.number()),
 **Issue:** Prisma client was duplicated in `@/utils/prisma`.
 
 **Fix Implemented:**
-- Updated `src/server/utils/prisma.ts` to re-export the canonical client from `@/server/db/client`.
+- Updated `src/server/lib/prisma.ts` to re-export the canonical client from `@/server/db/client`.
 - Prevents multiple Prisma instances from being instantiated.
-- (Deleted: `src/server/utils/ai/assistant/process-user-request.ts` as part of Issue 7/16 work).
+- (Deleted: `src/server/lib/ai/assistant/process-user-request.ts` as part of Issue 7/16 work).
 
 ---
 
@@ -283,8 +283,8 @@ internalDate: z.string().or(z.number()),
 **Status:** ⚠️ Known Issue / Deferred.
 
 **Location:** 
-- `src/server/utils/actions/permissions.ts` (line ~15)
-- `src/server/services/unsubscriber/permissions.ts` (line ~15)
+- `src/server/lib/actions/permissions.ts` (line ~15)
+- `src/server/actions/permissions.ts` (line ~15)
 
 **Code:**
 ```typescript
@@ -305,7 +305,7 @@ if (provider !== "google") {
 **Status:** ⚠️ Known Issue / Deferred.
 
 **Location:**
-- `src/server/utils/gmail/permissions.ts` (line ~11)
+- `src/server/lib/gmail/permissions.ts` (line ~11)
 - `src/server/integrations/google/permissions.ts` (line ~11)
 
 **Code:**
@@ -571,9 +571,9 @@ Effort      ├──────────┼──────────�
 **Issue:** Widespread use of `: any` and `as any` types, violating project rules.
 
 **Locations detected:**
-- `src/server/integrations/ai/assistant/chat.ts` (Resolved: Added explicit Zod types to tool args).
-- `src/server/utils/posthog.ts` (Resolved: Switched to `Record<string, unknown>`).
-- `src/server/utils/linking.ts` (Resolved: Switched to narrow types).
+- `src/server/features/ai/assistant/chat.ts` (Resolved: Added explicit Zod types to tool args).
+- `src/server/lib/posthog.ts` (Resolved: Switched to `Record<string, unknown>`).
+- `src/server/lib/linking.ts` (Resolved: Switched to narrow types).
 - `src/app/api/surfaces/link/route.ts` (Resolved: proper error narrowing).
 
 **Fix Implemented:**
@@ -638,7 +638,7 @@ export async function POST(req: Request) {
 
 **Issue:** Tests mutating global state.
 
-**Location:** `src/server/utils/schedule.test.ts`
+**Location:** `src/server/lib/schedule.test.ts`
 
 **Code:**
 ```typescript

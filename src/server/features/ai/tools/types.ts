@@ -33,6 +33,32 @@ export interface ToolContext {
     };
 }
 
+export interface InteractiveAction {
+    label: string;
+    style: "primary" | "danger";
+    value: string;
+    url?: string;
+}
+
+export interface DraftPreview {
+    to: string[];
+    cc?: string[];
+    bcc?: string[];
+    subject: string;
+    body: string;
+}
+
+export interface InteractivePayload {
+    type: "approval_request" | "draft_created";
+    approvalId?: string;
+    draftId?: string;
+    emailAccountId?: string;
+    userId?: string;
+    summary: string;
+    actions: InteractiveAction[];
+    preview?: DraftPreview;
+}
+
 export interface ToolResult {
     success: boolean;
     data?: any;
@@ -41,6 +67,7 @@ export interface ToolResult {
         itemCount?: number;
         durationMs?: number;
     };
+    interactive?: InteractivePayload;
 }
 
 export interface ToolDefinition<T extends z.ZodType> {

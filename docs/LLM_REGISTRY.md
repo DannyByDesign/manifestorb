@@ -37,7 +37,7 @@ These variables control which models are used for specific tasks.
 
 ## 3. Hardcoded / Default Models
 
-If environment variables are not set, the code defaults to these specific model versions (`src/server/utils/llms/model.ts`).
+If environment variables are not set, the code defaults to these specific model versions (`src/server/lib/llms/model.ts`).
 
 | Provider | Default Model ID | Usage |
 | :--- | :--- | :--- |

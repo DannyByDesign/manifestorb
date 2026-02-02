@@ -1,67 +1,101 @@
-
 # Agentic Tools
 
-Agentic tools are a set of polymorphic operations that abstract actions across different resources (Email, Calendar, Automation, etc.). They use a unified execution wrapper (`executor`) to enforce security policies and log audits.
+Polymorphic operations that abstract actions across different resources (Email, Calendar, Automation, etc.). Uses a unified execution wrapper to enforce security policies.
 
 ## Architecture
 
-1.  **Providers**: Abstracted interfaces (Email, Calendar, Automation) that handle the actual API calls (e.g., Gmail vs Outlook).
-2.  **Tools**: 6 polymorphic operations (query, get, modify, create, delete, analyze) defined using a unified `ToolDefinition` type.
-3.  **Executor**: `executor.ts` wraps all tool executions, handling permissions, rate limiting, and audit logging.
-4.  **Security**:
-    *   **SAFE**: Read-only operations (`query`, `get`).
-    *   **CAUTION**: Modifications that are typically reversible (`modify`, `create`, `delete` - soft delete).
-    *   **DANGEROUS**: Destructive or external actions (`sendEmail` - currently disabled mostly).
+```
+tools/
+├── index.ts           # Tool registry and factory (createAgentTools)
+├── types.ts           # Shared types
+├── security.ts        # Permission checks
+├── query.ts           # Search resources
+├── get.ts             # Get item details
+├── modify.ts          # Change item state
+├── create.ts          # Create drafts/items
+├── delete.ts          # Remove items
+├── analyze.ts         # AI-powered analysis
+└── providers/
+    ├── email.ts       # Email provider (Gmail/Outlook)
+    ├── calendar.ts    # Calendar provider
+    ├── drive.ts       # Drive provider
+    └── automation.ts  # Rules/Knowledge/Reports
+```
+
+## Security Tiers
+
+| Tier | Level | Operations |
+|------|-------|------------|
+| SAFE | Read-only | `query`, `get`, `analyze` |
+| CAUTION | Reversible | `modify`, `create`, `delete` |
 
 ## Available Tools
 
 ### `query` (SAFE)
-Search for items across different resources.
-*   **Email**: Search messages (supports Gmail/Outlook query syntax).
-*   **Calendar**: Search events by date range, attendees, title.
-*   **Drive**: Search files via natural language query.
-*   **Contacts**: Search Google/Outlook contacts.
-*   **Automation**: List rules.
+Search for items across resources.
+- **Email**: Search messages (Gmail/Outlook query syntax)
+- **Calendar**: Search events by date range
+- **Drive**: Natural language search
+- **Contacts**: Search people
+- **Automation**: List rules
+- **Patterns**: Detected email patterns
+- **Approval**: Pending approvals
 
 ### `get` (SAFE)
-Retrieve full details of specific items by ID.
-*   **Email**: Get full message content (HTML/Text).
-*   **Calendar**: Get event details.
-*   **Automation**: Get rule details.
+Retrieve full details by ID.
+- **Email**: Full message content
+- **Approval**: Approval request details
 
 ### `modify` (CAUTION)
-Modify the state of existing items.
-*   **Email**:
-    *   `archive`: boolean (move to/from archive).
-    *   `trash`: boolean (move to/from trash).
-    *   `read`: boolean (mark read/unread).
-    *   `labels`: Add/remove labels.
-    *   `bulk_archive_senders`: Archive all emails from list of senders.
-    *   `bulk_trash_senders`: Trash all emails from list of senders.
-    *   `bulk_label_senders`: Apply label to all emails from list of senders.
-    *   `unsubscribe`: Unsubscribe from sender.
-    *   `tracking`: Enable/disable reply tracking.
-*   **Drive**: Move files (`targetFolderId`).
-*   **Approval**: Execute decision (`APPROVE` / `DENY`).
-*   **Calendar**: Change event details (not yet implemented).
+Change item state.
+- **Email**: archive, trash, read, labels, unsubscribe, tracking
+- **Drive**: Move files
+- **Approval**: Execute decision (APPROVE/DENY)
+- **Automation**: Update rules
 
 ### `create` (CAUTION)
 Create new items.
-*   **Email**: Create **DRAFTS** (new, reply, forward). Users must manually send from the UI.
-*   **Drive**: Create folders or file attachments (Document Filing).
-*   **Notification**: Send push notifications to user.
-*   **Knowledge**: Create knowledge base entries.
-*   **Contacts**: Create new contacts.
-*   **Automation**: Create rules.
-*   **Calendar**: Create events (not yet implemented).
+- **Email**: Create **DRAFTS** only (new, reply, forward)
+- **Drive**: Create folders, file attachments
+- **Notification**: Push notifications
+- **Knowledge**: Knowledge base entries
+- **Contacts**: New contacts
+- **Automation**: New rules
 
 ### `delete` (CAUTION)
-Remove items (typically soft delete/trash).
-*   **Email**: Move to trash.
-*   **Calendar**: Cancel event (not yet implemented).
-*   **Automation**: Delete rule (not yet implemented).
+Remove items (soft delete).
+- **Email**: Move to trash
+- **Automation**: Delete rule
 
 ### `analyze` (SAFE)
-AI-powered analysis of items (Read-only).
-*   **Email**: Summarize thread, extract action items.
-*   **Calendar**: Find scheduling conflicts, suggest times.
+AI-powered analysis.
+- **Email**: Summarize, clean suggestions, categorize
+- **Calendar**: Meeting briefings
+- **Patterns**: Suggest automation rules
+
+## Usage
+
+```typescript
+import { createAgentTools } from "@/features/ai/tools";
+
+const tools = await createAgentTools({
+  email: emailAccount.email,
+  emailAccountId: emailAccount.id,
+  provider,
+  userId,
+  logger,
+});
+```
+
+## Approval Workflow
+
+Sensitive operations (`modify`, `delete`) can be wrapped with approval:
+
+```typescript
+import { ApprovalService } from "@/features/approvals/service";
+
+const approvalService = new ApprovalService(prisma);
+// Wrap tools with approval flow in executor/chat
+```
+
+See `features/surfaces/executor.ts` and `features/web-chat/ai/chat.ts` for implementation.

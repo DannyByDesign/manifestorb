@@ -12,11 +12,23 @@ export interface InteractiveAction {
     url?: string;
 }
 
+export interface DraftPreview {
+    to: string[];
+    cc?: string[];
+    bcc?: string[];
+    subject: string;
+    body: string;
+}
+
 export interface InteractivePayload {
-    type: "approval_request";
-    approvalId: string;
+    type: "approval_request" | "draft_created";
+    approvalId?: string;  // For approval_request
+    draftId?: string;     // For draft_created
+    emailAccountId?: string; // For draft_created - needed to identify account
+    userId?: string;      // For draft_created - needed for auth
     summary: string;
     actions: InteractiveAction[];
+    preview?: DraftPreview; // For draft_created - full draft content for review
 }
 
 export async function forwardToBrain(params: {

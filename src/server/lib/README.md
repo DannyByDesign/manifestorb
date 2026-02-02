@@ -1,6 +1,6 @@
-# Server Utilities (`src/server/utils`)
+# Server Utilities (`src/server/lib`)
 
-This directory contains over 300 files of shared helper logic. It acts as the "Standard Library" for the backend.
+This directory contains shared helper logic and cross-cutting utilities used by multiple features.
 
 ## Top-Level Helpers
 -   **`logger.ts`**: Application-wide structured logging (JSON in prod, pretty in dev).
@@ -11,10 +11,24 @@ This directory contains over 300 files of shared helper logic. It acts as the "S
 -   **`cron.ts`**: Vercel Cron verification.
 
 ## Major Submodules
--   **`ai/`**: Shared LLM interaction logic (see internal README).
--   **`outlook/`**: Microsoft-specific data structures (see internal README).
--   **`calendar/`**: Timezone and Event helpers (see internal README).
--   **`drive/`**: Google Drive / Attachment logic (see internal README).
--   **`email/`**: Generic email parsing and normalization.
+-   **`llms/`**: LLM provider abstraction and AI helpers.
+-   **`redis/`**: Caching utilities and Redis client.
+-   **`queue/`**: QStash queue utilities.
 -   **`parse/`**: HTML/Text parsing pipelines.
 -   **`webhook/`**: Signature verification for inbound webhooks.
+
+## Usage
+
+```typescript
+import { createScopedLogger } from "@/server/lib/logger";
+import { redis } from "@/server/lib/redis";
+import { SafeError } from "@/server/lib/error";
+
+const logger = createScopedLogger("my-feature");
+logger.info("Hello world");
+```
+
+## Note
+
+Feature-specific utilities should go in `features/[feature]/` rather than here.
+Integrations with external APIs go in `integrations/` rather than here.

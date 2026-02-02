@@ -1,33 +1,103 @@
 # Server-Side Architecture
 
-The `src/server` directory contains the backend logic of the application, organized into distinct layers to separate concerns.
+The `src/server` directory contains the backend logic of the application, organized into distinct layers.
 
 ## Directory Structure
 
-### 1. `integrations/` (The "Connector" Layer)
-Handlers for external APIs and the AI brain.
--   **`ai/`**: The Core Agent, Tools, and Rule Engine.
--   **`google/`**: Gmail and Google Calendar clients.
--   **`microsoft/`**: Outlook and Microsoft Graph clients.
--   **`slack/`, `discord/`, `telegram/`**: Chat platform adapters.
+```
+server/
+├── actions/          # Server actions (next-safe-action handlers)
+├── auth/             # Authentication (better-auth)
+├── db/               # Database (Prisma client, extensions)
+├── features/         # Feature modules (domain logic)
+├── integrations/     # External API clients
+├── lib/              # Shared utilities
+├── packages/         # Internal packages (@amodel/*)
+├── scripts/          # Utility scripts
+└── types/            # Shared TypeScript types
+```
 
-### 2. `services/` (The "Business Logic" Layer)
-Pure domain logic, decoupled from specific API transports or AI tooling.
--   **`email/`**: Provider-agnostic email operations.
--   **`unsubscriber/`**: Rules, Reporting, and Bulk Actions.
--   **`notification/`**: Push notifications and approval flows.
--   **`billing/`**: Stripe integration.
+## Layer Descriptions
 
-### 3. `utils/` (The "Shared" Layer)
-Helper functions and shared utilities.
--   **`ai/`**: Low-level LLM calls and prompt templates.
--   **`logger`**: Structured logging.
+### 1. `actions/` (Server Actions)
+Next-safe-action handlers for authenticated mutations.
+- `rule.ts` - Rule CRUD operations
+- `mail.ts` - Email operations
+- `calendar.ts` - Calendar operations
+- `drive.ts` - Drive operations
+- `validation/` - Zod schemas for each action
 
-### 4. `db/` (The "Data" Layer)
-Prisma client and schema definitions.
--   `client.ts`: The Prisma client instance.
+### 2. `features/` (Feature Modules)
+Self-contained domain logic organized by feature.
+- **`ai/`** - AI orchestration, tools, and security
+- **`web-chat/`** - Web UI chat assistant (rule management focus)
+- **`surfaces/`** - Multi-channel agent (Slack/Discord/Telegram)
+- **`email/`** - Email provider abstraction
+- **`rules/`** - Automation rule engine
+- **`approvals/`** - Human-in-the-loop workflow
+- **`calendar/`**, **`drive/`** - Integrations
+- **`notifications/`** - Push notifications
+- And more...
 
-### 5. `api/` (The "Transport" Layer)
-Found in `src/app/api` (Next.js App Router), but relies heavily on `server/` logic.
--   **`routers/`**: tRPC routers (if applicable).
--   **`webhooks/`**: Incoming webhook handlers.
+### 3. `integrations/` (External API Clients)
+Pure API wrappers with no business logic.
+- **`google/`** - Gmail, Calendar, Drive, People APIs
+- **`microsoft/`** - Microsoft Graph API
+- **`qstash/`** - Upstash queue service
+
+### 4. `lib/` (Shared Utilities)
+Cross-cutting utilities used by multiple features.
+- **`llms/`** - LLM provider abstraction
+- **`redis/`** - Caching utilities
+- **`queue/`** - Queue utilities
+- **`parse/`** - Email/HTML parsing
+- **`logger.ts`** - Structured logging
+- **`error.ts`** - Error handling
+
+### 5. `db/` (Database)
+Prisma client and extensions.
+- `client.ts` - Prisma client instance
+- `encryption.ts` - Token encryption
+
+### 6. `auth/` (Authentication)
+Better-auth configuration and utilities.
+
+### 7. `packages/` (Internal Packages)
+Standalone packages used by the application.
+- `@amodel/resend` - Email templates
+- `@amodel/tinybird` - Analytics
+- `@amodel/cli` - CLI tool
+
+### 8. `scripts/` (Utility Scripts)
+Migration and verification scripts.
+
+## Import Conventions
+
+```typescript
+// Features
+import { createAgentTools } from "@/features/ai/tools";
+import { aiProcessAssistantChat } from "@/features/web-chat/ai/chat";
+
+// Integrations
+import { getGmailClient } from "@/integrations/google/client";
+
+// Utilities
+import { createScopedLogger } from "@/server/lib/logger";
+
+// Database
+import prisma from "@/server/db/client";
+
+// Actions
+import { createRuleAction } from "@/actions/rule";
+```
+
+## Adding New Features
+
+1. Create `features/[feature-name]/`
+2. Add domain logic files
+3. If AI-powered, add `features/[feature-name]/ai/`
+4. Add validation schemas to `actions/validation/`
+5. Add server actions to `actions/[feature-name].ts`
+6. Add API routes to `app/api/[feature-name]/`
+
+See `docs/ARCHITECTURE.md` for the full architecture guide.

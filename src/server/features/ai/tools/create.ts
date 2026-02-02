@@ -121,11 +121,38 @@ Automation: Create Rules & Knowledge supported.`,
                     body: data.body
                 });
 
+                // Build summary for interactive UI
+                const recipients = data.to?.join(", ") || "unknown";
+                const subjectLine = data.subject || "(no subject)";
+
+                // Construct Gmail/Outlook draft URL (Gmail format - Outlook would differ)
+                // Gmail: https://mail.google.com/mail/u/0/#drafts/[draftId]
+                const draftUrl = `https://mail.google.com/mail/u/0/#drafts/${draftResult.draftId}`;
+
                 return {
                     success: true,
                     data: {
                         ...draftResult,
                         replyContext
+                    },
+                    interactive: {
+                        type: "draft_created" as const,
+                        draftId: draftResult.draftId,
+                        emailAccountId: context.emailAccountId,
+                        userId: context.userId,
+                        summary: `Draft to ${recipients} - "${subjectLine}"`,
+                        actions: [
+                            { label: "Send", style: "primary" as const, value: "send" },
+                            { label: "Edit in Gmail", style: "primary" as const, value: "edit", url: draftUrl },
+                            { label: "Discard", style: "danger" as const, value: "discard" }
+                        ],
+                        preview: {
+                            to: data.to || [],
+                            cc: data.cc,
+                            bcc: data.bcc,
+                            subject: data.subject || "",
+                            body: data.body || ""
+                        }
                     }
                 };
 

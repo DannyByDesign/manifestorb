@@ -1,6 +1,9 @@
 
 import { App } from "@slack/bolt";
-import { forwardToBrain, type InteractiveAction } from "../utils";
+import { forwardToBrain, type InteractiveAction, type InteractivePayload } from "../utils";
+
+const CORE_BASE_URL = process.env.CORE_BASE_URL || "http://localhost:3000";
+const SHARED_SECRET = process.env.SURFACES_SHARED_SECRET || "dev-secret";
 
 export async function startSlack() {
     const token = process.env.SLACK_BOT_TOKEN;
@@ -34,11 +37,11 @@ export async function startSlack() {
         console.log(`[Surfaces] Processing ${decision} for request ${requestId}`);
 
         // Call Brain API
-        const response = await fetch(`${process.env.BRAIN_API_URL}/api/approvals/${requestId}/${decision}`, {
+        const response = await fetch(`${CORE_BASE_URL}/api/approvals/${requestId}/${decision}`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "x-surfaces-secret": process.env.SURFACES_SHARED_SECRET || "dev-secret",
+                "x-surfaces-secret": SHARED_SECRET,
             },
             body: JSON.stringify({
                 userId: body.user.id, // Who clicked the button
@@ -52,6 +55,59 @@ export async function startSlack() {
             await say?.(`Request ${decision}d! ✅`);
         } else {
             await say?.(`Failed to ${decision} request. ${response.statusText}`);
+        }
+    });
+
+    // Handle Draft Send/Discard
+    app.action(/draft_send|draft_discard/, async ({ body, action, ack, say }) => {
+        await ack();
+
+        if (action.type !== 'button') return;
+
+        const actionId = ("action_id" in action) ? action.action_id : undefined;
+        if (!actionId) return;
+
+        // Value format: "draftId:emailAccountId:userId"
+        const [draftId, emailAccountId, userId] = (action.value || "").split(":");
+        
+        if (!draftId || !emailAccountId || !userId) {
+            await say?.("Invalid draft action data.");
+            return;
+        }
+
+        if (actionId === "draft_send") {
+            console.log(`[Surfaces] Sending draft ${draftId}`);
+
+            const response = await fetch(`${CORE_BASE_URL}/api/drafts/${draftId}/send`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "x-surfaces-secret": SHARED_SECRET,
+                },
+                body: JSON.stringify({ userId, emailAccountId })
+            });
+
+            if (response.ok) {
+                await say?.("✅ Email sent successfully!");
+            } else {
+                const error = await response.text();
+                await say?.(`❌ Failed to send email: ${error}`);
+            }
+        } else if (actionId === "draft_discard") {
+            console.log(`[Surfaces] Discarding draft ${draftId}`);
+
+            const response = await fetch(`${CORE_BASE_URL}/api/drafts/${draftId}?userId=${userId}&emailAccountId=${emailAccountId}`, {
+                method: "DELETE",
+                headers: {
+                    "x-surfaces-secret": SHARED_SECRET,
+                }
+            });
+
+            if (response.ok) {
+                await say?.("🗑️ Draft discarded.");
+            } else {
+                await say?.("Failed to discard draft.");
+            }
         }
     });
 
@@ -104,29 +160,103 @@ export async function startSlack() {
         if (brainResponse && brainResponse.responses) {
             for (const resp of brainResponse.responses) {
                 if (resp.interactive) {
-                    // Render Block Kit Buttons
-                    const blocks = [
-                        {
-                            type: "section",
-                            text: {
-                                type: "mrkdwn",
-                                text: `*${resp.interactive.summary}*\n${resp.content}`
+                    const interactive = resp.interactive as InteractivePayload;
+                    
+                    // Build button elements based on interactive type
+                    let buttonElements: any[];
+                    
+                    if (interactive.type === "draft_created") {
+                        // Draft buttons - value includes all IDs needed
+                        const buttonValue = `${interactive.draftId}:${interactive.emailAccountId}:${interactive.userId}`;
+                        buttonElements = interactive.actions.map((action: InteractiveAction) => {
+                            // Skip edit button if it has a URL (handled separately)
+                            if (action.url) {
+                                return {
+                                    type: "button",
+                                    text: { type: "plain_text", text: action.label },
+                                    url: action.url
+                                };
                             }
-                        },
-                        {
-                            type: "actions",
-                            elements: resp.interactive.actions.map((action: InteractiveAction) => ({
+                            return {
                                 type: "button",
-                                text: {
-                                    type: "plain_text",
-                                    text: action.label
-                                },
+                                text: { type: "plain_text", text: action.label },
                                 style: action.style === "danger" ? "danger" : "primary",
-                                value: resp.interactive.approvalId, // Pass ID as value
-                                action_id: `${action.value}_request` // approve_request / deny_request
-                            }))
+                                value: buttonValue,
+                                action_id: `draft_${action.value}` // draft_send / draft_discard
+                            };
+                        });
+                    } else {
+                        // Approval buttons (existing logic)
+                        buttonElements = interactive.actions.map((action: InteractiveAction) => ({
+                            type: "button",
+                            text: { type: "plain_text", text: action.label },
+                            style: action.style === "danger" ? "danger" : "primary",
+                            value: interactive.approvalId,
+                            action_id: `${action.value}_request` // approve_request / deny_request
+                        }));
+                    }
+
+                    // Build blocks based on interactive type
+                    let blocks: any[];
+                    
+                    if (interactive.type === "draft_created" && interactive.preview) {
+                        // Rich draft preview with Block Kit
+                        const preview = interactive.preview;
+                        const bodySnippet = preview.body.length > 500 
+                            ? preview.body.slice(0, 500) + "..." 
+                            : preview.body;
+                        
+                        blocks = [
+                            {
+                                type: "header",
+                                text: { type: "plain_text", text: "Draft Email", emoji: true }
+                            },
+                            {
+                                type: "section",
+                                fields: [
+                                    { type: "mrkdwn", text: `*To:*\n${preview.to.join(", ")}` },
+                                    { type: "mrkdwn", text: `*Subject:*\n${preview.subject || "(no subject)"}` }
+                                ]
+                            }
+                        ];
+                        
+                        // Add CC if present
+                        if (preview.cc && preview.cc.length > 0) {
+                            blocks.push({
+                                type: "section",
+                                text: { type: "mrkdwn", text: `*CC:* ${preview.cc.join(", ")}` }
+                            });
                         }
-                    ];
+                        
+                        // Add body preview
+                        blocks.push(
+                            { type: "divider" },
+                            {
+                                type: "section",
+                                text: { type: "mrkdwn", text: bodySnippet }
+                            },
+                            { type: "divider" },
+                            {
+                                type: "actions",
+                                elements: buttonElements
+                            }
+                        );
+                    } else {
+                        // Default layout for approvals or drafts without preview
+                        blocks = [
+                            {
+                                type: "section",
+                                text: {
+                                    type: "mrkdwn",
+                                    text: `*${interactive.summary}*\n${resp.content}`
+                                }
+                            },
+                            {
+                                type: "actions",
+                                elements: buttonElements
+                            }
+                        ];
+                    }
 
                     await say({ blocks, text: resp.content });
                 } else if (resp.content) {

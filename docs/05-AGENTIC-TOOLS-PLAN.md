@@ -2,7 +2,7 @@
 
 > A comprehensive plan for transforming the AI assistant into a fully agentic email and calendar manager using 6 polymorphic tools.
 
-**Status:** Planning
+**Status:** Implemented
 **Last Updated:** January 2026
 
 ---
@@ -544,14 +544,13 @@ const RATE_LIMITS = {
 
 ## 6. Migration Plan
 
-### Phase 1: Create New Tool Infrastructure
+### Phase 1: Create New Tool Infrastructure (COMPLETED)
 
 ```
-src/server/integrations/ai/tools/
+src/server/features/ai/tools/
 ├── index.ts           # Tool registry and factory
 ├── types.ts           # Shared types
 ├── security.ts        # Permission checks, rate limiting
-├── audit.ts           # Audit logging
 ├── query.ts           # query tool
 ├── get.ts             # get tool
 ├── modify.ts          # modify tool
@@ -562,58 +561,47 @@ src/server/integrations/ai/tools/
     ├── email.ts       # Email provider abstraction
     ├── calendar.ts    # Calendar provider abstraction
     ├── automation.ts  # Rules/config provider
-    └── knowledge.ts   # Knowledge base provider
+    └── drive.ts       # Drive provider
 ```
 
-### Phase 2: Implement Provider Abstraction
+### Phase 2: Implement Provider Abstraction (COMPLETED)
 
-Map tool calls to existing provider functions:
+Provider abstraction is implemented in `src/server/features/ai/tools/providers/`
+
+### Phase 3: Update Chat Assistant (COMPLETED)
+
+Both agents now use `createAgentTools()` from `@/features/ai/tools` and share rule management tools via `createRuleManagementTools()` from `@/features/ai/rule-tools`.
+
+**Agents:**
+- `features/web-chat/ai/chat.ts` - Web UI chat assistant
+- `features/surfaces/executor.ts` - Multi-channel agent (Slack/Discord/Telegram)
+
+**Approval workflow:**
+- `create` (drafts) - No approval required (user reviews via interactive buttons)
+- `modify` and `delete` - Requires approval on web-chat; surfaces use same approval logic
+
+**Draft Review & Send (Implemented):**
+- AI creates drafts with `InteractivePayload` containing preview data
+- Surfaces render rich previews (Slack Block Kit, Discord Embed, Telegram Markdown)
+- Users click Send/Edit/Discard buttons to take action
+- `POST /api/drafts/:id/send` handles sending (user-initiated only)
+
+### Phase 4: Update System Prompt (COMPLETED)
+
+**Agent Unification (Implemented):**
+
+Both `web-chat` and `surfaces` agents now use the same system prompt from `features/ai/system-prompt.ts`:
 
 ```typescript
-// providers/email.ts
-export const emailProvider = {
-  query: async (filter, ctx) => {
-    if (isGoogleProvider(ctx.provider)) {
-      return googleMessage.searchMessages(ctx.gmail, filter.query, filter.limit);
-    } else {
-      return microsoftMessage.searchMessages(ctx.outlook, filter.query, filter.limit);
-    }
-  },
-  
-  modify: async (ids, changes, ctx) => {
-    // Map to existing functions:
-    // - archiveEmail() from server/integrations/google/archive.ts
-    // - labelEmail() from server/integrations/google/label.ts
-    // - etc.
-  },
-  
-  // ... etc
-};
+import { buildAgentSystemPrompt } from "@/features/ai/system-prompt";
+
+const prompt = buildAgentSystemPrompt({
+  platform: "web" | "slack" | "discord" | "telegram",
+  emailSendEnabled: boolean,
+});
 ```
 
-### Phase 3: Update Chat Assistant
-
-Replace old tools with new polymorphic tools:
-
-```typescript
-// Before (chat.ts)
-tools: {
-  getUserRulesAndSettings: ...,
-  getLearnedPatterns: ...,
-  createRule: ...,
-  // ... 8 tools
-}
-
-// After (chat.ts)
-tools: createAgentTools({
-  emailAccountId,
-  providers: { email, calendar },
-  logger,
-})
-// = 6 polymorphic tools
-```
-
-### Phase 4: Update System Prompt
+This ensures consistent AI behavior, tool usage, and response style across all platforms.
 
 ```typescript
 const system = `You are an AI assistant that helps manage the user's email and calendar.
@@ -640,11 +628,9 @@ Examples:
 `;
 ```
 
-### Phase 5: Deprecate Old Tools
+### Phase 5: Deprecate Old Tools (COMPLETED)
 
-1. Keep old tools working for 2 weeks (backward compatibility)
-2. Log usage of old tools
-3. Remove old tools after migration period
+Old tools have been migrated to `createRuleManagementTools()` which provides a shared set of rule management tools used by both agents.
 
 ---
 
@@ -755,42 +741,46 @@ export async function createEmailProvider(
 
 ## 8. UI Integration
 
-### 8.1 Draft Review Flow
+### 8.1 Draft Review Flow (Implemented)
 
-When AI creates a draft, the response includes UI actions:
+When AI creates a draft, the response includes an `InteractivePayload` with preview and actions:
 
 ```typescript
-// AI returns this
+// AI returns this via create tool
 {
-  draftId: "draft_abc123",
-  preview: {
-    to: ["john@company.com"],
-    subject: "Re: Meeting tomorrow",
-    bodySnippet: "Hi John, I'll be about 10 minutes late..."
-  },
-  actions: [
-    { 
-      type: "link",
-      label: "Edit Draft",
-      url: "/mail/drafts/draft_abc123"
+  success: true,
+  data: { draftId: "draft_abc123", ... },
+  interactive: {
+    type: "draft_created",
+    draftId: "draft_abc123",
+    emailAccountId: "...",
+    userId: "...",
+    summary: "Draft to john@company.com - Re: Meeting tomorrow",
+    preview: {
+      to: ["john@company.com"],
+      subject: "Re: Meeting tomorrow",
+      body: "Hi John, I'll be about 10 minutes late..."
     },
-    {
-      type: "button",
-      label: "Send Now",
-      action: "SEND_DRAFT",
-      params: { draftId: "draft_abc123" },
-      style: "primary"
-    },
-    {
-      type: "button", 
-      label: "Discard",
-      action: "DELETE_DRAFT",
-      params: { draftId: "draft_abc123" },
-      style: "danger"
-    }
-  ]
+    actions: [
+      { label: "Send", style: "primary", value: "send" },
+      { label: "Edit in Gmail", style: "primary", value: "edit", url: "https://mail.google.com/..." },
+      { label: "Discard", style: "danger", value: "discard" }
+    ]
+  }
 }
 ```
+
+**API Endpoints (Implemented):**
+- `GET /api/drafts` - List all user drafts
+- `GET /api/drafts/:id` - Get draft details  
+- `POST /api/drafts/:id/send` - Send draft (user-initiated only)
+- `DELETE /api/drafts/:id` - Discard draft
+
+**Platform Rendering:**
+- **Web App**: Pending UI (API ready)
+- **Slack**: Block Kit with header, fields, body section, and action buttons
+- **Discord**: Embed with fields and button row
+- **Telegram**: Markdown with inline keyboard
 
 ### 8.2 Chat UI Components
 
@@ -860,13 +850,13 @@ analysisType: z.enum([
 
 | Resource | Status | Notes |
 |----------|--------|-------|
-| email | Planned | Core feature |
-| calendar | Planned | Core feature |
-| automation | Planned | Existing, needs migration |
-| knowledge | Planned | Existing, needs migration |
-| preferences | Planned | Existing, needs migration |
-| drive | Future | Google Drive / OneDrive |
-| contacts | Future | Google Contacts / Outlook People |
+| email | **Implemented** | Gmail and Outlook |
+| calendar | In Progress | Calendar integration in development |
+| automation | **Implemented** | Rule management |
+| knowledge | **Implemented** | Knowledge base entries |
+| preferences | **Implemented** | User settings |
+| drive | **Implemented** | Google Drive document filing |
+| contacts | **Implemented** | Google/Outlook contacts |
 | tasks | Future | Google Tasks / Microsoft To Do |
 
 ---

@@ -1,6 +1,9 @@
 
 import { Telegraf } from "telegraf";
-import { forwardToBrain, type InteractiveAction } from "../utils";
+import { forwardToBrain, type InteractiveAction, type InteractivePayload } from "../utils";
+
+const CORE_BASE_URL = process.env.CORE_BASE_URL || "http://localhost:3000";
+const SHARED_SECRET = process.env.SURFACES_SHARED_SECRET || "dev-secret";
 
 export function startTelegram() {
     const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -17,18 +20,64 @@ export function startTelegram() {
         const data = ctx.callbackQuery.data;
         if (!data) return;
 
+        // Handle draft actions (draft_send:draftId:emailAccountId:userId)
+        if (data.startsWith("draft_send:") || data.startsWith("draft_discard:")) {
+            const parts = data.split(":");
+            const action = parts[0]; // draft_send or draft_discard
+            const draftId = parts[1];
+            const emailAccountId = parts[2];
+            const userId = parts[3];
+
+            if (action === "draft_send") {
+                console.log(`[Surfaces] Telegram: Sending draft ${draftId}`);
+                
+                const response = await fetch(`${CORE_BASE_URL}/api/drafts/${draftId}/send`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "x-surfaces-secret": SHARED_SECRET,
+                    },
+                    body: JSON.stringify({ userId, emailAccountId })
+                });
+
+                if (response.ok) {
+                    await ctx.answerCbQuery("Email sent!");
+                    await ctx.editMessageText("✅ Email sent successfully!", { reply_markup: { inline_keyboard: [] } });
+                } else {
+                    await ctx.answerCbQuery("Failed to send");
+                    await ctx.editMessageText("❌ Failed to send email.", { reply_markup: { inline_keyboard: [] } });
+                }
+            } else if (action === "draft_discard") {
+                console.log(`[Surfaces] Telegram: Discarding draft ${draftId}`);
+                
+                const response = await fetch(`${CORE_BASE_URL}/api/drafts/${draftId}?userId=${userId}&emailAccountId=${emailAccountId}`, {
+                    method: "DELETE",
+                    headers: {
+                        "x-surfaces-secret": SHARED_SECRET,
+                    }
+                });
+
+                if (response.ok) {
+                    await ctx.answerCbQuery("Draft discarded");
+                    await ctx.editMessageText("🗑️ Draft discarded.", { reply_markup: { inline_keyboard: [] } });
+                } else {
+                    await ctx.answerCbQuery("Failed to discard");
+                }
+            }
+            return;
+        }
+
+        // Handle approval actions
         const [action, requestId] = data.split(":");
         if (action !== "approve" && action !== "deny") return;
 
         console.log(`[Surfaces] Telegram: Processing ${action} for request ${requestId}`);
 
-        // Call Brain API
-        const brainUrl = process.env.BRAIN_API_URL || "http://localhost:3000";
-        const response = await fetch(`${brainUrl}/api/approvals/${requestId}/${action}`, {
+        const response = await fetch(`${CORE_BASE_URL}/api/approvals/${requestId}/${action}`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "x-surfaces-secret": process.env.SURFACES_SHARED_SECRET || "dev-secret",
+                "x-surfaces-secret": SHARED_SECRET,
             },
             body: JSON.stringify({
                 userId: ctx.from.id.toString(),
@@ -69,12 +118,57 @@ export function startTelegram() {
 
             for (const resp of brainResponse.responses) {
                 if (resp.interactive) {
-                    const buttons = resp.interactive.actions.map((action: InteractiveAction) =>
-                        Markup.button.callback(action.label, `${action.value}:${resp.interactive.approvalId}`) // approve:123
-                    );
+                    const interactive = resp.interactive as InteractivePayload;
+                    
+                    const buttons = interactive.actions.map((action: InteractiveAction) => {
+                        // Handle URL buttons (Edit in Gmail) - use url button
+                        if (action.url) {
+                            return Markup.button.url(action.label, action.url);
+                        }
+                        
+                        // Build callback data based on type
+                        if (interactive.type === "draft_created") {
+                            // draft_send:draftId:emailAccountId:userId
+                            return Markup.button.callback(
+                                action.label, 
+                                `draft_${action.value}:${interactive.draftId}:${interactive.emailAccountId}:${interactive.userId}`
+                            );
+                        } else {
+                            // approve:requestId or deny:requestId
+                            return Markup.button.callback(action.label, `${action.value}:${interactive.approvalId}`);
+                        }
+                    });
 
                     try {
-                        await ctx.reply(`*${resp.interactive.summary}*\n${resp.content}`, {
+                        // Build message based on type
+                        let messageText: string;
+                        
+                        if (interactive.type === "draft_created" && interactive.preview) {
+                            const preview = interactive.preview;
+                            const bodySnippet = preview.body.length > 800 
+                                ? preview.body.slice(0, 800) + "..." 
+                                : preview.body;
+                            
+                            // Build rich Markdown preview
+                            const lines = [
+                                "*Draft Email*",
+                                "",
+                                `*To:* ${preview.to.join(", ")}`,
+                                `*Subject:* ${preview.subject || "(no subject)"}`
+                            ];
+                            
+                            if (preview.cc && preview.cc.length > 0) {
+                                lines.push(`*CC:* ${preview.cc.join(", ")}`);
+                            }
+                            
+                            lines.push("", "---", "", bodySnippet);
+                            messageText = lines.join("\n");
+                        } else {
+                            // Default for approvals or drafts without preview
+                            messageText = `*${interactive.summary}*\n${resp.content}`;
+                        }
+                        
+                        await ctx.reply(messageText, {
                             parse_mode: "Markdown",
                             ...Markup.inlineKeyboard([buttons])
                         });

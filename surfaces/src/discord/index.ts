@@ -1,6 +1,9 @@
 
 import { Client, GatewayIntentBits, Partials, ChannelType } from "discord.js";
-import { forwardToBrain, type InteractiveAction } from "../utils";
+import { forwardToBrain, type InteractiveAction, type InteractivePayload } from "../utils";
+
+const CORE_BASE_URL = process.env.CORE_BASE_URL || "http://localhost:3000";
+const SHARED_SECRET = process.env.SURFACES_SHARED_SECRET || "dev-secret";
 
 export function startDiscord() {
     const token = process.env.DISCORD_BOT_TOKEN;
@@ -27,20 +30,73 @@ export function startDiscord() {
     client.on("interactionCreate", async (interaction) => {
         if (!interaction.isButton()) return;
 
-        const [action, requestId] = interaction.customId.split(":");
+        const customId = interaction.customId;
+        
+        // Handle draft actions (draft_send:draftId:emailAccountId:userId)
+        if (customId.startsWith("draft_send:") || customId.startsWith("draft_discard:")) {
+            const parts = customId.split(":");
+            const action = parts[0]; // draft_send or draft_discard
+            const draftId = parts[1];
+            const emailAccountId = parts[2];
+            const userId = parts[3];
+
+            await interaction.deferReply();
+
+            if (action === "draft_send") {
+                console.log(`[Surfaces] Discord: Sending draft ${draftId}`);
+                
+                const response = await fetch(`${CORE_BASE_URL}/api/drafts/${draftId}/send`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "x-surfaces-secret": SHARED_SECRET,
+                    },
+                    body: JSON.stringify({ userId, emailAccountId })
+                });
+
+                if (response.ok) {
+                    await interaction.editReply({
+                        content: "✅ Email sent successfully!",
+                        components: []
+                    });
+                } else {
+                    await interaction.editReply("❌ Failed to send email.");
+                }
+            } else if (action === "draft_discard") {
+                console.log(`[Surfaces] Discord: Discarding draft ${draftId}`);
+                
+                const response = await fetch(`${CORE_BASE_URL}/api/drafts/${draftId}?userId=${userId}&emailAccountId=${emailAccountId}`, {
+                    method: "DELETE",
+                    headers: {
+                        "x-surfaces-secret": SHARED_SECRET,
+                    }
+                });
+
+                if (response.ok) {
+                    await interaction.editReply({
+                        content: "🗑️ Draft discarded.",
+                        components: []
+                    });
+                } else {
+                    await interaction.editReply("Failed to discard draft.");
+                }
+            }
+            return;
+        }
+
+        // Handle approval actions (approve:requestId or deny:requestId)
+        const [action, requestId] = customId.split(":");
         if (action !== "approve" && action !== "deny") return;
 
         await interaction.deferReply();
 
         console.log(`[Surfaces] Discord: Processing ${action} for request ${requestId}`);
 
-        // Call Brain API
-        const brainUrl = process.env.BRAIN_API_URL || "http://localhost:3000";
-        const response = await fetch(`${brainUrl}/api/approvals/${requestId}/${action}`, {
+        const response = await fetch(`${CORE_BASE_URL}/api/approvals/${requestId}/${action}`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "x-surfaces-secret": process.env.SURFACES_SHARED_SECRET || "dev-secret",
+                "x-surfaces-secret": SHARED_SECRET,
             },
             body: JSON.stringify({
                 userId: interaction.user.id,
@@ -93,25 +149,67 @@ export function startDiscord() {
         });
 
         if (brainResponse && brainResponse.responses) {
-            const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js"); // Late require to avoid top-level issues if needed, or better: import at top
+            const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require("discord.js");
 
             for (const resp of brainResponse.responses) {
                 if (resp.interactive) {
-                    const row = new ActionRowBuilder()
-                        .addComponents(
-                            resp.interactive.actions.map((action: InteractiveAction) =>
-                                new ButtonBuilder()
-                                    .setCustomId(`${action.value}:${resp.interactive.approvalId}`) // approve:123
-                                    .setLabel(action.label)
-                                    .setStyle(action.style === 'danger' ? ButtonStyle.Danger : ButtonStyle.Primary) // Primary = Blurple, Danger = Red
-                            )
-                        );
+                    const interactive = resp.interactive as InteractivePayload;
+                    
+                    const buttons = interactive.actions.map((action: InteractiveAction) => {
+                        const btn = new ButtonBuilder()
+                            .setLabel(action.label)
+                            .setStyle(action.style === 'danger' ? ButtonStyle.Danger : ButtonStyle.Primary);
+
+                        // Handle URL buttons (Edit in Gmail)
+                        if (action.url) {
+                            return btn.setStyle(ButtonStyle.Link).setURL(action.url);
+                        }
+
+                        // Build customId based on type
+                        if (interactive.type === "draft_created") {
+                            // draft_send:draftId:emailAccountId:userId
+                            return btn.setCustomId(`draft_${action.value}:${interactive.draftId}:${interactive.emailAccountId}:${interactive.userId}`);
+                        } else {
+                            // approve:requestId or deny:requestId
+                            return btn.setCustomId(`${action.value}:${interactive.approvalId}`);
+                        }
+                    });
+
+                    const row = new ActionRowBuilder().addComponents(buttons);
 
                     try {
-                        await message.reply({
-                            content: `**${resp.interactive.summary}**\n${resp.content}`,
-                            components: [row]
-                        });
+                        // Build message options based on type
+                        if (interactive.type === "draft_created" && interactive.preview) {
+                            const preview = interactive.preview;
+                            const bodySnippet = preview.body.length > 1000 
+                                ? preview.body.slice(0, 1000) + "..." 
+                                : preview.body;
+                            
+                            const embed = new EmbedBuilder()
+                                .setTitle("Draft Email")
+                                .addFields(
+                                    { name: "To", value: preview.to.join(", ") || "N/A", inline: true },
+                                    { name: "Subject", value: preview.subject || "(no subject)", inline: true }
+                                )
+                                .setDescription(bodySnippet)
+                                .setColor(0x5865F2); // Discord blurple
+                            
+                            // Add CC if present
+                            if (preview.cc && preview.cc.length > 0) {
+                                embed.addFields({ name: "CC", value: preview.cc.join(", "), inline: true });
+                            }
+                            
+                            await message.reply({
+                                embeds: [embed],
+                                components: [row]
+                            });
+                        } else {
+                            // Default for approvals or drafts without preview
+                            await message.reply({
+                                content: `**${interactive.summary}**\n${resp.content}`,
+                                components: [row]
+                            });
+                        }
                     } catch (err) {
                         console.error("[Surfaces] Failed to reply interactive on Discord:", err);
                     }
