@@ -1,45 +1,93 @@
 # Amodel
 
-AI-powered email management and automation platform with a stunning 3D visual interface.
+**Your AI-powered email command center.**
+
+Amodel is an intelligent email assistant that lives wherever you work—web, Slack, Discord, or Telegram. It understands your inbox, drafts responses, organizes files, and automates the mundane, while keeping you in control of every action that matters.
 
 ---
 
-## Capabilities
+## What Makes Amodel Different
 
-The system is powered by an **Agentic AI** that interacts with your data through a set of polymorphic tools. Below are the verified capabilities:
+### AI That Assists, Not Replaces
+Unlike traditional automation, Amodel uses an agentic AI that understands context. Ask it to *"draft a follow-up to Sarah about the Q3 report"* and it will compose a contextual response. But **the AI never sends emails directly**—you review, edit, and send. Human judgment stays in the loop.
 
-### 1. Email Management
-- **Drafting & Replies**: Create drafts and contextual replies
-- **Bulk Actions**: Archive, trash, and label operations
-- **Reply Tracking**: Monitor threads for responses
-- **Cleanup**: AI-powered inbox cleanup suggestions
-- **Categorization**: Intelligent sender categorization
+### One AI, Every Platform
+The same AI assistant works across:
+- **Web App** — Full dashboard with 3D visual interface
+- **Slack** — Manage email without leaving your workspace
+- **Discord** — For teams that live in Discord
+- **Telegram** — Mobile-friendly access anywhere
 
-### 2. Calendar Intelligence
-- **Meeting Briefings**: Generate briefings by analyzing related emails
-- *(Note: Calendar features still in development)*
+Ask *"show me my rules"* in Slack, get the same answer in the web app.
 
-### 3. File System
-- **Document Filing**: Auto-file attachments to Google Drive
-- **Search**: Natural language search for files
-- **Management**: Create folders and organize storage
+### Rules + AI = Smart Automation
+Create rules using natural language:
+- *"Archive newsletters unless they mention product updates"*
+- *"Notify me when my boss emails me"*
+- *"Label emails from @company.com as Work"*
 
-### 4. Contacts System
-- **Search**: Find people across Google/Outlook contacts
-- **Management**: Create contacts from conversation context
+Rules combine static conditions (from/to/subject) with AI-powered instructions—automation that actually understands your intent.
 
-### 5. Notifications & Approvals
-- **Omnichannel Delivery**: Notifications across Web, Slack, Discord, Telegram
-- **Approvals**: Human-in-the-loop approval system for sensitive actions
+### User-Controlled Notifications
+You decide what deserves a push notification. No hardcoded spam. Tell the AI *"remind me when this client responds"* and it creates a rule. Your inbox, your rules.
 
-### 6. Multi-Channel AI Agent
-- **Unified Agent**: Same AI personality across Web, Slack, Discord, and Telegram
-- **Draft Review**: AI creates drafts, users review and send via interactive buttons
-- **Interactive Surfaces**: Rich previews with Send/Edit/Discard actions
+---
 
-### 7. Automation
-- **Pattern Detection**: Suggest automation rules from email patterns
-- **Rule Engine**: Deterministic rules as guardrails for AI
+## Core Capabilities
+
+| Feature | Description |
+|---------|-------------|
+| **Email Management** | Draft, reply, archive, label, trash—all through conversation |
+| **Document Filing** | Auto-file attachments to Google Drive with AI categorization |
+| **Smart Rules** | Natural language automation with AI + static conditions |
+| **Cold Email Detection** | Identify and handle unsolicited emails |
+| **Newsletter Management** | Categorize and control subscription emails |
+| **Thread Tracking** | Monitor conversations for replies |
+| **Daily Digest** | Summarized email updates on your schedule |
+| **Contacts** | Search and create contacts from context |
+
+### Coming Soon
+| Feature | Status |
+|---------|--------|
+| **Google Calendar** | Integration in progress |
+| **Microsoft Outlook** | On roadmap |
+| **Microsoft Calendar** | On roadmap |
+
+---
+
+## How It Works
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        USER                                 │
+│   Web App  ·  Slack  ·  Discord  ·  Telegram               │
+└─────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    UNIFIED AI AGENT                         │
+│   • Same personality across all platforms                   │
+│   • Tool-calling architecture (read, draft, organize)       │
+│   • Human-in-the-loop for sensitive actions                 │
+└─────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│                     INTEGRATIONS                            │
+│   Gmail · Google Drive · Google Calendar (soon)            │
+│   Outlook · OneDrive · Microsoft Calendar (roadmap)         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Security Philosophy
+
+1. **AI Never Sends Directly** — Drafts require explicit user approval
+2. **Approval Workflows** — Destructive actions (delete, modify) need confirmation
+3. **Prompt Injection Protection** — Guardrails against malicious email content
+4. **User-Controlled Notifications** — No unsolicited push notifications
+5. **OAuth Standard** — Secure, revocable access to email providers
 
 ---
 

@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import useSWR, { mutate } from "swr";
 import { toast } from "sonner";
 import { type InAppNotification } from "@/generated/prisma/client";
@@ -19,6 +19,27 @@ type Notification = {
 const POLL_INTERVAL = 3000; // 3 seconds
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
+
+// Handler for approval decisions
+async function handleApproval(approvalId: string, decision: "approve" | "deny") {
+    try {
+        const response = await fetch(`/api/approvals/${approvalId}/${decision}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({})
+        });
+
+        if (response.ok) {
+            toast.success(decision === "approve" ? "Approved!" : "Denied");
+        } else {
+            const errorData = await response.json().catch(() => ({}));
+            toast.error(errorData.error || "Failed to process approval");
+        }
+    } catch (error) {
+        console.error("Approval error:", error);
+        toast.error("Failed to process approval");
+    }
+}
 
 export function useNotificationPoll() {
     const [isVisible, setIsVisible] = useState(true);
@@ -51,12 +72,29 @@ export function useNotificationPoll() {
     useEffect(() => {
         if (data?.notifications && data.notifications.length > 0) {
             data.notifications.forEach((note) => {
-                // Show Toast
-                // Using Sonner
-                toast(note.title, {
-                    description: note.body,
-                    // Map type to color/icon if needed
-                });
+                // Check if this is an approval notification
+                if (note.type === "approval" && note.metadata?.approvalId) {
+                    const approvalId = note.metadata.approvalId;
+                    
+                    // Show toast with Approve/Deny action buttons
+                    toast(note.title, {
+                        description: note.body,
+                        duration: Infinity, // Don't auto-dismiss approvals
+                        action: {
+                            label: "Approve",
+                            onClick: () => handleApproval(approvalId, "approve"),
+                        },
+                        cancel: {
+                            label: "Deny",
+                            onClick: () => handleApproval(approvalId, "deny"),
+                        },
+                    });
+                } else {
+                    // Regular notification toast
+                    toast(note.title, {
+                        description: note.body,
+                    });
+                }
             });
 
             // Refresh the history list if it's being viewed

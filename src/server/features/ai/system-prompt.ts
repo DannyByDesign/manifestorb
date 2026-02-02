@@ -20,7 +20,7 @@ export function buildAgentSystemPrompt(options: SystemPromptOptions): string {
   
   // Platform-specific approval instruction
   const approvalInstruction = isWeb
-    ? "If a tool returns \"Approval Required\", inform the user that approval is needed in the Approvals panel."
+    ? "If a tool returns \"Approval Required\", inform the user that a notification will appear with Approve/Deny buttons."
     : "If a tool returns \"Approval Required\", inform the user that you have requested their approval.";
 
   // Conditional email send actions

@@ -12,6 +12,7 @@ import { env } from "@/env";
 import { createAgentTools } from "@/features/ai/tools";
 import { createRuleManagementTools } from "@/features/ai/rule-tools";
 import { buildAgentSystemPrompt } from "@/features/ai/system-prompt";
+import { createInAppNotification } from "@/features/notifications/create";
 
 export const maxDuration = 120;
 
@@ -148,10 +149,24 @@ export async function aiProcessAssistantChat({
             expiresInSeconds: 3600
           } as any);
 
+          // Create in-app notification so user sees toast with Approve/Deny buttons
+          await createInAppNotification({
+            userId: user.id,
+            title: "Approval Required",
+            body: `${toolName}: ${JSON.stringify(args).slice(0, 100)}...`,
+            type: "approval",
+            metadata: {
+              approvalId: approval.id,
+              tool: toolName,
+              args: args
+            },
+            dedupeKey: `approval-${approval.id}`
+          });
+
           return {
             status: "approval_pending",
             approvalId: approval.id,
-            message: "This action requires your approval. Please approve it in the Approvals panel."
+            message: "This action requires your approval. You'll see a notification to approve or deny."
           };
         }
       } as any);
