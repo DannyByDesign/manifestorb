@@ -200,6 +200,7 @@ export const createRuleTool = ({
         const rule = await createRule({
           result: {
             name,
+            ruleId: undefined,
             condition,
             actions: actions.map((action: any) => ({
               type: action.type,

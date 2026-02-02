@@ -366,6 +366,7 @@ ${stringifyEmailSimple(getEmailForLLM(originalEmail))}
             const rule = await createRule({
               result: {
                 name,
+                ruleId: undefined,
                 condition,
                 actions: actions.map((action: any) => ({
                   ...action,

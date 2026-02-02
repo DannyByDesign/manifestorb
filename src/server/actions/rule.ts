@@ -75,6 +75,7 @@ export const createRuleAction = actionClient
         const rule = await createRule({
           result: {
             name,
+            ruleId: undefined,
             condition: {
               aiInstructions: conditions.instructions,
               conditionalOperator: conditionalOperator || null,
@@ -128,6 +129,7 @@ export const updateRuleAction = actionClient
           ruleId: id,
           result: {
             name: name || "",
+            ruleId: id,
             condition: {
               aiInstructions: conditions.instructions,
               conditionalOperator: conditionalOperator || null,

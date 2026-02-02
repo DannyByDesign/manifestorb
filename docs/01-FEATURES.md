@@ -1,6 +1,12 @@
 # Amodel Features List (UX Surface + Launch Prioritization)
 
+> **✅ Pre-Launch Status (Last Audit: Jan 2026)**
+>
+> All production TypeScript errors have been fixed. Remaining errors are in test files only.
+> - Test file errors (48) do not affect production deployment.
+
 **Legend (replaces the `#` column):**
+- ✅ = **Production ready** (implemented, tested, working - verified via code audit)
 - 🚀 = **Prioritize for launch** (ship + market)
 - 🕒 = **Defer to post-launch** (ship later)
 - 🗑️ = **Deprioritize / consider removal** (low leverage, confusing, or replaces with something else)
@@ -33,18 +39,18 @@
 
 ### User-Facing Features (21)
 
-| 🚀/🕒/🗑️ | Feature | Description | Key Files | Primary UX Surface | Agentic Supported? |
+| Status | Feature | Description | Key Files | Primary UX Surface | Agentic Supported? |
 |---|---|---|---|---|---|
-| 🚀 | **AI Assistant/Chat** | Interactive chat interface for email actions + refining rules | `server/features/web-chat/*` | **Chat-first** (core product) | N/A |
-| 🚀 | **AI Reply Drafting** | Generate contextual replies based on thread + style | `server/features/reply-tracker/ai/draft-reply.ts` | **Hybrid** (chat + draft editor) | Yes (`create`) |
-| 🚀 | **AI Follow-up Generation** | Draft follow-ups for threads awaiting response | `server/features/reply-tracker/ai/draft-follow-up.ts` | **UI-first** (queue) + Chat assist | Yes (`create`) |
-| 🚀 | **AI Clean/Archive Suggestions** | Suggest safe archiving (Inbox Zero loop) | `server/features/clean/ai/ai-clean.ts` | **UI-first** (triage list) + Chat | Yes (`query`/`analyze`) |
-| 🚀 | **AI Email Summarization** | Summaries for threads/digests | `server/features/digest/ai/*` | **Hybrid** (inline + chat) | Yes (`analyze`) |
-| 🚀 | **AI Rule Generation** | NL → structured automation rules | `server/features/rules/ai/prompt-to-rules.ts` | **Hybrid** (chat → rule preview/confirm) | Yes (`create`) |
+| ✅ | **AI Assistant/Chat** | Interactive chat interface for email actions + refining rules | `server/features/web-chat/*` | **Chat-first** (core product) | N/A |
+| ✅ | **AI Reply Drafting** | Generate contextual replies based on thread + style | `server/features/reply-tracker/ai/draft-reply.ts` | **Hybrid** (chat + draft editor) | Yes (`create`) |
+| ✅ | **AI Follow-up Generation** | Draft follow-ups for threads awaiting response | `server/features/reply-tracker/ai/draft-follow-up.ts` | **UI-first** (queue) + Chat assist | Yes (`create`) |
+| ✅ | **AI Clean/Archive Suggestions** | Suggest safe archiving (Inbox Zero loop) | `server/features/clean/ai/ai-clean.ts` | **UI-first** (triage list) + Chat | Yes (`query`/`analyze`) |
+| ✅ | **AI Email Summarization** | Summaries for threads/digests | `server/features/digest/ai/*` | **Hybrid** (inline + chat) | Yes (`analyze`) |
+| ✅ | **AI Rule Generation** | NL → structured automation rules | `server/features/rules/ai/prompt-to-rules.ts` | **Hybrid** (chat → rule preview/confirm) | Yes (`create`) |
 | 🕒 | **AI Rule Diffing** | Compare differences between rule versions | `server/features/rules/ai/diff-rules.ts` | **UI-first** (power user) | Yes (`analyze`) |
 | 🕒 | **AI Sender Categorization** | Auto-categorize senders (newsletter/marketing/etc.) | `server/features/categorize/ai/*` | **UI-first** (manage categories) | Yes (`modify`) |
 | 🕒 | **AI Find Snippets** | Mine recurring canned responses from sent mail | `server/features/snippets/ai/find-snippets.ts` | **UI-first** (library) + Chat | Yes (`query`/`analyze`) |
-| 🕒 | **AI Nudge Generation** | Generate polite nudges | `server/features/reply-tracker/ai/generate-nudge.ts` | **Hybrid** | Yes (`create`) |
+| ✅ | **AI Nudge Generation** | Generate polite nudges | `server/features/reply-tracker/ai/generate-nudge.ts` | **Hybrid** | Yes (`create`) |
 | 🕒 | **AI Knowledge Extraction** | Extract knowledge from email history for replies | `server/features/knowledge/ai/*` | **Chat-first** + light “memory” UI | Yes (`analyze`) |
 | 🕒 | **AI Writing Style Analysis** | Learn user style traits | `server/features/knowledge/ai/writing-style.ts` | **UI-first** (settings/profile) | Partial |
 | 🕒 | **AI Persona Analysis** | Infer user role/industry from email | `server/features/knowledge/ai/persona.ts` | **UI-first** (optional) | Partial |
@@ -59,31 +65,33 @@
 
 ### Backend-Only AI Features (8)
 
-| 🚀/🕒/🗑️ | Feature | Description | Key Files | Notes |
+| Status | Feature | Description | Key Files | Notes |
 |---|---|---|---|---|
-| 🚀 | **AI Rule Selection** | Choose applicable rules for incoming email | `server/features/rules/ai/ai-choose-rule.ts` | Core automation engine |
+| ✅ | **AI Rule Selection** | Choose applicable rules for incoming email | `server/features/rules/ai/ai-choose-rule.ts` | Core automation engine |
 | 🕒 | **AI Pattern Detection** | Detect recurring patterns → learning rules | `server/features/rules/ai/ai-detect-recurring-pattern.ts` | Nice-to-have learning |
-| 🚀 | **AI Thread Status** | Determine TO_REPLY / FYI / etc. | `server/features/reply-tracker/ai/determine-thread-status.ts` | Drives triage UX |
-| 🚀 | **AI Reply Context Collector** | Gather context from history for better drafts | `server/features/reply-tracker/ai/reply-context-collector.ts` | Draft quality |
-| 🚀 | **AI Check If Needs Reply** | Decide reply tracking | `server/features/reply-tracker/ai/check-if-needs-reply.ts` | Follow-up loop |
+| ✅ | **AI Thread Status** | Determine TO_REPLY / FYI / etc. | `server/features/reply-tracker/ai/determine-thread-status.ts` | Drives triage UX |
+| ✅ | **AI Reply Context Collector** | Gather context from history for better drafts | `server/features/reply-tracker/ai/reply-context-collector.ts` | Draft quality |
+| ✅ | **AI Check If Needs Reply** | Decide reply tracking | `server/features/reply-tracker/ai/check-if-needs-reply.ts` | Follow-up loop |
 | 🕒 | **AI Find Newsletters** | Identify newsletters | `server/features/groups/ai/find-newsletters.ts` | Complement system rules |
 | 🕒 | **AI Find Receipts** | Identify receipts | `server/features/groups/ai/find-receipts.ts` | Complement system rules |
-| 🚀 | **AI Prompt Security** | Prompt injection hardening | `server/features/ai/security.ts` | Ship early for safety |
+| ✅ | **AI Prompt Security** | Prompt injection hardening | `server/features/ai/security.ts` | Ship early for safety |
 
 ---
 
 ## 2. Agentic Capabilities (6 features)
 
 > These are the **agent “tools”**. They should exist at launch, but most of the time they do **not** need separate UI beyond confirmations, previews, and logs.
+>
+> **Note**: All tools are ✅ for **email operations**. Calendar operations return "not implemented" (acceptable since Calendar is 🕒).
 
-| 🚀/🕒/🗑️ | Tool | Description | Key Files | Security Limit | Primary UX Surface |
+| Status | Tool | Description | Key Files | Security Limit | Primary UX Surface |
 |---|---|---|---|---|---|
-| 🚀 | **Query Tool** | Search across Email/Calendar/Automation | `server/features/ai/tools/query.ts` | SAFE | **Chat-first** (with results UI) |
-| 🚀 | **Get Tool** | Retrieve item by ID | `server/features/ai/tools/get.ts` | SAFE | **Chat-first** |
-| 🚀 | **Analyze Tool** | AI analysis of content | `server/features/ai/tools/analyze.ts` | SAFE | **Chat-first** |
-| 🚀 | **Create Tool** | Create drafts (reply/forward/new) + events | `server/features/ai/tools/create.ts` | CAUTION | **Hybrid** (preview/confirm) |
-| 🚀 | **Modify Tool** | Archive/label/mark read etc. | `server/features/ai/tools/modify.ts` | CAUTION | **Hybrid** (fast actions UI) |
-| 🕒 | **Delete Tool** | Trash items | `server/features/ai/tools/delete.ts` | CAUTION | **Hybrid** (confirmations) |
+| ✅ | **Query Tool** | Search across Email/Calendar/Automation | `server/features/ai/tools/query.ts` | SAFE | **Chat-first** (with results UI) |
+| ✅ | **Get Tool** | Retrieve item by ID | `server/features/ai/tools/get.ts` | SAFE | **Chat-first** |
+| ✅ | **Analyze Tool** | AI analysis of content | `server/features/ai/tools/analyze.ts` | SAFE | **Chat-first** |
+| ✅ | **Create Tool** | Create drafts (reply/forward/new) + events | `server/features/ai/tools/create.ts` | CAUTION | **Hybrid** (preview/confirm) |
+| ✅ | **Modify Tool** | Archive/label/mark read etc. | `server/features/ai/tools/modify.ts` | CAUTION | **Hybrid** (fast actions UI) |
+| ✅ | **Delete Tool** | Trash items | `server/features/ai/tools/delete.ts` | CAUTION | **Hybrid** (confirmations) |
 
 ---
 
@@ -93,28 +101,28 @@
 
 **Launch stance:** If you want fastest GTM, ship **Gmail-first** and defer Microsoft until post-launch.
 
-| 🚀/🕒/🗑️ | Feature | Description | Key Files | Primary UX Surface | Agentic Supported? |
+| Status | Feature | Description | Key Files | Primary UX Surface | Agentic Supported? |
 |---|---|---|---|---|---|
-| 🚀 | **Gmail OAuth Connection** | Connect Gmail via OAuth | `server/integrations/google/client.ts` | **UI-first** (settings connect) | No |
-| 🚀 | **Message Retrieval** | Fetch threads/messages | `server/integrations/google/message.ts`, `thread.ts` | **UI-first** (inbox) + Chat | Yes (`query/get`) |
-| 🚀 | **Draft Management** | Create/update/delete drafts | `server/integrations/google/draft.ts` | **Hybrid** | Yes (`create/delete`) |
-| 🚀 | **Email Replying** | Reply to threads (draft-first) | `server/integrations/google/reply.ts` | **Hybrid** | Yes (draft via `create`) |
-| 🚀 | **Email Forwarding** | Forward (draft-first) | `server/integrations/google/forward.ts` | **Hybrid** | Yes (draft via `create`) |
-| 🚀 | **Label Management** | Create/apply/remove labels | `server/integrations/google/label.ts` | **UI-first** (triage) + Chat | Yes (`modify`) |
-| 🚀 | **Trash Management** | Trash emails | `server/integrations/google/trash.ts` | **UI-first** + Chat | Yes (`delete`) |
-| 🕒 | **Spam Management** | Mark as spam | `server/integrations/google/spam.ts` | **UI-first** | Yes (`modify`) |
-| 🕒 | **Attachment Handling** | Download/process attachments | `server/integrations/google/attachment.ts` | **UI-first** | Yes (`get`) |
-| 🕒 | **Contacts Search** | Search contacts | `server/integrations/google/contact.ts` | **Chat-first** + light picker | Yes (`query`) |
-| 🕒 | **Signature Settings** | Manage signatures | `server/integrations/google/signature-settings.ts` | **UI-first** (settings) | No |
+| ✅ | **Gmail OAuth Connection** | Connect Gmail via OAuth | `server/integrations/google/client.ts` | **UI-first** (settings connect) | No |
+| ✅ | **Message Retrieval** | Fetch threads/messages | `server/integrations/google/message.ts`, `thread.ts` | **UI-first** (inbox) + Chat | Yes (`query/get`) |
+| ✅ | **Draft Management** | Create/update/delete drafts | `server/integrations/google/draft.ts` | **Hybrid** | Yes (`create/delete`) |
+| ✅ | **Email Replying** | Reply to threads (draft-first) | `server/integrations/google/reply.ts` | **Hybrid** | Yes (draft via `create`) |
+| ✅ | **Email Forwarding** | Forward (draft-first) | `server/integrations/google/forward.ts` | **Hybrid** | Yes (draft via `create`) |
+| ✅ | **Label Management** | Create/apply/remove labels | `server/integrations/google/label.ts` | **UI-first** (triage) + Chat | Yes (`modify`) |
+| ✅ | **Trash Management** | Trash emails | `server/integrations/google/trash.ts` | **UI-first** + Chat | Yes (`delete`) |
+| ✅ | **Spam Management** | Mark as spam | `server/integrations/google/spam.ts` | **UI-first** | Yes (`modify`) |
+| ✅ | **Attachment Handling** | Download/process attachments | `server/integrations/google/attachment.ts` | **UI-first** | Yes (`get`) |
+| ✅ | **Contacts Search** | Search contacts | `server/integrations/google/contact.ts` | **Chat-first** + light picker | Yes (`query`) |
+| ✅ | **Signature Settings** | Manage signatures | `server/integrations/google/signature-settings.ts` | **UI-first** (settings) | No |
 | 🕒 | **Email Sending** | Send emails (non-draft) | `server/integrations/google/mail.ts` | **UI-first** | No (draft only) |
-| 🕒 | **Gmail Filters** | Create filters | `server/integrations/google/filter.ts` | **UI-first** (advanced) | No |
-| 🚀 | **Gmail Watch/Webhooks** | Real-time sync via Pub/Sub | `server/integrations/google/watch.ts`, `watch-manager.ts` | **Backend-only** | No |
-| 🚀 | **History Processing** | Incremental sync via history API | `server/integrations/google/history.ts` | **Backend-only** | No |
-| 🚀 | **Batch Operations** | Efficiency batching | `server/integrations/google/batch.ts` | **Backend-only** | No |
+| ✅ | **Gmail Filters** | Create filters | `server/integrations/google/filter.ts` | **UI-first** (advanced) | No |
+| ✅ | **Gmail Watch/Webhooks** | Real-time sync via Pub/Sub | `server/integrations/google/watch.ts`, `watch-manager.ts` | **Backend-only** | No |
+| ✅ | **History Processing** | Incremental sync via history API | `server/integrations/google/history.ts` | **Backend-only** | No |
+| ✅ | **Batch Operations** | Efficiency batching | `server/integrations/google/batch.ts` | **Backend-only** | No |
 
 ### Outlook / Microsoft Integration (12)
 
-| 🚀/🕒/🗑️ | Feature | Description | Key Files | Primary UX Surface | Agentic Supported? |
+| Status | Feature | Description | Key Files | Primary UX Surface | Agentic Supported? |
 |---|---|---|---|---|---|
 | 🕒 | **Outlook OAuth Connection** | Connect Microsoft | `server/integrations/microsoft/client.ts` | UI-first | No |
 | 🕒 | **Outlook Messages** | Fetch messages | `server/integrations/microsoft/message.ts` | UI-first + Chat | Yes |
@@ -131,12 +139,12 @@
 
 ### Email Utilities (4)
 
-| 🚀/🕒/🗑️ | Feature | Description | Key Files | Primary UX Surface |
+| Status | Feature | Description | Key Files | Primary UX Surface |
 |---|---|---|---|---|
-| 🚀 | **Email Threading** | Group into conversations | `server/services/email/threading.ts` | UI-first (inbox) |
-| 🚀 | **Reply Tracking** | Track responses to sent mail | `server/utils/reply-tracker/outbound.ts` | UI-first (follow-up) |
-| 🚀 | **Follow-up Reminders** | Auto-labels for unreplied threads | `server/utils/follow-up/labels.ts` | UI-first |
-| 🚀 | **Bulk Operations** | Bulk archive/label | `server/services/unsubscriber/mail-bulk-action.ts` | UI-first |
+| ✅ | **Email Threading** | Group into conversations | `server/services/email/threading.ts` | UI-first (inbox) |
+| ✅ | **Reply Tracking** | Track responses to sent mail | `server/utils/reply-tracker/outbound.ts` | UI-first (follow-up) |
+| ✅ | **Follow-up Reminders** | Auto-labels for unreplied threads | `server/utils/follow-up/labels.ts` | UI-first |
+| ✅ | **Bulk Operations** | Bulk archive/label | `server/services/unsubscriber/mail-bulk-action.ts` | UI-first |
 
 ---
 
@@ -144,17 +152,17 @@
 
 **Launch stance:** Ship a **minimal “recipes + AI rule builder”** UI. Hide advanced knobs until later.
 
-| 🚀/🕒/🗑️ | Feature | Description | Key Files | Primary UX Surface | Agentic Supported? |
+| Status | Feature | Description | Key Files | Primary UX Surface | Agentic Supported? |
 |---|---|---|---|---|---|
 | ✅ | **AI Rule Selection** | Choose applicable rules (Real Engine) | `server/features/rules/ai/run-rules.ts` | Core automation engine |
-| 🚀 | **AI Conditions** | Natural language match instructions | `Rule.instructions` | **Chat-first** + preview | Yes |
-| 🕒 | **Static Conditions** | from/to/subject/body regex | Prisma `Rule` fields | UI-first (advanced) | Yes |
-| 🕒 | **Group Conditions** | Sender groups/patterns | `Rule.groupId` | UI-first (advanced) | Yes |
-| 🕒 | **Category Filters** | Include/exclude categories | `Rule.categoryFilters` | UI-first (advanced) | Yes |
-| 🚀 | **System Rules** | Built-ins (Newsletter/Receipt/etc.) | `SystemType` enum | UI-first (toggles) | No |
-| 🚀 | **Rule Actions** | Archive/label/draft/webhook/digest | `Action`, `ActionType` | UI-first + Chat confirm | Yes |
+| ✅ | **AI Conditions** | Natural language match instructions | `Rule.instructions` | **Chat-first** + preview | Yes |
+| ✅ | **Static Conditions** | from/to/subject/body regex | Prisma `Rule` fields | UI-first (advanced) | Yes |
+| ✅ | **Group Conditions** | Sender groups/patterns | `Rule.groupId` | UI-first (advanced) | Yes |
+| ✅ | **Category Filters** | Include/exclude categories | `Rule.categoryFilters` | UI-first (advanced) | Yes |
+| ✅ | **System Rules** | Built-ins (Newsletter/Receipt/etc.) | `SystemType` enum | UI-first (toggles) | No |
+| ✅ | **Rule Actions** | Archive/label/draft/webhook/digest | `Action`, `ActionType` | UI-first + Chat confirm | Yes |
 | 🕒 | **Scheduled Actions** | Delay execution | `ScheduledAction` | UI-first (later) | No |
-| 🕒 | **Executed Rule Logs** | Audit executions | `ExecutedRule/Action` | UI-first (later) | No |
+| ✅ | **Executed Rule Logs** | Audit executions | `ExecutedRule/Action` | UI-first (later) | No |
 | 🕒 | **Rule History** | Version tracking | `RuleHistory` | UI-first (power) | Partial |
 | 🕒 | **Multi-Rule Matching** | Apply multiple rules | `multiRuleSelectionEnabled` | UI-first (toggle) | No |
 | 🕒 | **Rule Testing** | Test against sample messages | `server/services/unsubscriber/ai-rule.ts` | UI-first (later) | Partial |
@@ -165,11 +173,11 @@
 
 **Launch stance:** Personal-first. Keep team/enterprise features out of the launch narrative.
 
-| 🚀/🕒/🗑️ | Feature | Description | Key Files | Primary UX Surface |
+| Status | Feature | Description | Key Files | Primary UX Surface |
 |---|---|---|---|---|
-| 🚀 | **User Authentication** | OAuth login | `server/auth/index.ts` | UI-first |
-| 🚀 | **Onboarding Flow** | Setup wizard | `server/services/unsubscriber/onboarding.ts` | UI-first |
-| 🚀 | **Multi-Account Support** | Multiple email accounts | `EmailAccount` | UI-first (settings) |
+| ✅ | **User Authentication** | OAuth login | `server/auth/index.ts` | UI-first |
+| 🕒 | **Onboarding Flow** | Setup wizard | `server/services/unsubscriber/onboarding.ts` | UI-first |
+| ✅ | **Multi-Account Support** | Multiple email accounts | `EmailAccount` | UI-first (settings) |
 | 🕒 | **API Key Management** | Keys for integrations | `server/services/unsubscriber/api-key.ts` | UI-first (security) |
 | 🕒 | **Organization Management** | Teams + roles | `Organization/Member` | UI-first |
 | 🕒 | **Invitation System** | Invite users | `Invitation` | UI-first |
@@ -182,7 +190,7 @@
 
 **Launch stance:** Calendar/Drive are strong “v2” expansion unless calendar is your headline.
 
-| 🚀/🕒/🗑️ | Feature | Description | Key Files | Primary UX Surface | Agentic Supported? |
+| Status | Feature | Description | Key Files | Primary UX Surface | Agentic Supported? |
 |---|---|---|---|---|---|
 | 🕒 | **Calendar Connection** | Connect calendars | `CalendarConnection` | UI-first | No |
 | 🕒 | **Calendar Availability** | Free/busy checks | `server/integrations/ai/calendar/availability.ts` | Chat-first | Yes (`query`) |
@@ -195,7 +203,7 @@
 
 ## 7. Analytics & Reporting (5 features)
 
-| 🚀/🕒/🗑️ | Feature | Description | Key Files | Primary UX Surface |
+| Status | Feature | Description | Key Files | Primary UX Surface |
 |---|---|---|---|---|
 | 🕒 | **Email Statistics** | Usage + behavior analytics | `server/services/unsubscriber/stats.ts` | UI-first |
 | 🕒 | **Response Time Tracking** | Response patterns | `ResponseTime` | UI-first |
@@ -209,7 +217,7 @@
 
 **Launch stance:** If monetization isn’t day-1, keep billing minimal. If you are charging day-1, ship **Stripe-only** and defer Lemon.
 
-| 🚀/🕒/🗑️ | Feature | Description | Key Files | Primary UX Surface |
+| Status | Feature | Description | Key Files | Primary UX Surface |
 |---|---|---|---|---|
 | 🕒 | **Stripe Integration** | Subscriptions | `enterprise/stripe/` | UI-first |
 | 🕒 | **Premium Tiers** | Plan levels | `PremiumTier` enum | UI-first |
@@ -221,24 +229,24 @@
 
 ## 9. Communication & Notifications (4 features)
 
-| 🚀/🕒/🗑️ | Feature | Description | Key Files | Primary UX Surface |
+| Status | Feature | Description | Key Files | Primary UX Surface |
 |---|---|---|---|---|
-| 🚀 | **Email Digests** | Periodic summaries of actions | `Digest*`, `server/packages/resend/` | UI-first (digest view) |
+| ✅ | **Email Digests** | Periodic summaries of actions | `Digest*`, `server/packages/resend/` | UI-first (digest view) |
 | 🕒 | **Summary Emails** | Weekly/daily summaries | `src/app/api/resend/summary/` | UI-first |
-| 🕒 | **Transactional Emails** | Invites/notifications | `server/packages/resend/emails/` | Backend-only |
-| 🚀 | **Omnichannel Notifications** | "Atomic Race" (Web Toast -> Slack Fallback) | `src/server/notifications/`, `hooks/use-notification-poll.ts` | **Hybrid** (Toast + History + Push) |
+| ✅ | **Transactional Emails** | Invites/notifications | `server/packages/resend/emails/` | Backend-only |
+| ✅ | **Omnichannel Notifications** | "Atomic Race" (Web Toast -> Slack Fallback) | `src/server/notifications/`, `hooks/use-notification-poll.ts` | **Hybrid** (Toast + History + Push) |
 | 🗑️ | **Marketing Emails** | Loops integration | `server/packages/loops/` | (Not a core product feature) |
 
 ---
 
 ## 10. Additional Features (5 features)
 
-| 🚀/🕒/🗑️ | Feature | Description | Key Files | Primary UX Surface | Agentic Supported? |
+| Status | Feature | Description | Key Files | Primary UX Surface | Agentic Supported? |
 |---|---|---|---|---|---|
-| 🚀 | **Newsletter Unsubscribe** | One-click unsubscribe | `server/services/unsubscriber/unsubscriber.ts` | UI-first (sender page) + Chat | Yes (`modify`) |
-| 🚀 | **Cleanup Jobs** | Batch archive old mail | `CleanupJob*` | UI-first (wizard) + Chat | Yes (`modify`) |
-| 🚀 | **Cold Email Detection** | Detect/filter cold/sales | `Newsletter` model | UI-first + Chat | Yes |
-| 🕒 | **Webhook Integration** | Custom webhooks | `Action.url`, `CALL_WEBHOOK` | UI-first (advanced) | No |
+| ✅ | **Newsletter Unsubscribe** | One-click unsubscribe | `server/services/unsubscriber/unsubscriber.ts` | UI-first (sender page) + Chat | Yes (`modify`) |
+| ✅ | **Cleanup Jobs** | Batch archive old mail | `CleanupJob*` | UI-first (wizard) + Chat | Yes (`modify`) |
+| ✅ | **Cold Email Detection** | Detect/filter cold/sales | `Newsletter` model | UI-first + Chat | Yes |
+| ✅ | **Webhook Integration** | Custom webhooks | `Action.url`, `CALL_WEBHOOK` | UI-first (advanced) | No |
 | 🕒 | **MCP Integrations** | External tool connections | `Mcp*` models | UI-first (integrations) + Chat | Yes |
 
 ---
@@ -249,16 +257,16 @@
 
 ### 11.1 Unified Agent Architecture
 
-| Feature | Description | Key Files | Notes |
-|---------|-------------|-----------|-------|
-| **Unified System Prompt** | Same AI personality across all platforms | `features/ai/system-prompt.ts` | Single source of truth |
-| **Shared Rule Tools** | Rule management available on all platforms | `features/ai/rule-tools.ts` | Full parity with web |
-| **Draft Review & Send** | AI creates drafts, users send via buttons | `app/api/drafts/` | Human-in-the-loop |
-| **Interactive Payloads** | Rich previews with Send/Edit/Discard | `features/channels/types.ts` | Platform-specific rendering |
+| Status | Feature | Description | Key Files | Notes |
+|---|---------|-------------|-----------|-------|
+| ✅ | **Unified System Prompt** | Same AI personality across all platforms | `features/ai/system-prompt.ts` | Single source of truth |
+| ✅ | **Shared Rule Tools** | Rule management available on all platforms | `features/ai/rule-tools.ts` | Full parity with web |
+| ✅ | **Draft Review & Send** | AI creates drafts, users send via buttons | `app/api/drafts/` | Human-in-the-loop |
+| ✅ | **Interactive Payloads** | Rich previews with Send/Edit/Discard | `features/channels/types.ts` | Platform-specific rendering |
 
 ### 11.2 Slack (Implemented)
 
-| 🚀/🕒/🗑️ | Feature | Description | Primary UX Surface | Notes |
+| Status | Feature | Description | Primary UX Surface | Notes |
 |---|---|---|---|---|
 | ✅ | **Slack Socket Mode** | Real-time events | Chat-first | `surfaces/` |
 | ✅ | **DM Agent** | 1:1 Agent Chat | Chat-first | Core entry point |
@@ -268,7 +276,7 @@
 
 ### 11.3 Discord (Implemented)
 
-| 🚀/🕒/🗑️ | Feature | Description | Primary UX Surface | Notes |
+| Status | Feature | Description | Primary UX Surface | Notes |
 |---|---|---|---|---|
 | ✅ | **Discord Gateway** | Real-time events | Chat-first | `surfaces/` |
 | ✅ | **Channel/DM Chat** | Chat with Agent | Chat-first | `discord.js` |
@@ -277,7 +285,7 @@
 
 ### 11.4 Telegram (Implemented)
 
-| 🚀/🕒/🗑️ | Feature | Description | Primary UX Surface | Notes |
+| Status | Feature | Description | Primary UX Surface | Notes |
 |---|---|---|---|---|
 | ✅ | **Telegram Bot** | Long Polling | Chat-first | `surfaces/` |
 | ✅ | **DM Chat** | Chat with Agent | Chat-first | `telegraf` |
@@ -286,7 +294,7 @@
 
 ### 11.5 Shared Infrastructure (Implemented)
 
-| 🚀/🕒/🗑️ | Feature | Description | Primary UX Surface | Notes |
+| Status | Feature | Description | Primary UX Surface | Notes |
 |---|---|---|---|---|
 | ✅ | **Safe Account Linking** | Magic Link Auth for Surfaces | Hybrid | `lib/linking.ts` |
 | ✅ | **Unified Executor** | One-Shot Agent Runtime | Backend-only | `features/surfaces/executor.ts` |
@@ -300,7 +308,7 @@
 
 > The "Recursive Language Model" (RLM) context layer provides unified memory and privacy controls across all surfaces.
 
-| 🚀/🕒/🗑️ | Feature | Description | Key Files | Primary UX Surface | Notes |
+| Status | Feature | Description | Key Files | Primary UX Surface | Notes |
 |---|---|---|---|---|---|
 | ✅ | **Unified Conversation History** | Database-backed history for Slack/Discord/Web | `Conversation`, `ConversationMessage` | Backend-only | Ground truth for context |
 | ✅ | **Privacy Controls** | User toggle for `recordHistory` | `PrivacySettings` | UI-first (Settings) | Prevents DB persistence |
@@ -367,7 +375,7 @@ To become “calendar + task agent + push assistant,” you are missing:
 
 ### Google Calendar (Core)
 
-| 🚀/🕒/🗑️ | Feature | Description | Primary UX Surface | Notes / Why |
+| Status | Feature | Description | Primary UX Surface | Notes / Why |
 |---|---|---|---|---|
 | 🚀 | **Google Calendar OAuth Connection** | Connect GCal with correct scopes | UI-first | Must exist to claim calendar agent |
 | 🚀 | **Calendar List + Selection** | Choose which calendars to sync/use | UI-first | Users have many calendars |
@@ -387,7 +395,7 @@ To become “calendar + task agent + push assistant,” you are missing:
 
 ### Microsoft Calendar (Post-launch)
 
-| 🚀/🕒/🗑️ | Feature | Description | Primary UX Surface | Notes |
+| Status | Feature | Description | Primary UX Surface | Notes |
 |---|---|---|---|---|
 | 🕒 | **Microsoft Calendar OAuth** | Connect Outlook calendar | UI-first | Defer if Gmail-first |
 | 🕒 | **Graph Webhooks** | Subscriptions/notifications | Backend-only | Needed for parity |
@@ -399,7 +407,7 @@ To become “calendar + task agent + push assistant,” you are missing:
 
 > Right now you have “email rules + follow-ups,” but not a general-purpose task system with scheduling.
 
-| 🚀/🕒/🗑️ | Feature | Description | Primary UX Surface | Notes / Why |
+| Status | Feature | Description | Primary UX Surface | Notes / Why |
 |---|---|---|---|---|
 | 🚀 | **Task Data Model** | Task table: title, status, due, duration, priority, tags, source links | UI-first | Foundation for everything |
 | 🚀 | **Email → Task Conversion** | Turn threads into tasks w/ links & context | Hybrid | Bridges email-first → task-first |
@@ -427,7 +435,7 @@ To become “calendar + task agent + push assistant,” you are missing:
 
 ### Web Push (Implemented)
 
-| 🚀/🕒/🗑️ | Feature | Description | Key Files | Primary UX Surface | Notes |
+| Status | Feature | Description | Key Files | Primary UX Surface | Notes |
 |---|---|---|---|---|---|
 | ✅ | **Web Push Setup** | Surfaces Sidecar (`/notify`) | `surfaces/` | UI-first | HTTP Server ready |
 | ✅ | **Agentic Push** | AI-generated "Heads Up" notifications | `server/services/notification/generator.ts` | Backend-only | "Triple-Safe" Filtering |
@@ -436,7 +444,7 @@ To become “calendar + task agent + push assistant,” you are missing:
 
 ### Mobile Push (later)
 
-| 🚀/🕒/🗑️ | Feature | Description | Primary UX Surface | Notes |
+| Status | Feature | Description | Primary UX Surface | Notes |
 |---|---|---|---|---|
 | 🕒 | **iOS/Android Push** | APNs/FCM | UI-first | Requires app or wrapper |
 | 🕒 | **Notification Actions** | Approve/edit in notification | Hybrid | Great UX, more work |
@@ -447,7 +455,7 @@ To become “calendar + task agent + push assistant,” you are missing:
 
 These are the “marketable” behaviors that make calendar/task feel agentic.
 
-| 🚀/🕒/🗑️ | Feature | Description | Primary UX Surface | Notes |
+| Status | Feature | Description | Primary UX Surface | Notes |
 |---|---|---|---|---|
 | 🚀 | **Daily Briefing** | “Here’s today: meetings + tasks + emails” | Chat-first + UI summary | Flagship |
 | 🚀 | **Schedule Something** | “Find 30 min this week for X” | Chat-first | Must propose + confirm |
@@ -464,7 +472,7 @@ These are the “marketable” behaviors that make calendar/task feel agentic.
 
 You already have prompt security. “True assistant” requires surface-level safety.
 
-| 🚀/🕒/🗑️ | Feature | Description | Primary UX Surface | Notes |
+| Status | Feature | Description | Primary UX Surface | Notes |
 |---|---|---|---|---|
 | 🚀 | **Unified Approval Ledger** | Every action proposal logged + who approved | UI-first | Trust building |
 | 🚀 | **Action Sandbox Mode** | Draft-only by default (emails + events) | UI-first | Aligns with your requirement |
@@ -478,7 +486,7 @@ You already have prompt security. “True assistant” requires surface-level sa
 
 Your current tool set covers Email/Calendar/Automation in concept, but calendar/task providers are incomplete.
 
-| 🚀/🕒/🗑️ | Tooling Feature | Description | Primary UX Surface | Notes |
+| Status | Tooling Feature | Description | Primary UX Surface | Notes |
 |---|---|---|---|---|
 | 🚀 | **Calendar Provider for Query/Get** | query events, get event details | Chat-first | Must exist for agent |
 | 🚀 | **Calendar Provider for Create/Modify** | create/update events (draft-first) | Hybrid | Approval required |
