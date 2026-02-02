@@ -1,13 +1,11 @@
 "use server";
 
-import { after } from "next/server";
 import {
   saveOnboardingAnswersBody,
   saveOnboardingFeaturesSchema,
 } from "@/actions/onboarding.validation";
 import { actionClientUser } from "@/actions/safe-action";
 import prisma from "@/server/db/client";
-import { updateContactCompanySize, updateContactRole } from "@amodel/loops";
 
 export const completedOnboardingAction = actionClientUser
   .metadata({ name: "completedOnboarding" })
@@ -107,26 +105,6 @@ export const saveOnboardingAnswersAction = actionClientUser
       }
 
       const extractedAnswers = extractSurveyAnswers(questions, answers);
-
-      after(async () => {
-        if (extractedAnswers.surveyRole) {
-          await updateContactRole({
-            email: userEmail,
-            role: extractedAnswers.surveyRole,
-          }).catch((error) => {
-            logger.error("Loops: Error updating role", { error });
-          });
-        }
-
-        if (extractedAnswers.surveyCompanySize) {
-          await updateContactCompanySize({
-            email: userEmail,
-            companySize: extractedAnswers.surveyCompanySize,
-          }).catch((error) => {
-            logger.error("Loops: Error updating company size", { error });
-          });
-        }
-      });
 
       await prisma.user.update({
         where: { id: userId },

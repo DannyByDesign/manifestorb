@@ -405,7 +405,7 @@ export class OutlookProvider implements EmailProvider {
       client: this.client,
       threadId,
       ownerEmail,
-      actionSource: "automation",
+      actionSource: "ai",
       folderId: "archive",
       logger: this.logger,
     });
@@ -428,7 +428,7 @@ export class OutlookProvider implements EmailProvider {
   async trashThread(
     threadId: string,
     ownerEmail: string,
-    actionSource: "user" | "automation",
+    actionSource: "user" | "ai",
   ): Promise<void> {
     await trashThread({
       client: this.client,
@@ -1793,7 +1793,7 @@ export class OutlookProvider implements EmailProvider {
       client: this.client,
       threadId,
       ownerEmail,
-      actionSource: "automation",
+      actionSource: "ai",
       folderId,
       logger: this.logger,
     });

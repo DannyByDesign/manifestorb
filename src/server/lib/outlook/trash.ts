@@ -1,5 +1,4 @@
 import type { OutlookClient } from "@/server/lib/outlook/client";
-import { publishDelete, type TinybirdEmailAction } from "@amodel/tinybird";
 import type { Logger } from "@/server/lib/logger";
 import { withOutlookRetry } from "@/server/lib/outlook/retry";
 
@@ -7,10 +6,10 @@ export async function trashThread(options: {
   client: OutlookClient;
   threadId: string;
   ownerEmail: string;
-  actionSource: TinybirdEmailAction["actionSource"];
+  actionSource: "ai" | "user" | "cold-email";
   logger: Logger;
 }) {
-  const { client, threadId, ownerEmail, actionSource, logger } = options;
+  const { client, threadId, ownerEmail, logger } = options;
 
   try {
     // In Outlook, trashing is moving to the Deleted Items folder
@@ -23,7 +22,7 @@ export async function trashThread(options: {
       .filter(`conversationId eq '${escapedThreadId}'`)
       .get();
 
-    const trashPromise = Promise.all(
+    await Promise.all(
       messages.value.map(async (message: { id: string }) => {
         try {
           return await withOutlookRetry(
@@ -45,48 +44,8 @@ export async function trashThread(options: {
       }),
     );
 
-    const publishPromise = publishDelete({
-      ownerEmail,
-      threadId,
-      actionSource,
-      timestamp: Date.now(),
-    });
-
-    const [trashResult, publishResult] = await Promise.allSettled([
-      trashPromise,
-      publishPromise,
-    ]);
-
-    if (trashResult.status === "rejected") {
-      const error = trashResult.reason as Error;
-      if (error.message?.includes("Requested entity was not found")) {
-        // thread doesn't exist, so it's already been deleted
-        logger.warn("Failed to trash non-existent thread", {
-          email: ownerEmail,
-          threadId,
-          error,
-        });
-        return { status: 200 };
-      } else {
-        logger.error("Failed to trash thread", {
-          email: ownerEmail,
-          threadId,
-          error,
-        });
-        throw error;
-      }
-    }
-
-    if (publishResult.status === "rejected") {
-      logger.error("Failed to publish delete action", {
-        email: ownerEmail,
-        threadId,
-        error: publishResult.reason,
-      });
-    }
-
     return { status: 200 };
-  } catch (error) {
+  } catch (error: any) {
     // If the filter fails, try a different approach
     logger.warn("Filter failed, trying alternative approach", {
       threadId,
@@ -147,26 +106,11 @@ export async function trashThread(options: {
         );
       }
 
-      // Publish the delete action
-      try {
-        await publishDelete({
-          ownerEmail,
-          threadId,
-          actionSource,
-          timestamp: Date.now(),
-        });
-      } catch (publishError) {
-        logger.error("Failed to publish delete action", {
-          email: ownerEmail,
-          threadId,
-          error: publishError,
-        });
-      }
-
       return { status: 200 };
     } catch (directError) {
       logger.error("Failed to trash thread", {
         threadId,
+        ownerEmail,
         error: directError,
       });
       throw directError;

@@ -1,17 +1,14 @@
 /** biome-ignore-all lint/style/noMagicNumbers: we're defining constants */
 import type { LanguageModelUsage } from "ai";
 import { saveUsage } from "@/server/lib/redis/usage";
-import { publishAiCall } from "@amodel/tinybird-ai-analytics";
 import { createScopedLogger } from "@/server/lib/logger";
 
 const logger = createScopedLogger("usage");
 
 export async function saveAiUsage({
   email,
-  provider,
   model,
   usage,
-  label,
 }: {
   email: string;
   provider: string;
@@ -22,20 +19,7 @@ export async function saveAiUsage({
   const cost = calcuateCost(model, usage);
 
   try {
-    return Promise.all([
-      publishAiCall({
-        userId: email,
-        provider,
-        model,
-        totalTokens: usage.totalTokens ?? 0,
-        completionTokens: usage.outputTokens ?? 0,
-        promptTokens: usage.inputTokens ?? 0,
-        cost,
-        timestamp: Date.now(),
-        label,
-      }),
-      saveUsage({ email, cost, usage }),
-    ]);
+    return saveUsage({ email, cost, usage });
   } catch (error) {
     logger.error("Failed to save usage", { error });
   }

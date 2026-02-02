@@ -1,6 +1,5 @@
 "use server";
 
-import { after } from "next/server";
 import { actionClient } from "@/actions/safe-action";
 import prisma from "@/server/db/client";
 import { aiAnalyzePersona } from "@/features/knowledge/ai/persona";
@@ -9,25 +8,15 @@ import { getEmailAccountWithAiAndTokens } from "@/server/lib/user/get";
 import { SafeError } from "@/server/lib/error";
 import { getEmailForLLM } from "@/server/lib/get-email-from-message";
 import { z } from "zod";
-import { updateContactRole } from "@amodel/loops";
 
 export const updateEmailAccountRoleAction = actionClient
   .metadata({ name: "updateEmailAccountRole" })
   .inputSchema(z.object({ role: z.string() }))
   .action(
     async ({
-      ctx: { emailAccountId, userEmail, logger },
+      ctx: { emailAccountId },
       parsedInput: { role },
     }) => {
-      after(async () => {
-        await updateContactRole({
-          email: userEmail,
-          role,
-        }).catch((error) => {
-          logger.error("Loops: Error updating role", { error });
-        });
-      });
-
       await prisma.emailAccount.update({
         where: { id: emailAccountId },
         data: { role },

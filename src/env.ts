@@ -110,11 +110,6 @@ export const env = createEnv({
     STRIPE_SECRET_KEY: z.string().optional(),
     STRIPE_WEBHOOK_SECRET: z.string().optional(),
 
-    TINYBIRD_TOKEN: z.string().optional(),
-    TINYBIRD_BASE_URL: z.string().default("https://api.us-east.tinybird.co/"),
-    TINYBIRD_ENCRYPT_SECRET: z.string().optional(),
-    TINYBIRD_ENCRYPT_SALT: z.string().optional(),
-
     API_KEY_SALT: z.string().optional(),
 
     POSTHOG_API_SECRET: z.string().optional(),
@@ -127,9 +122,6 @@ export const env = createEnv({
       .optional()
       .default("Amodel <updates@transactional.getamodel.com>"),
     CRON_SECRET: z.string().optional(),
-    LOOPS_API_SECRET: z.string().optional(),
-    FB_CONVERSION_API_ACCESS_TOKEN: z.string().optional(),
-    FB_PIXEL_ID: z.string().optional(),
     ADMINS: z
       .string()
       .optional()
@@ -155,11 +147,6 @@ export const env = createEnv({
           .filter(Boolean),
       ),
 
-    // license
-
-
-    DUB_API_KEY: z.string().optional(),
-    BRAINTRUST_API_KEY: z.string().optional(),
   },
   client: {
     // stripe
@@ -186,14 +173,10 @@ export const env = createEnv({
       .string()
       .optional()
       .default("elie@getamodel.com"),
-    NEXT_PUBLIC_GTM_ID: z.string().optional(),
-    NEXT_PUBLIC_CRISP_WEBSITE_ID: z.string().optional(),
     NEXT_PUBLIC_WELCOME_UPGRADE_ENABLED: z.coerce
       .boolean()
       .optional()
       .default(false),
-    NEXT_PUBLIC_AXIOM_DATASET: z.string().optional(),
-    NEXT_PUBLIC_AXIOM_TOKEN: z.string().optional(),
     NEXT_PUBLIC_LOG_SCOPES: z
       .string()
       .optional()
@@ -201,7 +184,6 @@ export const env = createEnv({
         if (!value) return;
         return value.split(",");
       }),
-    NEXT_PUBLIC_DUB_REFER_DOMAIN: z.string().optional(),
     NEXT_PUBLIC_DISABLE_REFERRAL_SIGNATURE: z.coerce
       .boolean()
       .optional()
@@ -243,14 +225,9 @@ export const env = createEnv({
       process.env.NEXT_PUBLIC_FREE_UNSUBSCRIBE_CREDITS,
     NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
     NEXT_PUBLIC_SUPPORT_EMAIL: process.env.NEXT_PUBLIC_SUPPORT_EMAIL,
-    NEXT_PUBLIC_GTM_ID: process.env.NEXT_PUBLIC_GTM_ID,
-    NEXT_PUBLIC_CRISP_WEBSITE_ID: process.env.NEXT_PUBLIC_CRISP_WEBSITE_ID,
     NEXT_PUBLIC_WELCOME_UPGRADE_ENABLED:
       process.env.NEXT_PUBLIC_WELCOME_UPGRADE_ENABLED,
-    NEXT_PUBLIC_AXIOM_DATASET: process.env.NEXT_PUBLIC_AXIOM_DATASET,
-    NEXT_PUBLIC_AXIOM_TOKEN: process.env.NEXT_PUBLIC_AXIOM_TOKEN,
     NEXT_PUBLIC_LOG_SCOPES: process.env.NEXT_PUBLIC_LOG_SCOPES,
-    NEXT_PUBLIC_DUB_REFER_DOMAIN: process.env.NEXT_PUBLIC_DUB_REFER_DOMAIN,
     NEXT_PUBLIC_DISABLE_REFERRAL_SIGNATURE:
       process.env.NEXT_PUBLIC_DISABLE_REFERRAL_SIGNATURE,
     NEXT_PUBLIC_USE_AEONIK_FONT: process.env.NEXT_PUBLIC_USE_AEONIK_FONT,

@@ -1,5 +1,4 @@
 import type { gmail_v1 } from "@googleapis/gmail";
-import { publishArchive, type TinybirdEmailAction } from "@amodel/tinybird";
 import {
   getLabelColor,
   inboxZeroLabels,
@@ -113,40 +112,26 @@ export async function archiveThread({
   gmail,
   threadId,
   ownerEmail,
-  actionSource,
   labelId,
 }: {
   gmail: gmail_v1.Gmail;
   threadId: string;
   ownerEmail: string;
-  actionSource: TinybirdEmailAction["actionSource"];
+  actionSource: "ai" | "user" | "cold-email";
   labelId?: string;
 }) {
-  const archivePromise = withGmailRetry(() =>
-    gmail.users.threads.modify({
-      userId: "me",
-      id: threadId,
-      requestBody: {
-        removeLabelIds: [GmailLabel.INBOX],
-        ...(labelId ? { addLabelIds: [labelId] } : {}),
-      },
-    }),
-  );
-
-  const publishPromise = publishArchive({
-    ownerEmail,
-    threadId,
-    actionSource,
-    timestamp: Date.now(),
-  });
-
-  const [archiveResult, publishResult] = await Promise.allSettled([
-    archivePromise,
-    publishPromise,
-  ]);
-
-  if (archiveResult.status === "rejected") {
-    const error = archiveResult.reason as Error;
+  try {
+    return await withGmailRetry(() =>
+      gmail.users.threads.modify({
+        userId: "me",
+        id: threadId,
+        requestBody: {
+          removeLabelIds: [GmailLabel.INBOX],
+          ...(labelId ? { addLabelIds: [labelId] } : {}),
+        },
+      }),
+    );
+  } catch (error: any) {
     if (error.message?.includes("Requested entity was not found")) {
       logger.warn("Thread not found", { threadId, userEmail: ownerEmail });
       return { status: 404, message: "Thread not found" };
@@ -154,15 +139,6 @@ export async function archiveThread({
     logger.error("Failed to archive thread", { threadId, error });
     throw error;
   }
-
-  if (publishResult.status === "rejected") {
-    logger.error("Failed to publish archive action", {
-      threadId,
-      error: publishResult.reason,
-    });
-  }
-
-  return archiveResult.value;
 }
 
 export async function labelMessage({

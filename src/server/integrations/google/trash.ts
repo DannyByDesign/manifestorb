@@ -1,5 +1,4 @@
 import type { gmail_v1 } from "@googleapis/gmail";
-import { publishDelete, type TinybirdEmailAction } from "@amodel/tinybird";
 import { createScopedLogger } from "@/server/lib/logger";
 import { withGmailRetry } from "@/server/integrations/google/retry";
 
@@ -13,32 +12,18 @@ export async function trashThread(options: {
   gmail: gmail_v1.Gmail;
   threadId: string;
   ownerEmail: string;
-  actionSource: TinybirdEmailAction["actionSource"];
+  actionSource: "ai" | "user" | "cold-email";
 }) {
-  const { gmail, threadId, ownerEmail, actionSource } = options;
+  const { gmail, threadId, ownerEmail } = options;
 
-  const trashPromise = withGmailRetry(() =>
-    gmail.users.threads.trash({
-      userId: "me",
-      id: threadId,
-    }),
-  );
-
-  const publishPromise = publishDelete({
-    ownerEmail,
-    threadId,
-    actionSource,
-    timestamp: Date.now(),
-  });
-
-  const [trashResult, publishResult] = await Promise.allSettled([
-    trashPromise,
-    publishPromise,
-  ]);
-
-  if (trashResult.status === "rejected") {
-    const error = trashResult.reason;
-
+  try {
+    return await withGmailRetry(() =>
+      gmail.users.threads.trash({
+        userId: "me",
+        id: threadId,
+      }),
+    );
+  } catch (error: any) {
     if (error.message === "Requested entity was not found.") {
       // thread doesn't exist, so it's already been deleted
       logger.warn("Failed to trash non-existant thread", {
@@ -47,25 +32,14 @@ export async function trashThread(options: {
         error,
       });
       return { status: 200 };
-    } else {
-      logger.error("Failed to trash thread", {
-        email: ownerEmail,
-        threadId,
-        error,
-      });
-      throw error;
     }
-  }
-
-  if (publishResult.status === "rejected") {
-    logger.error("Failed to publish delete action", {
+    logger.error("Failed to trash thread", {
       email: ownerEmail,
       threadId,
-      error: publishResult.reason,
+      error,
     });
+    throw error;
   }
-
-  return trashResult.value;
 }
 
 export async function trashMessage(options: {

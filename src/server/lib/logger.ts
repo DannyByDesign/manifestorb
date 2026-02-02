@@ -1,5 +1,4 @@
 /** biome-ignore-all lint/suspicious/noConsole: we use console.log for development logs */
-import { log } from "next-axiom";
 import { serializeError } from "serialize-error";
 import { env } from "@/env";
 
@@ -16,7 +15,6 @@ const colors = {
 } as const;
 
 export function createScopedLogger(scope: string) {
-  if (env.NEXT_PUBLIC_AXIOM_TOKEN) return createAxiomLogger(scope);
   if (env.NEXT_PUBLIC_LOG_SCOPES && !env.NEXT_PUBLIC_LOG_SCOPES.includes(scope))
     return createNullLogger();
 
@@ -77,36 +75,6 @@ export function createScopedLogger(scope: string) {
       flush: () => Promise.resolve(), // No-op for console logger
     };
   };
-
-  return createLogger();
-}
-
-function createAxiomLogger(scope: string) {
-  const createLogger = (fields: Record<string, unknown> = {}) => ({
-    info: (message: string, args?: Record<string, unknown>) =>
-      log.info(message, hashSensitiveFields({ scope, ...fields, ...args })),
-    error: (message: string, args?: Record<string, unknown>) =>
-      log.error(
-        message,
-        hashSensitiveFields({ scope, ...fields, ...formatError(args) }),
-      ),
-    warn: (message: string, args?: Record<string, unknown>) =>
-      log.warn(message, hashSensitiveFields({ scope, ...fields, ...args })),
-    trace: (
-      message: string,
-      args?: Record<string, unknown> | (() => Record<string, unknown>),
-    ) => {
-      if (!env.ENABLE_DEBUG_LOGS) return;
-      const resolved = typeof args === "function" ? args() : args;
-      log.debug(
-        message,
-        hashSensitiveFields({ scope, ...fields, ...resolved }),
-      );
-    },
-    with: (newFields: Record<string, unknown>) =>
-      createLogger({ ...fields, ...newFields }),
-    flush: () => log.flush(),
-  });
 
   return createLogger();
 }

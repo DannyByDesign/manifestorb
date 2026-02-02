@@ -1,20 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createScopedLogger } from "./logger";
 
-vi.mock("next-axiom", () => ({
-  log: {
-    info: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-    debug: vi.fn(),
-    flush: vi.fn().mockResolvedValue(undefined),
-  },
-}));
-
 vi.mock("@/env", () => ({
   env: {
     NODE_ENV: "test",
-    NEXT_PUBLIC_AXIOM_TOKEN: undefined,
     NEXT_PUBLIC_LOG_SCOPES: undefined,
     ENABLE_DEBUG_LOGS: false,
   },

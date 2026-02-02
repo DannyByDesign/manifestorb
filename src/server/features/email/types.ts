@@ -110,7 +110,7 @@ export interface EmailProvider {
   trashThread(
     threadId: string,
     ownerEmail: string,
-    actionSource: "user" | "automation",
+    actionSource: "user" | "ai",
   ): Promise<void>;
   labelMessage(options: {
     messageId: string;

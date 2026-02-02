@@ -1,7 +1,5 @@
-import { deleteContact as deleteLoopsContact } from "@amodel/loops";
 import { deleteContact as deleteResendContact } from "@amodel/resend";
 import prisma from "@/server/db/client";
-import { deleteTinybirdAiCalls } from "@amodel/tinybird-ai-analytics";
 import { deletePosthogUser, trackUserDeleted } from "@/server/lib/posthog";
 import { captureException } from "@/server/lib/error";
 import { unwatchEmails } from "@/features/email/watch-manager";
@@ -60,14 +58,6 @@ export async function deleteUser({
   logger.info("Deleting user resources");
 
   try {
-    deleteTinybirdAiCalls({ userId }).catch((error: any) => {
-      logger.error("Error deleting Tinybird AI calls", {
-        error,
-        userId,
-      });
-      captureException(error);
-    });
-
     clearCachedResearchForUser(userId).catch((error: any) => {
       logger.error("Error clearing cached research", { error });
       captureException(error);
@@ -115,7 +105,6 @@ async function deleteResources({
   logger: Logger;
 }) {
   const resourcesPromise = Promise.allSettled([
-    deleteLoopsContact(emailAccountId),
     deletePosthogUser({ email }),
     deleteResendContact({ email }),
     emailProvider

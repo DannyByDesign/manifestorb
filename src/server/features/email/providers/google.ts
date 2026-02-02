@@ -8,10 +8,7 @@ import {
   queryBatchMessages,
   hasPreviousCommunicationsWithSenderOrDomain,
 } from "@/server/integrations/google/message";
-import {
-  publishBulkActionToTinybird,
-  updateEmailMessagesForSender,
-} from "@/features/email/bulk-action-tracking";
+import { updateEmailMessagesForSender } from "@/features/email/bulk-action-tracking";
 import {
   getLabels,
   getLabel,
@@ -282,7 +279,7 @@ export class GmailProvider implements EmailProvider {
       gmail: this.client,
       threadId,
       ownerEmail,
-      actionSource: "automation",
+      actionSource: "ai",
     });
   }
 
@@ -403,34 +400,12 @@ export class GmailProvider implements EmailProvider {
           if (batchMessageIds.length > 0) {
             await this.archiveMessagesBulk(batchMessageIds);
 
-            const newThreadIds = Array.from(batchThreadIds).filter(
-              (threadId) => !publishedThreadIds.has(threadId),
-            );
-
-            const promises = [
-              updateEmailMessagesForSender({
-                sender,
-                messageIds: batchMessageIds,
-                emailAccountId,
-                action: "archive",
-              }),
-            ];
-
-            if (newThreadIds.length > 0) {
-              promises.push(
-                publishBulkActionToTinybird({
-                  threadIds: newThreadIds,
-                  action: "archive",
-                  ownerEmail,
-                }),
-              );
-            }
-
-            await Promise.all(promises);
-
-            newThreadIds.forEach((threadId) =>
-              publishedThreadIds.add(threadId),
-            );
+            await updateEmailMessagesForSender({
+              sender,
+              messageIds: batchMessageIds,
+              emailAccountId,
+              action: "archive",
+            });
           }
 
           nextPageToken = token;
@@ -508,7 +483,7 @@ export class GmailProvider implements EmailProvider {
 
         for (const threadId of allThreadIds) {
           try {
-            await this.trashThread(threadId, ownerEmail, "automation");
+            await this.trashThread(threadId, ownerEmail, "ai");
             successfullyTrashedThreadIds.add(threadId);
           } catch (error) {
             log.error("Failed to trash thread for sender", {
@@ -528,26 +503,14 @@ export class GmailProvider implements EmailProvider {
               successfulMessageIds.push(...messages);
             }
 
-            const promises = [
-              publishBulkActionToTinybird({
-                threadIds: Array.from(successfullyTrashedThreadIds),
-                action: "trash",
-                ownerEmail,
-              }),
-            ];
-
             if (successfulMessageIds.length > 0) {
-              promises.push(
-                updateEmailMessagesForSender({
-                  sender,
-                  messageIds: successfulMessageIds,
-                  emailAccountId,
-                  action: "trash",
-                }),
-              );
+              await updateEmailMessagesForSender({
+                sender,
+                messageIds: successfulMessageIds,
+                emailAccountId,
+                action: "trash",
+              });
             }
-
-            await Promise.all(promises);
           } catch (error) {
             log.error("Failed to track trash operation for sender", {
               sender,
@@ -658,7 +621,7 @@ export class GmailProvider implements EmailProvider {
   async trashThread(
     threadId: string,
     ownerEmail: string,
-    actionSource: "user" | "automation",
+    actionSource: "user" | "ai",
   ) {
     await trashThread({
       gmail: this.client,

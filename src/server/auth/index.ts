@@ -2,7 +2,6 @@
 
 import { sso } from "@better-auth/sso";
 import { oAuthProxy } from "better-auth/plugins";
-import { createContact as createLoopsContact } from "@amodel/loops";
 import { createContact as createResendContact } from "@amodel/resend";
 import type { Account, AuthContext } from "better-auth";
 import { betterAuth } from "better-auth";
@@ -10,7 +9,6 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { nextCookies } from "better-auth/next-js";
 import { cookies, headers } from "next/headers";
 import { env } from "@/env";
-import { trackDubSignUp } from "@/server/lib/dub";
 import {
   isGoogleProvider,
   isMicrosoftProvider,
@@ -187,37 +185,6 @@ async function postSignUp({
   name?: string | null;
   image?: string | null;
 }) {
-  const loops = async () => {
-    const account = await prisma.account
-      .findFirst({
-        where: { userId },
-        select: { provider: true },
-      })
-      .catch((error) => {
-        logger.error("Error finding account", {
-          userId,
-          error,
-        });
-        captureException(error, { userEmail: email });
-      });
-
-    await createLoopsContact(
-      email,
-      name?.split(" ")?.[0],
-      account?.provider,
-    ).catch((error) => {
-      const alreadyExists =
-        error instanceof Error && error.message.includes("409");
-      if (!alreadyExists) {
-        logger.error("Error creating Loops contact", {
-          email,
-          error,
-        });
-        captureException(error, { userEmail: email });
-      }
-    });
-  };
-
   const resend = createResendContact({ email }).catch((error) => {
     logger.error("Error creating Resend contact", {
       email,
@@ -226,20 +193,8 @@ async function postSignUp({
     captureException(error, { userEmail: email });
   });
 
-  const dub = trackDubSignUp({ id: userId, email, name, image }, logger).catch(
-    (error) => {
-      logger.error("Error tracking Dub sign up", {
-        email,
-        error,
-      });
-      captureException(error, { userEmail: email });
-    },
-  );
-
   await Promise.all([
-    loops(),
     resend,
-    dub,
     handlePendingPremiumInvite({ email }),
     handleReferralOnSignUp({ userId, email }),
   ]);

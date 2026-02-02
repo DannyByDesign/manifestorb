@@ -108,7 +108,7 @@ export async function createEmailProvider(
 
                     // Trash (thread-level operation)
                     if (changes.trash && !processedThreads.has(`trash:${threadId}`)) {
-                        await service.trashThread(threadId, account.email, "automation");
+                        await service.trashThread(threadId, account.email, "ai");
                         processedThreads.add(`trash:${threadId}`);
                     }
 
@@ -185,7 +185,7 @@ export async function createEmailProvider(
 
             let count = 0;
             await Promise.all(threadIds.map(async (tid) => {
-                await service.trashThread(tid, account.email, "automation");
+                await service.trashThread(tid, account.email, "ai");
                 count++;
             }));
             return { success: true, count };

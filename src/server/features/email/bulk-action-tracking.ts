@@ -1,42 +1,7 @@
-import { publishArchive, publishDelete } from "@amodel/tinybird";
 import { createScopedLogger } from "@/server/lib/logger";
 import prisma from "@/server/db/client";
 
 const logger = createScopedLogger("bulk-action-tracking");
-
-export async function publishBulkActionToTinybird(options: {
-  threadIds: string[];
-  action: "archive" | "trash";
-  ownerEmail: string;
-}): Promise<void> {
-  const { threadIds, action, ownerEmail } = options;
-  const timestamp = Date.now();
-  const publishFn = action === "archive" ? publishArchive : publishDelete;
-
-  const BATCH_SIZE = 100;
-  for (let i = 0; i < threadIds.length; i += BATCH_SIZE) {
-    const batch = threadIds.slice(i, i + BATCH_SIZE);
-
-    await Promise.allSettled(
-      batch.map((threadId) =>
-        publishFn({
-          ownerEmail,
-          threadId,
-          actionSource: "user",
-          timestamp,
-        }),
-      ),
-    ).then((results) => {
-      const failures = results.filter((r) => r.status === "rejected");
-      if (failures.length > 0) {
-        logger.error("Failed to publish some events to Tinybird", {
-          failureCount: failures.length,
-          totalCount: batch.length,
-        });
-      }
-    });
-  }
-}
 
 export async function updateEmailMessagesForSender(options: {
   sender: string;

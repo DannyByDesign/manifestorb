@@ -1,6 +1,5 @@
 import type { OutlookClient } from "@/server/integrations/microsoft/client";
 import type { Logger } from "@/server/lib/logger";
-import { publishArchive, type TinybirdEmailAction } from "@amodel/tinybird";
 import { WELL_KNOWN_FOLDERS } from "./message";
 import { extractErrorInfo, withOutlookRetry } from "@/server/integrations/microsoft/retry";
 import { inboxZeroLabels, type AmodelLabel } from "@/server/lib/label";
@@ -311,14 +310,13 @@ export async function archiveThread({
   client,
   threadId,
   ownerEmail,
-  actionSource,
   folderId = "archive",
   logger,
 }: {
   client: OutlookClient;
   threadId: string;
   ownerEmail: string;
-  actionSource: TinybirdEmailAction["actionSource"];
+  actionSource: "ai" | "user" | "cold-email";
   folderId?: string;
   logger: Logger;
 }) {
@@ -326,7 +324,6 @@ export async function archiveThread({
     logger.warn("No folderId provided, skipping archive operation", {
       threadId,
       ownerEmail,
-      actionSource,
     });
     return;
   }
@@ -359,7 +356,7 @@ export async function archiveThread({
       .filter(`conversationId eq '${escapedThreadId}'`) // Escape single quotes in threadId for the filter
       .get();
 
-    const archivePromise = Promise.all(
+    await Promise.all(
       messages.value.map(async (message: { id: string }) => {
         try {
           return await withOutlookRetry(
@@ -381,44 +378,8 @@ export async function archiveThread({
       }),
     );
 
-    const publishPromise = publishArchive({
-      ownerEmail,
-      threadId,
-      actionSource,
-      timestamp: Date.now(),
-    });
-
-    const [archiveResult, publishResult] = await Promise.allSettled([
-      archivePromise,
-      publishPromise,
-    ]);
-
-    // Handle publish errors as non-fatal (just log)
-    if (publishResult.status === "rejected") {
-      logger.error("Failed to publish action to move thread to folder", {
-        folderId,
-        threadId,
-        error: publishResult.reason,
-      });
-    }
-
-    // Handle archive errors
-    if (archiveResult.status === "rejected") {
-      const error = archiveResult.reason;
-      if (error.message?.includes("Requested entity was not found")) {
-        logger.warn("Thread not found", { threadId, userEmail: ownerEmail });
-        return { status: 404, message: "Thread not found" };
-      }
-      logger.error("Failed to move thread to folder", {
-        folderId,
-        threadId,
-        error,
-      });
-      throw error;
-    }
-
     return { status: 200 };
-  } catch (error) {
+  } catch (error: any) {
     // If the filter fails, try a different approach
     logger.warn("Filter failed, trying alternative approach", {
       threadId,
@@ -480,28 +441,12 @@ export async function archiveThread({
         );
       }
 
-      // Publish the archive action
-      try {
-        await publishArchive({
-          ownerEmail,
-          threadId,
-          actionSource,
-          timestamp: Date.now(),
-        });
-      } catch (publishError) {
-        logger.error("Failed to publish action to move thread to folder", {
-          folderId,
-          email: ownerEmail,
-          threadId,
-          error: publishError,
-        });
-      }
-
       return { status: 200 };
     } catch (directError) {
       logger.error("Failed to move thread to folder", {
         folderId,
         threadId,
+        ownerEmail,
         error: directError,
       });
       throw directError;

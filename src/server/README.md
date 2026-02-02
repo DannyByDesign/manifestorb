@@ -65,7 +65,6 @@ Better-auth configuration and utilities.
 ### 7. `packages/` (Internal Packages)
 Standalone packages used by the application.
 - `@amodel/resend` - Email templates
-- `@amodel/tinybird` - Analytics
 - `@amodel/cli` - CLI tool
 
 ### 8. `scripts/` (Utility Scripts)

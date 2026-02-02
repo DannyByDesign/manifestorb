@@ -8,7 +8,6 @@ import { getModel } from "@/server/lib/llms/model";
 import { createGenerateObject } from "@/server/lib/llms";
 import { PROMPT_SECURITY_INSTRUCTIONS } from "@/features/ai/security";
 import { createScopedLogger } from "@/server/lib/logger";
-// import { Braintrust } from "@/server/lib/braintrust";
 
 const logger = createScopedLogger("ai/clean");
 
@@ -19,8 +18,6 @@ const schema = z.object({
   // label: z.string().optional(),
   // reasoning: z.string(),
 });
-
-// const braintrust = new Braintrust("cleaner-1");
 
 export async function aiClean({
   emailAccount,
@@ -111,12 +108,6 @@ The current date is ${currentDate}.
       prompt,
       schema,
     });
-
-    // braintrust.insertToDataset({
-    //   id: messageId,
-    //   input: { message, currentDate },
-    //   expected: aiResponse.object,
-    // });
 
     return aiResponse.object as { archive: boolean };
   } catch (error) {

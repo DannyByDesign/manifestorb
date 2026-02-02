@@ -24,7 +24,6 @@ export const getStripeSubscriptionTier = ({
   }
   return null;
 };
-import { handleLoopsEvents } from "@/enterprise/stripe/loops-events";
 import { syncPremiumSeats } from "@/features/premium/server";
 import { ensureEmailAccountsWatched } from "@/features/email/watch-manager";
 import { captureException } from "@/server/lib/error";
@@ -172,14 +171,6 @@ export async function syncStripeDataToDb({
         id: true,
         users: { select: { id: true } },
       },
-    });
-
-    // Handle Loops events based on state changes
-    await handleLoopsEvents({
-      currentPremium,
-      newSubscription: subscription,
-      newTier: tier,
-      logger,
     });
 
     logger.info("Successfully updated Premium record from Stripe data", {

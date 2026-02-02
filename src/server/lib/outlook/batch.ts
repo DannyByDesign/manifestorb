@@ -1,10 +1,7 @@
 import type { Logger } from "@/server/lib/logger";
 import type { OutlookClient } from "@/server/lib/outlook/client";
 import { escapeODataString } from "@/server/lib/outlook/odata-escape";
-import {
-  publishBulkActionToTinybird,
-  updateEmailMessagesForSender,
-} from "@/features/email/bulk-action-tracking";
+import { updateEmailMessagesForSender } from "@/features/email/bulk-action-tracking";
 
 const GRAPH_JSON_BATCH_LIMIT = 20; // Microsoft Graph JSON batching limit
 
@@ -242,38 +239,12 @@ export async function moveMessagesForSenders({
               logger,
             });
 
-            const batchThreadIds = new Set(
-              allMessages.map((msg) => msg.conversationId),
-            );
-
-            const newThreadIds = Array.from(batchThreadIds).filter(
-              (threadId) => !publishedThreadIds.has(threadId),
-            );
-
-            const promises = [
-              updateEmailMessagesForSender({
-                sender,
-                messageIds,
-                emailAccountId,
-                action,
-              }),
-            ];
-
-            if (newThreadIds.length > 0) {
-              promises.push(
-                publishBulkActionToTinybird({
-                  threadIds: newThreadIds,
-                  action,
-                  ownerEmail,
-                }),
-              );
-            }
-
-            await Promise.all(promises);
-
-            newThreadIds.forEach((threadId) =>
-              publishedThreadIds.add(threadId),
-            );
+            await updateEmailMessagesForSender({
+              sender,
+              messageIds,
+              emailAccountId,
+              action,
+            });
           } catch (error) {
             logger.error("Failed to move or track messages", {
               action,

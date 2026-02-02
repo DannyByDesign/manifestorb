@@ -10,7 +10,7 @@ type CreateNotificationParams = {
     userId: string;
     title: string;
     body?: string;
-    type?: "info" | "warning" | "success" | "error";
+    type?: "info" | "warning" | "success" | "error" | "approval";
     metadata?: Record<string, any>;
     dedupeKey?: string;
 };

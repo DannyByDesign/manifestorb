@@ -11,11 +11,6 @@ import { getEmailAccount } from "@/__tests__/helpers";
 const TIMEOUT = 15_000;
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/server/lib/braintrust", () => ({
-  Braintrust: class {
-    insertToDataset() { }
-  },
-}));
 
 // Skip tests unless explicitly running AI tests
 const isAiTest = process.env.RUN_AI_TESTS === "true";
