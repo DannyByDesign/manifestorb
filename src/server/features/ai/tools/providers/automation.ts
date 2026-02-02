@@ -9,7 +9,7 @@ import { getEmailAccountWithAi } from "@/server/lib/user/get";
 import { createRuleBody } from "@/actions/rule.validation";
 import { createKnowledgeBody } from "@/actions/knowledge.validation";
 import { getEmailReportData, type EmailReportData } from "@/actions/report";
-import { unsubscribeFromSender } from "@/actions/execute";
+import { unsubscribeFromSender } from "@/features/email/unsubscribe";
 import { findMatchingRules } from "@/features/rules/ai/match-rules";
 
 export interface AutomationProvider {

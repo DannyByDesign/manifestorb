@@ -1,12 +1,9 @@
-
 import { createScopedLogger } from "@/server/lib/logger";
 import { createEmailProvider } from "@/features/email/provider";
-import { findUnsubscribeLink } from "@/server/lib/parse/parseHtml.server";
-import { headers } from "next/headers";
 import prisma from "@/server/db/client";
-import { isUrlSafeForServerRequest, validateUrlForSsrf } from "@/server/lib/url-validation";
+import { validateUrlForSsrf } from "@/server/lib/url-validation";
 
-const logger = createScopedLogger("unsubscriber/execute");
+const logger = createScopedLogger("email/unsubscribe");
 
 export async function unsubscribeFromSender({
     emailAccountId,

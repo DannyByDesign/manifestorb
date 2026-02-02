@@ -31,7 +31,7 @@ export const setNewsletterStatusAction = actionClient
       if (status === "UNSUBSCRIBED") {
         // We fire and forget this for now, or we could await it.
         // Importing dynamically to avoid circular deps if any
-        const { unsubscribeFromSender } = await import("@/actions/execute");
+        const { unsubscribeFromSender } = await import("@/features/email/unsubscribe");
 
         // We don't await the result to keep UI snappy, but we log errors in background
         unsubscribeFromSender({
