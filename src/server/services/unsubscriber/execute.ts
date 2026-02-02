@@ -4,6 +4,7 @@ import { createEmailProvider } from "@/server/services/email/provider";
 import { findUnsubscribeLink } from "@/server/utils/parse/parseHtml.server";
 import { headers } from "next/headers";
 import prisma from "@/server/db/client";
+import { isUrlSafeForServerRequest, validateUrlForSsrf } from "@/server/utils/url-validation";
 
 const logger = createScopedLogger("unsubscriber/execute");
 
@@ -110,12 +111,22 @@ async function executeUnsubscribeLink(link: string): Promise<boolean> {
             return false;
         }
 
-        // HTTP/S
+        // SSRF Protection: Validate URL before fetching
+        // This prevents attackers from using malicious unsubscribe links to probe internal networks
+        const validation = validateUrlForSsrf(link);
+        if (!validation.safe) {
+            logger.warn("Blocked unsafe unsubscribe link", { link, reason: validation.reason });
+            return false;
+        }
+
+        // HTTP/S - URL has been validated as safe
         const response = await fetch(link, {
             method: 'GET', // Most unsubscribe links work with GET or lead to a form
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Insub Zero via AModel)',
-            }
+                'User-Agent': 'Mozilla/5.0 (compatible; AModel/1.0; Unsubscribe)',
+            },
+            // Add timeout to prevent hanging on slow/malicious servers
+            signal: AbortSignal.timeout(10000), // 10 second timeout
         });
 
         if (response.ok) {
@@ -123,13 +134,17 @@ async function executeUnsubscribeLink(link: string): Promise<boolean> {
             return true;
         }
 
-        // Some might require POST, but usually there's a landing page. 
-        // Just visiting often works for "one-click" or at least loads the page.
-        // Ideally we'd parse the form.
-
-        return true; // We assume visiting it is a success step for MVP
+        // Log non-ok response but still return true for MVP
+        // (visiting the link is often enough even if the response is a redirect or error page)
+        logger.info("Unsubscribe link returned non-ok status", { link, status: response.status });
+        return true;
     } catch (e) {
-        logger.error("Failed to execute link", { link, error: e });
+        // Check if it's a timeout error
+        if (e instanceof Error && e.name === 'TimeoutError') {
+            logger.warn("Unsubscribe link request timed out", { link });
+        } else {
+            logger.error("Failed to execute unsubscribe link", { link, error: e });
+        }
         return false;
     }
 }

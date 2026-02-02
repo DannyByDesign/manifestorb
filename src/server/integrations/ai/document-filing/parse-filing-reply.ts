@@ -2,6 +2,9 @@ import { z } from "zod";
 import type { EmailAccountWithAI } from "@/server/utils/llms/types";
 import { getModel } from "@/server/utils/llms/model";
 import { createGenerateObject } from "@/server/utils/llms";
+import { createScopedLogger } from "@/server/utils/logger";
+
+const logger = createScopedLogger("ai/document-filing");
 
 const system = `You are a document filing assistant. The user received a notification that we filed their document attachment to their Drive. They have replied to that email.
 
@@ -68,12 +71,17 @@ Determine the action and write a reply.`;
     modelOptions,
   });
 
-  const result = await generateObject({
-    ...modelOptions,
-    system,
-    prompt,
-    schema,
-  });
+  try {
+    const result = await generateObject({
+      ...modelOptions,
+      system,
+      prompt,
+      schema,
+    });
 
-  return result.object;
+    return result.object;
+  } catch (error) {
+    logger.error("Error parsing filing reply", { error });
+    return { action: "none" as const, reply: "" };
+  }
 }

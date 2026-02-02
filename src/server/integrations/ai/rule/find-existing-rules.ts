@@ -3,6 +3,9 @@ import type { EmailAccountWithAI } from "@/server/utils/llms/types";
 import type { Action, Rule } from "@/generated/prisma/client";
 import { getModel } from "@/server/utils/llms/model";
 import { createGenerateObject } from "@/server/utils/llms";
+import { createScopedLogger } from "@/server/utils/logger";
+
+const logger = createScopedLogger("ai/find-existing-rules");
 
 export async function aiFindExistingRules({
   emailAccount,
@@ -52,49 +55,65 @@ Please return the existing rules that match the prompt rules in JSON format.
     modelOptions,
   });
 
-  const result = await generateObject({
-    ...modelOptions,
-    system,
-    prompt,
-    schema: z.object({
-      existingRules: z
-        .array(
-          z.object({
-            ruleId: z.string().describe("The id of the existing rule"),
-            promptNumber: z
-              .number()
-              .describe("The index of the prompt that matches the rule"),
-          }),
-        )
-        .describe("The existing rules that match the prompt rules"),
-    }),
-  });
+  try {
+    const result = await generateObject({
+      ...modelOptions,
+      system,
+      prompt,
+      schema: z.object({
+        existingRules: z
+          .array(
+            z.object({
+              ruleId: z.string().describe("The id of the existing rule"),
+              promptNumber: z
+                .number()
+                .describe("The index of the prompt that matches the rule"),
+            }),
+          )
+          .describe("The existing rules that match the prompt rules"),
+      }),
+    });
 
-  const existingRules = result.object.existingRules.map((rule: { ruleId: string; promptNumber: number }) => {
-    const promptRule = rule.promptNumber
-      ? promptRules[rule.promptNumber - 1]
-      : null;
+    if (!result.object) {
+      logger.error("No object found in AI response", { result });
+      return {
+        editedRules: [],
+        removedRules: [],
+      };
+    }
 
-    const toRemove = promptRule
-      ? promptRulesToRemove.includes(promptRule)
-      : null;
+    const existingRules = result.object.existingRules.map((rule: { ruleId: string; promptNumber: number }) => {
+      const promptRule = rule.promptNumber
+        ? promptRules[rule.promptNumber - 1]
+        : null;
 
-    const toEdit = promptRule
-      ? promptRulesToEdit.find((r) => r.oldRule === promptRule)
-      : null;
+      const toRemove = promptRule
+        ? promptRulesToRemove.includes(promptRule)
+        : null;
+
+      const toEdit = promptRule
+        ? promptRulesToEdit.find((r) => r.oldRule === promptRule)
+        : null;
+
+      return {
+        rule: databaseRules.find((dbRule) => dbRule.id === rule.ruleId),
+        promptNumber: rule.promptNumber,
+        promptRule,
+        toRemove: !!toRemove,
+        toEdit: !!toEdit,
+        updatedPromptRule: toEdit?.newRule,
+      };
+    });
 
     return {
-      rule: databaseRules.find((dbRule) => dbRule.id === rule.ruleId),
-      promptNumber: rule.promptNumber,
-      promptRule,
-      toRemove: !!toRemove,
-      toEdit: !!toEdit,
-      updatedPromptRule: toEdit?.newRule,
+      editedRules: existingRules.filter((rule: any) => rule.toEdit),
+      removedRules: existingRules.filter((rule: any) => rule.toRemove),
     };
-  });
-
-  return {
-    editedRules: existingRules.filter((rule: any) => rule.toEdit),
-    removedRules: existingRules.filter((rule: any) => rule.toRemove),
-  };
+  } catch (error) {
+    logger.error("Error finding existing rules", { error });
+    return {
+      editedRules: [],
+      removedRules: [],
+    };
+  }
 }

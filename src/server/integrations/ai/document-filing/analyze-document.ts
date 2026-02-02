@@ -3,6 +3,9 @@ import type { EmailAccountWithAI } from "@/server/utils/llms/types";
 import { getModel } from "@/server/utils/llms/model";
 import { createGenerateObject } from "@/server/utils/llms";
 import { cleanExtractedText } from "@/utils/drive/document-extraction";
+import { createScopedLogger } from "@/server/utils/logger";
+
+const logger = createScopedLogger("ai/document-filing");
 
 const documentAnalysisSchema = z
   .object({
@@ -77,14 +80,23 @@ export async function analyzeDocument({
     modelOptions,
   });
 
-  const result = await generateObject({
-    ...modelOptions,
-    system: buildSystem(emailAccount.filingPrompt),
-    prompt: buildPrompt({ email, attachment, folders }),
-    schema: documentAnalysisSchema,
-  });
+  try {
+    const result = await generateObject({
+      ...modelOptions,
+      system: buildSystem(emailAccount.filingPrompt),
+      prompt: buildPrompt({ email, attachment, folders }),
+      schema: documentAnalysisSchema,
+    });
 
-  return result.object;
+    return result.object;
+  } catch (error) {
+    logger.error("Error analyzing document", { error });
+    return {
+      action: "skip" as const,
+      confidence: 0,
+      reasoning: "Error analyzing document",
+    };
+  }
 }
 
 function buildSystem(filingPrompt: string): string {

@@ -2,7 +2,10 @@ import { z } from "zod";
 import { createGenerateObject } from "@/server/utils/llms";
 import type { EmailAccountWithAI } from "@/server/utils/llms/types";
 import type { EmailSummary } from "@/server/integrations/ai/report/summarize-emails";
+import { createScopedLogger } from "@/server/utils/logger";
 import { getModel } from "@/server/utils/llms/model";
+
+const logger = createScopedLogger("ai/report/build-user-persona");
 
 const userPersonaSchema = z.object({
   professionalIdentity: z.object({
@@ -23,7 +26,7 @@ export async function aiBuildUserPersona(
   sentEmailSummaries?: EmailSummary[],
   gmailSignature?: string,
   gmailTemplates?: string[],
-): Promise<z.infer<typeof userPersonaSchema>> {
+): Promise<z.infer<typeof userPersonaSchema> | null> {
   const system = `You are a highly skilled AI analyst tasked with generating a focused professional persona of a user based on their email activity.
 
 Analyze the email summaries, signatures, and templates to identify:
@@ -72,12 +75,17 @@ Analyze the data and identify:
     modelOptions,
   });
 
-  const result = await generateObject({
-    ...modelOptions,
-    system,
-    prompt,
-    schema: userPersonaSchema,
-  });
+  try {
+    const result = await generateObject({
+      ...modelOptions,
+      system,
+      prompt,
+      schema: userPersonaSchema,
+    });
 
-  return result.object;
+    return result.object;
+  } catch (error) {
+    logger.error("Failed to build user persona", { error });
+    return null;
+  }
 }

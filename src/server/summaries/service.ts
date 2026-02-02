@@ -1,5 +1,5 @@
-
 import prisma from "@/server/db/client";
+import { env } from "@/env";
 
 export class SummaryService {
     static async shouldSummarize(conversationId: string): Promise<boolean> {
@@ -36,8 +36,9 @@ export class SummaryService {
         // If QStash, use it. Else fetch internal endpoint async.
         // Assuming no QStash client ready in this context yet, using reliable fetch.
 
-        const endpoint = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/jobs/summarize-conversation`;
-        const secret = process.env.JOBS_SHARED_SECRET;
+        const baseUrl = env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+        const endpoint = `${baseUrl}/api/jobs/summarize-conversation`;
+        const secret = env.JOBS_SHARED_SECRET;
 
         if (!secret) {
             console.warn("Skipping summary enqueue: JOBS_SHARED_SECRET not set");

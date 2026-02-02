@@ -3,6 +3,9 @@ import { createPatch } from "diff";
 import type { EmailAccountWithAI } from "@/server/utils/llms/types";
 import { getModel } from "@/server/utils/llms/model";
 import { createGenerateObject } from "@/server/utils/llms";
+import { createScopedLogger } from "@/server/utils/logger";
+
+const logger = createScopedLogger("ai/diff-rules");
 
 export async function aiDiffRules({
   emailAccount,
@@ -65,26 +68,39 @@ Return the result in JSON format. Do not include any other text in your response
     modelOptions,
   });
 
-  const result = await generateObject({
-    ...modelOptions,
-    system,
-    prompt,
-    schemaName: "diff_rules",
-    schemaDescription:
-      "The result of the diff rules analysis. Return the result in JSON format. Do not include any other text in your response.",
-    schema: z.object({
-      addedRules: z.array(z.string()).describe("The added rules"),
-      editedRules: z
-        .array(
-          z.object({
-            oldRule: z.string().describe("The old rule"),
-            newRule: z.string().describe("The new rule"),
-          }),
-        )
-        .describe("The edited rules"),
-      removedRules: z.array(z.string()).describe("The removed rules"),
-    }),
-  });
+  try {
+    const result = await generateObject({
+      ...modelOptions,
+      system,
+      prompt,
+      schemaName: "diff_rules",
+      schemaDescription:
+        "The result of the diff rules analysis. Return the result in JSON format. Do not include any other text in your response.",
+      schema: z.object({
+        addedRules: z.array(z.string()).describe("The added rules"),
+        editedRules: z
+          .array(
+            z.object({
+              oldRule: z.string().describe("The old rule"),
+              newRule: z.string().describe("The new rule"),
+            }),
+          )
+          .describe("The edited rules"),
+        removedRules: z.array(z.string()).describe("The removed rules"),
+      }),
+    });
 
-  return result.object;
+    return result.object ?? {
+      addedRules: [],
+      editedRules: [],
+      removedRules: [],
+    };
+  } catch (error) {
+    logger.error("Error diffing rules", { error });
+    return {
+      addedRules: [],
+      editedRules: [],
+      removedRules: [],
+    };
+  }
 }

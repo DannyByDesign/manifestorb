@@ -63,24 +63,31 @@ import type {
 } from "@/server/services/email/types";
 import { unwatchOutlook, watchOutlook } from "@/utils/outlook/watch";
 import { escapeODataString } from "@/utils/outlook/odata-escape";
+import {
+  searchContacts,
+  createContact,
+} from "@/server/integrations/microsoft/contact";
+import { moveMessagesForSenders } from "@/utils/outlook/batch";
 import { extractEmailAddress, getSearchTermForSender } from "@/utils/email";
 import {
   getOrCreateOutlookFolderIdByName,
   getOutlookFolderTree,
 } from "@/utils/outlook/folders";
 import { extractSignatureFromHtml } from "@/server/services/email/signature-extraction";
-import { moveMessagesForSenders } from "@/utils/outlook/batch";
 import { withOutlookRetry } from "@/utils/outlook/retry";
 
 export class OutlookProvider implements EmailProvider {
   readonly name = "microsoft";
   private readonly client: OutlookClient;
   private readonly logger: Logger;
+  private readonly emailAccountId: string;
 
-  constructor(client: OutlookClient, logger?: Logger) {
+  constructor(client: OutlookClient, emailAccountId: string, logger?: Logger) {
     this.client = client;
+    this.emailAccountId = emailAccountId;
     this.logger = (logger || createScopedLogger("outlook-provider")).with({
       provider: "microsoft",
+      emailAccountId,
     });
   }
 
@@ -1855,11 +1862,74 @@ export class OutlookProvider implements EmailProvider {
   }
 
   async searchContacts(query: string): Promise<Contact[]> {
-    return searchContacts(this.id, query);
+    return searchContacts(this.emailAccountId, query);
   }
 
   async createContact(contact: Partial<Contact>): Promise<Contact> {
-    return createContact(this.id, contact);
+    return createContact(this.emailAccountId, contact);
+  }
+
+  async bulkLabelFromSenders(
+    senders: string[],
+    labelId: string,
+    ownerEmail: string,
+    emailAccountId: string
+  ): Promise<void> {
+    // Resolve label ID to Name (Outlook uses Names for Categories)
+    // We can assume labelId might be the name if not found, or strict check?
+    // Let's try to look it up.
+    let labelName = labelId;
+    try {
+      const label = await this.getLabelById(labelId);
+      if (label) {
+        labelName = label.name;
+      }
+    } catch {
+      // ignore lookup error, assume labelId is name or valid
+    }
+
+    if (!labelName) return;
+
+    // Iterate senders and apply category
+    for (const sender of senders) {
+      if (!sender) continue;
+
+      try {
+        // Find messages from sender
+        // We can't easily use 'batch' for finding messages, but we can iterate pages
+        let nextLink: string | undefined;
+        const processedMessageIds = new Set<string>();
+
+        do {
+          const response: any = nextLink
+            ? await this.client.getClient().api(nextLink).get()
+            : await this.client.getClient().api("/me/messages")
+              .filter(`from/emailAddress/address eq '${escapeODataString(sender)}'`)
+              .top(50)
+              .select("id")
+              .get();
+
+          const messages = response.value || [];
+          const messageIds = messages.map((m: any) => m.id);
+
+          if (messageIds.length > 0) {
+            await Promise.all(messageIds.map((msgId: string) =>
+              labelMessage({
+                client: this.client,
+                messageId: msgId,
+                categories: [labelName],
+                logger: this.logger
+              }).catch(e => this.logger.warn("Failed to label message", { messageId: msgId, error: e }))
+            ));
+          }
+
+          nextLink = response["@odata.nextLink"];
+        } while (nextLink);
+
+      } catch (error) {
+        this.logger.error("Failed to bulk label from sender", { sender, error });
+      }
+    }
   }
 
   async getSignatures(): Promise<EmailSignature[]> {

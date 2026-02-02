@@ -36,23 +36,28 @@ ${cleanedPromptFile}
     modelOptions,
   });
 
-  const aiResponse = await generateObject({
-    ...modelOptions,
-    prompt,
-    system,
-    schema: z.object({
-      rules: z.array(createRuleSchema(emailAccount.account.provider)),
-    }),
-  });
+  try {
+    const aiResponse = await generateObject({
+      ...modelOptions,
+      prompt,
+      system,
+      schema: z.object({
+        rules: z.array(createRuleSchema(emailAccount.account.provider)),
+      }),
+    });
 
-  if (!aiResponse.object) {
-    logger.error("No rules found in AI response", { aiResponse });
-    throw new Error("No rules found in AI response");
+    if (!aiResponse.object) {
+      logger.error("No rules found in AI response", { aiResponse });
+      return [];
+    }
+
+    const rules = aiResponse.object.rules;
+
+    return rules;
+  } catch (error) {
+    logger.error("Error converting prompt to rules", { error });
+    return [];
   }
-
-  const rules = aiResponse.object.rules;
-
-  return rules;
 }
 
 function getSystemPrompt() {

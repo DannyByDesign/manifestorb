@@ -6,6 +6,9 @@ import { getModel, type ModelType } from "@/server/utils/llms/model";
 import { createGenerateObject } from "@/server/utils/llms";
 import { getUserInfoPrompt, getUserRulesPrompt } from "@/server/integrations/ai/helpers";
 import { PROMPT_SECURITY_INSTRUCTIONS } from "@/server/integrations/ai/security";
+import { createScopedLogger } from "@/server/utils/logger";
+
+const logger = createScopedLogger("ai/choose-rule");
 
 type GetAiResponseOptions = {
   email: EmailForLLM;
@@ -157,37 +160,49 @@ Example response format:
 ${stringifyEmail(email, 500)}
 </email>`;
 
-  const aiResponse = await generateObject({
-    ...modelOptions,
-    system,
-    prompt,
-    schema: z.object({
-      reasoning: z
-        .string()
-        .describe("The reason you chose the rule. Keep it concise"),
-      ruleName: z
-        .string()
-        .nullish()
-        .describe("The exact name of the rule you want to apply"),
-      noMatchFound: z
-        .boolean()
-        .describe("True if no match was found, false otherwise"),
-    }),
-  });
+  try {
+    const aiResponse = await generateObject({
+      ...modelOptions,
+      system,
+      prompt,
+      schema: z.object({
+        reasoning: z
+          .string()
+          .describe("The reason you chose the rule. Keep it concise"),
+        ruleName: z
+          .string()
+          .nullish()
+          .describe("The exact name of the rule you want to apply"),
+        noMatchFound: z
+          .boolean()
+          .describe("True if no match was found, false otherwise"),
+      }),
+    });
 
-  const hasRuleName = !!aiResponse.object?.ruleName;
+    const hasRuleName = !!aiResponse.object?.ruleName;
 
-  return {
-    result: {
-      matchedRules:
-        hasRuleName && aiResponse.object.ruleName
-          ? [{ ruleName: aiResponse.object.ruleName, isPrimary: true }]
-          : [],
-      noMatchFound: aiResponse.object?.noMatchFound ?? !hasRuleName,
-      reasoning: aiResponse.object?.reasoning,
-    },
-    modelOptions,
-  };
+    return {
+      result: {
+        matchedRules:
+          hasRuleName && aiResponse.object.ruleName
+            ? [{ ruleName: aiResponse.object.ruleName, isPrimary: true }]
+            : [],
+        noMatchFound: aiResponse.object?.noMatchFound ?? !hasRuleName,
+        reasoning: aiResponse.object?.reasoning,
+      },
+      modelOptions,
+    };
+  } catch (error) {
+    logger.error("Failed to get AI response for single rule", { error });
+    return {
+      result: {
+        matchedRules: [],
+        noMatchFound: true,
+        reasoning: "Error processing request",
+      },
+      modelOptions,
+    };
+  }
 }
 
 async function getAiResponseMultiRule({
@@ -266,37 +281,46 @@ Example response format (multiple rules):
 ${stringifyEmail(email, 500)}
 </email>`;
 
-  const aiResponse = await generateObject({
-    ...modelOptions,
-    system,
-    prompt,
-    schema: z.object({
-      matchedRules: z
-        .array(
-          z.object({
-            ruleName: z.string().describe("The exact name of the rule"),
-            isPrimary: z
-              .boolean()
-              .describe(
-                "True if the rule is the primary match, false otherwise",
-              ),
-          }),
-        )
-        .describe("Array of all matching rules"),
-      reasoning: z
-        .string()
-        .describe(
-          "The reasoning you used to choose the rules. Keep it concise",
-        ),
-      noMatchFound: z
-        .boolean()
-        .describe("True if no match was found, false otherwise"),
-    }),
-  });
+  try {
+    const aiResponse = await generateObject({
+      ...modelOptions,
+      system,
+      prompt,
+      schema: z.object({
+        matchedRules: z
+          .array(
+            z.object({
+              ruleName: z.string().describe("The exact name of the rule"),
+              isPrimary: z
+                .boolean()
+                .describe(
+                  "True if the rule is the primary match, false otherwise",
+                ),
+            }),
+          )
+          .describe("Array of all matching rules"),
+        reasoning: z
+          .string()
+          .describe(
+            "The reasoning you used to choose the rules. Keep it concise",
+          ),
+        noMatchFound: z
+          .boolean()
+          .describe("True if no match was found, false otherwise"),
+      }),
+    });
 
-  return {
-    matchedRules: aiResponse.object.matchedRules || [],
-    noMatchFound: aiResponse.object?.noMatchFound ?? false,
-    reasoning: aiResponse.object?.reasoning ?? "",
-  };
+    return {
+      matchedRules: aiResponse.object.matchedRules || [],
+      noMatchFound: aiResponse.object?.noMatchFound ?? false,
+      reasoning: aiResponse.object?.reasoning ?? "",
+    };
+  } catch (error) {
+    logger.error("Failed to get AI response for multi rule", { error });
+    return {
+      matchedRules: [],
+      noMatchFound: true,
+      reasoning: "Error processing request",
+    };
+  }
 }

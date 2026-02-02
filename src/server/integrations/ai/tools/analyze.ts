@@ -4,7 +4,8 @@ import { type ToolDefinition } from "./types";
 import prisma from "@/server/db/client";
 import { getEmailAccountWithAi } from "@/server/utils/user/get";
 import { aiGenerateMeetingBriefing } from "@/server/integrations/ai/meeting-briefs/generate-briefing";
-import { gatherMeetingContext } from "@/server/utils/meeting-briefs/gather-context";
+import { gatherContextForEvent } from "@/server/utils/meeting-briefs/gather-context";
+import { createCalendarEventProviders } from "@/server/utils/calendar/event-provider";
 import { aiCategorizeSenders } from "@/server/integrations/ai/categorize-sender/ai-categorize-senders";
 import { aiClean } from "@/server/integrations/ai/clean/ai-clean";
 import { aiDetectRecurringPattern } from "@/server/integrations/ai/choose-rule/ai-detect-recurring-pattern";
@@ -44,7 +45,6 @@ Pattern analysis:
     }),
 
     execute: async ({ resource, ids, analysisType }, { emailAccountId, logger, providers }) => {
-        // Hydrate full EmailAccount for AI functions
         const emailAccount = await getEmailAccountWithAi({ emailAccountId });
         if (!emailAccount || !emailAccount.account) {
             return { success: false, error: "Email account not found or missing provider connection" };
@@ -55,16 +55,11 @@ Pattern analysis:
                 if (!ids || ids.length === 0) return { success: false, error: "No IDs provided" };
 
                 if (analysisType === "clean_suggestions") {
-                    // AI Clean for a specific message
                     const messages = await providers.email.get(ids);
                     if (messages.length === 0) return { success: false, error: "Message not found" };
 
-                    // Convert to EmailForLLM (simplification)
-                    const llmMessages = messages.map(m => ({
-                        ...m,
-                        body: m.text || m.body || "",
-                        from: m.from.email || m.from
-                    })) as EmailForLLM[];
+                    const { getEmailForLLM } = await import("@/server/utils/get-email-from-message");
+                    const llmMessages = messages.map(m => getEmailForLLM(m));
 
                     const result = await aiClean({
                         emailAccount,
@@ -75,25 +70,21 @@ Pattern analysis:
                     return { success: true, data: result };
 
                 } else if (analysisType === "categorize") {
-                    // Sender Categorization
-                    // 1. Fetch messages
                     const messages = await providers.email.get(ids);
                     if (messages.length === 0) return { success: false, error: "Messages not found" };
 
-                    // 2. Fetch Categories
                     const categories = await prisma.category.findMany({
                         where: { emailAccountId },
                         select: { name: true, description: true }
                     });
 
-                    // 3. Group by Sender (Naive implementation for tool)
                     const sendersMap = new Map<string, { subject: string; snippet: string }[]>();
                     for (const m of messages) {
-                        const emailAddress = typeof m.from === 'string' ? m.from : m.from.email;
+                        const emailAddress = m.headers.from; // ParsedMessage headers.from is string
                         if (!sendersMap.has(emailAddress)) sendersMap.set(emailAddress, []);
                         sendersMap.get(emailAddress)?.push({
-                            subject: m.subject,
-                            snippet: m.snippet || m.body?.substring(0, 100) || ""
+                            subject: m.headers.subject,
+                            snippet: m.snippet || m.textPlain?.substring(0, 100) || ""
                         });
                     }
 
@@ -123,14 +114,32 @@ Pattern analysis:
                     if (!ids || ids.length === 0) return { success: false, error: "Event ID required for briefing" };
                     const eventId = ids[0];
 
+                    // Fetch calendar providers
+                    const calendarProviders = await createCalendarEventProviders(emailAccountId, logger);
+
+                    let event = null;
+                    for (const provider of calendarProviders) {
+                        try {
+                            event = await provider.getEvent(eventId);
+                            if (event) break;
+                        } catch (e) {
+                            logger.warn("Failed to fetch event from provider", { error: e });
+                        }
+                    }
+
+                    if (!event) return { success: false, error: "Event not found" };
+
                     // Gather Context
-                    const briefingData = await gatherMeetingContext({
-                        emailAccount,
-                        eventId,
-                        logger // Logger compatibility? gatherMeetingContext might expect a different logger type, assuming compatible.
+                    const briefingData = await gatherContextForEvent({
+                        event,
+                        emailAccountId,
+                        userEmail: emailAccount.email,
+                        userDomain: emailAccount.email.split("@")[1] || "",
+                        provider: emailAccount.account?.provider || "",
+                        logger
                     });
 
-                    if (!briefingData) return { success: false, error: "Could not gather briefing context (event not found?)" };
+                    if (!briefingData) return { success: false, error: "Could not gather briefing context" };
 
                     // Generate Briefing
                     const briefing = await aiGenerateMeetingBriefing({
@@ -147,27 +156,23 @@ Pattern analysis:
                 if (analysisType === "detect_patterns") {
                     if (!ids || ids.length === 0) return { success: false, error: "Message ID required for pattern detection" };
 
-                    // Fetch messages
                     const messages = await providers.email.get(ids);
                     if (messages.length === 0) return { success: false, error: "Message not found" };
 
-                    // Convert to EmailForLLM
-                    const llmMessages = messages.map(m => ({
-                        ...m,
-                        body: m.text || m.body || "",
-                        from: typeof m.from === 'string' ? m.from : m.from.email
-                    })) as EmailForLLM[];
+                    const { getEmailForLLM } = await import("@/server/utils/get-email-from-message");
+                    const llmMessages = messages.map(m => getEmailForLLM(m));
 
-                    // Fetch Rules
                     const rules = await prisma.rule.findMany({
-                        where: { emailAccountId, enabled: true },
+                        where: { emailAccountId, enabled: true, instructions: { not: null } },
                         select: { name: true, instructions: true }
                     });
+
+                    const safeRules = rules.map(r => ({ name: r.name, instructions: r.instructions || "" }));
 
                     const result = await aiDetectRecurringPattern({
                         emails: llmMessages,
                         emailAccount,
-                        rules,
+                        rules: safeRules,
                         logger
                     });
 
@@ -186,17 +191,8 @@ Pattern analysis:
 
                     if (!rule) return { success: false, error: "Rule not found" };
 
-                    // Assess Risk
-                    // Convert helper function import if needed
                     const { getRiskLevel } = await import("@/server/utils/risk");
-
-                    // Rule from DB matches the expected shape?
-                    // getRiskLevel takes (Pick<RulesResponse[number], "actions"> & RuleConditions)
-                    // RuleConditions is { conditions: ... }
-                    // Our fetched rule has { conditions: ..., actions: ... }
-                    // Should be compatible.
-
-                    const risk = getRiskLevel(rule as any);
+                    const risk = getRiskLevel(rule);
 
                     return { success: true, data: risk };
                 }

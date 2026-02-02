@@ -6,6 +6,9 @@ import { formatCategoriesForPrompt } from "@/server/integrations/ai/categorize-s
 import { extractEmailAddress } from "@/server/integrations/google";
 import { getModel } from "@/server/utils/llms/model";
 import { createGenerateObject } from "@/server/utils/llms";
+import { createScopedLogger } from "@/server/utils/logger";
+
+const logger = createScopedLogger("ai/categorize-sender");
 
 export const REQUEST_MORE_INFORMATION_CATEGORY = "RequestMoreInformation";
 export const UNKNOWN_CATEGORY = "Other";
@@ -94,31 +97,36 @@ ${formatCategoriesForPrompt(categories)}
     modelOptions,
   });
 
-  const aiResponse = await generateObject({
-    ...modelOptions,
-    system,
-    prompt,
-    schema: categorizeSendersSchema,
-  });
+  try {
+    const aiResponse = await generateObject({
+      ...modelOptions,
+      system,
+      prompt,
+      schema: categorizeSendersSchema,
+    });
 
-  const matchedSenders = matchSendersWithFullEmail(
-    aiResponse.object.senders,
-    senders.map((s) => s.emailAddress),
-  );
+    const matchedSenders = matchSendersWithFullEmail(
+      aiResponse.object.senders,
+      senders.map((s) => s.emailAddress),
+    );
 
-  // filter out any senders that don't have a valid category
-  const results = matchedSenders.map((r) => {
-    if (!categories.find((c) => c.name === r.category)) {
-      return {
-        category: undefined,
-        sender: r.sender,
-      };
-    }
+    // filter out any senders that don't have a valid category
+    const results = matchedSenders.map((r) => {
+      if (!categories.find((c) => c.name === r.category)) {
+        return {
+          category: undefined,
+          sender: r.sender,
+        };
+      }
 
-    return r;
-  });
+      return r;
+    });
 
-  return results;
+    return results;
+  } catch (error) {
+    logger.error("Failed to categorize senders with AI", { error });
+    return [];
+  }
 }
 
 // match up emails with full email

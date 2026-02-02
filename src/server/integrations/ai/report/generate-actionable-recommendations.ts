@@ -6,7 +6,7 @@ import type { EmailSummary } from "@/server/integrations/ai/report/summarize-ema
 import { createScopedLogger } from "@/server/utils/logger";
 import { getModel } from "@/server/utils/llms/model";
 
-const logger = createScopedLogger("email-report-actionable-recommendations");
+const logger = createScopedLogger("ai/report/generate-actionable-recommendations");
 
 const actionableRecommendationsSchema = z.object({
   immediateActions: z.array(
@@ -39,7 +39,7 @@ export async function aiGenerateActionableRecommendations(
   emailSummaries: EmailSummary[],
   emailAccount: EmailAccountWithAI,
   userPersona: UserPersona,
-): Promise<z.infer<typeof actionableRecommendationsSchema>> {
+): Promise<z.infer<typeof actionableRecommendationsSchema> | null> {
   const system = `You are an email productivity consultant. Based on the comprehensive email analysis, create specific, actionable recommendations that the user can implement to improve their email workflow.
 
 Organize recommendations by timeline (immediate, short-term, long-term) and include specific implementation details and expected benefits.`;
@@ -67,12 +67,17 @@ Focus on practical, implementable solutions that improve email organization and 
     modelOptions,
   });
 
-  const result = await generateObject({
-    ...modelOptions,
-    system,
-    prompt,
-    schema: actionableRecommendationsSchema,
-  });
+  try {
+    const result = await generateObject({
+      ...modelOptions,
+      system,
+      prompt,
+      schema: actionableRecommendationsSchema,
+    });
 
-  return result.object;
+    return result.object;
+  } catch (error) {
+    logger.error("Failed to generate actionable recommendations", { error });
+    return null;
+  }
 }

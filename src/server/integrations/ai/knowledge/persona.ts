@@ -7,7 +7,7 @@ import { createGenerateObject } from "@/server/utils/llms";
 import { USER_ROLES } from "@/utils/constants/user-roles";
 import { getEmailListPrompt } from "@/server/integrations/ai/helpers";
 
-const logger = createScopedLogger("persona-analyzer");
+const logger = createScopedLogger("ai/knowledge/persona");
 
 export const personaAnalysisSchema = z.object({
   persona: z
@@ -101,12 +101,17 @@ ${getEmailListPrompt({ messages: emails, messageMaxLength: 1000 })}
     modelOptions,
   });
 
-  const result = await generateObject({
-    ...modelOptions,
-    system,
-    prompt,
-    schema: personaAnalysisSchema,
-  });
+  try {
+    const result = await generateObject({
+      ...modelOptions,
+      system,
+      prompt,
+      schema: personaAnalysisSchema,
+    });
 
-  return result.object;
+    return result.object;
+  } catch (error) {
+    logger.error("Error analyzing persona", { error });
+    return null;
+  }
 }

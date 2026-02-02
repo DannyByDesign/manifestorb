@@ -1,19 +1,13 @@
 
-import { type NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import prisma from "@/server/db/client";
 import { createScopedLogger } from "@/server/utils/logger";
-import { verifySignatureAppRouter } from "@upstash/qstash/dist/nextjs";
-// Note: Verify signature if possible, but for side-project speed/simplicity we might skip strictly requiring verify if behind internal firewall or using secrets.
-// But better to check. For now, I'll rely on our existing cron pattern or verify.
-// Let's use the standard "verifySignatureAppRouter" if installed, or just simple internal check?
-// User said "QStash available". 
-// I'll skip strict verify wrapper for this specific file to avoid import hassles if versions differ, 
-// and stick to basic logic first. Wait, security is important.
-// I will just use standard NextRequest logic for now.
+import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(req: NextRequest) {
+// QStash signature verification ensures only QStash can call this endpoint
+export const POST = verifySignatureAppRouter(async (req: Request) => {
     const logger = createScopedLogger("api/notifications/fallback");
 
     try {
@@ -62,4 +56,4 @@ export async function POST(req: NextRequest) {
         logger.error("Fallback failed", { error });
         return NextResponse.json({ error: "Internal Error" }, { status: 500 });
     }
-}
+});

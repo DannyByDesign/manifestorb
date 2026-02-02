@@ -2,6 +2,9 @@ import { z } from "zod";
 import type { EmailAccountWithAI } from "@/server/utils/llms/types";
 import { getModel } from "@/server/utils/llms/model";
 import { createGenerateObject } from "@/server/utils/llms";
+import { createScopedLogger } from "@/server/utils/logger";
+
+const logger = createScopedLogger("ai/clean-select-labels");
 
 const schema = z.object({ labels: z.array(z.string()).optional() });
 
@@ -35,12 +38,17 @@ ${instructions}
     modelOptions,
   });
 
-  const aiResponse = await generateObject({
-    ...modelOptions,
-    system,
-    prompt,
-    schema,
-  });
+  try {
+    const aiResponse = await generateObject({
+      ...modelOptions,
+      system,
+      prompt,
+      schema,
+    });
 
-  return aiResponse.object.labels;
+    return aiResponse.object.labels;
+  } catch (error) {
+    logger.error("Failed to select labels with AI", { error });
+    return [];
+  }
 }

@@ -27,7 +27,14 @@ Automation: Deletes rule`,
                 return { success: false, error: "Calendar delete not implemented" };
 
             case "automation":
-                return { success: false, error: "Automation delete not implemented" };
+                // Delete Rules
+                await Promise.all(ids.map((id: string) => providers.automation.deleteRule(id)));
+                return { success: true, data: { count: ids.length } };
+
+            case "knowledge":
+                // Delete Knowledge
+                await Promise.all(ids.map((id: string) => providers.automation.deleteKnowledge(id)));
+                return { success: true, data: { count: ids.length } };
 
             default:
                 return { success: false, error: `Resource ${resource} not supported` };

@@ -26,7 +26,6 @@ import { actionClient } from "@/server/services/unsubscriber/safe-action";
 import { getEmailAccountWithAi } from "@/utils/user/get";
 import { SafeError } from "@/server/utils/error";
 import { createEmailProvider } from "@/server/services/email/provider";
-import { aiPromptToRulesOld } from "@/server/integrations/ai/rule/prompt-to-rules-old";
 import type { CreateRuleResult } from "@/utils/rule/types";
 
 export const runRulesAction = actionClient
@@ -274,10 +273,9 @@ export const saveRulesPromptAction = actionClient
 
         if (diff.addedRules.length) {
           logger.info("Processing added rules");
-          addedRules = await aiPromptToRulesOld({
+          addedRules = await aiPromptToRules({
             emailAccount,
             promptFile: diff.addedRules.join("\n\n"),
-            isEditing: false,
           });
           logger.info("Added rules", {
             addedRules: addedRules?.length || 0,
@@ -348,14 +346,13 @@ export const saveRulesPromptAction = actionClient
 
         // edit rules
         if (existingRules.editedRules.length > 0) {
-          const editedRules = await aiPromptToRulesOld({
+          const editedRules = await aiPromptToRules({
             emailAccount,
             promptFile: existingRules.editedRules
               .map(
                 (r: any) => `Rule ID: ${r.rule?.id}. Prompt: ${r.updatedPromptRule}`,
               )
               .join("\n\n"),
-            isEditing: true,
           });
 
           for (const rule of editedRules) {
@@ -384,10 +381,9 @@ export const saveRulesPromptAction = actionClient
         }
       } else {
         logger.info("Processing new rules prompt with AI", { emailAccountId });
-        addedRules = await aiPromptToRulesOld({
+        addedRules = await aiPromptToRules({
           emailAccount,
           promptFile: rulesPrompt,
-          isEditing: false,
         });
         logger.info("Rules to be added", { count: addedRules?.length || 0 });
       }

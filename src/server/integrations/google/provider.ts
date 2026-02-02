@@ -71,9 +71,14 @@ import type {
   EmailLabel,
   EmailFilter,
   EmailSignature,
+  Contact,
 } from "@/server/services/email/types";
 import { createScopedLogger, type Logger } from "@/server/utils/logger";
 import { getGmailSignatures } from "@/server/integrations/google/signature-settings";
+import {
+  searchGoogleContacts,
+  createGoogleContact,
+} from "@/server/integrations/google/contact";
 
 /**
  * Build a raw RFC 2822 message and encode it as base64url for Gmail API
@@ -91,12 +96,69 @@ export class GmailProvider implements EmailProvider {
   readonly name = "google";
   private readonly client: gmail_v1.Gmail;
   private readonly logger: Logger;
+  private readonly emailAccountId: string;
 
-  constructor(client: gmail_v1.Gmail, logger?: Logger) {
+  constructor(client: gmail_v1.Gmail, emailAccountId: string, logger?: Logger) {
     this.client = client;
+    this.emailAccountId = emailAccountId;
     this.logger = (logger || createScopedLogger("gmail-provider")).with({
       provider: "google",
+      emailAccountId,
     });
+  }
+
+  async searchContacts(query: string): Promise<Contact[]> {
+    return searchGoogleContacts(this.emailAccountId, query);
+  }
+
+  async createContact(contact: Partial<Contact>): Promise<Contact> {
+    return createGoogleContact(this.emailAccountId, contact);
+  }
+
+  async bulkLabelFromSenders(
+    senders: string[],
+    labelId: string,
+    ownerEmail: string,
+    emailAccountId: string
+  ): Promise<void> {
+    const log = this.logger.with({
+      action: "bulkLabelFromSenders",
+      emailAccountId,
+      labelId,
+      sendersCount: senders.length,
+    });
+
+    if (senders.length === 0) return;
+
+    for (const sender of senders) {
+      if (!sender) continue;
+      let nextPageToken: string | undefined;
+
+      do {
+        try {
+          const { messages, nextPageToken: token } = await getMessages(this.client, {
+            query: `from:${sender} -label:${labelId}`,
+            maxResults: 500,
+            pageToken: nextPageToken
+          });
+
+          const batchMessageIds = messages.map(m => m.id);
+          if (batchMessageIds.length > 0) {
+            await this.client.users.messages.batchModify({
+              userId: "me",
+              requestBody: {
+                ids: batchMessageIds,
+                addLabelIds: [labelId]
+              }
+            });
+          }
+          nextPageToken = token;
+        } catch (error) {
+          log.error("Failed to label messages from sender", { sender, error });
+          nextPageToken = undefined;
+        }
+      } while (nextPageToken);
+    }
   }
 
   toJSON() {

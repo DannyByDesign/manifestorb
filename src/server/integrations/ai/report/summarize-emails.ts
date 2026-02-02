@@ -7,7 +7,7 @@ import { sleep } from "@/server/utils/sleep";
 import { getModel } from "@/server/utils/llms/model";
 import { getEmailListPrompt } from "@/server/integrations/ai/helpers";
 
-const logger = createScopedLogger("email-report-summarize-emails");
+const logger = createScopedLogger("ai/report/summarize-emails");
 
 const emailSummarySchema = z.object({
   summary: z.string().describe("Brief summary of the email content"),
@@ -42,6 +42,10 @@ export async function aiSummarizeEmails(
       batchNumber,
       totalBatches,
     );
+    if (batchResults === null) {
+      logger.warn(`Failed to process batch ${batchNumber} of ${totalBatches}, skipping`);
+      continue;
+    }
     results.push(...batchResults);
 
     if (i + batchSize < emails.length) {
@@ -57,7 +61,7 @@ async function processEmailBatch(
   emailAccount: EmailAccountWithAI,
   batchNumber: number,
   totalBatches: number,
-): Promise<EmailSummary[]> {
+): Promise<EmailSummary[] | null> {
   const system = `You are an assistant that processes user emails to extract their core meaning for later analysis.
 
 For each email, write a **factual summary of 3–5 sentences** that clearly describes:
@@ -88,16 +92,21 @@ Return the analysis as a JSON array of objects.`;
     modelOptions,
   });
 
-  const result = await generateObject({
-    ...modelOptions,
-    system,
-    prompt,
-    schema: z.object({
-      summaries: z
-        .array(emailSummarySchema)
-        .describe("Summaries of the emails"),
-    }),
-  });
+  try {
+    const result = await generateObject({
+      ...modelOptions,
+      system,
+      prompt,
+      schema: z.object({
+        summaries: z
+          .array(emailSummarySchema)
+          .describe("Summaries of the emails"),
+      }),
+    });
 
-  return result.object.summaries;
+    return result.object.summaries;
+  } catch (error) {
+    logger.error("Failed to summarize emails", { error, batchNumber, totalBatches });
+    return null;
+  }
 }

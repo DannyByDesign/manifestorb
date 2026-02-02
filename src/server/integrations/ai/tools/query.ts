@@ -49,10 +49,6 @@ Resources:
                 };
 
             case "drive":
-                // If drive is undefined (not connected), generic error?
-                // executeTool allows providers to be missing if optional but code invokes it.
-                // We should check if provider exists.
-                // Types say `drive?`.
                 if (!providers.drive) {
                     return { success: false, error: "Drive not connected. Please connect Google Drive or OneDrive." };
                 }
@@ -61,12 +57,7 @@ Resources:
                 if (filter?.query) {
                     driveItems = await providers.drive.searchFiles(filter.query);
                 } else {
-                    driveItems = await providers.drive.listFolders(filter?.id || undefined); // Use ID filter for parentId? Or just default root.
-                    // Default query generic usually implies search.
-                    // If no query, maybe list root folders?
-                    // `filter.id` is documented as `Specific ID`.
-                    // If filter.id provided, list children (folders) of that ID?
-                    // If no filter, list root folders.
+                    driveItems = await providers.drive.listFolders(filter?.id || undefined);
                 }
 
                 return {
@@ -87,7 +78,6 @@ Resources:
 
                 const where: any = { userId: emailAccount.userId };
                 if (filter?.status) {
-                    // Filter definition needs to match Prisma enum roughly, or cast
                     where.status = filter.status;
                 }
 
@@ -161,8 +151,7 @@ Resources:
                             title: "Executive Summary",
                             snippet: report.executiveSummary || "No summary generated",
                             source: "report",
-                            data: report // Include full data in the 'data' field (typed as any in DomainObjectRef?) 
-                            // DomainObjectRef usually flat, but we can pass object.
+                            data: report
                         },
                         {
                             id: "user-persona",

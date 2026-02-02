@@ -209,6 +209,9 @@ async function authMiddleware(
   return authReq;
 }
 
+// UUID pattern for email account ID validation
+const UUID_PATTERN = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+
 async function emailAccountMiddleware(
   req: NextRequest,
   options?: MiddlewareOptions,
@@ -218,12 +221,21 @@ async function emailAccountMiddleware(
 
   const userId = authReq.auth.userId;
 
-  const emailAccountId = req.headers.get(EMAIL_ACCOUNT_HEADER);
+  const rawEmailAccountId = req.headers.get(EMAIL_ACCOUNT_HEADER);
 
-  if (!emailAccountId) {
+  if (!rawEmailAccountId) {
     return NextResponse.json(
       { error: "Email account ID is required", isKnownError: true },
       { status: 403 },
+    );
+  }
+
+  // Sanitize and validate email account ID format
+  const emailAccountId = rawEmailAccountId.trim();
+  if (!UUID_PATTERN.test(emailAccountId)) {
+    return NextResponse.json(
+      { error: "Invalid email account ID format", isKnownError: true },
+      { status: 400 },
     );
   }
 

@@ -5,7 +5,7 @@ import type { EmailSummary } from "@/server/integrations/ai/report/summarize-ema
 import { createScopedLogger } from "@/server/utils/logger";
 import { getModel } from "@/server/utils/llms/model";
 
-const logger = createScopedLogger("email-report-email-behavior");
+const logger = createScopedLogger("ai/report/analyze-email-behavior");
 
 const emailBehaviorSchema = z.object({
   timingPatterns: z.object({
@@ -30,7 +30,7 @@ export async function aiAnalyzeEmailBehavior(
   emailSummaries: EmailSummary[],
   emailAccount: EmailAccountWithAI,
   sentEmailSummaries?: EmailSummary[],
-) {
+): Promise<z.infer<typeof emailBehaviorSchema> | null> {
   const system = `You are an expert AI system that analyzes a user's email behavior to infer timing patterns, content preferences, and automation opportunities.
 
 Focus on identifying patterns that can be automated and providing specific, actionable automation rules that would save time and improve email management efficiency.`;
@@ -65,12 +65,17 @@ Analyze the email patterns and identify:
     modelOptions,
   });
 
-  const result = await generateObject({
-    ...modelOptions,
-    system,
-    prompt,
-    schema: emailBehaviorSchema,
-  });
+  try {
+    const result = await generateObject({
+      ...modelOptions,
+      system,
+      prompt,
+      schema: emailBehaviorSchema,
+    });
 
-  return result.object;
+    return result.object;
+  } catch (error) {
+    logger.error("Failed to analyze email behavior", { error });
+    return null;
+  }
 }

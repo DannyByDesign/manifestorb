@@ -117,6 +117,17 @@ export class MicrosoftCalendarEventProvider implements CalendarEventProvider {
     return events.map((event) => this.parseEvent(event));
   }
 
+  async getEvent(eventId: string): Promise<CalendarEvent | null> {
+    const client = await this.getClient();
+    try {
+      const response = await client.api(`/me/events/${eventId}`).get();
+      return response ? this.parseEvent(response) : null;
+    } catch (error) {
+      this.logger.warn("Failed to fetch Microsoft event", { eventId, error });
+      return null;
+    }
+  }
+
   private parseEvent(event: MicrosoftEvent) {
     return {
       id: event.id || "",

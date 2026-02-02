@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 import useSWR, { mutate } from "swr";
 import { toast } from "sonner";
-import { type InAppNotification } from "@prisma/client";
+import { type InAppNotification } from "@/generated/prisma/client";
 
 // Simplified type if client doesn't have prisma types loaded
 type Notification = {

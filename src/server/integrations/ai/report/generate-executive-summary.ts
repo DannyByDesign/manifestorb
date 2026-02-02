@@ -6,7 +6,7 @@ import type { EmailSummary } from "@/server/integrations/ai/report/summarize-ema
 import { createScopedLogger } from "@/server/utils/logger";
 import { getModel } from "@/server/utils/llms/model";
 
-const logger = createScopedLogger("email-report-executive-summary");
+const logger = createScopedLogger("ai/report/generate-executive-summary");
 
 const executiveSummarySchema = z.object({
   userProfile: z.object({
@@ -54,7 +54,7 @@ export async function aiGenerateExecutiveSummary(
   sentEmailSummaries: EmailSummary[],
   gmailLabels: gmail_v1.Schema$Label[],
   emailAccount: EmailAccountWithAI,
-): Promise<z.infer<typeof executiveSummarySchema>> {
+): Promise<z.infer<typeof executiveSummarySchema> | null> {
   const system = `You are a professional persona identification expert. Your primary task is to accurately identify the user's professional role based on their email patterns.
 
 CRITICAL: The persona must be a specific, recognizable professional role that clearly identifies what this person does for work.
@@ -145,12 +145,17 @@ Generate:
     modelOptions,
   });
 
-  const result = await generateObject({
-    ...modelOptions,
-    system,
-    prompt,
-    schema: executiveSummarySchema,
-  });
+  try {
+    const result = await generateObject({
+      ...modelOptions,
+      system,
+      prompt,
+      schema: executiveSummarySchema,
+    });
 
-  return result.object;
+    return result.object;
+  } catch (error) {
+    logger.error("Failed to generate executive summary", { error });
+    return null;
+  }
 }

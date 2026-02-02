@@ -36,6 +36,17 @@ export async function getBatch(
     body: batchRequestBody,
   });
 
+  // Check for HTTP errors before parsing response
+  if (!res.ok) {
+    const errorText = await res.text();
+    logger.error("Batch request failed", { 
+      status: res.status, 
+      statusText: res.statusText,
+      error: errorText 
+    });
+    throw new Error(`Batch request failed: ${res.status} ${res.statusText}`);
+  }
+
   const textRes = await res.text();
 
   const batch = parseBatchResponse(textRes, res.headers.get("Content-Type"));
@@ -88,12 +99,16 @@ function checkBatchResponseForError(batchResponse: string) {
     const jsonResponse = JSON.parse(batchResponse);
 
     if (jsonResponse.error) {
+      logger.error("Error in batch response", { error: jsonResponse.error });
       throw new Error(
-        "parseBatchResponse: Error in batch response",
-        jsonResponse.error,
+        `parseBatchResponse: Error in batch response: ${JSON.stringify(jsonResponse.error)}`
       );
     }
-  } catch {
+  } catch (e) {
+    // Re-throw if it's our error, otherwise it's not JSON which is expected
+    if (e instanceof Error && e.message.startsWith("parseBatchResponse:")) {
+      throw e;
+    }
     // not json. skipping
   }
 }

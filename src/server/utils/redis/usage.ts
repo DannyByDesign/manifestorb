@@ -5,6 +5,9 @@ import { createScopedLogger } from "@/utils/logger";
 
 const logger = createScopedLogger("redis/usage");
 
+// TTL for usage tracking: 90 days
+const USAGE_TTL_SECONDS = 90 * 24 * 60 * 60;
+
 export type RedisUsage = {
   openaiCalls?: number;
   openaiTokensUsed?: number;
@@ -53,6 +56,8 @@ export async function saveUsage(options: {
       ? redis.hincrby(key, "reasoningTokensUsed", usage.reasoningTokens)
       : null,
     cost ? redis.hincrbyfloat(key, "cost", cost) : null,
+    // Refresh TTL on each update to allow rolling 90-day window
+    redis.expire(key, USAGE_TTL_SECONDS),
   ]).catch((error) => {
     logger.error("Error saving usage", { error: error.message, cost, usage });
   });

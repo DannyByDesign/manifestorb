@@ -7,6 +7,9 @@ import { getUserInfoPrompt, getEmailListPrompt } from "@/server/integrations/ai/
 import type { ConversationStatus } from "@/utils/reply-tracker/conversation-status-config";
 import { SystemType } from "@/generated/prisma/enums";
 import { getRuleConfig } from "@/utils/rule/consts";
+import { createScopedLogger } from "@/server/utils/logger";
+
+const logger = createScopedLogger("ai/determine-thread-status");
 
 export async function aiDetermineThreadStatus({
   emailAccount,
@@ -154,12 +157,18 @@ Based on the full thread context above, determine the current status of this thr
     rationale: z.string(),
   });
 
-  const aiResponse = await generateObject({
-    ...modelOptions,
-    system,
-    prompt,
-    schema,
-  });
+  try {
+    const aiResponse = await generateObject({
+      ...modelOptions,
+      system,
+      prompt,
+      schema,
+    });
 
-  return aiResponse.object;
+    return aiResponse.object;
+  } catch (error) {
+    logger.error("Failed to determine thread status", { error });
+    // Return conservative default
+    return { status: SystemType.TO_REPLY as ConversationStatus, rationale: "Error determining status" };
+  }
 }

@@ -152,6 +152,9 @@ export const actionInputs: Record<
   [ActionType.NOTIFY_SENDER]: {
     fields: [],
   },
+  [ActionType.NOTIFY_USER]: {
+    fields: [],
+  },
 };
 
 export function getActionFields(fields: Action | ExecutedAction | undefined) {

@@ -92,6 +92,20 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
     return events.map((event) => this.parseEvent(event));
   }
 
+  async getEvent(eventId: string): Promise<CalendarEvent | null> {
+    const client = await this.getClient();
+    try {
+      const response = await client.events.get({
+        calendarId: "primary",
+        eventId,
+      });
+      return response.data ? this.parseEvent(response.data) : null;
+    } catch (error) {
+      this.logger.warn("Failed to fetch Google event", { eventId, error });
+      return null;
+    }
+  }
+
   private parseEvent(event: calendar_v3.Schema$Event) {
     const startTime = new Date(
       event.start?.dateTime || event.start?.date || Date.now(),

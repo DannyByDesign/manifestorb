@@ -4,6 +4,9 @@ import type { EmailAccountWithAI } from "@/server/utils/llms/types";
 import { getModel } from "@/server/utils/llms/model";
 import { getUserInfoPrompt } from "@/server/integrations/ai/helpers";
 import { env } from "@/env";
+import { createScopedLogger } from "@/server/utils/logger";
+
+const logger = createScopedLogger("ai/generate-rules-prompt");
 
 const parameters = z.object({
   rules: z
@@ -112,18 +115,23 @@ IMPORTANT: Do not create overly specific rules that only occur on a one off basi
     modelOptions,
   });
 
-  const aiResponse = await generateObject({
-    ...modelOptions,
-    system,
-    prompt,
-    schema: hasSnippets ? parametersSnippets : parameters,
-  });
+  try {
+    const aiResponse = await generateObject({
+      ...modelOptions,
+      system,
+      prompt,
+      schema: hasSnippets ? parametersSnippets : parameters,
+    });
 
-  const result = aiResponse.object;
+    const result = aiResponse.object;
 
-  if (!result) return;
+    if (!result) return;
 
-  return parseRulesResponse(result, hasSnippets);
+    return parseRulesResponse(result, hasSnippets);
+  } catch (error) {
+    logger.error("Error generating rules prompt", { error });
+    return undefined;
+  }
 }
 
 function parseRulesResponse(

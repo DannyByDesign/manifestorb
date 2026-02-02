@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { redis } from "@/utils/redis";
 
+// TTL for category cache: 30 days
+const CATEGORY_TTL_SECONDS = 30 * 24 * 60 * 60;
+
 const categorySchema = z.object({
   category: z.string(),
 });
@@ -38,7 +41,9 @@ export async function saveCategory({
 }) {
   const key = getKey({ emailAccountId });
   const categoryKey = getCategoryKey({ threadId });
-  return redis.hset(key, { [categoryKey]: category });
+  await redis.hset(key, { [categoryKey]: category });
+  // Refresh TTL on each write to prevent stale data accumulation
+  await redis.expire(key, CATEGORY_TTL_SECONDS);
 }
 
 export async function deleteCategory({

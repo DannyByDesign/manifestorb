@@ -2,16 +2,47 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ApprovalService } from "@/server/approvals/service";
 import prisma from "@/server/db/client";
+import { auth } from "@/server/auth";
+import { createScopedLogger } from "@/server/utils/logger";
+
+const logger = createScopedLogger("approvals/deny");
 
 export async function POST(req: NextRequest, context: { params: Promise<{ id: string }> }) {
     const { id } = await context.params;
+
+    // Authentication check
+    const session = await auth();
+    if (!session?.user?.id) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     try {
         const body = await req.json();
         const service = new ApprovalService(prisma);
 
+        // Verify the user has permission to decide on this approval
+        // (they should be the owner of the approval request)
+        const approvalRequest = await prisma.approvalRequest.findUnique({
+            where: { id },
+            select: { userId: true }
+        });
+
+        if (!approvalRequest) {
+            return NextResponse.json({ error: "Approval request not found" }, { status: 404 });
+        }
+
+        if (approvalRequest.userId !== session.user.id) {
+            logger.warn("User attempted to deny another user's request", {
+                requestUserId: approvalRequest.userId,
+                sessionUserId: session.user.id,
+                approvalRequestId: id
+            });
+            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        }
+
         const result = await service.decideRequest({
             approvalRequestId: id,
-            decidedByUserId: body.userId,
+            decidedByUserId: session.user.id, // Use authenticated user ID, not body.userId
             decision: "DENY",
             reason: body.reason
         });

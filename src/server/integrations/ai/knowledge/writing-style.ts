@@ -8,7 +8,7 @@ import { getModel } from "@/server/utils/llms/model";
 import { createGenerateObject } from "@/server/utils/llms";
 import { getUserInfoPrompt } from "@/server/integrations/ai/helpers";
 
-const logger = createScopedLogger("writing-style-analyzer");
+const logger = createScopedLogger("ai/knowledge/writing-style");
 
 export async function aiAnalyzeWritingStyle(options: {
   emails: EmailForLLM[];
@@ -73,19 +73,24 @@ ${getUserInfoPrompt({ emailAccount })}`;
     modelOptions,
   });
 
-  const result = await generateObject({
-    ...modelOptions,
-    system,
-    prompt,
-    schema: z.object({
-      typicalLength: z.string(),
-      formality: z.string(),
-      commonGreeting: z.string(),
-      notableTraits: z.array(z.string()),
-      examples: z.array(z.string()),
-    }),
-  });
-  logger.trace("Output", result.object);
+  try {
+    const result = await generateObject({
+      ...modelOptions,
+      system,
+      prompt,
+      schema: z.object({
+        typicalLength: z.string(),
+        formality: z.string(),
+        commonGreeting: z.string(),
+        notableTraits: z.array(z.string()),
+        examples: z.array(z.string()),
+      }),
+    });
+    logger.trace("Output", result.object);
 
-  return result.object;
+    return result.object;
+  } catch (error) {
+    logger.error("Error analyzing writing style", { error });
+    return null;
+  }
 }

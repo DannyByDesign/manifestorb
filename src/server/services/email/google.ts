@@ -968,8 +968,9 @@ export class GmailProvider implements EmailProvider {
     const unsubscribeLabel =
       await this.getOrCreateAmodelLabel("unsubscribed");
 
-    if (unsubscribeLabel?.id) {
+    if (!unsubscribeLabel?.id) {
       log.warn("Unsubscribe label not found");
+      // Still proceed to remove from inbox even without the label
     }
 
     await labelMessage({

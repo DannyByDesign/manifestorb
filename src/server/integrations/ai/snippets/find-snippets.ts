@@ -4,6 +4,9 @@ import type { EmailAccountWithAI } from "@/server/utils/llms/types";
 import { getModel } from "@/server/utils/llms/model";
 import { createGenerateObject } from "@/server/utils/llms";
 import { getEmailListPrompt } from "@/server/integrations/ai/helpers";
+import { createScopedLogger } from "@/server/utils/logger";
+
+const logger = createScopedLogger("ai/snippets");
 
 export async function aiFindSnippets({
   emailAccount,
@@ -56,19 +59,24 @@ ${getEmailListPrompt({ messages: sentEmails, messageMaxLength: 2000 })}`;
     modelOptions,
   });
 
-  const aiResponse = await generateObject({
-    ...modelOptions,
-    system,
-    prompt,
-    schema: z.object({
-      snippets: z.array(
-        z.object({
-          text: z.string(),
-          count: z.number(),
-        }),
-      ),
-    }),
-  });
+  try {
+    const aiResponse = await generateObject({
+      ...modelOptions,
+      system,
+      prompt,
+      schema: z.object({
+        snippets: z.array(
+          z.object({
+            text: z.string(),
+            count: z.number(),
+          }),
+        ),
+      }),
+    });
 
-  return aiResponse.object;
+    return aiResponse.object;
+  } catch (error) {
+    logger.error("Error finding snippets", { error });
+    return { snippets: [] };
+  }
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { env } from "@/env";
 import type { Logger } from "@/utils/logger";
 import { parseOAuthState } from "@/utils/oauth/state";
+import crypto from "node:crypto";
 
 interface ValidateCallbackParams {
   code: string | null;
@@ -22,6 +23,25 @@ type ValidationResult =
       response: NextResponse;
     };
 
+/**
+ * Performs a constant-time comparison of two strings to prevent timing attacks.
+ * Uses crypto.timingSafeEqual to avoid leaking information about the stored state.
+ */
+function timingSafeCompare(a: string, b: string): boolean {
+  const aBuffer = Buffer.from(a, 'utf8');
+  const bBuffer = Buffer.from(b, 'utf8');
+  
+  // If lengths differ, we still need to do a comparison to maintain constant time
+  // We compare against itself to avoid early return
+  if (aBuffer.length !== bBuffer.length) {
+    // Compare a with itself to maintain timing consistency
+    crypto.timingSafeEqual(aBuffer, aBuffer);
+    return false;
+  }
+  
+  return crypto.timingSafeEqual(aBuffer, bBuffer);
+}
+
 export function validateOAuthCallback({
   code,
   receivedState,
@@ -32,7 +52,24 @@ export function validateOAuthCallback({
   const redirectUrl = new URL("/accounts", env.NEXT_PUBLIC_BASE_URL);
   const response = NextResponse.redirect(redirectUrl);
 
-  if (!storedState || !receivedState || storedState !== receivedState) {
+  // Separate null checks from comparison to use timing-safe comparison
+  if (!storedState || !receivedState) {
+    logger.warn("Missing state during OAuth callback", {
+      hasReceivedState: !!receivedState,
+      hasStoredState: !!storedState,
+    });
+    redirectUrl.searchParams.set("error", "invalid_state");
+    response.cookies.delete(stateCookieName);
+    return {
+      success: false,
+      response: NextResponse.redirect(redirectUrl, {
+        headers: response.headers,
+      }),
+    };
+  }
+
+  // Use constant-time comparison to prevent timing attacks
+  if (!timingSafeCompare(storedState, receivedState)) {
     logger.warn("Invalid state during OAuth callback", {
       receivedState,
       hasStoredState: !!storedState,

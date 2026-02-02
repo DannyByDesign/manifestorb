@@ -1,20 +1,11 @@
-import type { people_v1 } from "@googleapis/people";
 import { z } from "zod";
 import { NextResponse } from "next/server";
 import { withEmailAccount } from "@/server/utils/middleware";
-import { getContactsClient } from "@/server/integrations/google/client";
-import { searchContacts } from "@/server/integrations/google/contact";
+import { searchGoogleContacts } from "@/server/integrations/google/contact";
 import { env } from "@/env";
-import prisma from "@/server/db/client";
 
 const contactsQuery = z.object({ query: z.string() });
 export type ContactsQuery = z.infer<typeof contactsQuery>;
-export type ContactsResponse = Awaited<ReturnType<typeof getContacts>>;
-
-async function getContacts(client: people_v1.People, query: string) {
-  const result = await searchContacts(client, query);
-  return { result };
-}
 
 export const GET = withEmailAccount("google/contacts", async (request) => {
   if (!env.NEXT_PUBLIC_CONTACTS_ENABLED)
@@ -22,24 +13,11 @@ export const GET = withEmailAccount("google/contacts", async (request) => {
 
   const emailAccountId = request.auth.emailAccountId;
 
-  const emailAccount = await prisma.emailAccount.findUnique({
-    where: { id: emailAccountId },
-    select: {
-      account: {
-        select: { access_token: true, refresh_token: true, expires_at: true },
-      },
-    },
-  });
-  const client = getContactsClient({
-    accessToken: emailAccount?.account.access_token,
-    refreshToken: emailAccount?.account.refresh_token,
-  });
-
   const { searchParams } = new URL(request.url);
   const query = searchParams.get("query");
   const searchQuery = contactsQuery.parse({ query });
 
-  const result = await getContacts(client, searchQuery.query);
+  const result = await searchGoogleContacts(emailAccountId, searchQuery.query);
 
-  return NextResponse.json(result);
+  return NextResponse.json({ result });
 });

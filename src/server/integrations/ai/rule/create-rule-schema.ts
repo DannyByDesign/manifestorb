@@ -119,6 +119,11 @@ export const createRuleSchema = (provider: string) =>
       .describe(
         "A short, concise name for the rule (preferably a single word). For example: 'Marketing', 'Newsletters', 'Urgent', 'Receipts'. Avoid verbose names like 'Archive and label marketing emails'.",
       ),
+    ruleId: z
+      .string()
+      .nullish()
+      .transform((v) => v ?? undefined)
+      .describe("The ID of the rule if updating an existing rule"),
     condition: conditionSchema,
     actions: z.array(actionSchema(provider)).describe("The actions to take"),
   });

@@ -291,7 +291,6 @@ export interface EmailProvider {
     folderName: string,
   ): Promise<void>;
   getOrCreateFolderIdByName(folderName: string): Promise<string>;
-  getOrCreateFolderIdByName(folderName: string): Promise<string>;
   getSignatures(): Promise<EmailSignature[]>;
   searchContacts(query: string): Promise<Contact[]>;
   createContact(contact: Partial<Contact>): Promise<Contact>;

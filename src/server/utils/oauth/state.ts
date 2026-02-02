@@ -21,11 +21,17 @@ export function generateOAuthState<T extends Record<string, unknown>>(
  * Parses an OAuth state parameter
  * @param state - Base64URL encoded state string
  * @returns The decoded state object
+ * @throws Error if state is malformed or cannot be parsed
  */
 export function parseOAuthState<T extends Record<string, unknown>>(
   state: string,
 ): T & { nonce: string } {
-  return JSON.parse(Buffer.from(state, "base64url").toString("utf8"));
+  try {
+    const decoded = Buffer.from(state, "base64url").toString("utf8");
+    return JSON.parse(decoded);
+  } catch (error) {
+    throw new Error("Invalid OAuth state format");
+  }
 }
 
 /**

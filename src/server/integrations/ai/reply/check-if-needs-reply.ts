@@ -10,6 +10,9 @@ import { preprocessBooleanLike } from "@/server/utils/zod";
 import { getModel } from "@/server/utils/llms/model";
 import { getUserInfoPrompt } from "@/server/integrations/ai/helpers";
 import { PROMPT_SECURITY_INSTRUCTIONS } from "@/server/integrations/ai/security";
+import { createScopedLogger } from "@/server/utils/logger";
+
+const logger = createScopedLogger("ai/check-if-needs-reply");
 
 export async function aiCheckIfNeedsReply({
   emailAccount,
@@ -63,20 +66,26 @@ Decide if the message we are sending needs a reply. Respond with a JSON object w
     modelOptions,
   });
 
-  const aiResponse = await generateObject({
-    ...modelOptions,
-    system,
-    prompt,
-    schema: z.object({
-      rationale: z
-        .string()
-        .describe("Brief one-line explanation for the decision."),
-      needsReply: z.preprocess(
-        preprocessBooleanLike,
-        z.boolean().describe("Whether a reply is needed."),
-      ),
-    }),
-  });
+  try {
+    const aiResponse = await generateObject({
+      ...modelOptions,
+      system,
+      prompt,
+      schema: z.object({
+        rationale: z
+          .string()
+          .describe("Brief one-line explanation for the decision."),
+        needsReply: z.preprocess(
+          preprocessBooleanLike,
+          z.boolean().describe("Whether a reply is needed."),
+        ),
+      }),
+    });
 
-  return aiResponse.object;
+    return aiResponse.object;
+  } catch (error) {
+    logger.error("Failed to check if needs reply", { error });
+    // Return conservative default - assume no reply needed on error
+    return { needsReply: false, rationale: "Error checking reply status" };
+  }
 }

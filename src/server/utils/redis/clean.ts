@@ -2,6 +2,7 @@ import { redis } from "@/utils/redis";
 import type { CleanThread } from "@/utils/redis/clean.types";
 import { isDefined } from "@/utils/types";
 import { createScopedLogger } from "@/utils/logger";
+import prisma from "@/server/db/client";
 
 const logger = createScopedLogger("redis/clean");
 
@@ -132,24 +133,37 @@ export async function getThreadsByJobId({
 }
 
 export async function deleteAllUserData(userId: string) {
-  // Delete all thread keys for this user
-  const threadPattern = `thread:${userId}:*`;
-  let cursor = 0;
+  // Keys are stored with emailAccountId, not userId
+  // Pattern: thread:${emailAccountId}:${jobId}:${threadId}
+  // We need to look up all email accounts for this user first
+  
+  const emailAccounts = await prisma.emailAccount.findMany({
+    where: { userId },
+    select: { id: true }
+  });
+
   let deletedThreads = 0;
 
-  do {
-    const [nextCursor, batch] = await redis.scan(cursor, {
-      match: threadPattern,
-      count: 100,
-    });
-    cursor = Number(nextCursor);
+  // Delete keys for each email account
+  for (const account of emailAccounts) {
+    const threadPattern = `thread:${account.id}:*`;
+    let cursor = 0;
 
-    if (batch.length > 0) {
-      // Spread the array of keys
-      await redis.unlink(...batch);
-      deletedThreads += batch.length;
-    }
-  } while (cursor !== 0);
+    do {
+      const [nextCursor, batch] = await redis.scan(cursor, {
+        match: threadPattern,
+        count: 100,
+      });
+      cursor = Number(nextCursor);
 
+      if (batch.length > 0) {
+        // Spread the array of keys
+        await redis.unlink(...batch);
+        deletedThreads += batch.length;
+      }
+    } while (cursor !== 0);
+  }
+
+  logger.info("Deleted user data from Redis", { userId, emailAccountCount: emailAccounts.length, deletedThreads });
   return { deletedThreads };
 }

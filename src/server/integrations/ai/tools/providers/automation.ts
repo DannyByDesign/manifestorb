@@ -34,10 +34,10 @@ export async function createAutomationProvider(
 
     const user = await prisma.user.findUnique({
         where: { id: userId },
-        include: { emailAccount: true }
+        include: { emailAccounts: true }
     });
 
-    const emailAccountId = user?.emailAccount?.id;
+    const emailAccountId = user?.emailAccounts?.[0]?.id;
 
     if (!emailAccountId) {
         throw new Error("No email account found for user");
@@ -49,7 +49,7 @@ export async function createAutomationProvider(
         async listRules() {
             return prisma.rule.findMany({
                 where: { emailAccountId, enabled: true },
-                include: { actions: true, conditions: true },
+                include: { actions: true },
                 orderBy: { createdAt: "desc" }
             });
         },
@@ -60,23 +60,39 @@ export async function createAutomationProvider(
 
             logger.info("Creating rule via Agent", { name: validated.name });
 
+            // Flatten conditions for Prisma Code
+            let from: string | undefined;
+            let to: string | undefined;
+            let subject: string | undefined;
+            let body: string | undefined;
+            let instructions: string | undefined;
+
+            if (validated.conditions) {
+                for (const c of validated.conditions) {
+                    if (c.type === "STATIC") {
+                        if (c.from) from = c.from;
+                        if (c.to) to = c.to;
+                        if (c.subject) subject = c.subject;
+                        if (c.body) body = c.body;
+                    } else if (c.type === "AI") {
+                        if (c.instructions) instructions = c.instructions;
+                    }
+                }
+            }
+            if (validated.instructions) instructions = validated.instructions; // Top level override
+
             const rule = await prisma.rule.create({
                 data: {
                     emailAccountId,
                     name: validated.name,
                     enabled: true,
-                    instructions: validated.instructions,
+                    instructions,
                     runOnThreads: validated.runOnThreads ?? true,
-                    conditions: {
-                        create: validated.conditions.map((c) => ({
-                            type: c.type,
-                            instructions: c.instructions,
-                            to: c.to,
-                            from: c.from,
-                            subject: c.subject,
-                            body: c.body,
-                        }))
-                    },
+                    // Map flat fields
+                    from,
+                    to,
+                    subject,
+                    body,
                     actions: {
                         create: validated.actions.map((a) => ({
                             type: a.type,
@@ -98,15 +114,10 @@ export async function createAutomationProvider(
             // We can't await this or it slows down the Agent.
             const emailAccount = await getEmailAccountWithAi({ emailAccountId });
             if (emailAccount && emailAccount.account) {
-                // Bulk process uses Service Provider
-                const provider = await createServiceEmailProvider({
-                    emailAccountId: emailAccount.id,
-                    provider: emailAccount.account.provider,
-                    logger
-                });
+                // Bulk process expects provider STRING
                 bulkProcessInboxEmails({
                     emailAccount,
-                    provider,
+                    provider: emailAccount.account.provider,
                     maxEmails: ONBOARDING_PROCESS_EMAILS_COUNT,
                     skipArchive: true,
                     logger

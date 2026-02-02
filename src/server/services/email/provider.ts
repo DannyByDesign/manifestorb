@@ -25,7 +25,7 @@ export async function createEmailProvider({
     return new GmailProvider(client, emailAccountId, logger);
   } else if (isMicrosoftProvider(provider)) {
     const client = await getOutlookClientForEmail({ emailAccountId, logger });
-    return new OutlookProvider(client, logger);
+    return new OutlookProvider(client, emailAccountId, logger);
   }
 
   throw new Error(`Unsupported provider: ${provider}`);

@@ -6,7 +6,7 @@ import type { EmailSummary } from "@/server/integrations/ai/report/summarize-ema
 import { createScopedLogger } from "@/server/utils/logger";
 import { getModel } from "@/server/utils/llms/model";
 
-const logger = createScopedLogger("email-report-label-analysis");
+const logger = createScopedLogger("ai/report/analyze-label-optimization");
 
 const labelAnalysisSchema = z.object({
   optimizationSuggestions: z.array(
@@ -25,7 +25,7 @@ export async function aiAnalyzeLabelOptimization(
   emailSummaries: EmailSummary[],
   emailAccount: EmailAccountWithAI,
   gmailLabels: gmail_v1.Schema$Label[],
-): Promise<z.infer<typeof labelAnalysisSchema>> {
+): Promise<z.infer<typeof labelAnalysisSchema> | null> {
   const system = `You are a Gmail organization expert. Analyze the user's current labels and email patterns to suggest specific optimizations that will improve their email organization and workflow efficiency.
 
 Focus on practical suggestions that will reduce email management time and improve organization.`;
@@ -60,12 +60,17 @@ Each suggestion should include the reason and expected impact.`;
     modelOptions,
   });
 
-  const result = await generateObject({
-    ...modelOptions,
-    system,
-    prompt,
-    schema: labelAnalysisSchema,
-  });
+  try {
+    const result = await generateObject({
+      ...modelOptions,
+      system,
+      prompt,
+      schema: labelAnalysisSchema,
+    });
 
-  return result.object;
+    return result.object;
+  } catch (error) {
+    logger.error("Failed to analyze label optimization", { error });
+    return null;
+  }
 }

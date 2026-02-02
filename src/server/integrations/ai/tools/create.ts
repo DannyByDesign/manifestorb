@@ -53,7 +53,7 @@ Automation: Create Rules & Knowledge supported.`,
             actions: z.array(z.any()).optional(),
 
             // Knowledge
-            title: z.string().optional(),
+            // title uses Calendar's definition
             content: z.string().optional(),
 
             // Drive (Filing)
@@ -82,28 +82,26 @@ Automation: Create Rules & Knowledge supported.`,
                 let replyContext = null;
                 const isReply = type === "reply";
 
-                // Implicit Context Collection for Replies
                 if (isReply && parentId && providers.email) {
                     try {
                         const emailAccount = await getEmailAccountWithAi({ emailAccountId: context.emailAccountId });
                         if (emailAccount) {
-                            // Needs full thread for context
-                            // parentId is messageId or threadId?
-                            // Usually reply refers to a messageId.
-                            // Let's assume parentId is messageId.
                             const thread = await providers.email.getThread(parentId);
                             if (thread) {
-                                // Convert to EmailForLLM
-                                const threadLLM = thread.messages.map(m => ({
-                                    ...m,
-                                    body: m.text || m.body || "",
-                                    from: typeof m.from === 'string' ? m.from : m.from.email
-                                })) as EmailForLLM[];
+                                const { getEmailForLLM } = await import("@/server/utils/get-email-from-message");
+                                const threadLLM = thread.messages.map(m => getEmailForLLM(m));
+
+                                const { createEmailProvider } = await import("@/server/services/email/provider");
+                                const serviceProvider = await createEmailProvider({
+                                    emailAccountId,
+                                    provider: emailAccount.account.provider,
+                                    logger
+                                });
 
                                 replyContext = await aiCollectReplyContext({
                                     currentThread: threadLLM,
                                     emailAccount,
-                                    emailProvider: providers.email
+                                    emailProvider: serviceProvider
                                 });
                             }
                         }
@@ -161,6 +159,14 @@ Automation: Create Rules & Knowledge supported.`,
                 const attachment = fileMsg.attachments?.find((a: any) => a.attachmentId === data.attachmentId);
                 if (!attachment) return { success: false, error: "Attachment not found" };
 
+                // Create Service Provider for helper
+                const { createEmailProvider: createFilingProvider } = await import("@/server/services/email/provider");
+                const filingProvider = await createFilingProvider({
+                    emailAccountId: context.emailAccountId,
+                    provider: emailAccountFiling.account.provider,
+                    logger
+                });
+
                 // Call Engine
                 const filingResult = await processAttachment({
                     emailAccount: {
@@ -171,7 +177,7 @@ Automation: Create Rules & Knowledge supported.`,
                     },
                     message: fileMsg,
                     attachment,
-                    emailProvider: providers.email,
+                    emailProvider: filingProvider,
                     logger,
                     sendNotification: true
                 });
@@ -246,15 +252,7 @@ Automation: Create Rules & Knowledge supported.`,
                 if (!data.name) return { success: false, error: "Name is required for creating a contact" };
                 const contact = await providers.email.createContact({
                     name: data.name,
-                    email: data.to?.[0], // Reusing 'to' field for email to avoid too many duplicate fields, or should we use a specific one? 
-                    // The schema above didn't add 'email', let's use 'to' or add 'email' explicitly? 
-                    // 'to' is array, contact email usually single but can be multiple.
-                    // Let's check schema: I didn't add 'email' to schema block above, only 'phone', 'company'.
-                    // I will strictly use the fields I defined.
-                    // Wait, I should add 'email' to schema to be clear.
-                    // I will add 'email' to schema in the previous chunk or use 'to' array.
-                    // 'to' is z.array(z.string()). 
-                    // I'll interpret data.to[0] as email.
+                    email: data.to?.[0],
                     phone: data.phone,
                     company: data.company,
                     jobTitle: data.jobTitle

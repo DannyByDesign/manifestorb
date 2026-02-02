@@ -28,4 +28,6 @@ export interface CalendarEventProvider {
     timeMax?: Date;
     maxResults?: number;
   }): Promise<CalendarEvent[]>;
+
+  getEvent(eventId: string): Promise<CalendarEvent | null>;
 }

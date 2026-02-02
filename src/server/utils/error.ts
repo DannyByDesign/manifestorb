@@ -262,12 +262,31 @@ export function checkCommonErrors(
   return null;
 }
 
-export function getErrorMessage(error: unknown): string | undefined {
+/**
+ * Extracts an error message from an unknown error type.
+ * Has depth limit and circular reference protection to prevent stack overflow.
+ * 
+ * @param error - The error to extract message from
+ * @param maxDepth - Maximum recursion depth (default 5)
+ * @param visited - WeakSet to track visited objects (for circular reference protection)
+ */
+export function getErrorMessage(
+  error: unknown,
+  maxDepth: number = 5,
+  visited: WeakSet<object> = new WeakSet(),
+): string | undefined {
   if (typeof error === "string") return error;
   if (error instanceof Error) return error.message;
 
   const outer = asRecord(error);
   if (!outer) return undefined;
+
+  // Prevent circular references
+  if (visited.has(outer)) return undefined;
+  visited.add(outer);
+
+  // Check depth limit
+  if (maxDepth <= 0) return undefined;
 
   const directMessage = getStringProp(outer, "message");
   if (directMessage) return directMessage;
@@ -275,7 +294,7 @@ export function getErrorMessage(error: unknown): string | undefined {
   const nested = asRecord(outer.error);
   if (!nested) return undefined;
 
-  return getStringProp(nested, "message");
+  return getErrorMessage(nested, maxDepth - 1, visited);
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

@@ -7,7 +7,10 @@ import { preprocessBooleanLike } from "@/server/utils/zod";
 import { getModel } from "@/server/utils/llms/model";
 import { createGenerateObject } from "@/server/utils/llms";
 import { PROMPT_SECURITY_INSTRUCTIONS } from "@/server/integrations/ai/security";
+import { createScopedLogger } from "@/server/utils/logger";
 // import { Braintrust } from "@/utils/braintrust";
+
+const logger = createScopedLogger("ai/clean");
 
 // TODO: allow specific labels
 // Pass in prompt labels
@@ -101,18 +104,24 @@ The current date is ${currentDate}.
     modelOptions,
   });
 
-  const aiResponse = await generateObject({
-    ...modelOptions,
-    system,
-    prompt,
-    schema,
-  });
+  try {
+    const aiResponse = await generateObject({
+      ...modelOptions,
+      system,
+      prompt,
+      schema,
+    });
 
-  // braintrust.insertToDataset({
-  //   id: messageId,
-  //   input: { message, currentDate },
-  //   expected: aiResponse.object,
-  // });
+    // braintrust.insertToDataset({
+    //   id: messageId,
+    //   input: { message, currentDate },
+    //   expected: aiResponse.object,
+    // });
 
-  return aiResponse.object as { archive: boolean };
+    return aiResponse.object as { archive: boolean };
+  } catch (error) {
+    logger.error("Failed to clean email with AI", { error });
+    // Return conservative default - don't archive on error
+    return { archive: false };
+  }
 }

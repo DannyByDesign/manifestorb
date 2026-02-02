@@ -114,6 +114,8 @@ export function getActionIcon(actionType: ActionType) {
       return NewspaperIcon;
     case ActionType.NOTIFY_SENDER:
       return BellIcon;
+    case ActionType.NOTIFY_USER:
+      return BellIcon;
     default: {
       const exhaustiveCheck: never = actionType;
       return exhaustiveCheck;

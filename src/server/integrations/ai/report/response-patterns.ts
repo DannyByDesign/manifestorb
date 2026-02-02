@@ -5,7 +5,7 @@ import type { EmailAccountWithAI } from "@/server/utils/llms/types";
 import { createScopedLogger } from "@/server/utils/logger";
 import { getModel } from "@/server/utils/llms/model";
 
-const logger = createScopedLogger("email-report-response-patterns");
+const logger = createScopedLogger("ai/report/response-patterns");
 
 const responsePatternsSchema = z.object({
   commonResponses: z.array(
@@ -47,7 +47,7 @@ export async function aiAnalyzeResponsePatterns(
   emailSummaries: EmailSummary[],
   emailAccount: EmailAccountWithAI,
   sentEmailSummaries?: EmailSummary[],
-) {
+): Promise<z.infer<typeof responsePatternsSchema> | null> {
   const system = `You are an expert email behavior analyst. Your task is to identify common response patterns and suggest email categorization and templates based on the user's email activity.
 
 Focus on practical, actionable insights for email management including reusable templates and smart categorization.
@@ -96,12 +96,17 @@ Only suggest categories that are meaningful and provide clear organizational val
     modelOptions,
   });
 
-  const result = await generateObject({
-    ...modelOptions,
-    system,
-    prompt,
-    schema: responsePatternsSchema,
-  });
+  try {
+    const result = await generateObject({
+      ...modelOptions,
+      system,
+      prompt,
+      schema: responsePatternsSchema,
+    });
 
-  return result.object;
+    return result.object;
+  } catch (error) {
+    logger.error("Failed to analyze response patterns", { error });
+    return null;
+  }
 }

@@ -48,19 +48,7 @@ Calendar changes:
                     if (emails.length === 0) return { success: false, error: "Emails not found" };
 
                     const results = await Promise.all(emails.map(async (email) => {
-                        // Extract sender: from header. 
-                        // Provider returns ParsedMessage with `from` field (which might be "Name <email>").
-                        // We need just the email.
-                        // But `email.from` in `ParsedMessage` is usually the full string.
-                        // `unsubscribeFromSender` in `execute.ts` handles searching by substring?
-                        // Actually `extractEmailAddress` helper is needed.
-                        // But `AutomationProvider` wrapper calls `unsubscribeFromSender` which does NOT extract.
-                        // Wait, `unsubscriber.ts` (action) called `extractEmailAddress`.
-                        // `execute.ts` `unsubscribeFromSender` takes `senderEmail`.
-                        // I should do extraction here or in provider. 
-                        // Let's do a simple regex extraction here to be safe.
-                        const senderEmail = email.from.match(/<(.+)>/)?.[1] || email.from;
-
+                        const senderEmail = email.headers.from.match(/<(.+)>/)?.[1] || email.headers.from;
                         return providers.automation.unsubscribe(senderEmail);
                     }));
 
@@ -83,13 +71,6 @@ Calendar changes:
 
                     let setupCount = 0;
                     for (const id of ids) {
-                        // ID here is likely Thread ID. We need the latest message ID to track.
-                        // Or if ID is message ID (depends on what 'get' returned).
-                        // Usually we operate on items returned by 'get', which are messages.
-                        // But 'modify' says "ids".
-                        // Let's assume input is Message ID to match 'updateThreadTrackers' exact requirement, 
-                        // OR fetch thread to find latest message.
-                        // Safest: Fetch the message/thread.
                         const messages = await providers.email.get([id]);
                         if (messages.length > 0) {
                             const msg = messages[0];
@@ -100,21 +81,16 @@ Calendar changes:
                                     threadId: msg.threadId,
                                     messageId: msg.id,
                                     sentAt: internalDateToDate(msg.internalDate),
-                                    status: "AWAITING_REPLY" as any // Casting to SystemType if needed, or pass enum
+                                    status: "AWAITING_REPLY"
                                 });
                                 setupCount++;
                             } else {
-                                // Disable (Resolve) is handled by updateThreadTrackers internal logic if we pass a resolved status? 
-                                // Actually updateThreadTrackers only creates or resolves.
-                                // To "Turn Off", we should probably manually resolve.
-                                // The helper `updateThreadTrackers` resolves existing ones first.
-                                // If we pass a status that returns null tracker type (e.g. FYI), it just resolves.
                                 await updateThreadTrackers({
                                     emailAccountId,
                                     threadId: msg.threadId,
                                     messageId: msg.id,
                                     sentAt: internalDateToDate(msg.internalDate),
-                                    status: "FYI" as any
+                                    status: "FYI"
                                 });
                                 setupCount++;
                             }
@@ -175,8 +151,8 @@ Calendar changes:
 
                     const senders = new Set<string>();
                     emails.forEach(e => {
-                        const match = e.from.match(/<(.+)>/);
-                        const email = match ? match[1] : e.from;
+                        const match = e.headers.from.match(/<(.+)>/);
+                        const email = match ? match[1] : e.headers.from;
                         if (email) senders.add(email);
                     });
 
@@ -202,8 +178,8 @@ Calendar changes:
                     const senders = new Set<string>();
                     emails.forEach(e => {
                         // Extract email from "Name <email>" or just "email"
-                        const match = e.from.match(/<(.+)>/);
-                        const email = match ? match[1] : e.from;
+                        const match = e.headers.from.match(/<(.+)>/);
+                        const email = match ? match[1] : e.headers.from;
                         if (email) senders.add(email);
                     });
 
@@ -229,8 +205,8 @@ Calendar changes:
 
                     const senders = new Set<string>();
                     emails.forEach(e => {
-                        const match = e.from.match(/<(.+)>/);
-                        const email = match ? match[1] : e.from;
+                        const match = e.headers.from.match(/<(.+)>/);
+                        const email = match ? match[1] : e.headers.from;
                         if (email) senders.add(email);
                     });
 
@@ -263,7 +239,7 @@ Calendar changes:
                 const emailAccountApp = await getEmailAccountWithAi({ emailAccountId });
                 if (!emailAccountApp) return { success: false, error: "User not found" };
 
-                const approvalResults = await Promise.all(ids.map(id =>
+                const approvalResults = await Promise.all(ids.map((id: string) =>
                     approvalService.decideRequest({
                         approvalRequestId: id,
                         decidedByUserId: emailAccountApp.userId,
@@ -279,9 +255,7 @@ Calendar changes:
 
             case "automation":
                 if (!ids || ids.length === 0) return { success: false, error: "No Rule ID provided" };
-                // We only support modifying one rule at a time via this generic tool for now, 
-                // or we loop. AutomationProvider.updateRule takes ID and data.
-                const results = await Promise.all(ids.map(id =>
+                const results = await Promise.all(ids.map((id: string) =>
                     providers.automation.updateRule(id, changes)
                 ));
                 return { success: true, data: results };
@@ -294,7 +268,7 @@ Calendar changes:
 
                 // Move File
                 if (changes.targetFolderId) {
-                    const moveResults = await Promise.all(ids.map(id =>
+                    const moveResults = await Promise.all(ids.map((id: string) =>
                         providers.drive!.moveFile(id, changes.targetFolderId!)
                     ));
                     return { success: true, data: moveResults };
