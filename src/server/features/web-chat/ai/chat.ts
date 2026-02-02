@@ -1,4 +1,5 @@
 import { tool, type ModelMessage } from "ai";
+import { createHash } from "crypto";
 import type { Logger } from "@/server/lib/logger";
 import prisma from "@/server/db/client";
 import { ApprovalService } from "@/features/approvals/service";
@@ -11,8 +12,13 @@ import type { ParsedMessage } from "@/server/types";
 import { env } from "@/env";
 import { createAgentTools } from "@/features/ai/tools";
 import { createRuleManagementTools } from "@/features/ai/rule-tools";
+import { createMemoryTools } from "@/features/ai/memory-tools";
 import { buildAgentSystemPrompt } from "@/features/ai/system-prompt";
 import { createInAppNotification } from "@/features/notifications/create";
+import { ContextManager } from "@/features/memory/context-manager";
+import { ConversationService } from "@/features/conversations/service";
+import { MemoryRecordingService } from "@/features/memory/service";
+import { PrivacyService } from "@/features/privacy/service";
 
 export const maxDuration = 120;
 
@@ -97,6 +103,92 @@ export async function aiProcessAssistantChat({
     throw new Error(`No EmailAccount connected for user ${user.id}`);
   }
 
+  // ========================================================================
+  // CONTEXT MANAGEMENT
+  // ========================================================================
+
+  // 1. Get or create the user's primary web conversation
+  const conversation = await ConversationService.getPrimaryWebConversation(user.id);
+
+  // 2. Extract the latest user message content for context retrieval
+  const latestUserMessage = messages
+    .filter(m => m.role === "user")
+    .pop();
+  const messageContent = typeof latestUserMessage?.content === "string"
+    ? latestUserMessage.content
+    : Array.isArray(latestUserMessage?.content)
+      ? latestUserMessage.content
+          .filter((part): part is { type: "text"; text: string } => 
+            typeof part === "object" && part !== null && "type" in part && part.type === "text"
+          )
+          .map(part => part.text)
+          .join(" ")
+      : "";
+
+  // 3. Build context pack (retrieves facts, knowledge, history, summary)
+  const contextPack = await ContextManager.buildContextPack({
+    user: { id: user.id },  // Only need user ID for context retrieval
+    emailAccount: connectedEmailAccount,
+    messageContent,
+    conversationId: conversation.id
+  });
+
+  // 4. Persist user message to database for future context retrieval
+  const shouldRecord = await PrivacyService.shouldRecord(user.id);
+  if (shouldRecord && messageContent) {
+    const dedupeKey = createHash("sha256")
+      .update(`web:${conversation.id}:${Date.now()}:user:${messageContent.slice(0, 100)}`)
+      .digest("hex");
+
+    try {
+      await prisma.conversationMessage.upsert({
+        where: { dedupeKey },
+        update: {},
+        create: {
+          userId: user.id,
+          conversationId: conversation.id,
+          role: "user",
+          content: messageContent,
+          provider: "web",
+          dedupeKey,
+          channelId: null,
+          threadId: null,
+          providerMessageId: null
+        }
+      });
+    } catch (e) {
+      logger.warn("Failed to persist user message", { error: e });
+    }
+  }
+
+  // 5. Build context-enriched system prompt
+  const systemWithContext = `${system}
+
+---
+## Dynamic Context (Auto-Retrieved)
+
+### Conversation Summary
+${contextPack.system.summary || "No prior conversation summary."}
+
+### User Personal Instructions
+${contextPack.system.legacyAbout || "No personal instructions set."}
+
+### Relevant Facts (Learned from past conversations)
+${contextPack.facts.length > 0
+    ? contextPack.facts.map(f => `- ${f.key}: ${f.value}`).join("\n")
+    : "None relevant to current message."}
+
+### Knowledge Base (User-created)
+${contextPack.knowledge.length > 0
+    ? contextPack.knowledge.map(k => `- ${k.title}: ${k.content.slice(0, 200)}${k.content.length > 200 ? '...' : ''}`).join("\n")
+    : "None relevant to current message."}
+---
+`;
+
+  // ========================================================================
+  // END CONTEXT MANAGEMENT
+  // ========================================================================
+
   const baseAgentTools = await createAgentTools({
     emailAccount: {
       ...connectedEmailAccount,
@@ -134,7 +226,6 @@ export async function aiProcessAssistantChat({
             args: args as Record<string, any>
           };
 
-          const { createHash } = await import("crypto");
           const stableArgs = JSON.stringify(args, Object.keys(args).sort());
           const idempotencyKey = createHash("sha256")
             .update(`web-chat:${emailAccountId}:${Date.now()}:${toolName}:${stableArgs}`)
@@ -207,7 +298,7 @@ export async function aiProcessAssistantChat({
     messages: [
       {
         role: "system",
-        content: system,
+        content: systemWithContext, // Use context-enriched system prompt
       },
       ...hiddenContextMessage,
       ...messages,
@@ -215,10 +306,56 @@ export async function aiProcessAssistantChat({
     onStepFinish: async ({ text, toolCalls }) => {
       logger.trace("Step finished", { text, toolCalls });
     },
+    onFinish: async ({ text }) => {
+      // 6. Trigger summarization if needed (fire and forget)
+      if (shouldRecord) {
+        // Persist assistant response
+        try {
+          const assistantDedupeKey = createHash("sha256")
+            .update(`web:${conversation.id}:${Date.now()}:assistant:${text.slice(0, 100)}`)
+            .digest("hex");
+
+          await prisma.conversationMessage.upsert({
+            where: { dedupeKey: assistantDedupeKey },
+            update: {},
+            create: {
+              userId: user.id,
+              conversationId: conversation.id,
+              role: "assistant",
+              content: text,
+              provider: "web",
+              dedupeKey: assistantDedupeKey,
+              channelId: null,
+              threadId: null,
+              providerMessageId: null
+            }
+          });
+        } catch (e) {
+          logger.warn("Failed to persist assistant message", { error: e });
+        }
+
+        // Check if we should trigger memory recording
+        // UNIFIED: Uses userId for cross-platform memory
+        (async () => {
+          try {
+            if (await MemoryRecordingService.shouldRecord(user.id)) {
+              await MemoryRecordingService.enqueueMemoryRecording(user.id, user.email);
+            }
+          } catch (e) {
+            logger.warn("Memory recording trigger failed", { error: e });
+          }
+        })();
+      }
+    },
     maxSteps: 10,
     tools: {
       ...agentTools,
       ...createRuleManagementTools(toolOptions),
+      ...createMemoryTools({
+        userId: user.id,
+        email: user.email,
+        logger,
+      }),
     },
   });
 

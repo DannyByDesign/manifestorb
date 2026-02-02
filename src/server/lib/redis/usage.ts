@@ -8,6 +8,12 @@ const logger = createScopedLogger("redis/usage");
 // TTL for usage tracking: 90 days
 const USAGE_TTL_SECONDS = 90 * 24 * 60 * 60;
 
+// Embedding model costs (per 1M tokens)
+const EMBEDDING_COSTS: Record<string, number> = {
+  "text-embedding-3-small": 0.02,
+  "text-embedding-3-large": 0.13,
+};
+
 export type RedisUsage = {
   openaiCalls?: number;
   openaiTokensUsed?: number;
@@ -16,6 +22,10 @@ export type RedisUsage = {
   cachedInputTokensUsed?: number;
   reasoningTokensUsed?: number;
   cost?: number;
+  // Embedding-specific tracking
+  embeddingCalls?: number;
+  embeddingTokensUsed?: number;
+  embeddingCost?: number;
 };
 
 function getUsageKey(email: string) {
@@ -60,5 +70,40 @@ export async function saveUsage(options: {
     redis.expire(key, USAGE_TTL_SECONDS),
   ]).catch((error) => {
     logger.error("Error saving usage", { error: error.message, cost, usage });
+  });
+}
+
+/**
+ * Save embedding API usage for cost tracking
+ * 
+ * @param email - User email for tracking
+ * @param inputChars - Number of input characters (converted to tokens)
+ * @param model - Embedding model used (default: text-embedding-3-small)
+ */
+export async function saveEmbeddingUsage(options: {
+  email: string;
+  inputChars: number;
+  model?: string;
+}) {
+  const { email, inputChars, model = "text-embedding-3-small" } = options;
+  
+  // Estimate tokens: roughly 4 characters per token
+  const estimatedTokens = Math.ceil(inputChars / 4);
+  
+  // Calculate cost
+  const costPerMillion = EMBEDDING_COSTS[model] || EMBEDDING_COSTS["text-embedding-3-small"];
+  const cost = (estimatedTokens / 1_000_000) * costPerMillion;
+  
+  const key = getUsageKey(email);
+  
+  await Promise.all([
+    redis.hincrby(key, "embeddingCalls", 1),
+    redis.hincrby(key, "embeddingTokensUsed", estimatedTokens),
+    redis.hincrbyfloat(key, "embeddingCost", cost),
+    // Also add to total cost
+    redis.hincrbyfloat(key, "cost", cost),
+    redis.expire(key, USAGE_TTL_SECONDS),
+  ]).catch((error) => {
+    logger.error("Error saving embedding usage", { error: error.message, estimatedTokens, cost });
   });
 }

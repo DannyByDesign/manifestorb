@@ -19,7 +19,12 @@ async function main() {
 
     logger.info(`Found ${accounts.length} accounts to migrate.`);
 
-    const model = getModel("gpt-4o"); // Use strong model for extraction
+    const modelOptions = getModel({
+        aiProvider: "openai",
+        aiModel: "gpt-4o",
+        aiApiKey: null, // Uses env OPENAI_API_KEY
+    });
+    const model = modelOptions.model; // Use strong model for extraction
 
     for (const account of accounts) {
         if (!account.about || account.about.trim() === "") continue;

@@ -1,7 +1,14 @@
+/**
+ * Agent Executor for External Chat Platforms
+ * 
+ * Runs the AI agent for Slack, Discord, and Telegram messages.
+ * Handles tool execution, approvals, and response persistence.
+ */
 import { tool } from "ai";
 import prisma from "@/server/db/client";
 import { createAgentTools } from "@/features/ai/tools";
 import { createRuleManagementTools } from "@/features/ai/rule-tools";
+import { createMemoryTools } from "@/features/ai/memory-tools";
 import { buildAgentSystemPrompt, type Platform } from "@/features/ai/system-prompt";
 import { getModel } from "@/server/lib/llms/model";
 import { createGenerateText } from "@/server/lib/llms";
@@ -59,11 +66,18 @@ export async function runOneShotAgent({
         logger,
     });
 
+    // 4. Add memory management tools
+    const memoryTools = createMemoryTools({
+        userId: user.id,
+        email: emailAccount.email,
+        logger,
+    });
+
     const approvalService = new ApprovalService(prisma);
 
     // 5. Wrap Sensitive Tools (drafts don't need approval - user must manually send)
     const sensitiveTools = ["modify", "delete"];
-    const tools: typeof baseTools & typeof ruleTools = { ...baseTools, ...ruleTools };
+    const tools: typeof baseTools & typeof ruleTools & typeof memoryTools = { ...baseTools, ...ruleTools, ...memoryTools };
     const createdApprovals: any[] = [];
 
 
@@ -114,8 +128,8 @@ export async function runOneShotAgent({
         }
     }
 
-    // 6. Build Context (RLM)
-    const { ContextManager } = await import("./context-manager");
+    // 6. Build Context
+    const { ContextManager } = await import("@/features/memory/context-manager");
 
     const contextPack = await ContextManager.buildContextPack({
         user,
@@ -131,14 +145,14 @@ export async function runOneShotAgent({
             email: emailAccount.email,
             userId: user.id
         },
-        label: `surfaces-${context.provider}`,
+        label: `channels-${context.provider}`,
         modelOptions
     });
 
     // Build unified system prompt
     const baseSystemPrompt = buildAgentSystemPrompt({
         platform: context.provider as Platform,
-        emailSendEnabled: false, // Surfaces don't support email sending
+        emailSendEnabled: false, // External channels don't support email sending
     });
 
     const systemMessage = {
@@ -235,6 +249,19 @@ ${contextPack.system.safetyGuardrails.join("\n")}
     } catch (err) {
         logger.error("Failed to persist assistant response", { error: err });
     }
+
+    // 10. Trigger memory recording check (fire and forget)
+    // UNIFIED: Uses userId for cross-platform memory
+    (async () => {
+        try {
+            const { MemoryRecordingService } = await import("@/features/memory/service");
+            if (await MemoryRecordingService.shouldRecord(user.id)) {
+                await MemoryRecordingService.enqueueMemoryRecording(user.id, emailAccount.email);
+            }
+        } catch (e) {
+            logger.warn("Memory recording trigger failed", { error: e });
+        }
+    })();
 
     return {
         text: result.text,

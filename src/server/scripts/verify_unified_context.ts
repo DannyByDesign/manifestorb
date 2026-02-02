@@ -2,8 +2,8 @@
 import prisma from "@/server/db/client";
 import { ConversationService } from "@/features/conversations/service";
 import { PrivacyService } from "@/features/privacy/service";
-import { SummaryService } from "@/features/summaries/service";
-import { ContextManager } from "@/features/surfaces/context-manager";
+import { MemoryRecordingService } from "@/features/memory/service";
+import { ContextManager } from "@/features/memory/context-manager";
 
 async function main() {
     console.log("=== RLM Phase 5 Verification ===");

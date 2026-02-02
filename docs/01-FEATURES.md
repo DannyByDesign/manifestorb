@@ -297,7 +297,7 @@
 | Status | Feature | Description | Primary UX Surface | Notes |
 |---|---|---|---|---|
 | ✅ | **Safe Account Linking** | Magic Link Auth for Surfaces | Hybrid | `lib/linking.ts` |
-| ✅ | **Unified Executor** | One-Shot Agent Runtime | Backend-only | `features/surfaces/executor.ts` |
+| ✅ | **Unified Executor** | One-Shot Agent Runtime | Backend-only | `features/channels/executor.ts` |
 | ✅ | **Draft Send API** | `POST /api/drafts/:id/send` | Backend-only | User-initiated only |
 | ✅ | **Draft List API** | `GET /api/drafts` | Backend-only | For web app UI |
 | ✅ | **Draft Discard API** | `DELETE /api/drafts/:id` | Backend-only | Cleanup drafts |

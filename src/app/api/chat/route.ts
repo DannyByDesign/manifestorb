@@ -3,7 +3,7 @@ import { auth } from "@/server/auth";
 import prisma from "@/server/db/client";
 import { ConversationService } from "@/features/conversations/service";
 import { PrivacyService } from "@/features/privacy/service";
-import { runOneShotAgent } from "@/features/surfaces/executor";
+import { runOneShotAgent } from "@/features/channels/executor";
 import { z } from "zod";
 import { createScopedLogger } from "@/server/lib/logger";
 
@@ -106,15 +106,16 @@ export async function POST(req: Request) {
 
         // Assistant persistence is handled inside runOneShotAgent, respecting PrivacyService.
 
-        // 6. Trigger Summarization (Fire & Forget)
+        // 6. Trigger Memory Recording (Fire & Forget)
+        // UNIFIED: Uses userId for cross-platform memory
         (async () => {
             try {
-                const { SummaryService } = await import("@/features/summaries/service");
-                if (await SummaryService.shouldSummarize(conversation.id)) {
-                    await SummaryService.enqueueSummarizeConversation(conversation.id);
+                const { MemoryRecordingService } = await import("@/features/memory/service");
+                if (await MemoryRecordingService.shouldRecord(user.id)) {
+                    await MemoryRecordingService.enqueueMemoryRecording(user.id, emailAccount.email);
                 }
             } catch (e) {
-                logger.error("Summary trigger failed", { error: e });
+                logger.error("Memory recording trigger failed", { error: e });
             }
         })();
 

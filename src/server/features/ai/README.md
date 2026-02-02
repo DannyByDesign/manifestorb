@@ -23,6 +23,7 @@ ai/
 │       └── automation.ts # Rules provider
 ├── system-prompt.ts    # Unified system prompt (single source of truth)
 ├── rule-tools.ts       # Shared rule management tools
+├── memory-tools.ts     # Memory management tools (remember/recall/forget)
 ├── helpers.ts          # Shared AI helpers
 ├── security.ts         # Prompt injection protection
 ├── actions.ts          # AI action types
@@ -42,7 +43,36 @@ We use a standardized set of 6 "Polymorphic" tools to interact with all backend 
 | `delete` | Remove items | `email`, `automation` |
 | `analyze` | AI analysis/extraction | `email` (clean/categorize), `calendar` (briefing), `patterns` |
 
-## 2. Rule Management Tools (`rule-tools.ts`)
+## 2. Memory Tools (`memory-tools.ts`)
+
+Tools for persistent memory management, enabling the AI to remember facts across conversations:
+
+| Tool | Purpose |
+|------|---------|
+| `rememberFact` | Store a fact about the user (key-value with confidence) |
+| `recallFacts` | Retrieve facts by key or semantic search |
+| `forgetFact` | Delete a specific fact |
+
+**Usage:**
+```typescript
+import { createMemoryTools } from "@/features/ai/memory-tools";
+
+const memoryTools = createMemoryTools({
+  userId: user.id,
+  email: user.email,
+  logger,
+});
+```
+
+**Features:**
+- Key normalization (snake_case, lowercase)
+- Quality validation (no sensitive data, min confidence)
+- Semantic deduplication via embeddings
+- PostHog analytics tracking
+
+See `docs/CONTEXT-MEMORY-ARCHITECTURE.md` for full memory system documentation.
+
+## 3. Rule Management Tools (`rule-tools.ts`)
 
 Shared tools for rule configuration, used by both `web-chat` and `surfaces` agents:
 
@@ -57,7 +87,7 @@ Shared tools for rule configuration, used by both `web-chat` and `surfaces` agen
 | `updateAbout` | Update user preferences |
 | `addToKnowledgeBase` | Add to knowledge base |
 
-## 3. Providers (`tools/providers/`)
+## 4. Providers (`tools/providers/`)
 
 Tools delegate execution to providers for resource-specific implementations:
 - `automation.ts` - Rules, Knowledge, Unsubscriber, Reports
@@ -65,14 +95,14 @@ Tools delegate execution to providers for resource-specific implementations:
 - `calendar.ts` - Calendar provider abstraction
 - `drive.ts` - Drive provider abstraction
 
-## 4. Security (`security.ts`)
+## 5. Security (`security.ts`)
 
 Prompt injection protection and security guardrails:
 - Input sanitization
 - Content filtering
 - Injection detection
 
-## 5. Unified System Prompt (`system-prompt.ts`)
+## 6. Unified System Prompt (`system-prompt.ts`)
 
 Both agents (web-chat and surfaces) use the same system prompt built by `buildAgentSystemPrompt()`:
 
@@ -95,7 +125,7 @@ const prompt = buildAgentSystemPrompt({
 - Feature explanations (Reply Zero, patterns, knowledge base)
 - Examples for rule creation
 
-## 6. Draft Review & Send Flow
+## 7. Draft Review & Send Flow
 
 When AI creates a draft via the `create` tool, it returns an `InteractivePayload` with preview data:
 
@@ -134,4 +164,12 @@ interface InteractivePayload {
 - **`features/surfaces/`** - Multi-channel agent (Slack/Discord/Telegram)
 - **`features/channels/`** - Channel router and types (InteractivePayload)
 - **`features/rules/ai/`** - Rule matching and execution AI
+- **`features/memory/`** - Unified memory system (recording, embeddings, decay)
+- **`features/memory/`** - Memory decay and lifecycle management
 - **`app/api/drafts/`** - Draft management API endpoints
+- **`app/api/jobs/record-memory/`** - Memory recording job endpoint
+
+## Documentation
+
+- [Memory Architecture](../memory/ARCHITECTURE.md) - Full memory system overview
+- [LLM Registry](../../../../docs/LLM_REGISTRY.md) - Model configuration

@@ -7,6 +7,7 @@ import type { Logger } from "@/server/lib/logger";
 import { createRuleSchema } from "@/features/rules/ai/prompts/create-rule-schema";
 import prisma from "@/server/db/client";
 import { isDuplicateError } from "@/server/db/client-helpers";
+import { EmbeddingService } from "@/features/memory/embeddings/service";
 import {
   createRule,
   partialUpdateRule,
@@ -605,13 +606,31 @@ export const addToKnowledgeBaseTool = ({
       trackToolCall({ tool: "add_to_knowledge_base", email, logger });
 
       try {
-        await prisma.knowledge.create({
+        const knowledge = await prisma.knowledge.create({
           data: {
             emailAccountId,
             title,
             content,
           },
         });
+
+        // Generate and store embedding (fire and forget to avoid blocking)
+        if (EmbeddingService.isAvailable()) {
+          (async () => {
+            try {
+              const embedding = await EmbeddingService.generateEmbedding(`${title}\n\n${content}`);
+              // Use raw SQL since Prisma doesn't support pgvector natively
+              await prisma.$executeRaw`
+                UPDATE "Knowledge" 
+                SET embedding = ${embedding}::vector 
+                WHERE id = ${knowledge.id}
+              `;
+              logger.info("Embedding generated for knowledge", { knowledgeId: knowledge.id });
+            } catch (e) {
+              logger.warn("Failed to generate embedding for knowledge", { error: e, knowledgeId: knowledge.id });
+            }
+          })();
+        }
 
         return { success: true };
       } catch (error) {

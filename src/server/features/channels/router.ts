@@ -176,19 +176,20 @@ export class ChannelRouter {
             logger.error("Failed to persist inbound message", { error: err });
         }
 
-        // 3. Trigger Summarization (Async)
+        // 3. Trigger Memory Recording (Async)
+        // UNIFIED: Uses userId for cross-platform memory
         try {
-            const { SummaryService } = await import("@/features/summaries/service");
-            if (await SummaryService.shouldSummarize(conversation.id)) {
-                await SummaryService.enqueueSummarizeConversation(conversation.id);
+            const { MemoryRecordingService } = await import("@/features/memory/service");
+            if (await MemoryRecordingService.shouldRecord(user.id)) {
+                await MemoryRecordingService.enqueueMemoryRecording(user.id, emailAccount.email);
             }
         } catch (e) {
-            logger.error("Failed to trigger summarization", { error: e });
+            logger.error("Failed to trigger memory recording", { error: e });
         }
 
         // 2. Run Unified Agent
         try {
-            const { runOneShotAgent } = await import("@/features/surfaces/executor");
+            const { runOneShotAgent } = await import("@/features/channels/executor");
 
             const { text, approvals, interactivePayloads } = await runOneShotAgent({
                 user: user,

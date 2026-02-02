@@ -574,7 +574,7 @@ Both agents now use `createAgentTools()` from `@/features/ai/tools` and share ru
 
 **Agents:**
 - `features/web-chat/ai/chat.ts` - Web UI chat assistant
-- `features/surfaces/executor.ts` - Multi-channel agent (Slack/Discord/Telegram)
+- `features/channels/executor.ts` - Multi-channel agent (Slack/Discord/Telegram)
 
 **Approval workflow:**
 - `create` (drafts) - No approval required (user reviews via interactive buttons)

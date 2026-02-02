@@ -113,6 +113,7 @@ model User {
   conversationMessages ConversationMessage[]
   memoryFacts          MemoryFact[]
   privacySettings      PrivacySettings?
+  userSummary          UserSummary?
 }
 
 // Migrating over to the new settings model. Currently most settings are in the User model, but will be moved to this model in the future.
@@ -1442,8 +1443,17 @@ model MemoryFact {
 
   // Provenance: Where did we learn this?
   sourceMessageId String?
+  
+  // Memory lifecycle management
+  expiresAt       DateTime?        // Optional TTL for time-sensitive facts
+  lastAccessedAt  DateTime?        // For LRU-based decay
+  accessCount     Int      @default(0)  // Usage tracking for relevance
+  isActive        Boolean  @default(true)  // Soft deletion
 
   @@unique([userId, key])
+  @@index([userId, isActive])
+  @@index([userId, lastAccessedAt])
+  @@index([userId, confidence])
 }
 
 model PrivacySettings {
@@ -1466,6 +1476,20 @@ model ConversationSummary {
   summary        String    @db.Text
   updatedAt      DateTime  @updatedAt
   lastMessageAt  DateTime?
+}
+
+// User-level summary for unified cross-platform memory
+// This replaces per-conversation summaries for context retrieval
+model UserSummary {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  summary       String   @db.Text
+  lastMessageAt DateTime
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId])
 }
 
 model InAppNotification {

@@ -8,8 +8,8 @@ These keys must be set in your `.env` file to enable the respective providers.
 
 | Provider | Environment Variable | Criticality | Notes |
 | :--- | :--- | :--- | :--- |
-| **OpenAI** | `OPENAI_API_KEY` | High | Required for default model (`gpt-5.1`) if no other provider is selected. |
-| **Anthropic** | `ANTHROPIC_API_KEY` | High | Required for `claude-sonnet-4-5-20250929` (default fallback). |
+| **OpenAI** | `OPENAI_API_KEY` | **Critical** | Required for embeddings, memory extraction, and fallback generation. |
+| **Anthropic** | `ANTHROPIC_API_KEY` | High | Required for `claude-sonnet-4-5-20250929` (default agent model). |
 | **Google** | `GOOGLE_API_KEY` | Medium | Required for Gemini models (`gemini-2.0-flash`). |
 | **Groq** | `GROQ_API_KEY` | Medium | Required for fast inference (`llama-3.3-70b-versatile`). |
 | **OpenRouter** | `OPENROUTER_API_KEY` | High | Fallback backup model and flexible routing. |
@@ -42,6 +42,8 @@ If environment variables are not set, the code defaults to these specific model 
 | Provider | Default Model ID | Usage |
 | :--- | :--- | :--- |
 | **OpenAI** | `gpt-5.1` | General purpose (if OpenAI selected). |
+| **OpenAI** | `gpt-4o-mini` | Economy model for memory extraction. |
+| **OpenAI** | `text-embedding-3-small` | Vector embeddings for semantic search. |
 | **Anthropic** | `claude-sonnet-4-5-20250929` | **Project Default** |
 | **Google** | `gemini-2.0-flash` | Economy / Fast tasks. |
 | **Groq** | `llama-3.3-70b-versatile` | Ultra-fast agentic steps. |
@@ -53,5 +55,37 @@ If environment variables are not set, the code defaults to these specific model 
 | Task | Recommended Configuration | Reason |
 | :--- | :--- | :--- |
 | **Agent Loop** | Anthropic (`claude-sonnet`) | Best reasoning/coding capability. |
-| **Summarization** | Google (`gemini-2.0-flash`) | Large context window, low cost. |
+| **Memory Recording** | OpenAI (`gpt-4o-mini`) | Fast, cheap, good at structured extraction. |
+| **Summarization** | OpenAI (`gpt-4o-mini`) | Low cost for background jobs. |
+| **Embeddings** | OpenAI (`text-embedding-3-small`) | 1536-dim vectors, $0.02/1M tokens. |
 | **Notifications** | Groq (`llama-3`) or Gemini Flash | **Lowest latency** for push alerts. |
+
+## 5. Embedding Model Details
+
+The embedding model is critical for semantic search in the context/memory system.
+
+| Property | Value |
+| :--- | :--- |
+| **Model** | `text-embedding-3-small` |
+| **Provider** | OpenAI |
+| **Dimensions** | 1536 |
+| **Max Input** | 8,191 tokens (~30,000 characters) |
+| **Cost** | $0.02 per 1M tokens |
+| **Used For** | MemoryFact search, Knowledge retrieval, Rule matching |
+
+**Implementation**: `src/server/features/embeddings/service.ts`
+
+## 6. Memory System Models
+
+The Memory Recording System uses economy models for cost-effective fact extraction.
+
+| Component | Model | Cost | Trigger |
+| :--- | :--- | :--- | :--- |
+| **Memory Recording** | `gpt-4o-mini` | $0.15/1M in, $0.60/1M out | 120K tokens accumulated |
+| **Fact Extraction** | `gpt-4o-mini` | (same) | Part of memory recording |
+| **Embedding Generation** | `text-embedding-3-small` | $0.02/1M tokens | Per fact/knowledge item |
+
+**Implementation**: 
+- Recording: `src/app/api/jobs/record-memory/route.ts`
+- Service: `src/server/features/summaries/service.ts`
+- Embeddings: `src/server/features/embeddings/service.ts`
