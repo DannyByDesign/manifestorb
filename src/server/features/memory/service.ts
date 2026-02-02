@@ -120,16 +120,28 @@ export class MemoryRecordingService {
      * Enqueue a memory recording job for a user
      * 
      * UNIFIED: Records at the user level, not conversation level.
+     * 
+     * Posts to the surfaces sidecar for processing (no timeout risk).
+     * Falls back to Vercel API if sidecar URL is not configured.
      */
     static async enqueueMemoryRecording(userId: string, email: string) {
-        const baseUrl = env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-        const endpoint = `${baseUrl}/api/jobs/record-memory`;
         const secret = env.JOBS_SHARED_SECRET;
 
         if (!secret) {
             console.warn("Skipping memory recording enqueue: JOBS_SHARED_SECRET not set");
             return;
         }
+
+        // Prefer sidecar (no timeout), fallback to Vercel API
+        const sidecarUrl = env.SIDECAR_URL;
+        const endpoint = sidecarUrl 
+            ? `${sidecarUrl}/jobs/recording`
+            : `${env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/jobs/record-memory`;
+
+        logger.info("Triggering memory recording", { 
+            userId, 
+            target: sidecarUrl ? 'sidecar' : 'vercel'
+        });
 
         // Fire and forget
         fetch(endpoint, {
@@ -138,8 +150,8 @@ export class MemoryRecordingService {
                 "Authorization": `Bearer ${secret}`,
                 "Content-Type": "application/json"
             },
-            body: JSON.stringify({ userId, email })  // User-level, not conversation-level
-        }).catch(err => console.error("Failed to enqueue memory recording job", err));
+            body: JSON.stringify({ userId, email })
+        }).catch(err => logger.error("Failed to trigger memory recording", { error: err, userId }));
     }
 
     /**

@@ -9,17 +9,23 @@
     "scripts": {
         "dev": "bun run --watch src/index.ts",
         "start": "bun run src/index.ts",
-        "typecheck": "tsc --noEmit"
+        "typecheck": "tsc --noEmit",
+        "prisma:generate": "bunx prisma generate",
+        "postinstall": "bunx prisma generate"
     },
     "dependencies": {
+        "@prisma/client": "^7.3.0",
         "@slack/bolt": "^3.12.2",
+        "croner": "^8.0.0",
         "discord.js": "^14.25.1",
         "dotenv": "^16.3.1",
+        "ioredis": "^5.3.2",
         "telegraf": "^4.16.3",
         "zod": "^3.22.4"
     },
     "devDependencies": {
         "@types/node": "^20.10.0",
+        "prisma": "^7.3.0",
         "typescript": "^5.3.3"
     }
 }

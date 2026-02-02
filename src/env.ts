@@ -133,6 +133,7 @@ export const env = createEnv({
     USE_BACKUP_MODEL: z.coerce.boolean().optional().default(false),
     HEALTH_API_KEY: z.string().optional(),
     JOBS_SHARED_SECRET: z.string().optional(),
+    SIDECAR_URL: z.string().url().optional(), // URL of the surfaces sidecar for background jobs
     OAUTH_PROXY_URL: z.string().url().optional(),
     // Set to true on the server that acts as the OAuth proxy (e.g., staging)
     IS_OAUTH_PROXY_SERVER: booleanString.optional().default(false),

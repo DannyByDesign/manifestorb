@@ -1,0 +1,37 @@
+/**
+ * Redis Client for Surfaces Sidecar
+ * 
+ * Connects to the same Redis instance as the main app.
+ * Used for the embedding job queue.
+ */
+import Redis from 'ioredis';
+
+const redisUrl = process.env.REDIS_URL;
+
+// Create Redis client if URL is configured
+export const redis = redisUrl ? new Redis(redisUrl, {
+    maxRetriesPerRequest: 3,
+    retryStrategy(times) {
+        if (times > 3) {
+            console.error('[Redis] Max retries reached, giving up');
+            return null;
+        }
+        const delay = Math.min(times * 200, 2000);
+        console.log(`[Redis] Retrying connection in ${delay}ms...`);
+        return delay;
+    },
+    lazyConnect: true
+}) : null;
+
+// Log connection status
+if (redis) {
+    redis.on('connect', () => {
+        console.log('[Redis] Connected');
+    });
+    
+    redis.on('error', (err) => {
+        console.error('[Redis] Connection error:', err.message);
+    });
+}
+
+export default redis;
