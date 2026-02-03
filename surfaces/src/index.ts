@@ -1,4 +1,5 @@
 import { config } from "dotenv";
+import { timingSafeEqual } from "node:crypto";
 import { startSlack } from "./slack";
 import { startDiscord } from "./discord";
 import { startTelegram } from "./telegram";
@@ -6,6 +7,9 @@ import { startScheduler, triggerEmbeddingJob, triggerDecayJob } from "./jobs/sch
 import { getQueueStats } from "./jobs/embedding-worker";
 import { getDecayStats } from "./jobs/decay-worker";
 import { processMemoryRecording } from "./jobs/recording-worker";
+import { env } from "./env";
+import { prisma } from "./db/prisma";
+import { redis } from "./db/redis";
 
 config();
 
@@ -29,9 +33,23 @@ config();
         async fetch(req: Request) {
             const url = new URL(req.url);
 
+            const isAuthorized = (expectedSecret: string | undefined) => {
+                if (!expectedSecret) return false;
+                const authHeader = req.headers.get("Authorization");
+                if (!authHeader) return false;
+                const token = authHeader.replace("Bearer ", "");
+                if (!token) return false;
+                if (token.length !== expectedSecret.length) return false;
+                return timingSafeEqual(Buffer.from(token), Buffer.from(expectedSecret));
+            };
+
             // Push notifications to platforms
             if (req.method === "POST" && url.pathname === "/notify") {
                 try {
+                    if (!isAuthorized(env.SURFACES_SHARED_SECRET)) {
+                        return new Response("Unauthorized", { status: 401 });
+                    }
+
                     const body = await req.json();
                     const { platform, channelId, content } = body;
 
@@ -59,6 +77,31 @@ config();
                 }
             }
 
+            // Internal pub/sub forwarder for clean updates
+            if (req.method === "POST" && url.pathname === "/pubsub/clean") {
+                try {
+                    if (!isAuthorized(env.SURFACES_SHARED_SECRET)) {
+                        return new Response("Unauthorized", { status: 401 });
+                    }
+
+                    if (!redis) {
+                        return new Response("Redis not configured", { status: 503 });
+                    }
+
+                    const body = await req.json();
+                    const { channel, payload } = body;
+                    if (!channel || !payload) {
+                        return new Response("Missing channel or payload", { status: 400 });
+                    }
+
+                    await redis.publish(channel, JSON.stringify(payload));
+                    return new Response("Published", { status: 200 });
+                } catch (err) {
+                    console.error("Failed to publish clean update", err);
+                    return new Response("Internal Server Error", { status: 500 });
+                }
+            }
+
             // Job status endpoint
             if (req.method === "GET" && url.pathname === "/jobs/status") {
                 try {
@@ -81,11 +124,10 @@ config();
             }
 
             // Manual job triggers (require auth)
-            const authHeader = req.headers.get("Authorization");
-            const expectedAuth = `Bearer ${process.env.JOBS_SHARED_SECRET}`;
+            const isJobAuthorized = isAuthorized(env.JOBS_SHARED_SECRET);
             
             if (req.method === "POST" && url.pathname === "/jobs/embeddings") {
-                if (authHeader !== expectedAuth) {
+                if (!isJobAuthorized) {
                     return new Response("Unauthorized", { status: 401 });
                 }
                 
@@ -103,7 +145,7 @@ config();
             }
 
             if (req.method === "POST" && url.pathname === "/jobs/decay") {
-                if (authHeader !== expectedAuth) {
+                if (!isJobAuthorized) {
                     return new Response("Unauthorized", { status: 401 });
                 }
                 
@@ -122,7 +164,7 @@ config();
 
             // Memory recording - immediate processing (fire and forget)
             if (req.method === "POST" && url.pathname === "/jobs/recording") {
-                if (authHeader !== expectedAuth) {
+                if (!isJobAuthorized) {
                     return new Response("Unauthorized", { status: 401 });
                 }
                 
@@ -160,9 +202,34 @@ config();
 
             // Health check
             if (req.method === "GET" && url.pathname === "/health") {
+                let db = "ok";
+                let redisStatus = "not_configured";
+                let queueStats: { pending: number; processing: number; failed: number } | null = null;
+
+                try {
+                    await prisma.$queryRaw`SELECT 1`;
+                } catch (error) {
+                    db = "error";
+                    console.error("[Health] Database check failed", error);
+                }
+
+                if (redis) {
+                    try {
+                        await redis.ping();
+                        redisStatus = "ok";
+                        queueStats = await getQueueStats();
+                    } catch (error) {
+                        redisStatus = "error";
+                        console.error("[Health] Redis check failed", error);
+                    }
+                }
+
                 return new Response(JSON.stringify({ 
                     status: "ok",
-                    uptime: process.uptime()
+                    uptime: process.uptime(),
+                    db,
+                    redis: redisStatus,
+                    queue: queueStats
                 }), {
                     status: 200,
                     headers: { "Content-Type": "application/json" }

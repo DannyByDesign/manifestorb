@@ -267,10 +267,19 @@ export class ChannelRouter {
             }
 
             const surfaceUrl = env.SURFACES_API_URL || "http://localhost:3001";
+            const surfacesSecret = env.SURFACES_SHARED_SECRET;
+
+            if (!surfacesSecret) {
+                logger.warn("SURFACES_SHARED_SECRET not set; skipping notify", { userId });
+                return false;
+            }
 
             const response = await fetch(`${surfaceUrl}/notify`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { 
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${surfacesSecret}`
+                },
                 body: JSON.stringify({
                     platform: conversation.provider,
                     channelId: conversation.channelId,

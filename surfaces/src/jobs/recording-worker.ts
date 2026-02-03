@@ -9,6 +9,9 @@
  */
 import { prisma } from '../db/prisma';
 import { redis } from '../db/redis';
+import { generateText } from "ai";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { env } from "../env";
 
 // ============================================================================
 // Configuration
@@ -16,6 +19,7 @@ import { redis } from '../db/redis';
 
 const MAX_FACTS_PER_RECORDING = 20;
 const MIN_FACT_CONFIDENCE = 0.6;
+const RECORDING_MODEL = "gemini-2.5-flash";
 
 // Embedding queue key (same as main app)
 const EMBEDDING_QUEUE_KEY = 'embedding:queue';
@@ -116,18 +120,22 @@ export async function processMemoryRecording(
 
         console.log(`[Recording] Processing ${newMessages.length} messages (${estimatedTokens} tokens)`);
 
-        // 5. Build prompt and call OpenAI
+        // 5. Build prompt and call Gemini
         const prompt = buildMemoryRecordingPrompt(
             userSummary?.summary || null,
             newMessages as ConversationMessage[]
         );
 
-        const apiKey = user.aiApiKey || process.env.OPENAI_API_KEY;
+        const apiKey = env.GOOGLE_API_KEY;
         if (!apiKey) {
-            return { success: false, error: 'No OpenAI API key available' };
+            return { success: false, error: 'No Google API key available' };
         }
 
-        const aiResponse = await callOpenAI(apiKey, prompt);
+        const model = createGoogleGenerativeAI({ apiKey })(RECORDING_MODEL);
+        const { text: aiResponse } = await generateText({
+            model,
+            prompt,
+        });
 
         // 6. Parse response
         let parsedResult: MemoryRecordingResult;
@@ -266,33 +274,7 @@ ${parsedResult.summary.emotionalContext || 'Neutral'}`;
     }
 }
 
-// ============================================================================
-// OpenAI API Call
-// ============================================================================
-
-async function callOpenAI(apiKey: string, prompt: string): Promise<string> {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            model: 'gpt-4o-mini',
-            messages: [{ role: 'user', content: prompt }],
-            temperature: 0.3,
-            max_tokens: 4000
-        })
-    });
-
-    if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`OpenAI API error: ${response.status} - ${error}`);
-    }
-
-    const data = await response.json();
-    return data.choices[0].message.content;
-}
+// Gemini responses are handled directly via ai-sdk in processMemoryRecording
 
 // ============================================================================
 // Prompt Builder

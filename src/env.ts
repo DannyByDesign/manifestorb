@@ -226,3 +226,13 @@ export const env = createEnv({
       process.env.NEXT_PUBLIC_IS_RESEND_CONFIGURED,
   },
 });
+
+if (
+  env.NODE_ENV === "production" &&
+  !env.AUTH_SECRET &&
+  !env.NEXTAUTH_SECRET
+) {
+  throw new Error(
+    "AUTH_SECRET (or NEXTAUTH_SECRET) is required in production",
+  );
+}

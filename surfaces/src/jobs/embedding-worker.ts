@@ -8,6 +8,7 @@
  */
 import { redis } from '../db/redis';
 import { prisma } from '../db/prisma';
+import { env } from "../env";
 
 // Queue keys (must match main app's EmbeddingQueue)
 const QUEUE_KEY = 'embedding:queue';
@@ -137,7 +138,7 @@ export async function getQueueStats(): Promise<{
  * Generate embedding using OpenAI API
  */
 async function generateEmbedding(text: string): Promise<number[]> {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = env.OPENAI_API_KEY;
     if (!apiKey) {
         throw new Error('OPENAI_API_KEY not configured');
     }

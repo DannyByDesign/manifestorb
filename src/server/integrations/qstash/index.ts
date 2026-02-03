@@ -10,7 +10,12 @@ import { createScopedLogger } from "@/server/lib/logger";
 const logger = createScopedLogger("upstash");
 
 export function getQstashClient() {
-  if (!env.QSTASH_TOKEN) return null;
+  if (!env.QSTASH_TOKEN) {
+    if (env.NODE_ENV === "production") {
+      throw new Error("QSTASH_TOKEN is required in production");
+    }
+    return null;
+  }
   return new Client({ token: env.QSTASH_TOKEN });
 }
 

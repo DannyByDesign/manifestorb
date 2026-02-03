@@ -1,8 +1,9 @@
 import { config } from "dotenv";
+import { env } from "./env";
 config();
 
-const BRAIN_API_URL = process.env.BRAIN_API_URL || "http://localhost:3000/api/surfaces/inbound";
-const SHARED_SECRET = process.env.SURFACES_SHARED_SECRET || "dev-secret";
+const BRAIN_API_URL = env.BRAIN_API_URL;
+const SHARED_SECRET = env.SURFACES_SHARED_SECRET ?? "dev-secret";
 console.log(`[Surfaces] Using Secret: ${SHARED_SECRET.substring(0, 3)}...`);
 
 export interface InteractiveAction {

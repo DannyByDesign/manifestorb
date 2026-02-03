@@ -1,4 +1,6 @@
 import { type ToolContext } from "./types";
+import { env } from "@/env";
+import { redis } from "@/server/lib/redis";
 
 export type SecurityLevel = "SAFE" | "CAUTION" | "DANGEROUS";
 
@@ -23,7 +25,7 @@ const RATE_LIMITS = {
     createsPerMinute: 10,
 };
 
-// Simple in-memory rate limiter for now (should use Redis in production)
+// Fallback in-memory rate limiter (dev/test only)
 const rateLimitCache: Record<string, { count: number; windowStart: number }> = {};
 
 export async function checkPermissions(userId: string, toolName: string, params: any): Promise<void> {
@@ -44,6 +46,22 @@ export async function checkRateLimit(userId: string, toolName: string): Promise<
     let limit = 100; // Default fallback
     if (PERMISSIONS.SAFE.includes(toolName)) limit = RATE_LIMITS.queriesPerMinute;
     if (PERMISSIONS.CAUTION.includes(toolName)) limit = RATE_LIMITS.modificationsPerMinute;
+
+    if (env.UPSTASH_REDIS_URL && env.UPSTASH_REDIS_TOKEN) {
+        const redisKey = `ratelimit:${key}`;
+        const count = await redis.incr(redisKey);
+        if (count === 1) {
+            await redis.expire(redisKey, Math.ceil(windowSize / 1000));
+        }
+        if (count > limit) {
+            throw new Error(`Rate limit exceeded for tool '${toolName}'. Please try again later.`);
+        }
+        return;
+    }
+
+    if (env.NODE_ENV === "production") {
+        throw new Error("Upstash Redis is required for rate limiting in production.");
+    }
 
     if (!rateLimitCache[key] || now - rateLimitCache[key].windowStart > windowSize) {
         rateLimitCache[key] = { count: 1, windowStart: now };

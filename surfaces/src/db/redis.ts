@@ -5,8 +5,9 @@
  * Used for the embedding job queue.
  */
 import Redis from 'ioredis';
+import { env } from "../env";
 
-const redisUrl = process.env.REDIS_URL;
+const redisUrl = env.REDIS_URL;
 
 // Create Redis client if URL is configured
 export const redis = redisUrl ? new Redis(redisUrl, {

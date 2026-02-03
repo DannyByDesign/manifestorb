@@ -2,6 +2,7 @@ import { redis } from "@/server/lib/redis";
 import type { CleanThread } from "@/server/lib/redis/clean.types";
 import { isDefined } from "@/server/lib/types";
 import { createScopedLogger } from "@/server/lib/logger";
+import { env } from "@/env";
 import prisma from "@/server/db/client";
 
 const logger = createScopedLogger("redis/clean");
@@ -81,8 +82,20 @@ export async function publishThread({
 
   // Store the data with expiration
   await redis.set(key, thread, { ex: EXPIRATION });
-  // Publish the update to any listening clients
-  await redis.publish(key, JSON.stringify(thread));
+
+  // Forward pub/sub to sidecar (main app remains Upstash-only)
+  if (env.SURFACES_API_URL && env.SURFACES_SHARED_SECRET) {
+    fetch(`${env.SURFACES_API_URL}/pubsub/clean`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${env.SURFACES_SHARED_SECRET}`,
+      },
+      body: JSON.stringify({ channel: key, payload: thread }),
+    }).catch((error) =>
+      logger.warn("Failed to forward clean update to sidecar", { error, key }),
+    );
+  }
 }
 
 async function getThread({
