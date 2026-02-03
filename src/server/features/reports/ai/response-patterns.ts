@@ -88,7 +88,7 @@ For email categorization, create simple, practical categories based on actual em
 
 Only suggest categories that are meaningful and provide clear organizational value. If emails don't fit into meaningful categories, don't create categories for them.`;
 
-  const modelOptions = getModel(emailAccount.user);
+  const modelOptions = getModel();
 
   const generateObject = createGenerateObject({
     emailAccount,

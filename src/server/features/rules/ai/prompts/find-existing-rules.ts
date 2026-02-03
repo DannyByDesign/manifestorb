@@ -47,7 +47,7 @@ Please return the existing rules that match the prompt rules in JSON format.
 </example>
 `;
 
-  const modelOptions = getModel(emailAccount.user, "chat");
+  const modelOptions = getModel("chat");
 
   const generateObject = createGenerateObject({
     emailAccount,

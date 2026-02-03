@@ -91,7 +91,7 @@ export async function aiDraftFollowUp({
       writingStyle,
     });
 
-    const modelOptions = getModel(emailAccount.user);
+    const modelOptions = getModel();
 
     const generateObject = createGenerateObject({
       emailAccount,

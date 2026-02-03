@@ -52,7 +52,7 @@ Based on the current labels and email content, suggest specific optimizations:
 
 Each suggestion should include the reason and expected impact.`;
 
-  const modelOptions = getModel(emailAccount.user, "economy");
+  const modelOptions = getModel("economy");
 
   const generateObject = createGenerateObject({
     emailAccount,

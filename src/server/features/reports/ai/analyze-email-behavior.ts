@@ -57,7 +57,7 @@ Analyze the email patterns and identify:
 3. Engagement triggers (what prompts them to take action)
 4. Specific automation opportunities with estimated time savings`;
 
-  const modelOptions = getModel(emailAccount.user, "economy");
+  const modelOptions = getModel("economy");
 
   const generateObject = createGenerateObject({
     emailAccount,

@@ -138,7 +138,7 @@ Determine if the email is a cold email or not.`;
 ${stringifyEmail(email, 500)}
 </email>`;
 
-  const modelOptions = getModel(emailAccount.user, modelType);
+  const modelOptions = getModel(modelType);
 
   const generateObject = createGenerateObject({
     emailAccount,

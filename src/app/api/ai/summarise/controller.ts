@@ -19,7 +19,6 @@ export async function summarise({
   const prompt = `Summarise this:\n${text}`;
 
   const response = await chatCompletionStream({
-    userAi: userAi.user,
     messages: [
       {
         role: "system",

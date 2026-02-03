@@ -213,13 +213,6 @@ export const saveRulesPromptAction = actionClient
           calendarBookingLink: true,
           rulesPrompt: true,
           categories: { select: { id: true, name: true } },
-          user: {
-            select: {
-              aiProvider: true,
-              aiModel: true,
-              aiApiKey: true,
-            },
-          },
           account: {
             select: {
               provider: true,
@@ -448,13 +441,6 @@ export const createRulesAction = actionClient
           calendarBookingLink: true,
           rulesPrompt: true,
           categories: { select: { id: true, name: true } },
-          user: {
-            select: {
-              aiProvider: true,
-              aiModel: true,
-              aiApiKey: true,
-            },
-          },
           account: {
             select: {
               provider: true,

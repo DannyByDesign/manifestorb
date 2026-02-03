@@ -17,7 +17,7 @@ import {
 import { jsonrepair } from "jsonrepair";
 import type { LanguageModelV2 } from "@ai-sdk/provider";
 import { saveAiUsage } from "@/server/lib/usage";
-import type { EmailAccountWithAI, UserAIFields } from "@/server/lib/llms/types";
+import type { EmailAccountWithAI } from "@/server/lib/llms/types";
 import {
   addUserErrorMessageWithNotification,
   ErrorType,
@@ -231,7 +231,6 @@ export function createGenerateObject({
 }
 
 export async function chatCompletionStream({
-  userAi,
   modelType,
   messages,
   tools,
@@ -241,7 +240,6 @@ export async function chatCompletionStream({
   onFinish,
   onStepFinish,
 }: {
-  userAi: UserAIFields;
   modelType?: ModelType;
   messages: ModelMessage[];
   tools?: Record<string, Tool>;
@@ -251,10 +249,7 @@ export async function chatCompletionStream({
   onFinish?: StreamTextOnFinishCallback<Record<string, Tool>>;
   onStepFinish?: StreamTextOnStepFinishCallback<Record<string, Tool>>;
 }) {
-  const { provider, model, modelName, providerOptions } = getModel(
-    userAi,
-    modelType,
-  );
+  const { provider, model, modelName, providerOptions } = getModel(modelType);
 
   const result = streamText({
     model,

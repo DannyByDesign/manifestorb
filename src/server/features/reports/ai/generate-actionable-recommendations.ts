@@ -59,7 +59,7 @@ Create actionable recommendations in three categories:
 
 Focus on practical, implementable solutions that improve email organization and workflow efficiency.`;
 
-  const modelOptions = getModel(emailAccount.user);
+  const modelOptions = getModel();
 
   const generateObject = createGenerateObject({
     emailAccount,

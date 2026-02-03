@@ -421,16 +421,16 @@ Full guide: https://docs.getamodel.com/self-hosting/microsoft-oauth`,
   // ═══════════════════════════════════════════════════════════════════════════
 
   p.note(
-    "Choose your AI provider. You can change this later in settings.",
+    "Choose your AI provider. Google Gemini is recommended for the base tier (~$1.73/user/month).",
     "LLM Configuration",
   );
 
   const llmProvider = await p.select({
     message: "LLM Provider",
     options: [
-      { value: "anthropic", label: "Anthropic (Claude)", hint: "recommended" },
-      { value: "openai", label: "OpenAI (GPT)" },
-      { value: "google", label: "Google (Gemini)", hint: "fast & economical" },
+      { value: "google", label: "Google (Gemini 2.5 Flash)", hint: "recommended - best value" },
+      { value: "anthropic", label: "Anthropic (Claude)", hint: "premium - higher cost" },
+      { value: "openai", label: "OpenAI (GPT)", hint: "alternative" },
     ],
   });
 
@@ -441,22 +441,15 @@ Full guide: https://docs.getamodel.com/self-hosting/microsoft-oauth`,
 
   env.DEFAULT_LLM_PROVIDER = llmProvider;
 
-  const defaultModels: Record<string, { default: string; economy: string }> = {
-    anthropic: {
-      default: "claude-sonnet-4-5-20250929",
-      economy: "gemini-2.0-flash", // Use Google for economy
-    },
-    openai: { default: "gpt-4o", economy: "gemini-2.0-flash" },
-    google: { default: "gemini-2.0-flash", economy: "gemini-2.0-flash" },
+  const defaultModels: Record<string, string> = {
+    google: "gemini-2.5-flash",
+    anthropic: "claude-sonnet-4-5-20250929",
+    openai: "gpt-4o",
   };
 
-  env.DEFAULT_LLM_MODEL = defaultModels[llmProvider].default;
-  // Economy always uses Google for cost efficiency
-  env.ECONOMY_LLM_PROVIDER = "google";
-  env.ECONOMY_LLM_MODEL = "gemini-2.0-flash";
-  // Chat also uses Google for fast responses
-  env.CHAT_LLM_PROVIDER = "google";
-  env.CHAT_LLM_MODEL = "gemini-2.0-flash";
+  env.DEFAULT_LLM_MODEL = defaultModels[llmProvider];
+  // All model types use the same provider in base tier for simplicity
+  // Economy and Chat inherit from default
 
   const llmLinks: Record<string, string> = {
     anthropic: "https://console.anthropic.com/settings/keys",

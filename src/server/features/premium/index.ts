@@ -83,22 +83,18 @@ export const hasUnsubscribeAccess = (
   return false;
 };
 
-export const hasAiAccess = (
-  tier: PremiumTier | null,
-  aiApiKey?: string | null,
-) => {
+/**
+ * Checks if a user has access to AI features based on their subscription tier.
+ * AI access requires BUSINESS tier or higher.
+ */
+export const hasAiAccess = (tier: PremiumTier | null): boolean => {
   if (env.NEXT_PUBLIC_BYPASS_PREMIUM_CHECKS) return true;
 
   if (!tier) return false;
 
   const ranking = tierRanking[tier];
 
-  const hasAiAccess = !!(
-    ranking >= tierRanking.BUSINESS_MONTHLY ||
-    (ranking >= tierRanking.PRO_MONTHLY && aiApiKey)
-  );
-
-  return hasAiAccess;
+  return ranking >= tierRanking.BUSINESS_MONTHLY;
 };
 
 export const hasTierAccess = ({

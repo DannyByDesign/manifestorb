@@ -65,7 +65,7 @@ ${emails
 
 ${getUserInfoPrompt({ emailAccount })}`;
 
-  const modelOptions = getModel(emailAccount.user);
+  const modelOptions = getModel();
 
   const generateObject = createGenerateObject({
     emailAccount,

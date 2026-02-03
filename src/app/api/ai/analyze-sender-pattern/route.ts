@@ -338,13 +338,6 @@ async function getEmailAccountWithRules({
       multiRuleSelectionEnabled: true,
       timezone: true,
       calendarBookingLink: true,
-      user: {
-        select: {
-          aiProvider: true,
-          aiModel: true,
-          aiApiKey: true,
-        },
-      },
       account: {
         select: {
           provider: true,

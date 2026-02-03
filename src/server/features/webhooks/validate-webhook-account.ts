@@ -40,12 +40,8 @@ export async function getWebhookEmailAccount(
       },
       user: {
         select: {
-          aiProvider: true,
-          aiModel: true,
-          aiApiKey: true,
           premium: {
             select: {
-
               stripeSubscriptionStatus: true,
               tier: true,
             },
@@ -161,12 +157,11 @@ export async function validateWebhookAccount(
     return { success: false, response: NextResponse.json({ ok: true }) };
   }
 
-  const userHasAiAccess = hasAiAccess(premium.tier, emailAccount.user.aiApiKey);
+  const userHasAiAccess = hasAiAccess(premium.tier);
 
   if (!userHasAiAccess) {
     logger.info("Does not have ai access - unwatching", {
       tier: premium.tier,
-      hasApiKey: !!emailAccount.user.aiApiKey,
     });
     await unwatchEmails({
       emailAccountId: emailAccount.id,

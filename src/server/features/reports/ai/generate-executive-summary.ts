@@ -137,7 +137,7 @@ Generate:
 3. **Top insights** about their email behavior
 4. **Quick actions** for immediate improvement`;
 
-  const modelOptions = getModel(emailAccount.user);
+  const modelOptions = getModel();
 
   const generateObject = createGenerateObject({
     emailAccount,

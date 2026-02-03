@@ -89,7 +89,7 @@ ${getUserInfoPrompt({ emailAccount })}
 
 ${getTodayForLLM()}`;
 
-    const modelOptions = getModel(emailAccount.user, "economy");
+    const modelOptions = getModel("economy");
 
     const generateText = createGenerateText({
       emailAccount,

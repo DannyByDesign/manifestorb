@@ -72,11 +72,7 @@ describe("validateWebhookAccount", () => {
         },
       ],
       user: {
-        aiProvider: null,
-        aiModel: null,
-        aiApiKey: null,
         premium: {
-
           stripeSubscriptionStatus: "active",
           tier: PremiumTier.PRO_MONTHLY,
         },
@@ -123,9 +119,6 @@ describe("validateWebhookAccount", () => {
     it("should unwatch emails and return failure", async () => {
       const emailAccount = createMockEmailAccount({
         user: {
-          aiProvider: null,
-          aiModel: null,
-          aiApiKey: null,
           premium: null,
         },
       });

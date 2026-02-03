@@ -51,7 +51,7 @@ Return the snippets in the following JSON format:
 
 ${getEmailListPrompt({ messages: sentEmails, messageMaxLength: 2000 })}`;
 
-  const modelOptions = getModel(emailAccount.user, "chat");
+  const modelOptions = getModel("chat");
 
   const generateObject = createGenerateObject({
     emailAccount,

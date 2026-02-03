@@ -76,10 +76,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
                 const { createGenerateText } = await import("@/server/lib/llms");
                 const { getModel } = await import("@/server/lib/llms/model");
 
-                const modelOptions = getModel(
-                    request.user as any,
-                    "chat"
-                );
+                const modelOptions = getModel("chat");
 
                 const generator = createGenerateText({
                     emailAccount: emailAccount as any,

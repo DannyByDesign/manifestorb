@@ -152,7 +152,7 @@ ${stringifyEmailSimple(getEmailForLLM(originalEmail))}
     }
   }
 
-  const modelOptions = getModel(emailAccount.user, "chat");
+  const modelOptions = getModel("chat");
 
   const generateText = createGenerateText({
     emailAccount,

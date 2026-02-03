@@ -35,11 +35,6 @@ export function getEmailAccount(
     multiRuleSelectionEnabled: overrides.multiRuleSelectionEnabled ?? false,
     timezone: null,
     calendarBookingLink: null,
-    user: {
-      aiModel: null,
-      aiProvider: null,
-      aiApiKey: null,
-    },
     account: {
       provider: "google",
     },

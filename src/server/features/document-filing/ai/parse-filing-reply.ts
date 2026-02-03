@@ -63,7 +63,7 @@ ${emailAccount.about ? `<user_info>${emailAccount.about}</user_info>` : ""}
 
 Determine the action and write a reply.`;
 
-  const modelOptions = getModel(emailAccount.user, "economy");
+  const modelOptions = getModel("economy");
 
   const generateObject = createGenerateObject({
     emailAccount,

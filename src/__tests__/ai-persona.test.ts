@@ -33,11 +33,6 @@ describe.runIf(isAiTest)(
         account: {
           provider: "google",
         },
-        user: {
-          aiModel: null,
-          aiProvider: null,
-          aiApiKey: null,
-        },
         ...overrides,
       };
     }

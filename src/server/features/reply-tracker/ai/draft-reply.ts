@@ -232,7 +232,7 @@ export async function aiDraftReply({
       meetingContext,
     });
 
-    const modelOptions = getModel(emailAccount.user);
+    const modelOptions = getModel();
 
     const generateObject = createGenerateObject({
       emailAccount,

@@ -93,7 +93,7 @@ The current date is ${currentDate}.
 
   // ${user.about ? `<user_background_information>${user.about}</user_background_information>` : ""}
 
-  const modelOptions = getModel(emailAccount.user);
+  const modelOptions = getModel();
 
   const generateObject = createGenerateObject({
     emailAccount,

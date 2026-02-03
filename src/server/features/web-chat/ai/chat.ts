@@ -291,7 +291,6 @@ ${contextPack.knowledge.length > 0
       : [];
 
   const result = chatCompletionStream({
-    userAi: user.user,
     userEmail: user.email,
     modelType: "chat",
     usageLabel: "assistant-chat",

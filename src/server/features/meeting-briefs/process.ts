@@ -20,11 +20,6 @@ export type EmailAccountForBrief = {
   multiRuleSelectionEnabled: boolean;
   timezone: string | null;
   calendarBookingLink: string | null;
-  user: {
-    aiProvider: string | null;
-    aiModel: string | null;
-    aiApiKey: string | null;
-  };
   account: {
     provider: string;
   };
@@ -97,13 +92,6 @@ export async function processMeetingBriefings({
       multiRuleSelectionEnabled: true,
       timezone: true,
       calendarBookingLink: true,
-      user: {
-        select: {
-          aiProvider: true,
-          aiModel: true,
-          aiApiKey: true,
-        },
-      },
       account: {
         select: {
           provider: true,

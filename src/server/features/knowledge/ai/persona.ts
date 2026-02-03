@@ -93,7 +93,7 @@ Here are the emails they've sent:
 ${getEmailListPrompt({ messages: emails, messageMaxLength: 1000 })}
 </emails>`;
 
-  const modelOptions = getModel(emailAccount.user, "economy");
+  const modelOptions = getModel("economy");
 
   const generateObject = createGenerateObject({
     emailAccount,

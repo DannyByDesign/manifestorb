@@ -37,12 +37,8 @@ export async function runOneShotAgent({
         threadId?: string;
     };
 }) {
-    // 1. Setup Model
-    const modelOptions = getModel({
-        aiProvider: user.aiProvider || "openai",
-        aiModel: user.aiModel || "gpt-4-turbo",
-        aiApiKey: user.aiApiKey,
-    } as any);
+    // 1. Setup Model - uses system-configured Gemini 2.5 Flash
+    const modelOptions = getModel();
 
     // 2. Setup Tools
     const baseTools = await createAgentTools({

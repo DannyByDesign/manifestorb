@@ -55,7 +55,6 @@ describe.runIf(isAiTest)("aiDiffRules", () => {
   it("should handle errors gracefully", async () => {
     const emailAccount = {
       ...getEmailAccount(),
-      user: { ...getEmailAccount().user, aiApiKey: "invalid-api-key" },
     };
     const oldPromptFile = "Some old prompt";
     const newPromptFile = "Some new prompt";

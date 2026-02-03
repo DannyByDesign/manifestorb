@@ -298,12 +298,8 @@ export async function POST(req: Request) {
             email
         });
 
-        // Build prompt and generate
-        const modelOptions = getModel({
-            aiProvider: user.aiProvider || "openai",
-            aiModel: "gpt-4o-mini", // Fast model for extraction
-            aiApiKey: user.aiApiKey,
-        } as any);
+        // Build prompt and generate - uses system Gemini 2.5 Flash
+        const modelOptions = getModel("economy");
 
         const generate = createGenerateText({
             emailAccount: { userId: user.id } as any,

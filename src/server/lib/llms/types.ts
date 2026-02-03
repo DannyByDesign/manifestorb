@@ -1,12 +1,7 @@
 import type { Prisma } from "@/generated/prisma/client";
 
-export type UserAIFields = Prisma.UserGetPayload<{
-  select: {
-    aiProvider: true;
-    aiModel: true;
-    aiApiKey: true;
-  };
-}>;
+// EmailAccountWithAI contains the email account data needed for AI operations
+// Note: AI routing is now handled by the system, not user-configurable
 export type EmailAccountWithAI = Prisma.EmailAccountGetPayload<{
   select: {
     id: true;
@@ -16,13 +11,6 @@ export type EmailAccountWithAI = Prisma.EmailAccountGetPayload<{
     multiRuleSelectionEnabled: true;
     timezone: true;
     calendarBookingLink: true;
-    user: {
-      select: {
-        aiProvider: true;
-        aiModel: true;
-        aiApiKey: true;
-      };
-    };
     account: {
       select: {
         provider: true;

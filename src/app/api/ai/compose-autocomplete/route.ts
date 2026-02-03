@@ -19,7 +19,6 @@ Give more weight/priority to the later characters than the beginning ones.
 Limit your response to no more than 200 characters, but make sure to construct complete sentences.`;
 
   const response = await chatCompletionStream({
-    userAi: user.user,
     messages: [
       {
         role: "system",

@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { Frequency } from "@/generated/prisma/enums";
-import { DEFAULT_PROVIDER, Provider } from "@/server/lib/llms/config";
 
 export const saveDigestScheduleBody = z.object({
   intervalDays: z.number().nullable(),
@@ -22,28 +21,6 @@ export const saveEmailUpdateSettingsBody = z.object({
 export type SaveEmailUpdateSettingsBody = z.infer<
   typeof saveEmailUpdateSettingsBody
 >;
-
-export const saveAiSettingsBody = z
-  .object({
-    aiProvider: z.enum([
-      DEFAULT_PROVIDER,
-      Provider.ANTHROPIC,
-      Provider.OPEN_AI,
-      Provider.GOOGLE,
-    ]),
-    aiModel: z.string(),
-    aiApiKey: z.string().optional(),
-  })
-  .superRefine((val, ctx) => {
-    if (!val.aiApiKey && val.aiProvider !== DEFAULT_PROVIDER) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "You must provide an API key for this provider",
-        path: ["aiApiKey"],
-      });
-    }
-  });
-export type SaveAiSettingsBody = z.infer<typeof saveAiSettingsBody>;
 
 export const updateDigestItemsBody = z.object({
   ruleDigestPreferences: z.record(z.string(), z.boolean()),

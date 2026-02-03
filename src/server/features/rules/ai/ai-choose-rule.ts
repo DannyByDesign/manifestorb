@@ -75,7 +75,7 @@ async function getAiResponse(options: GetAiResponseOptions): Promise<{
 }> {
   const { email, emailAccount, rules, modelType = "default" } = options;
 
-  const modelOptions = getModel(emailAccount.user, modelType);
+  const modelOptions = getModel(modelType);
 
   const generateObject = createGenerateObject({
     emailAccount,

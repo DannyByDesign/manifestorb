@@ -84,7 +84,7 @@ ${getEmailListPrompt({ messages: emails, messageMaxLength: 2000 })}
 
 Return the analysis as a JSON array of objects.`;
 
-  const modelOptions = getModel(emailAccount.user, "economy");
+  const modelOptions = getModel("economy");
 
   const generateObject = createGenerateObject({
     emailAccount,

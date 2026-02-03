@@ -107,7 +107,7 @@ Your response should only include the list of general rules. Aim for 3-10 broadl
 
 IMPORTANT: Do not create overly specific rules that only occur on a one off basis.`;
 
-  const modelOptions = getModel(emailAccount.user, "chat");
+  const modelOptions = getModel("chat");
 
   const generateObject = createGenerateObject({
     emailAccount,

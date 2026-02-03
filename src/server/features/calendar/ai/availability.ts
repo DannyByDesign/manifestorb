@@ -108,7 +108,7 @@ ${new Date().toISOString()}
 ${threadContent}
 </thread>`.trim();
 
-  const modelOptions = getModel(emailAccount.user);
+  const modelOptions = getModel();
 
   const generateText = createGenerateText({
     emailAccount,

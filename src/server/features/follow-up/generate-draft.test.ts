@@ -59,11 +59,6 @@ const createMockEmailAccount = (): EmailAccountWithAI =>
     about: null,
     multiRuleSelectionEnabled: false,
     calendarBookingLink: null,
-    user: {
-      aiProvider: "openai",
-      aiModel: "gpt-4",
-      aiApiKey: null,
-    },
     account: {
       provider: "google",
     },

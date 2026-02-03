@@ -115,7 +115,6 @@ describe.runIf(isAiTest)("aiPromptToRules", () => {
   it("should handle errors gracefully", async () => {
     const emailAccount = {
       ...getEmailAccount(),
-      user: { ...getEmailAccount().user, aiApiKey: "invalid-api-key" },
     };
 
     const promptFile = "Some prompt";

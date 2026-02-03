@@ -36,7 +36,7 @@ Write a brief follow-up email to politely nudge for a response.
 ${getTodayForLLM()}
 IMPORTANT: The person you're writing an email for is: ${messages.at(-1)?.from}.`;
 
-  const modelOptions = getModel(emailAccount.user, "chat");
+  const modelOptions = getModel("chat");
 
   const generateText = createGenerateText({
     label: "Reply",

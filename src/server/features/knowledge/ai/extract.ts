@@ -91,7 +91,7 @@ export async function aiExtractRelevantKnowledge({
 
     const prompt = getUserPrompt({ knowledgeBase, emailContent, emailAccount });
 
-    const modelOptions = getModel(emailAccount.user, "economy");
+    const modelOptions = getModel("economy");
 
     const generateObject = createGenerateObject({
       emailAccount,

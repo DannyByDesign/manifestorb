@@ -81,7 +81,7 @@ ${getUserInfoPrompt({ emailAccount })}`;
   logger.info("Summarizing email for digest");
 
   try {
-    const modelOptions = getModel(emailAccount.user);
+    const modelOptions = getModel();
 
     const generateObject = createGenerateObject({
       emailAccount,

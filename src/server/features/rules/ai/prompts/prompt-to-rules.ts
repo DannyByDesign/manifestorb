@@ -28,7 +28,7 @@ export async function aiPromptToRules({
 ${cleanedPromptFile}
 </prompt>`;
 
-  const modelOptions = getModel(emailAccount.user, "chat");
+  const modelOptions = getModel("chat");
 
   const generateObject = createGenerateObject({
     emailAccount,

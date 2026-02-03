@@ -132,7 +132,7 @@ ${getEmailListPrompt({
 
 Based on the full thread context above, determine the current status of this thread.`.trim();
 
-  const modelOptions = getModel(emailAccount.user, modelType);
+  const modelOptions = getModel(modelType);
 
   const generateObject = createGenerateObject({
     emailAccount,

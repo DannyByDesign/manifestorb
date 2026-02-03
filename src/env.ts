@@ -44,20 +44,20 @@ export const env = createEnv({
     EMAIL_ENCRYPT_SECRET: z.string(),
     EMAIL_ENCRYPT_SALT: z.string(),
 
-    // LLM Configuration - Simplified to 3 providers: Anthropic, OpenAI, Google
-    DEFAULT_LLM_PROVIDER: llmProviderEnum.default("anthropic"),
-    DEFAULT_LLM_MODEL: z.string().optional(),
-    // Economy model uses Google Gemini Flash for cost-effective bulk operations
+    // LLM Configuration - Base tier uses Google Gemini 2.5 Flash for all tasks
+    // Premium tier (future) will offer Anthropic Claude
+    DEFAULT_LLM_PROVIDER: llmProviderEnum.default("google"),
+    DEFAULT_LLM_MODEL: z.string().optional().default("gemini-2.5-flash"),
+    // Economy and Chat use same model in base tier (all Gemini)
     ECONOMY_LLM_PROVIDER: llmProviderEnum.optional(),
     ECONOMY_LLM_MODEL: z.string().optional(),
-    // Chat model uses Google Gemini Flash for fast responses
     CHAT_LLM_PROVIDER: llmProviderEnum.optional(),
     CHAT_LLM_MODEL: z.string().optional(),
 
     // LLM API Keys
-    ANTHROPIC_API_KEY: z.string().optional(),
-    OPENAI_API_KEY: z.string().optional(), // Required for embeddings
-    GOOGLE_API_KEY: z.string().optional(), // Used for economy/chat/backup
+    GOOGLE_API_KEY: z.string().optional(), // Primary provider for base tier
+    OPENAI_API_KEY: z.string().optional(), // Required for embeddings only
+    ANTHROPIC_API_KEY: z.string().optional(), // Future premium tier
 
     OPENAI_ZERO_DATA_RETENTION: z.coerce.boolean().optional().default(false),
 

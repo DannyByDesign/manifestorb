@@ -67,7 +67,7 @@ Analyze the data and identify:
 1. **Professional Identity**: What is their role and what evidence supports this?
 2. **Current Priorities**: What are they focused on professionally based on email content?`;
 
-  const modelOptions = getModel(emailAccount.user);
+  const modelOptions = getModel();
 
   const generateObject = createGenerateObject({
     emailAccount,

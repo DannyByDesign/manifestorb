@@ -87,7 +87,7 @@ export async function aiExtractFromEmailHistory({
       emailAccount,
     });
 
-    const modelOptions = getModel(emailAccount.user, "economy");
+    const modelOptions = getModel("economy");
 
     const generateObject = createGenerateObject({
       emailAccount,

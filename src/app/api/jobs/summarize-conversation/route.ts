@@ -176,16 +176,11 @@ export async function POST(req: Request) {
         }
 
         // 2. Generate Summary
-        // We use a cheap fast model for summarization if possible, or main model.
-        const user = conversation.user;
-        const modelOptions = getModel({
-            aiProvider: user.aiProvider || "openai",
-            aiModel: "gpt-4o-mini", // Prefer fast model
-            aiApiKey: user.aiApiKey,
-        } as any);
+        // Use economy model for cost-effective summarization
+        const modelOptions = getModel("economy");
 
         const generate = createGenerateText({
-            emailAccount: { userId: user.id } as any, // Mock for utility
+            emailAccount: { userId: conversation.user.id, email: conversation.user.email ?? "unknown", id: conversationId } as any, // Mock for utility
             label: "summary-job",
             modelOptions
         });

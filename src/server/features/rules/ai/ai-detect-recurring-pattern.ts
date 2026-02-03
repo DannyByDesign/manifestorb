@@ -92,7 +92,7 @@ ${getEmailListPrompt({ messages: emails, messageMaxLength: 500 })}
 </sample_emails>`;
 
   try {
-    const modelOptions = getModel(emailAccount.user, "chat");
+    const modelOptions = getModel("chat");
 
     const generateObject = createGenerateObject({
       emailAccount,

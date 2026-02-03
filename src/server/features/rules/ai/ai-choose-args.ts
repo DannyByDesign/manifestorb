@@ -83,7 +83,7 @@ export async function aiGenerateArgs({
   logger.info("Calling chat completion tools");
   // logger.trace("Parameters:", zodToJsonSchema(parameters));
 
-  const modelOptions = getModel(emailAccount.user, modelType);
+  const modelOptions = getModel(modelType);
 
   const generateObject = createGenerateObject({
     label: "Args for rule",

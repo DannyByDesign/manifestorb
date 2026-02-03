@@ -23,11 +23,6 @@ function getEmailAccount(overrides = {}): EmailAccountForDigest {
     account: {
       provider: "gmail",
     },
-    user: {
-      aiModel: "gpt-4",
-      aiProvider: "openai",
-      aiApiKey: process.env.OPENAI_API_KEY || null,
-    },
     multiRuleSelectionEnabled: false,
     timezone: null,
     calendarBookingLink: null,

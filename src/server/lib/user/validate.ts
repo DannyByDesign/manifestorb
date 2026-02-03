@@ -19,9 +19,6 @@ export async function validateUserAndAiAccess({
       calendarBookingLink: true,
       user: {
         select: {
-          aiProvider: true,
-          aiModel: true,
-          aiApiKey: true,
           premium: {
             select: {
               tier: true,
@@ -40,10 +37,7 @@ export async function validateUserAndAiAccess({
   );
   if (!isUserPremium) throw new SafeError("Please upgrade for AI access");
 
-  const userHasAiAccess = hasAiAccess(
-    emailAccount.user.premium?.tier || null,
-    emailAccount.user.aiApiKey,
-  );
+  const userHasAiAccess = hasAiAccess(emailAccount.user.premium?.tier || null);
   if (!userHasAiAccess) throw new SafeError("Please upgrade for AI access");
 
   return { emailAccount };

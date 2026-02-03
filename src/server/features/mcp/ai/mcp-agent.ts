@@ -55,7 +55,7 @@ The last emails in the thread are:
 ${getEmailListPrompt({ messages, messageMaxLength: 1000, maxMessages: 5 })}
 </thread>`;
 
-  const modelOptions = getModel(emailAccount.user, "economy");
+  const modelOptions = getModel("economy");
 
   const generateText = createGenerateText({
     emailAccount,

@@ -1,6 +1,5 @@
 import { tool, type ToolSet } from "ai";
 import { z } from "zod";
-import { openai } from "@ai-sdk/openai";
 import { google } from "@ai-sdk/google";
 import { env } from "@/env";
 import { getModel } from "@/server/lib/llms/model";
@@ -99,7 +98,7 @@ export async function aiGenerateMeetingBriefing({
   }
 
   const prompt = buildPrompt(briefingData, emailAccount);
-  const modelOptions = getModel(emailAccount.user);
+  const modelOptions = getModel();
 
   const generateText = createGenerateText({
     emailAccount,
@@ -222,22 +221,13 @@ type WebSearchConfig = {
 };
 
 function getWebSearchConfig(): WebSearchConfig | null {
-  switch (env.DEFAULT_LLM_PROVIDER) {
-    case Provider.OPEN_AI:
-      return {
-        providerName: "OpenAI",
-        getSearchTools: () => ({ web_search: openai.tools.webSearch({}) }),
-      };
-    case Provider.GOOGLE:
-      return {
-        providerName: "Google",
-        getSearchTools: () => ({
-          google_search: google.tools.googleSearch({}),
-        }),
-      };
-    default:
-      return null;
-  }
+  // All AI routing uses Google Gemini
+  return {
+    providerName: "Google",
+    getSearchTools: () => ({
+      google_search: google.tools.googleSearch({}),
+    }),
+  };
 }
 
 function createWebSearchTool({
@@ -269,7 +259,7 @@ function createWebSearchTool({
       }
 
       try {
-        const modelOptions = getModel(emailAccount.user, "economy");
+        const modelOptions = getModel("economy");
 
         const webGenerateText = createGenerateText({
           emailAccount,
@@ -324,13 +314,8 @@ export function buildPrompt(
   );
 
   // List available search tools for the prompt
-  const availableTools: string[] = [];
-  if (
-    env.DEFAULT_LLM_PROVIDER === Provider.OPEN_AI ||
-    env.DEFAULT_LLM_PROVIDER === Provider.GOOGLE
-  ) {
-    availableTools.push("webSearch");
-  }
+  // Google provider supports web search
+  const availableTools: string[] = ["webSearch"];
 
   const toolsNote =
     availableTools.length > 0

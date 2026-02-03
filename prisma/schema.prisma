@@ -82,9 +82,6 @@ model User {
   surveyImprovements String? // open text: what user wants to improve
 
   // settings
-  aiProvider    String?
-  aiModel       String?
-  aiApiKey      String?
   webhookSecret String?
 
   // referral system

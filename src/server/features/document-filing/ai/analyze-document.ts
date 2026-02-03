@@ -72,7 +72,7 @@ export async function analyzeDocument({
   attachment: AttachmentContext;
   folders: DriveFolder[];
 }): Promise<DocumentAnalysisResult> {
-  const modelOptions = getModel(emailAccount.user, "economy");
+  const modelOptions = getModel("economy");
 
   const generateObject = createGenerateObject({
     emailAccount,

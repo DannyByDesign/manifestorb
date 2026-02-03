@@ -30,7 +30,7 @@ Return the labels as an array of strings in JSON format.`;
 ${instructions}
 </instructions>`.trim();
 
-  const modelOptions = getModel(emailAccount.user);
+  const modelOptions = getModel();
 
   const generateObject = createGenerateObject({
     emailAccount,

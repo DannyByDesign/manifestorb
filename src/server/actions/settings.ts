@@ -2,22 +2,18 @@
 
 import { actionClient } from "@/actions/safe-action";
 import {
-  saveAiSettingsBody,
   saveEmailUpdateSettingsBody,
   saveDigestScheduleBody,
   updateDigestItemsBody,
   toggleDigestBody,
 } from "@/actions/settings.validation";
-import { DEFAULT_PROVIDER } from "@/server/lib/llms/config";
 import prisma from "@/server/db/client";
 import {
   calculateNextScheduleDate,
   createCanonicalTimeOfDay,
 } from "@/server/lib/schedule";
-import { actionClientUser } from "@/actions/safe-action";
 import { ActionType, SystemType } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
-import { clearSpecificErrorMessages, ErrorType } from "@/server/lib/error-messages";
 
 export const updateEmailSettingsAction = actionClient
   .metadata({ name: "updateEmailSettings" })
@@ -33,38 +29,6 @@ export const updateEmailSettingsAction = actionClient
           statsEmailFrequency,
           summaryEmailFrequency,
         },
-      });
-    },
-  );
-
-export const updateAiSettingsAction = actionClientUser
-  .metadata({ name: "updateAiSettings" })
-  .inputSchema(saveAiSettingsBody)
-  .action(
-    async ({
-      ctx: { userId, logger },
-      parsedInput: { aiProvider, aiModel, aiApiKey },
-    }) => {
-      await prisma.user.update({
-        where: { id: userId },
-        data:
-          aiProvider === DEFAULT_PROVIDER
-            ? { aiProvider: null, aiModel: null, aiApiKey: null }
-            : { aiProvider, aiModel, aiApiKey },
-      });
-
-      // Clear AI-related error messages when user updates their settings
-      // This allows them to be notified again if the new settings are also invalid
-      await clearSpecificErrorMessages({
-        userId,
-        errorTypes: [
-          ErrorType.INCORRECT_OPENAI_API_KEY,
-          ErrorType.INVALID_AI_MODEL,
-          ErrorType.OPENAI_API_KEY_DEACTIVATED,
-          ErrorType.AI_QUOTA_ERROR,
-          ErrorType.ANTHROPIC_INSUFFICIENT_BALANCE,
-        ],
-        logger,
       });
     },
   );
