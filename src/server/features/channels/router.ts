@@ -6,6 +6,7 @@ import { createGenerateText } from "@/server/lib/llms";
 import { convertToCoreMessages, streamText } from "ai";
 import { getModel } from "@/server/lib/llms/model";
 import { createHash } from "crypto";
+import { env } from "@/env";
 
 const logger = createScopedLogger("ChannelRouter");
 
@@ -265,7 +266,7 @@ export class ChannelRouter {
                 return false;
             }
 
-            const surfaceUrl = process.env.SURFACES_API_URL || "http://localhost:3001";
+            const surfaceUrl = env.SURFACES_API_URL || "http://localhost:3001";
 
             const response = await fetch(`${surfaceUrl}/notify`, {
                 method: "POST",

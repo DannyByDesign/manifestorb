@@ -9,7 +9,7 @@ const CACHE_KEY_PREFIX = "research";
 const CACHE_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
 const MAX_CONTENT_SIZE = 1024 * 1024; // 1MB
 
-export type ResearchSource = "perplexity" | "websearch";
+export type ResearchSource = "websearch";
 
 function isRedisConfigured(): boolean {
   return Boolean(env.UPSTASH_REDIS_URL && env.UPSTASH_REDIS_TOKEN);

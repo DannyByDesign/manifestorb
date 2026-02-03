@@ -1,6 +1,5 @@
 import { tool, type ToolSet } from "ai";
 import { z } from "zod";
-import { createPerplexity } from "@ai-sdk/perplexity";
 import { openai } from "@ai-sdk/openai";
 import { google } from "@ai-sdk/google";
 import { env } from "@/env";
@@ -183,68 +182,7 @@ async function buildSearchTools({
   const tools: ToolSet = {};
   let mcpCleanup: (() => Promise<void>) | null = null;
 
-  // Perplexity search (if configured)
-  if (env.PERPLEXITY_API_KEY) {
-    tools.perplexitySearch = tool({
-      description: "Search for information using Perplexity",
-      inputSchema: searchInputSchema,
-      execute: async ({ query, email, name }) => {
-        logger.info("Perplexity search", { query, email, name });
-
-        const cached = await getCachedResearch(
-          emailAccount.userId,
-          "perplexity",
-          email,
-          name,
-        );
-        if (cached) {
-          logger.info("Using cached Perplexity result", { email });
-          return cached;
-        }
-
-        try {
-          const perplexity = createPerplexity({
-            apiKey: env.PERPLEXITY_API_KEY,
-          });
-
-          const perplexityGenerateText = createGenerateText({
-            emailAccount,
-            label: "Perplexity Search",
-            modelOptions: {
-              modelName: "sonar-pro",
-              model: perplexity("sonar-pro") as any,
-              provider: "perplexity",
-              backupModel: null,
-            },
-          });
-
-          const searchResult = await perplexityGenerateText({
-            model: perplexity("sonar-pro") as any,
-            prompt: query,
-          });
-
-          const text = searchResult.text;
-
-          setCachedResearch(
-            emailAccount.userId,
-            "perplexity",
-            email,
-            name,
-            text,
-          ).catch((error) => {
-            logger.error("Failed to cache Perplexity result", { error });
-          });
-
-          return text;
-        } catch (error) {
-          logger.error("Perplexity search failed", { error, query });
-          return "Search failed. Try another search tool.";
-        }
-      },
-    }) as any;
-  }
-
-  // Web search (OpenAI, Google, or OpenRouter - if configured)
+  // Web search (OpenAI or Google - if configured)
   const webSearchConfig = getWebSearchConfig();
   if (webSearchConfig) {
     tools.webSearch = createWebSearchTool({
@@ -252,7 +190,6 @@ async function buildSearchTools({
       logger,
       providerName: webSearchConfig.providerName,
       getSearchTools: webSearchConfig.getSearchTools,
-      useOnlineVariant: webSearchConfig.useOnlineVariant,
     });
   }
 
@@ -281,8 +218,7 @@ async function buildSearchTools({
 
 type WebSearchConfig = {
   providerName: string;
-  useOnlineVariant: boolean;
-  getSearchTools?: () => ToolSet;
+  getSearchTools: () => ToolSet;
 };
 
 function getWebSearchConfig(): WebSearchConfig | null {
@@ -290,21 +226,14 @@ function getWebSearchConfig(): WebSearchConfig | null {
     case Provider.OPEN_AI:
       return {
         providerName: "OpenAI",
-        useOnlineVariant: false,
         getSearchTools: () => ({ web_search: openai.tools.webSearch({}) }),
       };
     case Provider.GOOGLE:
       return {
         providerName: "Google",
-        useOnlineVariant: false,
         getSearchTools: () => ({
           google_search: google.tools.googleSearch({}),
         }),
-      };
-    case Provider.OPENROUTER:
-      return {
-        providerName: "OpenRouter",
-        useOnlineVariant: true,
       };
     default:
       return null;
@@ -316,13 +245,11 @@ function createWebSearchTool({
   logger,
   providerName,
   getSearchTools,
-  useOnlineVariant,
 }: {
   emailAccount: EmailAccountWithAI;
   logger: Logger;
   providerName: string;
-  getSearchTools?: () => ToolSet;
-  useOnlineVariant: boolean;
+  getSearchTools: () => ToolSet;
 }) {
   return tool({
     description: "Search the web for information",
@@ -342,11 +269,7 @@ function createWebSearchTool({
       }
 
       try {
-        const modelOptions = getModel(
-          emailAccount.user,
-          "economy",
-          useOnlineVariant,
-        );
+        const modelOptions = getModel(emailAccount.user, "economy");
 
         const webGenerateText = createGenerateText({
           emailAccount,
@@ -357,7 +280,7 @@ function createWebSearchTool({
         const searchResult = await webGenerateText({
           model: modelOptions.model,
           prompt: query,
-          ...(getSearchTools && { tools: getSearchTools() }),
+          tools: getSearchTools(),
         });
 
         const text = searchResult.text;
@@ -402,11 +325,9 @@ export function buildPrompt(
 
   // List available search tools for the prompt
   const availableTools: string[] = [];
-  if (env.PERPLEXITY_API_KEY) availableTools.push("perplexitySearch");
   if (
     env.DEFAULT_LLM_PROVIDER === Provider.OPEN_AI ||
-    env.DEFAULT_LLM_PROVIDER === Provider.GOOGLE ||
-    env.DEFAULT_LLM_PROVIDER === Provider.OPENROUTER
+    env.DEFAULT_LLM_PROVIDER === Provider.GOOGLE
   ) {
     availableTools.push("webSearch");
   }

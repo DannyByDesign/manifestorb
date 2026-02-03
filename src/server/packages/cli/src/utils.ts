@@ -117,23 +117,14 @@ export function generateEnvFile(config: {
   setValue("ECONOMY_LLM_MODEL", env.ECONOMY_LLM_MODEL);
 
   // Set the API key for the selected provider
-  if (llmProvider === "bedrock") {
-    setValue("BEDROCK_ACCESS_KEY", env.BEDROCK_ACCESS_KEY);
-    setValue("BEDROCK_SECRET_KEY", env.BEDROCK_SECRET_KEY);
-    setValue("BEDROCK_REGION", env.BEDROCK_REGION);
-  } else {
-    const apiKeyMap: Record<string, string> = {
-      anthropic: "ANTHROPIC_API_KEY",
-      openai: "OPENAI_API_KEY",
-      google: "GOOGLE_API_KEY",
-      openrouter: "OPENROUTER_API_KEY",
-      aigateway: "AI_GATEWAY_API_KEY",
-      groq: "GROQ_API_KEY",
-    };
-    const apiKeyName = apiKeyMap[llmProvider];
-    if (apiKeyName && env[apiKeyName]) {
-      setValue(apiKeyName, env[apiKeyName]);
-    }
+  const apiKeyMap: Record<string, string> = {
+    anthropic: "ANTHROPIC_API_KEY",
+    openai: "OPENAI_API_KEY",
+    google: "GOOGLE_API_KEY",
+  };
+  const apiKeyName = apiKeyMap[llmProvider];
+  if (apiKeyName && env[apiKeyName]) {
+    setValue(apiKeyName, env[apiKeyName]);
   }
 
   return content;

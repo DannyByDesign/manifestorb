@@ -34,7 +34,7 @@ export async function generateNotification(
         // 2. Select the fastest available model (Chat profile)
         // We prioritize speed over reasoning depth here.
         const userAi = emailAccount.user;
-        const modelOptions = getModel(userAi, "chat", true);
+        const modelOptions = getModel(userAi, "chat");
 
         // 3. Create the generator
         const generateText = createGenerateText({

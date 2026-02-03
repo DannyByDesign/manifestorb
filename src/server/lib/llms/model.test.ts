@@ -13,72 +13,34 @@ vi.mock("@ai-sdk/anthropic", () => ({
   createAnthropic: vi.fn(() => (model: string) => ({ model })),
 }));
 
-vi.mock("@ai-sdk/amazon-bedrock", () => ({
-  createAmazonBedrock: vi.fn(() => (model: string) => ({ model })),
-}));
-
 vi.mock("@ai-sdk/google", () => ({
   createGoogleGenerativeAI: vi.fn(() => (model: string) => ({ model })),
 }));
 
-vi.mock("@ai-sdk/groq", () => ({
-  createGroq: vi.fn(() => (model: string) => ({ model })),
-}));
-
-vi.mock("@openrouter/ai-sdk-provider", () => ({
-  createOpenRouter: vi.fn(() => ({
-    chat: vi.fn((model: string) => ({ model })),
-  })),
-}));
-
-vi.mock("ollama-ai-provider-v2", () => ({
-  createOllama: vi.fn(() => (model: string) => ({ model })),
-}));
-
 vi.mock("@/env", () => ({
   env: {
-    DEFAULT_LLM_PROVIDER: "openai",
-    DEFAULT_OPENROUTER_PROVIDERS: "Google Vertex,Anthropic",
-    ECONOMY_LLM_PROVIDER: "openrouter",
-    ECONOMY_LLM_MODEL: "google/gemini-2.5-flash-preview-05-20",
-    ECONOMY_OPENROUTER_PROVIDERS: "Google Vertex,Anthropic",
-    CHAT_LLM_PROVIDER: "openrouter",
-    CHAT_LLM_MODEL: "moonshotai/kimi-k2",
-    CHAT_OPENROUTER_PROVIDERS: "Google Vertex,Anthropic",
+    DEFAULT_LLM_PROVIDER: "anthropic",
+    ECONOMY_LLM_PROVIDER: "google",
+    ECONOMY_LLM_MODEL: "gemini-2.0-flash",
+    CHAT_LLM_PROVIDER: "google",
+    CHAT_LLM_MODEL: "gemini-2.0-flash",
     OPENAI_API_KEY: "test-openai-key",
     GOOGLE_API_KEY: "test-google-key",
     ANTHROPIC_API_KEY: "test-anthropic-key",
-    GROQ_API_KEY: "test-groq-key",
-    OPENROUTER_API_KEY: "test-openrouter-key",
-    OLLAMA_BASE_URL: "http://localhost:11434/api",
-    OLLAMA_MODEL: "llama3",
-    BEDROCK_REGION: "us-west-2",
-    BEDROCK_ACCESS_KEY: "",
-    BEDROCK_SECRET_KEY: "",
   },
 }));
 
 vi.mock("server-only", () => ({}));
 
-vi.mock("./config", async () => {
-  const actual = await vi.importActual("./config");
-  return {
-    ...actual,
-    supportsOllama: true,
-  };
-});
-
 describe("Models", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.mocked(env).DEFAULT_LLM_PROVIDER = "openai";
+    vi.mocked(env).DEFAULT_LLM_PROVIDER = "anthropic";
     vi.mocked(env).DEFAULT_LLM_MODEL = undefined;
-    vi.mocked(env).BEDROCK_ACCESS_KEY = "";
-    vi.mocked(env).BEDROCK_SECRET_KEY = "";
   });
 
   describe("getModel", () => {
-    it("should use default provider and model when user has no API key", () => {
+    it("should use default provider (Anthropic) when user has no API key", () => {
       const userAi: UserAIFields = {
         aiApiKey: null,
         aiProvider: null,
@@ -86,8 +48,8 @@ describe("Models", () => {
       };
 
       const result = getModel(userAi);
-      expect(result.provider).toBe(Provider.OPEN_AI);
-      expect(result.modelName).toBe("gpt-5.1");
+      expect(result.provider).toBe(Provider.ANTHROPIC);
+      expect(result.modelName).toBe("claude-sonnet-4-5-20250929");
     });
 
     it("should use user's provider and model when API key is provided", () => {
@@ -110,8 +72,8 @@ describe("Models", () => {
       };
 
       const result = getModel(userAi);
-      expect(result.provider).toBe(Provider.OPEN_AI);
-      expect(result.modelName).toBe("gpt-5.1");
+      expect(result.provider).toBe(Provider.ANTHROPIC);
+      expect(result.modelName).toBe("claude-sonnet-4-5-20250929");
     });
 
     it("should configure Google model correctly", () => {
@@ -127,84 +89,29 @@ describe("Models", () => {
       expect(result.model).toBeDefined();
     });
 
-    it("should configure Groq model correctly", () => {
+    it("should configure OpenAI model correctly", () => {
       const userAi: UserAIFields = {
         aiApiKey: "user-api-key",
-        aiProvider: Provider.GROQ,
-        aiModel: "llama-3.3-70b-versatile",
+        aiProvider: Provider.OPEN_AI,
+        aiModel: "gpt-4o",
       };
 
       const result = getModel(userAi);
-      expect(result.provider).toBe(Provider.GROQ);
-      expect(result.modelName).toBe("llama-3.3-70b-versatile");
+      expect(result.provider).toBe(Provider.OPEN_AI);
+      expect(result.modelName).toBe("gpt-4o");
       expect(result.model).toBeDefined();
     });
 
-    it("should configure OpenRouter model correctly", () => {
-      const userAi: UserAIFields = {
-        aiApiKey: "user-api-key",
-        aiProvider: Provider.OPENROUTER,
-        aiModel: "llama-3.3-70b-versatile",
-      };
-
-      const result = getModel(userAi);
-      expect(result.provider).toBe(Provider.OPENROUTER);
-      expect(result.modelName).toBe("llama-3.3-70b-versatile");
-      expect(result.model).toBeDefined();
-    });
-
-    it("should configure Ollama model correctly via env vars", () => {
-      const userAi: UserAIFields = {
-        aiApiKey: null,
-        aiProvider: null,
-        aiModel: null,
-      };
-
-      vi.mocked(env).DEFAULT_LLM_PROVIDER = "ollama";
-      vi.mocked(env).OLLAMA_MODEL = "llama3";
-      vi.mocked(env).OLLAMA_BASE_URL = "http://localhost:11434/api";
-
-      const result = getModel(userAi);
-      expect(result.provider).toBe(Provider.OLLAMA);
-      expect(result.modelName).toBe("llama3");
-      expect(result.model).toBeDefined();
-      expect(result.backupModel).toBeNull(); // No backup for local Ollama
-    });
-
-    it("should configure Anthropic model correctly without Bedrock credentials", () => {
+    it("should configure Anthropic model correctly", () => {
       const userAi: UserAIFields = {
         aiApiKey: "user-api-key",
         aiProvider: Provider.ANTHROPIC,
         aiModel: "claude-3-7-sonnet-20250219",
       };
 
-      vi.mocked(env).BEDROCK_ACCESS_KEY = "";
-      vi.mocked(env).BEDROCK_SECRET_KEY = "";
-
       const result = getModel(userAi);
       expect(result.provider).toBe(Provider.ANTHROPIC);
       expect(result.modelName).toBe("claude-3-7-sonnet-20250219");
-      expect(result.model).toBeDefined();
-    });
-
-    it("should configure Bedrock model correctly via env vars", () => {
-      const userAi: UserAIFields = {
-        aiApiKey: null,
-        aiProvider: null,
-        aiModel: null,
-      };
-
-      vi.mocked(env).DEFAULT_LLM_PROVIDER = "bedrock";
-      vi.mocked(env).DEFAULT_LLM_MODEL =
-        "us.anthropic.claude-3-7-sonnet-20250219-v1:0";
-      vi.mocked(env).BEDROCK_ACCESS_KEY = "test-bedrock-key";
-      vi.mocked(env).BEDROCK_SECRET_KEY = "test-bedrock-secret";
-
-      const result = getModel(userAi);
-      expect(result.provider).toBe(Provider.BEDROCK);
-      expect(result.modelName).toBe(
-        "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-      );
       expect(result.model).toBeDefined();
     });
 
@@ -218,80 +125,36 @@ describe("Models", () => {
       expect(() => getModel(userAi)).toThrow("LLM provider not supported");
     });
 
-    // it("should use chat model when modelType is 'chat'", () => {
-    //   const userAi: UserAIFields = {
-    //     aiApiKey: null,
-    //     aiProvider: null,
-    //     aiModel: null,
-    //   };
-
-    //   vi.mocked(env).CHAT_LLM_PROVIDER = "openrouter";
-    //   vi.mocked(env).CHAT_LLM_MODEL = "moonshotai/kimi-k2";
-    //   vi.mocked(env).OPENROUTER_API_KEY = "test-openrouter-key";
-
-    //   const result = getModel(userAi, "chat");
-    //   expect(result.provider).toBe(Provider.OPENROUTER);
-    //   expect(result.modelName).toBe("moonshotai/kimi-k2");
-    // });
-
-    // it("should use OpenRouter with provider options for chat", () => {
-    //   const userAi: UserAIFields = {
-    //     aiApiKey: null,
-    //     aiProvider: null,
-    //     aiModel: null,
-    //   };
-
-    //   vi.mocked(env).CHAT_LLM_PROVIDER = "openrouter";
-    //   vi.mocked(env).CHAT_LLM_MODEL = "moonshotai/kimi-k2";
-    //   vi.mocked(env).CHAT_OPENROUTER_PROVIDERS = "Google Vertex,Anthropic";
-    //   vi.mocked(env).OPENROUTER_API_KEY = "test-openrouter-key";
-
-    //   const result = getModel(userAi, "chat");
-    //   expect(result.provider).toBe(Provider.OPENROUTER);
-    //   expect(result.modelName).toBe("moonshotai/kimi-k2");
-    //   expect(result.providerOptions?.openrouter?.provider?.order).toEqual([
-    //     "Google Vertex",
-    //     "Anthropic",
-    //   ]);
-    // });
-
-    it("should use economy model when modelType is 'economy'", () => {
+    it("should use economy model (Google) when modelType is 'economy'", () => {
       const userAi: UserAIFields = {
         aiApiKey: null,
         aiProvider: null,
         aiModel: null,
       };
 
-      vi.mocked(env).ECONOMY_LLM_PROVIDER = "openrouter";
-      vi.mocked(env).ECONOMY_LLM_MODEL =
-        "google/gemini-2.5-flash-preview-05-20";
-      vi.mocked(env).OPENROUTER_API_KEY = "test-openrouter-key";
+      vi.mocked(env).ECONOMY_LLM_PROVIDER = "google";
+      vi.mocked(env).ECONOMY_LLM_MODEL = "gemini-2.0-flash";
+      vi.mocked(env).GOOGLE_API_KEY = "test-google-key";
 
       const result = getModel(userAi, "economy");
-      expect(result.provider).toBe(Provider.OPENROUTER);
-      expect(result.modelName).toBe("google/gemini-2.5-flash-preview-05-20");
+      expect(result.provider).toBe(Provider.GOOGLE);
+      expect(result.modelName).toBe("gemini-2.0-flash");
     });
 
-    it("should use OpenRouter with provider options for economy", () => {
+    it("should use chat model (Google) when modelType is 'chat'", () => {
       const userAi: UserAIFields = {
         aiApiKey: null,
         aiProvider: null,
         aiModel: null,
       };
 
-      vi.mocked(env).ECONOMY_LLM_PROVIDER = "openrouter";
-      vi.mocked(env).ECONOMY_LLM_MODEL =
-        "google/gemini-2.5-flash-preview-05-20";
-      vi.mocked(env).ECONOMY_OPENROUTER_PROVIDERS = "Google Vertex,Anthropic";
-      vi.mocked(env).OPENROUTER_API_KEY = "test-openrouter-key";
+      vi.mocked(env).CHAT_LLM_PROVIDER = "google";
+      vi.mocked(env).CHAT_LLM_MODEL = "gemini-2.0-flash";
+      vi.mocked(env).GOOGLE_API_KEY = "test-google-key";
 
-      const result = getModel(userAi, "economy");
-      expect(result.provider).toBe(Provider.OPENROUTER);
-      expect(result.modelName).toBe("google/gemini-2.5-flash-preview-05-20");
-      expect(result.providerOptions?.openrouter?.provider?.order).toEqual([
-        "Google Vertex",
-        "Anthropic",
-      ]);
+      const result = getModel(userAi, "chat");
+      expect(result.provider).toBe(Provider.GOOGLE);
+      expect(result.modelName).toBe("gemini-2.0-flash");
     });
 
     it("should use default model when modelType is 'default'", () => {
@@ -301,34 +164,54 @@ describe("Models", () => {
         aiModel: null,
       };
 
-      // Reset to default
-      vi.mocked(env).DEFAULT_LLM_PROVIDER = "openai";
+      vi.mocked(env).DEFAULT_LLM_PROVIDER = "anthropic";
       vi.mocked(env).DEFAULT_LLM_MODEL = undefined;
 
       const result = getModel(userAi, "default");
-      expect(result.provider).toBe(Provider.OPEN_AI);
-      expect(result.modelName).toBe("gpt-5.1");
+      expect(result.provider).toBe(Provider.ANTHROPIC);
+      expect(result.modelName).toBe("claude-sonnet-4-5-20250929");
     });
 
-    it("should use OpenRouter with provider options for default model", () => {
+    it("should fallback to Google for economy when configured", () => {
       const userAi: UserAIFields = {
         aiApiKey: null,
         aiProvider: null,
         aiModel: null,
       };
 
-      vi.mocked(env).DEFAULT_LLM_PROVIDER = "openrouter";
-      vi.mocked(env).DEFAULT_LLM_MODEL = "anthropic/claude-3.5-sonnet";
-      vi.mocked(env).DEFAULT_OPENROUTER_PROVIDERS = "Google Vertex,Anthropic";
-      vi.mocked(env).OPENROUTER_API_KEY = "test-openrouter-key";
+      // Clear economy config to trigger fallback
+      vi.mocked(env).ECONOMY_LLM_PROVIDER = undefined;
+      vi.mocked(env).ECONOMY_LLM_MODEL = undefined;
+      vi.mocked(env).GOOGLE_API_KEY = "test-google-key";
 
-      const result = getModel(userAi, "default");
-      expect(result.provider).toBe(Provider.OPENROUTER);
-      expect(result.modelName).toBe("anthropic/claude-3.5-sonnet");
-      expect(result.providerOptions?.openrouter?.provider?.order).toEqual([
-        "Google Vertex",
-        "Anthropic",
-      ]);
+      const result = getModel(userAi, "economy");
+      // Should fallback to Google when no economy config
+      expect(result.provider).toBe(Provider.GOOGLE);
+      expect(result.modelName).toBe("gemini-2.0-flash");
+    });
+
+    it("should have backup model when using system API key", () => {
+      const userAi: UserAIFields = {
+        aiApiKey: null,
+        aiProvider: null,
+        aiModel: null,
+      };
+
+      vi.mocked(env).GOOGLE_API_KEY = "test-google-key";
+
+      const result = getModel(userAi);
+      expect(result.backupModel).toBeDefined();
+    });
+
+    it("should NOT have backup model when user provides own API key", () => {
+      const userAi: UserAIFields = {
+        aiApiKey: "user-own-key",
+        aiProvider: Provider.ANTHROPIC,
+        aiModel: null,
+      };
+
+      const result = getModel(userAi);
+      expect(result.backupModel).toBeNull();
     });
   });
 });

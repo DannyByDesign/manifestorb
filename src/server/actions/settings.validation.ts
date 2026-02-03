@@ -30,8 +30,6 @@ export const saveAiSettingsBody = z
       Provider.ANTHROPIC,
       Provider.OPEN_AI,
       Provider.GOOGLE,
-      Provider.GROQ,
-      Provider.OPENROUTER,
     ]),
     aiModel: z.string(),
     aiApiKey: z.string().optional(),

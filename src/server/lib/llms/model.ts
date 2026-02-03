@@ -1,12 +1,7 @@
 import type { LanguageModelV2 } from "@ai-sdk/provider";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
-import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { createGroq } from "@ai-sdk/groq";
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { createGateway } from "@ai-sdk/gateway";
-import { createOllama } from "ollama-ai-provider-v2";
 import { env } from "@/env";
 import { Provider } from "@/server/lib/llms/config";
 import type { UserAIFields } from "@/server/lib/llms/types";
@@ -27,9 +22,8 @@ export type SelectModel = {
 export function getModel(
   userAi: UserAIFields,
   modelType: ModelType = "default",
-  online = false,
 ): SelectModel {
-  const data = selectModelByType(userAi, modelType, online);
+  const data = selectModelByType(userAi, modelType);
 
   logger.info("Using model", {
     modelType,
@@ -44,17 +38,17 @@ export function getModel(
 function selectModelByType(
   userAi: UserAIFields,
   modelType: ModelType,
-  online = false,
 ) {
-  if (userAi.aiApiKey) return selectDefaultModel(userAi, online);
+  // If user has their own API key, always use their default model
+  if (userAi.aiApiKey) return selectDefaultModel(userAi);
 
   switch (modelType) {
     case "economy":
-      return selectEconomyModel(userAi, online);
+      return selectEconomyModel(userAi);
     case "chat":
-      return selectChatModel(userAi, online);
+      return selectChatModel(userAi);
     default:
-      return selectDefaultModel(userAi, online);
+      return selectDefaultModel(userAi);
   }
 }
 
@@ -69,11 +63,22 @@ function selectModel(
     aiApiKey: string | null;
   },
   providerOptions?: Record<string, any>,
-  online = false,
 ): SelectModel {
   switch (aiProvider) {
+    case Provider.ANTHROPIC: {
+      const modelName = aiModel || "claude-sonnet-4-5-20250929";
+      return {
+        provider: Provider.ANTHROPIC,
+        modelName,
+        model: createAnthropic({
+          apiKey: aiApiKey || env.ANTHROPIC_API_KEY,
+        })(modelName),
+        providerOptions,
+        backupModel: getBackupModel(aiApiKey),
+      };
+    }
     case Provider.OPEN_AI: {
-      const modelName = aiModel || "gpt-5.1";
+      const modelName = aiModel || "gpt-4o";
       // When Zero Data Retention is enabled, set store: false to avoid
       // "Items are not persisted for Zero Data Retention organizations" errors
       // See: https://github.com/vercel/ai/issues/10060
@@ -95,94 +100,12 @@ function selectModel(
       };
     }
     case Provider.GOOGLE: {
-      const mod = aiModel || "gemini-2.0-flash";
+      const modelName = aiModel || "gemini-2.0-flash";
       return {
         provider: Provider.GOOGLE,
-        modelName: mod,
+        modelName,
         model: createGoogleGenerativeAI({
           apiKey: aiApiKey || env.GOOGLE_API_KEY,
-        })(mod),
-        backupModel: getBackupModel(aiApiKey),
-      };
-    }
-    case Provider.GROQ: {
-      const modelName = aiModel || "llama-3.3-70b-versatile";
-      return {
-        provider: Provider.GROQ,
-        modelName,
-        model: createGroq({ apiKey: aiApiKey || env.GROQ_API_KEY })(modelName),
-        backupModel: getBackupModel(aiApiKey),
-      };
-    }
-    case Provider.OPENROUTER: {
-      let modelName = aiModel || "anthropic/claude-sonnet-4.5";
-      if (online) modelName += ":online";
-
-      const openrouter = createOpenRouter({
-        apiKey: aiApiKey || env.OPENROUTER_API_KEY,
-        headers: {
-          "HTTP-Referer": "https://www.getamodel.com",
-          "X-Title": "Amodel",
-        },
-      });
-      const chatModel = openrouter.chat(modelName);
-
-      return {
-        provider: Provider.OPENROUTER,
-        modelName,
-        model: chatModel,
-        providerOptions,
-        backupModel: getBackupModel(aiApiKey),
-      };
-    }
-    case Provider.AI_GATEWAY: {
-      const modelName = aiModel || "google/gemini-3-flash";
-      const aiGatewayApiKey = aiApiKey || env.AI_GATEWAY_API_KEY;
-      const gateway = createGateway({ apiKey: aiGatewayApiKey });
-      return {
-        provider: Provider.AI_GATEWAY,
-        modelName,
-        model: gateway(modelName),
-        backupModel: getBackupModel(aiApiKey),
-      };
-    }
-    case "ollama": {
-      const modelName = env.OLLAMA_MODEL;
-      if (!modelName)
-        throw new Error("OLLAMA_MODEL environment variable is not set");
-      return {
-        provider: Provider.OLLAMA,
-        modelName,
-        model: createOllama({ baseURL: env.OLLAMA_BASE_URL })(modelName),
-        backupModel: null,
-      };
-    }
-
-    case Provider.BEDROCK: {
-      const modelName =
-        aiModel || "global.anthropic.claude-sonnet-4-5-20250929-v1:0";
-      return {
-        provider: Provider.BEDROCK,
-        modelName,
-        // Based on: https://github.com/vercel/ai/issues/4996#issuecomment-2751630936
-        model: createAmazonBedrock({
-          region: env.BEDROCK_REGION,
-          credentialProvider: async () => ({
-            accessKeyId: env.BEDROCK_ACCESS_KEY!,
-            secretAccessKey: env.BEDROCK_SECRET_KEY!,
-            sessionToken: undefined,
-          }),
-        })(modelName),
-        backupModel: getBackupModel(aiApiKey),
-      };
-    }
-    case Provider.ANTHROPIC: {
-      const modelName = aiModel || "claude-sonnet-4-5-20250929";
-      return {
-        provider: Provider.ANTHROPIC,
-        modelName,
-        model: createAnthropic({
-          apiKey: aiApiKey || env.ANTHROPIC_API_KEY,
         })(modelName),
         backupModel: getBackupModel(aiApiKey),
       };
@@ -195,27 +118,8 @@ function selectModel(
 }
 
 /**
- * Creates OpenRouter provider options from a comma-separated string
- */
-function createOpenRouterProviderOptions(
-  providers: string,
-): Record<string, any> {
-  const order = providers
-    .split(",")
-    .map((p: string) => p.trim())
-    .filter(Boolean);
-
-  return {
-    openrouter: {
-      provider: order.length > 0 ? { order } : undefined,
-      reasoning: { max_tokens: 20 },
-    },
-  };
-}
-
-/**
- * Selects the appropriate economy model for high-volume or context-heavy tasks
- * By default, uses a cheaper model like Gemini Flash for tasks that don't require the most powerful LLM
+ * Selects the appropriate economy model for high-volume or context-heavy tasks.
+ * Uses Google Gemini Flash by default for cost-effective processing.
  *
  * Use cases:
  * - Processing large knowledge bases
@@ -223,7 +127,7 @@ function createOpenRouterProviderOptions(
  * - Bulk processing emails
  * - Any task with large context windows where cost efficiency matters
  */
-function selectEconomyModel(userAi: UserAIFields, online = false): SelectModel {
+function selectEconomyModel(userAi: UserAIFields): SelectModel {
   if (env.ECONOMY_LLM_PROVIDER && env.ECONOMY_LLM_MODEL) {
     const apiKey = getProviderApiKey(env.ECONOMY_LLM_PROVIDER);
     if (!apiKey) {
@@ -233,35 +137,30 @@ function selectEconomyModel(userAi: UserAIFields, online = false): SelectModel {
       return selectDefaultModel(userAi);
     }
 
-    // Configure OpenRouter provider options if using OpenRouter for economy
-    let providerOptions: Record<string, any> | undefined;
-    if (
-      env.ECONOMY_LLM_PROVIDER === Provider.OPENROUTER &&
-      env.ECONOMY_OPENROUTER_PROVIDERS
-    ) {
-      providerOptions = createOpenRouterProviderOptions(
-        env.ECONOMY_OPENROUTER_PROVIDERS,
-      );
-    }
+    return selectModel({
+      aiProvider: env.ECONOMY_LLM_PROVIDER,
+      aiModel: env.ECONOMY_LLM_MODEL,
+      aiApiKey: apiKey,
+    });
+  }
 
-    return selectModel(
-      {
-        aiProvider: env.ECONOMY_LLM_PROVIDER,
-        aiModel: env.ECONOMY_LLM_MODEL,
-        aiApiKey: apiKey,
-      },
-      providerOptions,
-      online,
-    );
+  // Default to Google Gemini Flash for economy if GOOGLE_API_KEY is available
+  if (env.GOOGLE_API_KEY) {
+    return selectModel({
+      aiProvider: Provider.GOOGLE,
+      aiModel: "gemini-2.0-flash",
+      aiApiKey: env.GOOGLE_API_KEY,
+    });
   }
 
   return selectDefaultModel(userAi);
 }
 
 /**
- * Selects the appropriate chat model for fast conversational tasks
+ * Selects the appropriate chat model for fast conversational tasks.
+ * Uses Google Gemini Flash by default for fast responses.
  */
-function selectChatModel(userAi: UserAIFields, online = false): SelectModel {
+function selectChatModel(userAi: UserAIFields): SelectModel {
   if (env.CHAT_LLM_PROVIDER && env.CHAT_LLM_MODEL) {
     const apiKey = getProviderApiKey(env.CHAT_LLM_PROVIDER);
     if (!apiKey) {
@@ -271,40 +170,32 @@ function selectChatModel(userAi: UserAIFields, online = false): SelectModel {
       return selectDefaultModel(userAi);
     }
 
-    // Configure OpenRouter provider options if using OpenRouter for chat
-    let providerOptions: Record<string, any> | undefined;
-    if (
-      env.CHAT_LLM_PROVIDER === Provider.OPENROUTER &&
-      env.CHAT_OPENROUTER_PROVIDERS
-    ) {
-      providerOptions = createOpenRouterProviderOptions(
-        env.CHAT_OPENROUTER_PROVIDERS,
-      );
-    }
+    return selectModel({
+      aiProvider: env.CHAT_LLM_PROVIDER,
+      aiModel: env.CHAT_LLM_MODEL,
+      aiApiKey: apiKey,
+    });
+  }
 
-    return selectModel(
-      {
-        aiProvider: env.CHAT_LLM_PROVIDER,
-        aiModel: env.CHAT_LLM_MODEL,
-        aiApiKey: apiKey,
-      },
-      providerOptions,
-      online,
-    );
+  // Default to Google Gemini Flash for chat if GOOGLE_API_KEY is available
+  if (env.GOOGLE_API_KEY) {
+    return selectModel({
+      aiProvider: Provider.GOOGLE,
+      aiModel: "gemini-2.0-flash",
+      aiApiKey: env.GOOGLE_API_KEY,
+    });
   }
 
   return selectDefaultModel(userAi);
 }
 
-function selectDefaultModel(userAi: UserAIFields, online = false): SelectModel {
+function selectDefaultModel(userAi: UserAIFields): SelectModel {
   let aiProvider: string;
   let aiModel: string | null = null;
   const aiApiKey = userAi.aiApiKey;
 
-  const providerOptions: Record<string, any> = {};
-
-  // If user has not api key set, then use default model
-  // If they do they can use the model of their choice
+  // If user has their own API key set, use their provider/model choice
+  // Otherwise use the configured default
   if (aiApiKey) {
     aiProvider = userAi.aiProvider || env.DEFAULT_LLM_PROVIDER;
     aiModel = userAi.aiModel || null;
@@ -313,58 +204,35 @@ function selectDefaultModel(userAi: UserAIFields, online = false): SelectModel {
     aiModel = env.DEFAULT_LLM_MODEL || null;
   }
 
-  if (aiProvider === Provider.OPENROUTER) {
-    const openRouterOptions = createOpenRouterProviderOptions(
-      env.DEFAULT_OPENROUTER_PROVIDERS || "",
-    );
-
-    // Preserve any custom options set earlier; always ensure reasoning exists.
-    const existingOpenRouterOptions = providerOptions.openrouter || {};
-    providerOptions.openrouter = {
-      ...openRouterOptions.openrouter,
-      ...existingOpenRouterOptions,
-      reasoning: {
-        ...openRouterOptions.openrouter.reasoning,
-        ...(existingOpenRouterOptions.reasoning ?? {}),
-      },
-    };
-  }
-
-  return selectModel(
-    {
-      aiProvider,
-      aiModel,
-      aiApiKey,
-    },
-    providerOptions,
-    online,
-  );
+  return selectModel({
+    aiProvider,
+    aiModel,
+    aiApiKey,
+  });
 }
 
-function getProviderApiKey(provider: string) {
+function getProviderApiKey(provider: string): string | undefined {
   const providerApiKeys: Record<string, string | undefined> = {
     [Provider.ANTHROPIC]: env.ANTHROPIC_API_KEY,
-    [Provider.BEDROCK]:
-      env.BEDROCK_ACCESS_KEY && env.BEDROCK_SECRET_KEY
-        ? "bedrock-credentials"
-        : undefined,
     [Provider.OPEN_AI]: env.OPENAI_API_KEY,
     [Provider.GOOGLE]: env.GOOGLE_API_KEY,
-    [Provider.GROQ]: env.GROQ_API_KEY,
-    [Provider.OPENROUTER]: env.OPENROUTER_API_KEY,
-    [Provider.AI_GATEWAY]: env.AI_GATEWAY_API_KEY,
-    [Provider.OLLAMA]: "ollama-local",
   };
 
   return providerApiKeys[provider];
 }
 
+/**
+ * Returns a backup model to use when the primary model fails.
+ * Uses Google Gemini Flash as the backup provider.
+ */
 function getBackupModel(userApiKey: string | null): LanguageModelV2 | null {
-  // disable backup model if user is using their own api key
+  // Disable backup model if user is using their own API key
   if (userApiKey) return null;
-  if (!env.OPENROUTER_BACKUP_MODEL) return null;
+  
+  // Use Google Gemini Flash as backup if available
+  if (!env.GOOGLE_API_KEY) return null;
 
-  return createOpenRouter({
-    apiKey: env.OPENROUTER_API_KEY,
-  }).chat(env.OPENROUTER_BACKUP_MODEL);
+  return createGoogleGenerativeAI({
+    apiKey: env.GOOGLE_API_KEY,
+  })("gemini-2.0-flash");
 }

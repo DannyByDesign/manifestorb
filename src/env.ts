@@ -7,11 +7,6 @@ const llmProviderEnum = z.enum([
   "anthropic",
   "google",
   "openai",
-  "bedrock",
-  "openrouter",
-  "groq",
-  "aigateway",
-  "ollama",
 ]);
 
 /** For Vercel preview deployments, auto-detect from VERCEL_URL. */
@@ -49,38 +44,20 @@ export const env = createEnv({
     EMAIL_ENCRYPT_SECRET: z.string(),
     EMAIL_ENCRYPT_SALT: z.string(),
 
-    DEFAULT_LLM_PROVIDER: z
-      // custom is deprecated
-      .enum([...llmProviderEnum.options, "custom"])
-      .default("anthropic"),
+    // LLM Configuration - Simplified to 3 providers: Anthropic, OpenAI, Google
+    DEFAULT_LLM_PROVIDER: llmProviderEnum.default("anthropic"),
     DEFAULT_LLM_MODEL: z.string().optional(),
-    DEFAULT_OPENROUTER_PROVIDERS: z.string().optional(), // Comma-separated list of OpenRouter providers for default model (e.g., "Google Vertex,Anthropic")
-    // Set this to a cheaper model like Gemini Flash
+    // Economy model uses Google Gemini Flash for cost-effective bulk operations
     ECONOMY_LLM_PROVIDER: llmProviderEnum.optional(),
     ECONOMY_LLM_MODEL: z.string().optional(),
-    ECONOMY_OPENROUTER_PROVIDERS: z.string().optional(), // Comma-separated list of OpenRouter providers for economy model (e.g., "Google Vertex,Anthropic")
-    // Set this to a fast but strong model like Groq Kimi K2. Leaving blank will fallback to default which is also fine.
+    // Chat model uses Google Gemini Flash for fast responses
     CHAT_LLM_PROVIDER: llmProviderEnum.optional(),
     CHAT_LLM_MODEL: z.string().optional(),
-    CHAT_OPENROUTER_PROVIDERS: z.string().optional(), // Comma-separated list of OpenRouter providers for chat (e.g., "Google Vertex,Anthropic")
 
-    OPENROUTER_BACKUP_MODEL: z
-      .string()
-      .optional()
-      .default("google/gemini-2.5-flash"),
-
-    OPENAI_API_KEY: z.string().optional(),
+    // LLM API Keys
     ANTHROPIC_API_KEY: z.string().optional(),
-    BEDROCK_ACCESS_KEY: z.string().optional(),
-    BEDROCK_SECRET_KEY: z.string().optional(),
-    BEDROCK_REGION: z.string().default("us-west-2"),
-    GOOGLE_API_KEY: z.string().optional(),
-    GROQ_API_KEY: z.string().optional(),
-    OPENROUTER_API_KEY: z.string().optional(),
-    AI_GATEWAY_API_KEY: z.string().optional(),
-    PERPLEXITY_API_KEY: z.string().optional(),
-    OLLAMA_BASE_URL: z.string().optional(),
-    OLLAMA_MODEL: z.string().optional(),
+    OPENAI_API_KEY: z.string().optional(), // Required for embeddings
+    GOOGLE_API_KEY: z.string().optional(), // Used for economy/chat/backup
 
     OPENAI_ZERO_DATA_RETENTION: z.coerce.boolean().optional().default(false),
 
@@ -134,6 +111,7 @@ export const env = createEnv({
     HEALTH_API_KEY: z.string().optional(),
     JOBS_SHARED_SECRET: z.string().optional(),
     SIDECAR_URL: z.string().url().optional(), // URL of the surfaces sidecar for background jobs
+    SURFACES_API_URL: z.string().url().optional(), // URL of the surfaces sidecar for push notifications
     OAUTH_PROXY_URL: z.string().url().optional(),
     // Set to true on the server that acts as the OAuth proxy (e.g., staging)
     IS_OAUTH_PROXY_SERVER: booleanString.optional().default(false),
