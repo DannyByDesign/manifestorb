@@ -63,7 +63,6 @@ export const env = createEnv({
 
     UPSTASH_REDIS_URL: z.string().optional(),
     UPSTASH_REDIS_TOKEN: z.string().optional(),
-    REDIS_URL: z.string().optional(), // used for subscriptions
 
     QSTASH_TOKEN: z.string().optional(),
     QSTASH_CURRENT_SIGNING_KEY: z.string().optional(),
@@ -235,4 +234,18 @@ if (
   throw new Error(
     "AUTH_SECRET (or NEXTAUTH_SECRET) is required in production",
   );
+}
+
+if (env.NODE_ENV === "production") {
+  if (!env.SURFACES_SHARED_SECRET) {
+    throw new Error("SURFACES_SHARED_SECRET is required in production");
+  }
+  if (!env.JOBS_SHARED_SECRET) {
+    throw new Error("JOBS_SHARED_SECRET is required in production");
+  }
+  if (!env.GOOGLE_PUBSUB_VERIFICATION_TOKEN) {
+    throw new Error(
+      "GOOGLE_PUBSUB_VERIFICATION_TOKEN is required in production",
+    );
+  }
 }

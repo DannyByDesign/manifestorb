@@ -20,7 +20,7 @@ config();
     startTelegram();
 
     // Start background job scheduler
-    startScheduler();
+    const scheduler = startScheduler();
 
     console.log("🚀 Surfaces Sidecar fully initialized");
 
@@ -28,7 +28,7 @@ config();
     const Bun = globalThis.Bun;
 
     // HTTP Server for Push Notifications and Job Management
-    Bun.serve({
+    const server = Bun.serve({
         port: 3001,
         async fetch(req: Request) {
             const url = new URL(req.url);
@@ -247,4 +247,37 @@ config();
     console.log("   - POST /jobs/decay - Trigger memory decay");
     console.log("   - POST /jobs/recording - Trigger memory recording");
     console.log("   - GET  /health - Health check");
+    const shutdown = async (signal: string) => {
+        console.log(`[Surfaces] Received ${signal}. Shutting down...`);
+        try {
+            server.stop();
+        } catch (error) {
+            console.error("[Surfaces] Error stopping HTTP server", error);
+        }
+
+        try {
+            scheduler?.embeddingJob?.stop?.();
+            scheduler?.decayJob?.stop?.();
+            scheduler?.recordingBackupJob?.stop?.();
+        } catch (error) {
+            console.error("[Surfaces] Error stopping scheduler", error);
+        }
+
+        try {
+            await prisma.$disconnect();
+        } catch (error) {
+            console.error("[Surfaces] Error disconnecting Prisma", error);
+        }
+
+        try {
+            await redis?.quit();
+        } catch (error) {
+            console.error("[Surfaces] Error disconnecting Redis", error);
+        }
+
+        process.exit(0);
+    };
+
+    process.on("SIGINT", () => shutdown("SIGINT"));
+    process.on("SIGTERM", () => shutdown("SIGTERM"));
 })();
