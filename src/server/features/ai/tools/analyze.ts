@@ -41,10 +41,12 @@ Pattern analysis:
                 after: z.string().optional(),
                 before: z.string().optional(),
             }).optional(),
+            durationMinutes: z.number().int().min(5).max(480).optional(),
+            limit: z.number().int().min(1).max(10).optional(),
         }).optional(),
     }),
 
-    execute: async ({ resource, ids, analysisType }, { emailAccountId, logger, providers }) => {
+    execute: async ({ resource, ids, analysisType, options }, { emailAccountId, logger, providers }) => {
         const emailAccount = await getEmailAccountWithAi({ emailAccountId });
         if (!emailAccount || !emailAccount.account) {
             return { success: false, error: "Email account not found or missing provider connection" };
@@ -149,6 +151,81 @@ Pattern analysis:
                     });
 
                     return { success: true, data: briefing };
+                }
+                if (analysisType === "find_conflicts") {
+                    if (!providers.calendar) {
+                        return { success: false, error: "Calendar provider not available" };
+                    }
+                    if (!ids || ids.length === 0) {
+                        return { success: false, error: "Event IDs required for conflict detection" };
+                    }
+
+                    const conflicts = [];
+                    for (const id of ids) {
+                        const event = await providers.calendar.getEvent({ eventId: id });
+                        if (!event) continue;
+
+                        const range = {
+                            start: event.startTime,
+                            end: event.endTime,
+                        };
+                        const eventsInRange = await providers.calendar.searchEvents("", range);
+                        const overlapping = eventsInRange.filter((candidate) => {
+                            if (candidate.id === event.id) return false;
+                            return (
+                                candidate.startTime < event.endTime &&
+                                event.startTime < candidate.endTime
+                            );
+                        });
+
+                        conflicts.push({
+                            event: {
+                                id: event.id,
+                                title: event.title,
+                                startTime: event.startTime,
+                                endTime: event.endTime,
+                                eventUrl: event.eventUrl,
+                            },
+                            conflicts: overlapping.map((item) => ({
+                                id: item.id,
+                                title: item.title,
+                                startTime: item.startTime,
+                                endTime: item.endTime,
+                                eventUrl: item.eventUrl,
+                            })),
+                        });
+                    }
+
+                    return { success: true, data: { conflicts } };
+                }
+                if (analysisType === "suggest_times") {
+                    if (!providers.calendar) {
+                        return { success: false, error: "Calendar provider not available" };
+                    }
+                    const after = options?.dateRange?.after
+                        ? new Date(options.dateRange.after)
+                        : new Date();
+                    const before = options?.dateRange?.before
+                        ? new Date(options.dateRange.before)
+                        : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+                    const durationMinutes = options?.durationMinutes ?? 30;
+                    const limit = options?.limit ?? 3;
+
+                    const slots = await providers.calendar.findAvailableSlots({
+                        durationMinutes,
+                        start: after,
+                        end: before,
+                    });
+                    return {
+                        success: true,
+                        data: {
+                            suggestedTimes: slots.slice(0, limit).map((slot) => ({
+                                start: slot.start.toISOString(),
+                                end: slot.end.toISOString(),
+                                score: slot.score,
+                            })),
+                        },
+                    };
                 }
                 return { success: false, error: "Calendar analysis type not implemented" };
 

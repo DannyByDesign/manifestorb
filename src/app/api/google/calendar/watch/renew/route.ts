@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import { type NextRequest } from "next/server";
 import prisma from "@/server/db/client";
 import { ensureGoogleCalendarWatch } from "@/features/calendar/sync/google";
 import { createScopedLogger } from "@/server/lib/logger";
 import { env } from "@/env";
+import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
 
 export const maxDuration = 300;
 
-export async function POST(req: NextRequest) {
+export const POST = verifySignatureAppRouter(async (req: Request) => {
   const logger = createScopedLogger("cron/calendar-watch-renewal");
   const authHeader = req.headers.get("authorization");
 
@@ -81,4 +81,4 @@ export async function POST(req: NextRequest) {
       { status: 500 },
     );
   }
-}
+});

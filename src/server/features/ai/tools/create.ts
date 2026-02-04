@@ -2,6 +2,7 @@
 import { z } from "zod";
 import { env } from "@/env";
 import { type ToolDefinition } from "./types";
+import { isGoogleProvider } from "@/features/email/provider-types";
 import prisma from "@/server/db/client";
 import { getEmailAccountWithAi } from "@/server/lib/user/get";
 import { processAttachment } from "@/features/drive/filing-engine";
@@ -130,11 +131,14 @@ Automation: Create Rules & Knowledge supported.`,
         switch (resource) {
             case "email":
                 let replyContext = null;
+                const emailAccount = await getEmailAccountWithAi({ emailAccountId: context.emailAccountId });
+                if (!emailAccount || !emailAccount.account?.provider) {
+                    return { success: false, error: "Email account not found" };
+                }
                 const isReply = type === "reply";
 
                 if (isReply && parentId && providers.email) {
                     try {
-                        const emailAccount = await getEmailAccountWithAi({ emailAccountId: context.emailAccountId });
                         if (emailAccount) {
                             const thread = await providers.email.getThread(parentId);
                             if (thread) {
@@ -175,9 +179,14 @@ Automation: Create Rules & Knowledge supported.`,
                 const recipients = data.to?.join(", ") || "unknown";
                 const subjectLine = data.subject || "(no subject)";
 
-                // Construct Gmail/Outlook draft URL (Gmail format - Outlook would differ)
-                // Gmail: https://mail.google.com/mail/u/0/#drafts/[draftId]
-                const draftUrl = `https://mail.google.com/mail/u/0/#drafts/${draftResult.draftId}`;
+                const actions = [
+                    { label: "Send", style: "primary" as const, value: "send" },
+                ] as Array<{ label: string; style: "primary" | "danger"; value: string; url?: string }>;
+                if (isGoogleProvider(emailAccount.account.provider)) {
+                    const draftUrl = `https://mail.google.com/mail/u/0/#drafts/${draftResult.draftId}`;
+                    actions.push({ label: "Edit in Gmail", style: "primary" as const, value: "edit", url: draftUrl });
+                }
+                actions.push({ label: "Discard", style: "danger" as const, value: "discard" });
 
                 return {
                     success: true,
@@ -191,11 +200,7 @@ Automation: Create Rules & Knowledge supported.`,
                         emailAccountId: context.emailAccountId,
                         userId: context.userId,
                         summary: `Draft to ${recipients} - "${subjectLine}"`,
-                        actions: [
-                            { label: "Send", style: "primary" as const, value: "send" },
-                            { label: "Edit in Gmail", style: "primary" as const, value: "edit", url: draftUrl },
-                            { label: "Discard", style: "danger" as const, value: "discard" }
-                        ],
+                        actions,
                         preview: {
                             to: data.to || [],
                             cc: data.cc,
@@ -226,6 +231,10 @@ Automation: Create Rules & Knowledge supported.`,
                 const emailAccountFiling = await getEmailAccountWithAi({ emailAccountId: context.emailAccountId });
                 if (!emailAccountFiling) return { success: false, error: "Email account not found" };
 
+                if (!emailAccountFiling.filingEnabled || !emailAccountFiling.filingPrompt) {
+                    return { success: false, error: "Smart filing is not enabled for this account" };
+                }
+
                 // Fetch Message to get Attachment Metadata
                 // Provider.get returns ParsedMessage[]
                 const fileMessages = await providers.email.get([data.messageId]);
@@ -248,9 +257,9 @@ Automation: Create Rules & Knowledge supported.`,
                 const filingResult = await processAttachment({
                     emailAccount: {
                         ...emailAccountFiling,
-                        filingEnabled: true, // Force enable for agent tool usage? Or check settings?
-                        filingPrompt: "File relevant documents",
-                        email: emailAccountFiling.email
+                        filingEnabled: emailAccountFiling.filingEnabled,
+                        filingPrompt: emailAccountFiling.filingPrompt,
+                        email: emailAccountFiling.email,
                     },
                     message: fileMsg,
                     attachment,

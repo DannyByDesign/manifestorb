@@ -1,14 +1,14 @@
 
 import { NextResponse } from "next/server";
-import { type NextRequest } from "next/server";
 import { ensureEmailAccountsWatched } from "@/server/integrations/google/watch-manager";
 import { createScopedLogger } from "@/server/lib/logger";
 import { env } from "@/env";
+import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
 
 // Maximum duration for Vercel/Next.js functions
 export const maxDuration = 300; // 5 minutes
 
-export async function POST(req: NextRequest) {
+export const POST = verifySignatureAppRouter(async (req: Request) => {
     const logger = createScopedLogger("cron/watch-renewal");
 
     // 1. Verify Authentication
@@ -50,4 +50,4 @@ export async function POST(req: NextRequest) {
             { status: 500 }
         );
     }
-}
+});

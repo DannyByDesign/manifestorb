@@ -1,20 +1,22 @@
 
-import { type NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { executeScheduledAction } from "@/features/scheduled/executor";
 import { createScopedLogger } from "@/server/lib/logger";
-import { hasCronSecret } from "@/server/lib/cron";
 import prisma from "@/server/db/client";
 import { createEmailProvider } from "@/features/email/provider";
+import { env } from "@/env";
+import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
 
 export const maxDuration = 300; // 5 minutes
 
-export async function POST(req: NextRequest) {
+export const POST = verifySignatureAppRouter(async (req: Request) => {
     const logger = createScopedLogger("scheduled-actions/execute");
 
     // 1. Security Check (QStash or Cron Secret)
     // We reuse the cron secret check for now as QStash is configured to send it.
     // In strict prod, we should verify QStash signature.
-    if (!await hasCronSecret(req as any)) { // Casting because middleware types might mismatch next types slightly
+    const authHeader = req.headers.get("authorization");
+    if (!env.CRON_SECRET || authHeader !== `Bearer ${env.CRON_SECRET}`) {
         logger.warn("Unauthorized scheduled action attempt");
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -74,4 +76,4 @@ export async function POST(req: NextRequest) {
         logger.error("Failed to execute scheduled action route", { error });
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
-}
+});

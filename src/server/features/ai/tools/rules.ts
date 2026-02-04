@@ -107,7 +107,7 @@ export const rulesTool: ToolDefinition<any> = {
     action: actionSchema,
     payload: z.record(z.string(), z.any()).optional(),
   }),
-  securityLevel: "SAFE",
+  securityLevel: "CAUTION",
   execute: async ({ action, payload }, context) => {
     const emailAccount = await prisma.emailAccount.findUnique({
       where: { id: context.emailAccountId },
