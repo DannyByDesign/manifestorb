@@ -1,4 +1,8 @@
 ---
+alwaysApply: true
+---
+
+---
 description: "Project rules: Bun + TypeScript, Beads task tracking, official docs only, no any types"
 alwaysApply: true
 ---
