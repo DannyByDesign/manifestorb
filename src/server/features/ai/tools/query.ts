@@ -11,11 +11,12 @@ export const queryTool: ToolDefinition<any> = {
 Resources:
 - email: Search emails (supports Gmail/Outlook query syntax)
 - calendar: Search events by date range, attendees, title
+- task: Search tasks by title/description
 - automation: List rules and their configurations`,
 
     parameters: z.object({
         resource: z.enum([
-            "email", "calendar", "drive", "automation", "knowledge", "report", "patterns", "contacts"
+            "email", "calendar", "drive", "automation", "knowledge", "report", "patterns", "contacts", "task"
         ]),
         filter: z.object({
             query: z.string().optional(),      // Search query
@@ -109,9 +110,34 @@ Resources:
                     data: events.map((e: any) => ({
                         id: e.id,
                         title: e.title || "(No Title)",
-                        snippet: `Time: ${e.start} - ${e.end}. Attendees: ${e.attendees?.join(", ")}`,
-                        date: e.start,
+                        snippet: `Time: ${e.startTime} - ${e.endTime}. Attendees: ${e.attendees?.map((a: any) => a.email).join(", ")}`,
+                        date: e.startTime,
                         source: "calendar"
+                    }))
+                };
+
+            case "task":
+                const taskWhere: any = {};
+                if (filter?.query) {
+                    taskWhere.OR = [
+                        { title: { contains: filter.query, mode: "insensitive" } },
+                        { description: { contains: filter.query, mode: "insensitive" } },
+                    ];
+                }
+                const tasks = await prisma.task.findMany({
+                    where: taskWhere,
+                    orderBy: { updatedAt: "desc" },
+                    take: limit
+                });
+                return {
+                    success: true,
+                    data: tasks.map((t: any) => ({
+                        id: t.id,
+                        title: t.title,
+                        snippet: t.description || "",
+                        date: t.updatedAt,
+                        source: "task",
+                        data: t
                     }))
                 };
 

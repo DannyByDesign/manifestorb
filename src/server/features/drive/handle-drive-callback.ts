@@ -19,6 +19,7 @@ import { DRIVE_STATE_COOKIE_NAME } from "./constants";
 import prisma from "@/server/db/client";
 import { parseOAuthState } from "@/server/lib/oauth/state";
 import { prefixPath } from "@/server/lib/path";
+import { ensureGoogleDriveWatch } from "@/features/drive/sync/google";
 
 const driveOAuthStateSchema = z.object({
   emailAccountId: z.string().min(1).max(64),
@@ -122,6 +123,24 @@ export async function handleDriveCallback(
       provider: provider.name,
       connectionId: connection.id,
     });
+
+    if (provider.name === "google") {
+      await ensureGoogleDriveWatch({
+        connection: {
+          id: connection.id,
+          accessToken: connection.accessToken,
+          refreshToken: connection.refreshToken,
+          expiresAt: connection.expiresAt,
+          emailAccountId: connection.emailAccountId,
+          googleChannelId: connection.googleChannelId,
+          googleResourceId: connection.googleResourceId,
+          googleChannelToken: connection.googleChannelToken,
+          googleChannelExpiresAt: connection.googleChannelExpiresAt,
+          googleStartPageToken: connection.googleStartPageToken,
+        },
+        logger,
+      });
+    }
 
     // Cache the successful result (best-effort, don't fail if cache write fails)
     try {

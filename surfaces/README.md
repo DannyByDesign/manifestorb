@@ -94,8 +94,7 @@ bun run dev
 
 ## Interactive Elements
 
-When Core returns an `InteractivePayload` (e.g. Approval Request), the Sidecar renders platform-specific buttons.
-Clicking a button triggers a callback which the Sidecar routes to `POST /api/approvals/:id/(approve|deny)` on the Core.
+When Core returns an `InteractivePayload` (e.g. draft created, approval request), the Sidecar renders platform-specific buttons. Approval actions use **secure signed action tokens** (Core generates tokenized approval links); the Sidecar or user follows the link, and Core verifies the token before executing (e.g. approve/deny, send email, triage action).
     
 ## Memory & Context
 

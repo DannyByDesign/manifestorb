@@ -1,0 +1,9 @@
+-- Add task-related action types and payload fields
+
+ALTER TYPE "ActionType" ADD VALUE IF NOT EXISTS 'SET_TASK_PREFERENCES';
+ALTER TYPE "ActionType" ADD VALUE IF NOT EXISTS 'CREATE_TASK';
+ALTER TYPE "ActionType" ADD VALUE IF NOT EXISTS 'CREATE_CALENDAR_EVENT';
+
+ALTER TABLE "Action" ADD COLUMN "payload" JSONB;
+ALTER TABLE "ExecutedAction" ADD COLUMN "payload" JSONB;
+ALTER TABLE "ScheduledAction" ADD COLUMN "payload" JSONB;

@@ -275,21 +275,7 @@ if (hasAutomationRules && hasAiAccess) {
 ```
 
 ### AI Agent Tools
-```typescript
-// features/ai/rule-tools.ts
-export function createRuleManagementTools(options) {
-  return {
-    getUserRulesAndSettings,
-    getLearnedPatterns,
-    createRule,
-    updateRuleConditions,
-    updateRuleActions,
-    updateLearnedPatterns,
-    updateAbout,
-    addToKnowledgeBase,
-  };
-}
-```
+Rule management is exposed as a **single polymorphic `rules` tool** in `features/ai/tools/rules.ts` (list/create/update/delete/enable/disable). The same behavior is available on web-chat and surfaces. Rules portal APIs: `GET/POST /api/rules`, `GET/PATCH/DELETE /api/rules/[id]`. Web-chat wiring: `features/ai/rule-tools.ts`.
 
 ### Server Actions
 ```typescript

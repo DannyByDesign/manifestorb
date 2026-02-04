@@ -1,5 +1,5 @@
 
-import { InboundMessage, OutboundMessage } from "./types";
+import { InboundMessage, OutboundMessage, type InteractivePayload } from "./types";
 import { createScopedLogger } from "@/server/lib/logger";
 import prisma from "@/server/db/client";
 import { createGenerateText } from "@/server/lib/llms";
@@ -7,8 +7,96 @@ import { convertToCoreMessages, streamText } from "ai";
 import { getModel } from "@/server/lib/llms/model";
 import { createHash } from "crypto";
 import { env } from "@/env";
+import { resolveAmbiguousTimeRequestById } from "@/features/calendar/ambiguous-time";
+import { createApprovalActionToken } from "@/features/approvals/action-token";
 
 const logger = createScopedLogger("ChannelRouter");
+
+function buildTimeRangeFromChanges(changes?: Record<string, any>): string | undefined {
+    if (!changes) return undefined;
+    const start = changes.start || changes.scheduledStart || changes.startDate;
+    const end = changes.end || changes.scheduledEnd;
+    const due = changes.dueDate;
+
+    if (start && end) {
+        return `${start} → ${end}`;
+    }
+    if (start) {
+        return `starting ${start}`;
+    }
+    if (due) {
+        return `due ${due}`;
+    }
+    return undefined;
+}
+
+function buildApprovalInteractivePayload(params: {
+    approval: any;
+    baseUrl: string;
+}): InteractivePayload {
+    const { approval, baseUrl } = params;
+    const payload = approval?.requestPayload as Record<string, any> | undefined;
+    const toolName = payload?.tool;
+    const args = payload?.args || {};
+    const resource = args?.resource;
+    const changes = args?.changes || {};
+
+    let approveUrl = `${baseUrl}/approvals/${approval.id}`;
+    let denyUrl = `${baseUrl}/approvals/${approval.id}/deny`;
+    try {
+        const approveToken = createApprovalActionToken({
+            approvalId: approval.id,
+            action: "approve"
+        });
+        const denyToken = createApprovalActionToken({
+            approvalId: approval.id,
+            action: "deny"
+        });
+        approveUrl = `${approveUrl}?token=${approveToken}`;
+        denyUrl = `${denyUrl}?token=${denyToken}`;
+    } catch (error) {
+        logger.warn("Failed to create approval action tokens", { error });
+    }
+
+    const approvalActions = [
+        { label: "Approve", style: "primary" as const, value: "approve", url: approveUrl },
+        { label: "Deny", style: "danger" as const, value: "deny", url: denyUrl },
+    ];
+
+    if (
+        payload?.actionType === "tool_execution" &&
+        (toolName === "modify" || toolName === "delete") &&
+        (resource === "calendar" || resource === "task")
+    ) {
+        const action = toolName === "delete" ? "delete" : "modify";
+        const title = changes.title || changes.subject || changes.name || changes.summary;
+        const timeRange = buildTimeRangeFromChanges(changes);
+        const itemLabel = resource === "calendar" ? "calendar event" : "task";
+        const subject = title ? `“${title}”` : `this ${itemLabel}`;
+        const verb = action === "delete" ? "delete" : "update";
+        const summary = `Want me to ${verb} ${subject}${timeRange ? ` (${timeRange})` : ""}?`;
+
+        return {
+            type: "action_request",
+            approvalId: approval.id,
+            summary,
+            actions: approvalActions,
+            context: {
+                resource,
+                action,
+                title,
+                timeRange
+            }
+        };
+    }
+
+    return {
+        type: "approval_request",
+        approvalId: approval.id,
+        summary: "Want me to proceed with that?",
+        actions: approvalActions
+    };
+}
 
 export class ChannelRouter {
 
@@ -97,6 +185,43 @@ export class ChannelRouter {
                 targetChannelId: message.context.channelId,
                 content: "Your account is linked, but you haven't connected a Gmail/Outlook account yet.\n\nPlease go to the Amodel Web App to connect your email."
             }];
+        }
+
+        const trimmed = message.content.trim().toLowerCase();
+        if (trimmed === "earlier" || trimmed === "later") {
+            const pendingRequests = await prisma.approvalRequest.findMany({
+                where: {
+                    userId: user.id,
+                    status: "PENDING",
+                    expiresAt: { gt: new Date() },
+                },
+                orderBy: { createdAt: "desc" },
+                take: 5,
+            });
+            const ambiguousRequest = pendingRequests.find((req) => {
+                const payload = req.requestPayload as any;
+                return payload?.actionType === "ambiguous_time";
+            });
+
+            if (ambiguousRequest) {
+                const result = await resolveAmbiguousTimeRequestById({
+                    requestId: ambiguousRequest.id,
+                    choice: trimmed as "earlier" | "later",
+                    userId: user.id,
+                });
+
+                if (result.ok) {
+                    return [{
+                        targetChannelId: message.context.channelId,
+                        content: `Got it — using the ${trimmed} time. ✅`
+                    }];
+                }
+
+                return [{
+                    targetChannelId: message.context.channelId,
+                    content: "Sorry, I couldn't resolve that time. Please try again."
+                }];
+            }
         }
 
         const threadId = (message.context as any).threadId || null;
@@ -224,15 +349,10 @@ export class ChannelRouter {
                 const approval = approvals[0]; // Just show the first one for simplicity
                 const { env } = await import("@/env");
 
-                outbound.interactive = {
-                    type: "approval_request",
-                    approvalId: approval.id,
-                    summary: "Approval Requested",
-                    actions: [
-                        { label: "Approve", style: "primary", value: "approve", url: `${env.NEXT_PUBLIC_BASE_URL}/approvals/${approval.id}` },
-                        { label: "Deny", style: "danger", value: "deny" }
-                    ]
-                };
+                outbound.interactive = buildApprovalInteractivePayload({
+                    approval,
+                    baseUrl: env.NEXT_PUBLIC_BASE_URL
+                });
             }
 
             return [outbound];

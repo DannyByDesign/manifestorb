@@ -15,6 +15,8 @@ import { extractEmailAddress } from "@/server/integrations/google";
 import { captureException } from "@/server/lib/error";
 import { ensureEmailSendingEnabled } from "@/server/lib/mail";
 import { getEmailAccountWithAi } from "@/server/lib/user/get";
+import { scheduleTasksForUser } from "@/features/calendar/scheduling/TaskSchedulingService";
+import { createCalendarProvider } from "@/features/ai/tools/providers/calendar";
 
 const MODULE = "ai-actions";
 
@@ -85,6 +87,12 @@ export const runActionFunction = async (options: {
       return notify_sender(opts);
     case ActionType.NOTIFY_USER:
       return notify_user(opts);
+    case ActionType.SET_TASK_PREFERENCES:
+      return set_task_preferences(opts);
+    case ActionType.CREATE_TASK:
+      return create_task(opts);
+    case ActionType.CREATE_CALENDAR_EVENT:
+      return create_calendar_event(opts);
     default:
       throw new Error(`Unknown action: ${action}`);
   }
@@ -472,6 +480,116 @@ const notify_user: ActionFunction<Record<string, unknown>> = async ({
       sampleRate: 0.1,
     });
   }
+};
+
+const set_task_preferences: ActionFunction<{ payload?: any }> = async ({
+  userId,
+  args,
+  logger,
+}) => {
+  const payload = args.payload;
+  if (!payload || typeof payload !== "object") {
+    logger.warn("Missing payload for set_task_preferences action");
+    return;
+  }
+
+  await prisma.taskPreference.upsert({
+    where: { userId },
+    update: payload,
+    create: { userId, ...payload },
+  });
+};
+
+const create_task: ActionFunction<{ payload?: any }> = async ({
+  userId,
+  emailAccountId,
+  args,
+  logger,
+}) => {
+  const payload = args.payload;
+  if (!payload || typeof payload !== "object") {
+    logger.warn("Missing payload for create_task action");
+    return;
+  }
+
+  const task = await prisma.task.create({
+    data: {
+      userId,
+      title: payload.title,
+      description: payload.description ?? null,
+      durationMinutes: payload.durationMinutes ?? null,
+      status: payload.status ?? "PENDING",
+      priority: payload.priority ?? "NONE",
+      energyLevel: payload.energyLevel ?? null,
+      preferredTime: payload.preferredTime ?? null,
+      dueDate: payload.dueDate ? new Date(payload.dueDate) : null,
+      startDate: payload.startDate ? new Date(payload.startDate) : null,
+      isAutoScheduled: payload.isAutoScheduled ?? true,
+      scheduleLocked: payload.scheduleLocked ?? false,
+      reschedulePolicy: payload.reschedulePolicy ?? "FLEXIBLE",
+    },
+  });
+
+  if (task.isAutoScheduled) {
+    try {
+      await scheduleTasksForUser({ userId, emailAccountId, source: "ai" });
+    } catch (error) {
+      logger.warn("Failed to schedule tasks after create_task action", { error });
+    }
+  }
+
+  return task;
+};
+
+const create_calendar_event: ActionFunction<{ payload?: any }> = async ({
+  userId,
+  emailAccountId,
+  args,
+  logger,
+}) => {
+  const payload = args.payload;
+  if (!payload || typeof payload !== "object") {
+    logger.warn("Missing payload for create_calendar_event action");
+    return;
+  }
+
+  if (!payload.start || !payload.end) {
+    logger.warn("Calendar event payload missing start/end", {
+      payload,
+    });
+    return;
+  }
+
+  const calendarProvider = await createCalendarProvider(
+    { id: emailAccountId },
+    userId,
+    logger,
+  );
+
+  const event = await calendarProvider.createEvent({
+    calendarId: payload.calendarId,
+    input: {
+      title: payload.title,
+      description: payload.description,
+      start: new Date(payload.start),
+      end: new Date(payload.end),
+      allDay: payload.allDay,
+      isRecurring: payload.isRecurring,
+      recurrenceRule: payload.recurrenceRule,
+      timeZone: payload.timeZone,
+      location: payload.location,
+    },
+  });
+
+  try {
+    await scheduleTasksForUser({ userId, emailAccountId, source: "ai" });
+  } catch (error) {
+    logger.warn("Failed to schedule tasks after create_calendar_event action", {
+      error,
+    });
+  }
+
+  return event;
 };
 
 async function lazyUpdateActionLabelId({

@@ -2,6 +2,7 @@
 import { type Logger } from "@/server/lib/logger";
 import prisma from "@/server/db/client";
 import { type Rule, type Knowledge } from "@/generated/prisma/client";
+import { ActionType } from "@/generated/prisma/enums";
 import { ONBOARDING_PROCESS_EMAILS_COUNT } from "@/server/lib/config";
 import { bulkProcessInboxEmails } from "@/features/rules/ai/bulk-process-emails";
 import { createEmailProvider as createServiceEmailProvider } from "@/features/email/provider";
@@ -17,6 +18,7 @@ export interface AutomationProvider {
     createRule(data: any): Promise<Rule>;
     updateRule(id: string, data: any): Promise<Rule>;
     deleteRule(id: string): Promise<void>;
+    deleteTemporaryRulesByName(name: string): Promise<void>;
 
     listKnowledge(): Promise<Knowledge[]>;
     createKnowledge(data: { title: string; content: string }): Promise<Knowledge>;
@@ -81,11 +83,32 @@ export async function createAutomationProvider(
             }
             if (validated.instructions) instructions = validated.instructions; // Top level override
 
+            const preferencePayloads = validated.actions
+                .filter((action) => action.type === ActionType.SET_TASK_PREFERENCES)
+                .map((action) => action.payload)
+                .filter(Boolean);
+            if (preferencePayloads.length > 0 && user) {
+                const merged = preferencePayloads.reduce((acc: any, payload: any) => {
+                    return { ...acc, ...payload };
+                }, {});
+                await prisma.taskPreference.upsert({
+                    where: { userId: user.id },
+                    update: merged,
+                    create: { userId: user.id, ...merged }
+                });
+            }
+
+            const ruleActions = validated.actions.filter(
+                (action) => action.type !== ActionType.SET_TASK_PREFERENCES
+            );
+
             const rule = await prisma.rule.create({
                 data: {
                     emailAccountId,
                     name: validated.name,
                     enabled: true,
+                    isTemporary: Boolean(validated.expiresAt),
+                    expiresAt: validated.expiresAt ? new Date(validated.expiresAt) : null,
                     instructions,
                     runOnThreads: validated.runOnThreads ?? true,
                     // Map flat fields
@@ -94,7 +117,7 @@ export async function createAutomationProvider(
                     subject,
                     body,
                     actions: {
-                        create: validated.actions.map((a) => ({
+                        create: ruleActions.map((a) => ({
                             type: a.type,
                             to: a.to?.value,
                             cc: a.cc?.value,
@@ -105,6 +128,7 @@ export async function createAutomationProvider(
                             labelId: a.labelId?.value,
                             delayInMinutes: a.delayInMinutes,
                             url: a.url?.value,
+                            payload: a.payload ?? null,
                         }))
                     }
                 }
@@ -132,13 +156,26 @@ export async function createAutomationProvider(
             // Just enabling Prisma update for now
             return prisma.rule.update({
                 where: { id, emailAccountId },
-                data: data
+                data: {
+                    ...data,
+                    ...(data.expiresAt !== undefined && {
+                        expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
+                        isTemporary: Boolean(data.expiresAt),
+                    }),
+                }
             });
         },
 
         async deleteRule(id: string) {
             await prisma.rule.delete({
                 where: { id, emailAccountId }
+            });
+        },
+
+        async deleteTemporaryRulesByName(name: string) {
+            await prisma.rule.updateMany({
+                where: { emailAccountId, name, isTemporary: true },
+                data: { enabled: false }
             });
         },
 

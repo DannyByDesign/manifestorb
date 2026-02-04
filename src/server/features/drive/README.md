@@ -1,8 +1,10 @@
-# Drive Utilities (`src/server/utils/drive`)
+# Drive Feature (`src/server/features/drive`)
 
-Helpers for managing file attachments and cloud storage.
+Drive integration: providers (Google/Microsoft), watch/webhooks, renewal cron, delete file/folder, and document filing. **File download is explicitly excluded** from the AI tool surface.
 
 ## Key Files
--   **Attachment Parsing**: Converting MIME-encoded email attachments into blobs.
--   **Token Management**: Refreshing Google Drive specific tokens.
--   **Upload/Download**: Streams for moving data between Email Providers and Storage.
+-   **`providers/`** — Google and Microsoft Drive providers; `deleteFile`, `deleteFolder` (exposed via AI `delete` tool).
+-   **`filing-engine.ts`**, **`folder-utils.ts`** — Document filing and folder structure.
+-   **Watch/renewal** — Drive watch and renewal cron are handled by the main app (`app/api/google/drive/watch/*`, `app/api/google/drive/watch/renew` with CRON_SECRET).
+-   **Token management** — `providers/google-token.ts`, `providers/microsoft-token.ts`.
+-   **Attachment/upload** — Integration with email attachments and storage (no download from Drive via tools).

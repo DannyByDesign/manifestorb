@@ -8,6 +8,9 @@ import { updateThreadTrackers } from "@/features/reply-tracker/handle-conversati
 import { ThreadTrackerType } from "@/generated/prisma/client";
 import { getEmailAccountWithAi } from "@/server/lib/user/get";
 import { internalDateToDate } from "@/server/lib/date";
+import { scheduleTasksForUser } from "@/features/calendar/scheduling/TaskSchedulingService";
+import { isAmbiguousLocalTime, resolveTimeZoneOrUtc } from "@/features/calendar/scheduling/date-utils";
+import { createHash } from "crypto";
 
 const approvalService = new ApprovalService(prisma);
 
@@ -27,17 +30,25 @@ Email changes:
 - followUp: "enable" | "disable" (mark thread for follow-up detection)
 
 Calendar changes:
-- Not yet implemented`,
+- title, description, location, start, end, allDay, isRecurring, recurrenceRule, timeZone
+- mode: "single" | "series"
+- calendarId (optional)
+
+Task changes:
+- title, description, durationMinutes, status, priority, energyLevel, preferredTime
+- dueDate, startDate, scheduledStart, scheduledEnd
+- isAutoScheduled, scheduleLocked, reschedulePolicy
+- scheduleNow: true (trigger scheduling run)`,
 
     parameters: z.object({
         resource: z.enum([
-            "email", "calendar", "automation", "preferences", "approval", "drive"
+            "email", "calendar", "automation", "preferences", "approval", "drive", "task"
         ]),
         ids: z.array(z.string()).max(50).optional(),
         changes: z.record(z.string(), z.any()),
     }),
 
-    execute: async ({ resource, ids, changes }, { emailAccountId, logger, providers }) => {
+    execute: async ({ resource, ids, changes }, { emailAccountId, logger, providers, userId }) => {
         switch (resource) {
             case "email":
                 if (!ids || ids.length === 0) return { success: false, error: "No IDs provided" };
@@ -250,15 +261,194 @@ Calendar changes:
 
                 return { success: true, data: approvalResults };
 
+            case "task": {
+                if (changes.scheduleNow === true) {
+                    const scheduled = await scheduleTasksForUser({
+                        userId,
+                        emailAccountId,
+                        source: "ai",
+                    });
+                    return { success: true, data: scheduled };
+                }
+
+                if (!ids || ids.length === 0) {
+                    return { success: false, error: "No Task IDs provided" };
+                }
+
+                const updateData: any = {
+                    title: typeof changes.title === "string" ? changes.title : undefined,
+                    description: typeof changes.description === "string" ? changes.description : undefined,
+                    durationMinutes: typeof changes.durationMinutes === "number" ? changes.durationMinutes : undefined,
+                    status: typeof changes.status === "string" ? changes.status : undefined,
+                    priority: typeof changes.priority === "string" ? changes.priority : undefined,
+                    energyLevel: typeof changes.energyLevel === "string" ? changes.energyLevel : undefined,
+                    preferredTime: typeof changes.preferredTime === "string" ? changes.preferredTime : undefined,
+                    dueDate: typeof changes.dueDate === "string" ? new Date(changes.dueDate) : undefined,
+                    startDate: typeof changes.startDate === "string" ? new Date(changes.startDate) : undefined,
+                    isAutoScheduled: typeof changes.isAutoScheduled === "boolean" ? changes.isAutoScheduled : undefined,
+                    scheduleLocked: typeof changes.scheduleLocked === "boolean" ? changes.scheduleLocked : undefined,
+                    reschedulePolicy: typeof changes.reschedulePolicy === "string" ? changes.reschedulePolicy : undefined,
+                    scheduledStart: typeof changes.scheduledStart === "string" ? new Date(changes.scheduledStart) : undefined,
+                    scheduledEnd: typeof changes.scheduledEnd === "string" ? new Date(changes.scheduledEnd) : undefined,
+                };
+
+                const updated = await Promise.all(ids.map((id: string) =>
+                    prisma.task.update({
+                        where: { id },
+                        data: updateData
+                    })
+                ));
+
+                return { success: true, data: updated };
+            }
+
             case "calendar":
-                return { success: false, error: "Calendar modify not implemented" };
+                if (!ids || ids.length === 0) return { success: false, error: "No IDs provided" };
+                if (!providers.calendar) {
+                    return { success: false, error: "Calendar provider not available" };
+                }
+
+                const calendarId = typeof changes.calendarId === "string" ? changes.calendarId : undefined;
+                const mode = changes.mode === "single" || changes.mode === "series" ? changes.mode : undefined;
+                const start = typeof changes.start === "string" ? new Date(changes.start) : undefined;
+                const end = typeof changes.end === "string" ? new Date(changes.end) : undefined;
+                const timeZoneInput = typeof changes.timeZone === "string" ? changes.timeZone : undefined;
+                const timeZoneResult = resolveTimeZoneOrUtc(timeZoneInput);
+                const ambiguityResolved = changes.ambiguityResolved === true;
+
+                if (timeZoneInput && timeZoneResult.isFallback) {
+                    logger.warn("Invalid time zone for calendar update; falling back to UTC", {
+                        originalTimeZone: timeZoneInput
+                    });
+                }
+
+                if (!ambiguityResolved && timeZoneInput && start && isAmbiguousLocalTime(start, timeZoneResult.timeZone)) {
+                    const durationMs = end ? end.getTime() - start.getTime() : undefined;
+                    const earlierStartUtc = (await import("date-fns-tz")).fromZonedTime(start, timeZoneResult.timeZone);
+                    const laterStartUtc = new Date(earlierStartUtc.getTime() + 60 * 60 * 1000);
+                    const earlierEndUtc = durationMs ? new Date(earlierStartUtc.getTime() + durationMs) : undefined;
+                    const laterEndUtc = durationMs ? new Date(laterStartUtc.getTime() + durationMs) : undefined;
+
+                    const idempotencyKey = createHash("sha256")
+                        .update(`ambiguous-modify:${userId}:${start.toISOString()}:${end?.toISOString()}:${timeZoneResult.timeZone}`)
+                        .digest("hex");
+
+                    const request = await approvalService.createRequest({
+                        userId,
+                        provider: "system",
+                        externalContext: { source: "ambiguous_time" },
+                        requestPayload: {
+                            actionType: "ambiguous_time",
+                            tool: "modify",
+                            args: { resource, ids, changes },
+                            options: {
+                                earlier: {
+                                    start: earlierStartUtc.toISOString(),
+                                    end: earlierEndUtc?.toISOString()
+                                },
+                                later: {
+                                    start: laterStartUtc.toISOString(),
+                                    end: laterEndUtc?.toISOString()
+                                },
+                                timeZone: timeZoneResult.timeZone
+                            },
+                            message: "That time happens twice because of daylight saving. Which one did you mean?"
+                        },
+                        idempotencyKey,
+                        expiresInSeconds: 3600
+                    } as any);
+
+                    return {
+                        success: true,
+                        data: { status: "ambiguous_time" },
+                        interactive: {
+                            type: "ambiguous_time" as const,
+                            ambiguousRequestId: request.id,
+                            summary: "That time happens twice because of daylight saving. Which one did you mean?",
+                            actions: [
+                                { label: "Earlier", style: "primary" as const, value: "earlier" },
+                                { label: "Later", style: "primary" as const, value: "later" }
+                            ]
+                        }
+                    };
+                }
+
+                if (!ambiguityResolved && timeZoneInput && end && isAmbiguousLocalTime(end, timeZoneResult.timeZone)) {
+                    const earlierEndUtc = (await import("date-fns-tz")).fromZonedTime(end, timeZoneResult.timeZone);
+                    const laterEndUtc = new Date(earlierEndUtc.getTime() + 60 * 60 * 1000);
+
+                    const idempotencyKey = createHash("sha256")
+                        .update(`ambiguous-modify-end:${userId}:${start?.toISOString()}:${end.toISOString()}:${timeZoneResult.timeZone}`)
+                        .digest("hex");
+
+                    const request = await approvalService.createRequest({
+                        userId,
+                        provider: "system",
+                        externalContext: { source: "ambiguous_time" },
+                        requestPayload: {
+                            actionType: "ambiguous_time",
+                            tool: "modify",
+                            args: { resource, ids, changes },
+                            options: {
+                                earlier: {
+                                    start: start?.toISOString(),
+                                    end: earlierEndUtc.toISOString()
+                                },
+                                later: {
+                                    start: start?.toISOString(),
+                                    end: laterEndUtc.toISOString()
+                                },
+                                timeZone: timeZoneResult.timeZone
+                            },
+                            message: "That time happens twice because of daylight saving. Which one did you mean?"
+                        },
+                        idempotencyKey,
+                        expiresInSeconds: 3600
+                    } as any);
+
+                    return {
+                        success: true,
+                        data: { status: "ambiguous_time" },
+                        interactive: {
+                            type: "ambiguous_time" as const,
+                            ambiguousRequestId: request.id,
+                            summary: "That time happens twice because of daylight saving. Which one did you mean?",
+                            actions: [
+                                { label: "Earlier", style: "primary" as const, value: "earlier" },
+                                { label: "Later", style: "primary" as const, value: "later" }
+                            ]
+                        }
+                    };
+                }
+
+                const results = await Promise.all(ids.map((id: string) =>
+                    providers.calendar.updateEvent({
+                        calendarId,
+                        eventId: id,
+                        input: {
+                            title: typeof changes.title === "string" ? changes.title : undefined,
+                            description: typeof changes.description === "string" ? changes.description : undefined,
+                            location: typeof changes.location === "string" ? changes.location : undefined,
+                            start,
+                            end,
+                            allDay: typeof changes.allDay === "boolean" ? changes.allDay : undefined,
+                            isRecurring: typeof changes.isRecurring === "boolean" ? changes.isRecurring : undefined,
+                            recurrenceRule: typeof changes.recurrenceRule === "string" ? changes.recurrenceRule : undefined,
+                            timeZone: timeZoneInput ? timeZoneResult.timeZone : undefined,
+                            mode
+                        }
+                    })
+                ));
+
+                await scheduleTasksForUser({ userId, emailAccountId, source: "ai" });
+                return { success: true, data: results };
 
             case "automation":
                 if (!ids || ids.length === 0) return { success: false, error: "No Rule ID provided" };
-                const results = await Promise.all(ids.map((id: string) =>
+                const automationResults = await Promise.all(ids.map((id: string) =>
                     providers.automation.updateRule(id, changes)
                 ));
-                return { success: true, data: results };
+                return { success: true, data: automationResults };
 
             case "drive":
                 if (!providers.drive) {

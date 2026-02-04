@@ -31,12 +31,14 @@ Next-safe-action handlers for authenticated mutations.
 Self-contained domain logic organized by feature.
 - **`ai/`** - AI orchestration, tools, and security
 - **`web-chat/`** - Web UI chat assistant (rule management focus)
-- **`surfaces/`** - Multi-channel agent (Slack/Discord/Telegram)
+- **`channels/`** - Multi-channel executor (Slack/Discord/Telegram); one-shot agent runtime
 - **`email/`** - Email provider abstraction
 - **`rules/`** - Automation rule engine
-- **`approvals/`** - Human-in-the-loop workflow
-- **`calendar/`**, **`drive/`** - Integrations
-- **`notifications/`** - Push notifications
+- **`approvals/`** - Human-in-the-loop workflow; secure action tokens for approval links
+- **`calendar/`**, **`drive/`** - Calendar/Drive (watch, renewal cron, conflict resolution; drive delete file/folder)
+- **`tasks/`** - Task triage, panel API, approval-backed actions
+- **`notifications/`** - In-app and push notifications
+- **`memory/`** - RLM memory, embeddings, summaries
 - And more...
 
 ### 3. `integrations/` (External API Clients)
@@ -99,4 +101,4 @@ import { createRuleAction } from "@/actions/rule";
 5. Add server actions to `actions/[feature-name].ts`
 6. Add API routes to `app/api/[feature-name]/`
 
-See `docs/ARCHITECTURE.md` for the full architecture guide.
+See root `ARCHITECTURE.md` for the full architecture guide.

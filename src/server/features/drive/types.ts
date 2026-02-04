@@ -37,9 +37,7 @@ export interface UploadFileParams {
  * Abstraction for cloud drive operations (Google Drive / OneDrive)
  * Follows the same pattern as EmailProvider.
  *
- * Note: We intentionally don't include delete operations to minimize
- * permissions requested from users. "Undo" is handled by marking
- * the filing as rejected in our database - the file stays in their drive.
+ * Note: Delete operations are supported, but should be treated as high-risk.
  */
 export interface DriveProvider {
   readonly name: DriveProviderType;
@@ -91,6 +89,16 @@ export interface DriveProvider {
    * Move a file to a different folder
    */
   moveFile(fileId: string, targetFolderId: string): Promise<DriveFile>;
+
+  /**
+   * Delete a file by ID
+   */
+  deleteFile(fileId: string): Promise<void>;
+
+  /**
+   * Delete a folder by ID
+   */
+  deleteFolder(folderId: string): Promise<void>;
 
   // -------------------------------------------------------------------------
   // Token Management

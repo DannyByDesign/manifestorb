@@ -21,15 +21,24 @@ export interface DraftPreview {
     body: string;
 }
 
+export interface ActionRequestContext {
+    resource: "calendar" | "task";
+    action: "create" | "modify" | "delete" | "reschedule";
+    title?: string;
+    timeRange?: string;
+}
+
 export interface InteractivePayload {
-    type: "approval_request" | "draft_created";
+    type: "approval_request" | "draft_created" | "action_request" | "ambiguous_time";
     approvalId?: string;  // For approval_request
     draftId?: string;     // For draft_created
     emailAccountId?: string; // For draft_created - needed to identify account
     userId?: string;      // For draft_created - needed for auth
+    ambiguousRequestId?: string; // For ambiguous_time
     summary: string;
     actions: InteractiveAction[];
     preview?: DraftPreview; // For draft_created - full draft content for review
+    context?: ActionRequestContext; // For action_request - calendar/task context
 }
 
 export async function forwardToBrain(params: {

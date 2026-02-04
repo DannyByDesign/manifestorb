@@ -29,6 +29,9 @@ const zodActionType = z.enum([
   ActionType.MOVE_FOLDER,
   ActionType.NOTIFY_SENDER,
   ActionType.NOTIFY_USER,
+  ActionType.SET_TASK_PREFERENCES,
+  ActionType.CREATE_TASK,
+  ActionType.CREATE_CALENDAR_EVENT,
 ]);
 
 const zodConditionType = z.enum([ConditionType.AI, ConditionType.STATIC]);
@@ -89,6 +92,7 @@ const zodAction = z
     folderName: zodField,
     folderId: zodField,
     delayInMinutes: delayInMinutesSchema,
+    payload: z.any().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.type === ActionType.LABEL) {
@@ -144,6 +148,7 @@ export const createRuleBody = z.object({
   id: z.string().optional(),
   name: z.string().trim().min(1, "Please enter a name"),
   instructions: z.string().nullish(),
+  expiresAt: z.string().datetime().nullish(),
   groupId: z.string().nullish(),
   runOnThreads: z.boolean().nullish(),
   digest: z.boolean().nullish(),
@@ -294,6 +299,7 @@ const importedAction = z
     folderName: z.string().nullish(),
     url: z.string().nullish(),
     delayInMinutes: delayInMinutesSchema,
+    payload: z.any().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.type === ActionType.LABEL) {

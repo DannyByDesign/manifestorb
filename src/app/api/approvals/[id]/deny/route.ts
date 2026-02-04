@@ -4,17 +4,17 @@ import { ApprovalService } from "@/features/approvals/service";
 import prisma from "@/server/db/client";
 import { auth } from "@/server/auth";
 import { createScopedLogger } from "@/server/lib/logger";
+import { verifyApprovalActionToken } from "@/features/approvals/action-token";
 
 const logger = createScopedLogger("approvals/deny");
 
 export async function POST(req: NextRequest, context: { params: Promise<{ id: string }> }) {
     const { id } = await context.params;
 
-    // Authentication check
     const session = await auth();
-    if (!session?.user?.id) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const token =
+        req.nextUrl.searchParams.get("token") ||
+        req.headers.get("x-approval-token");
 
     try {
         const body = await req.json();
@@ -31,7 +31,22 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
             return NextResponse.json({ error: "Approval request not found" }, { status: 404 });
         }
 
-        if (approvalRequest.userId !== session.user.id) {
+        const tokenPayload = token ? verifyApprovalActionToken(token) : null;
+        if (tokenPayload && tokenPayload.action !== "deny") {
+            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        }
+
+        if (tokenPayload && tokenPayload.approvalId !== id) {
+            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        }
+
+        const actingUserId = session?.user?.id || approvalRequest.userId;
+
+        if (!session?.user?.id && !tokenPayload) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
+        if (session?.user?.id && approvalRequest.userId !== session.user.id) {
             logger.warn("User attempted to deny another user's request", {
                 requestUserId: approvalRequest.userId,
                 sessionUserId: session.user.id,
@@ -42,7 +57,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
 
         const result = await service.decideRequest({
             approvalRequestId: id,
-            decidedByUserId: session.user.id, // Use authenticated user ID, not body.userId
+            decidedByUserId: actingUserId, // Use authenticated user ID, not body.userId
             decision: "DENY",
             reason: body.reason
         });

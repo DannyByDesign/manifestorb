@@ -27,5 +27,6 @@ export type ActionItem = {
   url?: ExecutedAction["url"];
   folderName?: ExecutedAction["folderName"];
   folderId?: ExecutedAction["folderId"];
+  payload?: ExecutedAction["payload"];
   delayInMinutes?: number | null;
 };

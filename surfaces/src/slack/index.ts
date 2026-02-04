@@ -58,6 +58,32 @@ export async function startSlack() {
         }
     });
 
+    // Handle Ambiguous Time Choices
+    app.action(/ambiguous_earlier|ambiguous_later/, async ({ body, action, ack, say }) => {
+        await ack();
+
+        if (action.type !== 'button') return;
+        const actionId = ("action_id" in action) ? action.action_id : undefined;
+        if (!actionId) return;
+        const requestId = action.value;
+        const choice = actionId === "ambiguous_earlier" ? "earlier" : "later";
+
+        const response = await fetch(`${CORE_BASE_URL}/api/ambiguous-time/${requestId}/resolve`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "x-surfaces-secret": SHARED_SECRET,
+            },
+            body: JSON.stringify({ choice })
+        });
+
+        if (response.ok) {
+            await say?.(`Got it — using the ${choice} time. ✅`);
+        } else {
+            await say?.(`Failed to resolve that time. ${response.statusText}`);
+        }
+    });
+
     // Handle Draft Send/Discard
     app.action(/draft_send|draft_discard/, async ({ body, action, ack, say }) => {
         await ack();
@@ -165,7 +191,10 @@ export async function startSlack() {
                     // Build button elements based on interactive type
                     let buttonElements: any[];
                     
-                    if (interactive.type === "draft_created") {
+                    const isDraft = interactive.type === "draft_created";
+                    const isApprovalLike = interactive.type === "approval_request" || interactive.type === "action_request" || interactive.type === "ambiguous_time";
+
+                    if (isDraft) {
                         // Draft buttons - value includes all IDs needed
                         const buttonValue = `${interactive.draftId}:${interactive.emailAccountId}:${interactive.userId}`;
                         buttonElements = interactive.actions.map((action: InteractiveAction) => {
@@ -185,21 +214,34 @@ export async function startSlack() {
                                 action_id: `draft_${action.value}` // draft_send / draft_discard
                             };
                         });
+                    } else if (isApprovalLike) {
+                        // Approval/action request buttons
+                        buttonElements = interactive.actions.map((action: InteractiveAction) => {
+                            if (interactive.type === "ambiguous_time") {
+                                return {
+                                    type: "button",
+                                    text: { type: "plain_text", text: action.label },
+                                    style: "primary",
+                                    value: interactive.ambiguousRequestId,
+                                    action_id: `ambiguous_${action.value}` // ambiguous_earlier / ambiguous_later
+                                };
+                            }
+                            return {
+                                type: "button",
+                                text: { type: "plain_text", text: action.label },
+                                style: action.style === "danger" ? "danger" : "primary",
+                                value: interactive.approvalId,
+                                action_id: `${action.value}_request` // approve_request / deny_request
+                            };
+                        });
                     } else {
-                        // Approval buttons (existing logic)
-                        buttonElements = interactive.actions.map((action: InteractiveAction) => ({
-                            type: "button",
-                            text: { type: "plain_text", text: action.label },
-                            style: action.style === "danger" ? "danger" : "primary",
-                            value: interactive.approvalId,
-                            action_id: `${action.value}_request` // approve_request / deny_request
-                        }));
+                        buttonElements = [];
                     }
 
                     // Build blocks based on interactive type
                     let blocks: any[];
                     
-                    if (interactive.type === "draft_created" && interactive.preview) {
+                    if (isDraft && interactive.preview) {
                         // Rich draft preview with Block Kit
                         const preview = interactive.preview;
                         const bodySnippet = preview.body.length > 500 
@@ -242,7 +284,7 @@ export async function startSlack() {
                             }
                         );
                     } else {
-                        // Default layout for approvals or drafts without preview
+                        // Default layout for approvals/action requests or drafts without preview
                         blocks = [
                             {
                                 type: "section",

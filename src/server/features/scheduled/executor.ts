@@ -58,6 +58,7 @@ export async function executeScheduledAction(
       cc: scheduledAction.cc,
       bcc: scheduledAction.bcc,
       url: scheduledAction.url,
+      payload: scheduledAction.payload,
     };
 
     const executedAction = await executeDelayedAction({

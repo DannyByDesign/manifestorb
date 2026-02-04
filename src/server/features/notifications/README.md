@@ -31,6 +31,8 @@ The centralized system for all in-app and push notifications.
 
 ## Key Components
 
+**Actionable approvals** use **secure signed action tokens** (`features/approvals/action-token.ts`) for approval links (push/email); triage and send approvals are gated by these tokens.
+
 ### `create.ts` - Notification Factory
 Creates notifications and schedules the fallback worker.
 

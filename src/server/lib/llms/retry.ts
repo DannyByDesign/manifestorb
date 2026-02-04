@@ -1,4 +1,8 @@
-import "server-only";
+if (!process.env.VITEST && process.env.NODE_ENV !== "test") {
+  // Avoid server-only enforcement in test runs.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  require("server-only");
+}
 
 import pRetry from "p-retry";
 import { createScopedLogger } from "@/server/lib/logger";

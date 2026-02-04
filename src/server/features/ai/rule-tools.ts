@@ -214,6 +214,7 @@ export const createRuleTool = ({
                     webhookUrl: action.fields.webhookUrl ?? null,
                     cc: action.fields.cc ?? null,
                     bcc: action.fields.bcc ?? null,
+                    payload: action.fields.payload ?? null,
                     ...(isMicrosoftProvider(provider) && {
                       folderName: action.fields.folderName ?? null,
                     }),
@@ -392,6 +393,7 @@ export const updateRuleActionsTool = ({
               subject: true,
               url: true,
               folderName: true,
+              payload: true,
             },
           },
         },
@@ -416,6 +418,7 @@ export const updateRuleActionsTool = ({
           bcc: action.bcc,
           subject: action.subject,
           webhookUrl: action.url,
+          payload: action.payload,
           ...(isMicrosoftProvider(provider) && {
             folderName: action.folderName,
           }),
@@ -434,6 +437,7 @@ export const updateRuleActionsTool = ({
             subject: action.fields?.subject ?? null,
             content: action.fields?.content ?? null,
             webhookUrl: action.fields?.webhookUrl ?? null,
+            payload: action.fields?.payload ?? null,
             ...(isMicrosoftProvider(provider) && {
               folderName: action.fields?.folderName ?? null,
             }),

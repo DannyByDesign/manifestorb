@@ -85,6 +85,7 @@ export const env = createEnv({
     // Stripe
     STRIPE_SECRET_KEY: z.string().optional(),
     STRIPE_WEBHOOK_SECRET: z.string().optional(),
+    APPROVAL_ACTION_SECRET: z.string().optional(),
 
     API_KEY_SALT: z.string().optional(),
 
@@ -109,6 +110,7 @@ export const env = createEnv({
     USE_BACKUP_MODEL: z.coerce.boolean().optional().default(false),
     HEALTH_API_KEY: z.string().optional(),
     JOBS_SHARED_SECRET: z.string().optional(),
+    CALENDAR_ACTIONS_DRY_RUN: z.coerce.boolean().optional().default(false),
     SIDECAR_URL: z.string().url().optional(), // URL of the surfaces sidecar for background jobs
     SURFACES_API_URL: z.string().url().optional(), // URL of the surfaces sidecar for push notifications
     OAUTH_PROXY_URL: z.string().url().optional(),
@@ -175,6 +177,7 @@ export const env = createEnv({
     NEXT_PUBLIC_SMART_FILING_ENABLED: z.coerce.boolean().optional(),
     NEXT_PUBLIC_CLEANER_ENABLED: z.coerce.boolean().optional(),
     NEXT_PUBLIC_IS_RESEND_CONFIGURED: z.coerce.boolean().optional(),
+    NEXT_PUBLIC_CALENDAR_SCHEDULING_ENABLED: z.coerce.boolean().optional(),
   },
   // For Next.js >= 13.4.4, you only need to destructure client variables:
   experimental__runtimeEnv: {
@@ -223,6 +226,8 @@ export const env = createEnv({
     NEXT_PUBLIC_CLEANER_ENABLED: process.env.NEXT_PUBLIC_CLEANER_ENABLED,
     NEXT_PUBLIC_IS_RESEND_CONFIGURED:
       process.env.NEXT_PUBLIC_IS_RESEND_CONFIGURED,
+    NEXT_PUBLIC_CALENDAR_SCHEDULING_ENABLED:
+      process.env.NEXT_PUBLIC_CALENDAR_SCHEDULING_ENABLED,
   },
 });
 

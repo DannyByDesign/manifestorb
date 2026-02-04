@@ -79,6 +79,15 @@ export function ruleToText(rule: RuleWithActions): string {
           actions.push(`Move to folder "${action.folderName}"`);
         }
         break;
+      case ActionType.SET_TASK_PREFERENCES:
+        actions.push("Update task preferences");
+        break;
+      case ActionType.CREATE_TASK:
+        actions.push("Create a task");
+        break;
+      case ActionType.CREATE_CALENDAR_EVENT:
+        actions.push("Create a calendar event");
+        break;
     }
   });
 

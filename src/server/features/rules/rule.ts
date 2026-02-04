@@ -46,8 +46,10 @@ export async function createRule({
       systemType,
     });
 
+    const { filteredActions, preferencePayloads } =
+      splitTaskPreferenceActions(result.actions);
     const mappedActions = await mapActionFields(
-      result.actions,
+      filteredActions,
       provider,
       emailAccountId,
       logger,
@@ -58,6 +60,8 @@ export async function createRule({
         name: result.name,
         emailAccountId,
         systemType,
+        isTemporary: Boolean(result.expiresAt),
+        expiresAt: result.expiresAt ? new Date(result.expiresAt) : null,
         actions: { createMany: { data: mappedActions } },
         enabled: shouldEnable(
           result,
@@ -81,6 +85,14 @@ export async function createRule({
     });
 
     await createRuleHistory({ rule, triggerType: "created" });
+
+    if (preferencePayloads.length > 0) {
+      await applyTaskPreferencePayloads({
+        emailAccountId,
+        payloads: preferencePayloads,
+        logger,
+      });
+    }
 
     return rule;
   } catch (error) {
@@ -110,18 +122,25 @@ export async function updateRule({
       ruleId,
     });
 
+    const { filteredActions, preferencePayloads } =
+      splitTaskPreferenceActions(result.actions);
+
     const rule = await prisma.rule.update({
       where: { id: ruleId },
       data: {
         name: result.name,
         emailAccountId,
+        ...(result.expiresAt !== undefined && {
+          expiresAt: result.expiresAt ? new Date(result.expiresAt) : null,
+          isTemporary: Boolean(result.expiresAt),
+        }),
         // NOTE: this is safe for now as `Action` doesn't have relations
         // but if we add relations to `Action`, we would need to `update` here instead of `deleteMany` and `createMany` to avoid cascading deletes
         actions: {
           deleteMany: {},
           createMany: {
             data: await mapActionFields(
-              result.actions,
+              filteredActions,
               provider,
               emailAccountId,
               logger,
@@ -139,6 +158,14 @@ export async function updateRule({
     });
 
     await createRuleHistory({ rule, triggerType: "updated" });
+
+    if (preferencePayloads.length > 0) {
+      await applyTaskPreferencePayloads({
+        emailAccountId,
+        payloads: preferencePayloads,
+        logger,
+      });
+    }
 
     return rule;
   } catch (error) {
@@ -346,6 +373,7 @@ async function mapActionFields(
         subject: a.fields?.subject,
         content: a.fields?.content,
         url: a.fields?.webhookUrl,
+        payload: a.fields?.payload ?? null,
         ...(isMicrosoftProvider(provider) && {
           folderName: folderName ?? null,
           folderId,
@@ -356,4 +384,56 @@ async function mapActionFields(
   );
 
   return Promise.all(actionPromises);
+}
+
+function splitTaskPreferenceActions(
+  actions: CreateOrUpdateRuleSchema["actions"],
+) {
+  const preferencePayloads: unknown[] = [];
+  const filteredActions = actions.filter((action) => {
+    if (action.type !== ActionType.SET_TASK_PREFERENCES) {
+      return true;
+    }
+    const payload = action.fields?.payload ?? null;
+    if (payload) {
+      preferencePayloads.push(payload);
+    }
+    return false;
+  });
+
+  return { filteredActions, preferencePayloads };
+}
+
+async function applyTaskPreferencePayloads({
+  emailAccountId,
+  payloads,
+  logger,
+}: {
+  emailAccountId: string;
+  payloads: unknown[];
+  logger: Logger;
+}) {
+  if (!payloads.length) return;
+
+  const emailAccount = await prisma.emailAccount.findUnique({
+    where: { id: emailAccountId },
+    select: { userId: true },
+  });
+  if (!emailAccount) {
+    logger.warn("Email account not found for task preferences", { emailAccountId });
+    return;
+  }
+
+  const merged = payloads.reduce<Record<string, unknown>>((acc, payload) => {
+    if (payload && typeof payload === "object") {
+      return { ...acc, ...(payload as Record<string, unknown>) };
+    }
+    return acc;
+  }, {});
+
+  await prisma.taskPreference.upsert({
+    where: { userId: emailAccount.userId },
+    update: merged,
+    create: { userId: emailAccount.userId, ...merged },
+  });
 }

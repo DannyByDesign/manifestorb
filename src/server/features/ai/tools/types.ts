@@ -5,7 +5,7 @@ import { type CalendarProvider } from "./providers/calendar";
 import { type AutomationProvider } from "./providers/automation";
 import { type DriveProvider } from "./providers/drive";
 
-export type Resource = "email" | "calendar" | "drive" | "contacts" | "automation" | "knowledge" | "preferences" | "patterns" | "report" | "notification" | "approval" | "summary";
+export type Resource = "email" | "calendar" | "drive" | "contacts" | "automation" | "knowledge" | "preferences" | "patterns" | "report" | "notification" | "approval" | "summary" | "task";
 
 export interface Filter {
     query?: string;
@@ -48,15 +48,35 @@ export interface DraftPreview {
     body: string;
 }
 
+export interface ActionRequestContext {
+    resource: "calendar" | "task";
+    action: "create" | "modify" | "delete" | "reschedule";
+    title?: string;
+    timeRange?: string;
+}
+
 export interface InteractivePayload {
-    type: "approval_request" | "draft_created";
+    type: "approval_request" | "draft_created" | "action_request" | "ambiguous_time";
     approvalId?: string;
     draftId?: string;
     emailAccountId?: string;
     userId?: string;
+    ambiguousRequestId?: string;
     summary: string;
     actions: InteractiveAction[];
     preview?: DraftPreview;
+    context?: ActionRequestContext;
+}
+
+export interface AmbiguousTimePayload {
+    originalTool: "create" | "modify";
+    originalArgs: Record<string, any>;
+    options: {
+        earlier: { start: string; end?: string };
+        later: { start: string; end?: string };
+        timeZone: string;
+    };
+    message: string;
 }
 
 export interface ToolResult {

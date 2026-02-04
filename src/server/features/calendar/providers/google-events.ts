@@ -3,23 +3,39 @@ import { getCalendarClientWithRefresh } from "@/features/calendar/client";
 import type {
   CalendarEvent,
   CalendarEventProvider,
+  CalendarEventCreateInput,
+  CalendarEventDeleteOptions,
+  CalendarEventUpdateInput,
 } from "@/features/calendar/event-types";
 import type { Logger } from "@/server/lib/logger";
+import {
+  createGoogleEvent,
+  deleteGoogleEvent,
+  getGoogleEvent,
+  updateGoogleEvent,
+} from "@/server/integrations/google/calendar";
 
 export interface GoogleCalendarConnectionParams {
   accessToken: string | null;
   refreshToken: string | null;
   expiresAt: number | null;
   emailAccountId: string;
+  userId?: string;
+  timeZone?: string | null;
 }
 
 export class GoogleCalendarEventProvider implements CalendarEventProvider {
+  provider: "google" = "google";
   private readonly connection: GoogleCalendarConnectionParams;
   private readonly logger: Logger;
+  private readonly userId?: string;
+  private readonly timeZone?: string | null;
 
   constructor(connection: GoogleCalendarConnectionParams, logger: Logger) {
     this.connection = connection;
     this.logger = logger;
+    this.userId = connection.userId;
+    this.timeZone = connection.timeZone;
   }
 
   private async getClient(): Promise<calendar_v3.Calendar> {
@@ -71,15 +87,17 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
     timeMin = new Date(),
     timeMax,
     maxResults,
+    calendarId,
   }: {
     timeMin?: Date;
     timeMax?: Date;
     maxResults?: number;
+    calendarId?: string;
   }): Promise<CalendarEvent[]> {
     const client = await this.getClient();
 
     const response = await client.events.list({
-      calendarId: "primary",
+      calendarId: calendarId ?? "primary",
       timeMin: timeMin?.toISOString(),
       timeMax: timeMax?.toISOString(),
       maxResults: maxResults || 10,
@@ -92,18 +110,105 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
     return events.map((event) => this.parseEvent(event));
   }
 
-  async getEvent(eventId: string): Promise<CalendarEvent | null> {
-    const client = await this.getClient();
+  async getEvent(
+    eventId: string,
+    calendarId = "primary",
+  ): Promise<CalendarEvent | null> {
     try {
-      const response = await client.events.get({
-        calendarId: "primary",
+      const result = await getGoogleEvent(
+        {
+          accessToken: this.connection.accessToken,
+          refreshToken: this.connection.refreshToken,
+          expiresAt: this.connection.expiresAt,
+          emailAccountId: this.connection.emailAccountId,
+          userId: this.userId,
+          logger: this.logger,
+        },
+        calendarId,
         eventId,
-      });
-      return response.data ? this.parseEvent(response.data) : null;
+      );
+
+      const event = this.parseEvent(result.event);
+      const instances = result.instances?.map((instance) =>
+        this.parseEvent(instance),
+      );
+
+      return {
+        ...event,
+        instances,
+      };
     } catch (error) {
       this.logger.warn("Failed to fetch Google event", { eventId, error });
       return null;
     }
+  }
+
+  async createEvent(
+    calendarId: string,
+    input: CalendarEventCreateInput,
+  ): Promise<CalendarEvent> {
+    const event = await createGoogleEvent(
+      {
+        accessToken: this.connection.accessToken,
+        refreshToken: this.connection.refreshToken,
+        expiresAt: this.connection.expiresAt,
+        emailAccountId: this.connection.emailAccountId,
+        userId: this.userId,
+        logger: this.logger,
+      },
+      calendarId,
+      {
+        ...input,
+        timeZone: input.timeZone ?? this.timeZone ?? "UTC",
+      },
+    );
+
+    return this.parseEvent(event);
+  }
+
+  async updateEvent(
+    calendarId: string,
+    eventId: string,
+    input: CalendarEventUpdateInput,
+  ): Promise<CalendarEvent> {
+    const event = await updateGoogleEvent(
+      {
+        accessToken: this.connection.accessToken,
+        refreshToken: this.connection.refreshToken,
+        expiresAt: this.connection.expiresAt,
+        emailAccountId: this.connection.emailAccountId,
+        userId: this.userId,
+        logger: this.logger,
+      },
+      calendarId,
+      eventId,
+      {
+        ...input,
+        timeZone: input.timeZone ?? this.timeZone ?? "UTC",
+      },
+    );
+
+    return this.parseEvent(event);
+  }
+
+  async deleteEvent(
+    calendarId: string,
+    eventId: string,
+    options?: CalendarEventDeleteOptions,
+  ): Promise<void> {
+    await deleteGoogleEvent(
+      {
+        accessToken: this.connection.accessToken,
+        refreshToken: this.connection.refreshToken,
+        expiresAt: this.connection.expiresAt,
+        emailAccountId: this.connection.emailAccountId,
+        userId: this.userId,
+        logger: this.logger,
+      },
+      calendarId,
+      eventId,
+      options?.mode ?? "single",
+    );
   }
 
   private parseEvent(event: calendar_v3.Schema$Event) {

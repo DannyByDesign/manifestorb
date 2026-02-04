@@ -101,7 +101,7 @@ ${
     : ""
 }
 
-IMPORTANT: Our system can only perform email management actions (labeling, archiving, forwarding, drafting responses). We cannot add events to calendars or create todo list items. Do not suggest rules that include these actions.
+IMPORTANT: Our system can perform email actions and can also create tasks or calendar events when explicitly requested. Only suggest task/event rules if they clearly follow the user's intent (avoid speculative task/event creation).
 
 Your response should only include the list of general rules. Aim for 3-10 broadly applicable rules that would be useful for this user's email management.
 

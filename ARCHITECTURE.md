@@ -1,173 +1,90 @@
 # AModel Architecture
 
-This document serves as the source of truth for the codebase organization.
+This document is the source of truth for codebase organization. The app runs as a Next.js app (`src/`) plus an optional **surfaces** sidecar (`surfaces/`) for Slack/Discord/Telegram bots.
 
 ## Directory Structure
 
 ```
 src/
 ├── app/                      # Next.js App Router (routes, API endpoints)
-├── components/               # React components (UI)
-├── lib/                      # Frontend utilities (audio, capabilities, stores)
-├── hooks/                    # React hooks
-├── shaders/                  # WebGL/GLSL shaders
+│   └── api/                  # API routes: chat, drafts, rules, tasks/triage,
+│                             # google/calendar|drive/watch, etc.
+├── components/               # React components (UI, experience/Orb, etc.)
+├── lib/                      # Frontend utilities (stores, audio, capabilities)
+├── hooks/                    # React hooks (e.g. use-notification-poll)
+├── shaders/                  # WebGL/GLSL shaders (orb, particles, sim)
 ├── enterprise/               # Enterprise-only features (Stripe)
 ├── __tests__/                # Test files
 └── server/                   # All backend code
     ├── actions/              # Server actions (next-safe-action handlers)
-    │   ├── admin.ts          # Admin operations
-    │   ├── api-key.ts        # API key management
-    │   ├── calendar.ts       # Calendar operations
-    │   ├── drive.ts          # Drive operations
-    │   ├── email-account.ts  # Email account management
-    │   ├── knowledge.ts      # Knowledge base operations
-    │   ├── mail.ts           # Email operations
-    │   ├── organization.ts   # Team/org management
-    │   ├── rule.ts           # Rule CRUD
-    │   ├── settings.ts       # User settings
-    │   ├── user.ts           # User operations
     │   └── validation/       # Zod validation schemas
     │
     ├── auth/                 # Authentication (better-auth)
-    │
     ├── db/                   # Database (Prisma client, extensions)
     │
     ├── features/             # Feature modules (domain logic)
     │   ├── ai/               # AI orchestration & tools
-    │   │   ├── tools/        # AI tool definitions (query, get, modify, etc.)
+    │   │   ├── tools/        # Agent tools: query, get, analyze, create, modify,
+    │   │   │                 # delete, send (DANGEROUS), rules, triage
     │   │   ├── system-prompt.ts # Unified system prompt (single source of truth)
-    │   │   ├── rule-tools.ts # Shared rule management tools
+    │   │   ├── rule-tools.ts # Web-chat rule tool wiring (rules tool in tools/rules.ts)
     │   │   ├── helpers.ts    # Shared AI helpers
     │   │   ├── security.ts   # Prompt injection protection
     │   │   └── types.ts      # AI types
     │   │
-    │   ├── approvals/        # Human-in-the-loop approval workflow
+    │   ├── approvals/        # Human-in-the-loop + secure action tokens
     │   │   ├── service.ts    # Approval request management
-    │   │   └── types.ts      # Approval types
+    │   │   ├── action-token.ts # Signed tokens for approval links
+    │   │   └── execute.ts    # Execute approved actions
     │   │
     │   ├── bulk-actions/     # Bulk archive/trash operations
-    │   │
-    │   ├── calendar/         # Calendar integration
-    │   │   └── ai/           # AI logic for calendar
-    │   │
-    │   ├── categorize/       # Sender categorization
-    │   │   └── ai/           # AI logic for categorization
-    │   │
-    │   ├── channels/         # Multi-channel router (Slack, Discord, Telegram)
-    │   │   ├── router.ts     # Message routing logic
-    │   │   └── types.ts      # Channel types
-    │   │
-    │   ├── clean/            # Email cleaning feature
-    │   │   └── ai/           # AI logic for cleaning
-    │   │
+    │   ├── calendar/         # Calendar integration (Google; watch, conflict resolution)
+    │   │   └── ai/           # Availability, schedule proposals
+    │   ├── categorize/       # Sender categorization (+ ai/)
+    │   ├── channels/         # Multi-channel executor (Slack, Discord, Telegram)
+    │   │   ├── executor.ts   # One-shot agent runtime with approvals
+    │   │   ├── router.ts    # Message routing
+    │   │   └── types.ts      # Channel types, InteractivePayload
+    │   ├── clean/            # Email cleaning (+ ai/)
     │   ├── cold-email/       # Cold email detection & blocking
-    │   │
-    │   ├── conversations/    # Conversation state management
-    │   │   └── service.ts    # Conversation service
-    │   │
-    │   ├── digest/           # Email digest feature
-    │   │   └── ai/           # AI logic for digest
-    │   │
-    │   ├── document-filing/  # Document filing to Drive
-    │   │   └── ai/           # AI logic for filing
-    │   │
-    │   ├── drive/            # Drive integration
-    │   │   └── providers/    # Drive provider implementations
-    │   │
-    │   ├── email/            # Core email service
-    │   │   ├── providers/    # Email provider implementations
-    │   │   │   ├── google.ts # Gmail provider
-    │   │   │   └── microsoft.ts # Outlook provider
-    │   │   ├── provider.ts   # Provider factory
-    │   │   └── types.ts      # Email types
-    │   │
+    │   ├── conversations/    # Conversation state (RLM context)
+    │   ├── digest/           # Email digest (+ ai/)
+    │   ├── document-filing/  # Document filing to Drive (+ ai/)
+    │   ├── drive/            # Drive integration (watch, delete, filing; providers/)
+    │   ├── email/            # Core email service (providers/, threading, etc.)
     │   ├── follow-up/        # Follow-up tracking & drafts
-    │   │
-    │   ├── groups/           # Email grouping (newsletters, receipts)
-    │   │   └── ai/           # AI logic for grouping
-    │   │
-    │   ├── knowledge/        # Knowledge base
-    │   │   └── ai/           # AI logic for knowledge extraction
-    │   │
-    │   ├── mcp/              # Model Context Protocol agent
-    │   │   └── ai/           # AI logic for MCP
-    │   │
-    │   ├── meeting-briefs/   # Meeting briefing generation
-    │   │   └── ai/           # AI logic for briefings
-    │   │
-    │   ├── notifications/    # In-app notifications
-    │   │   ├── create.ts     # Create notifications
-    │   │   └── generator.ts  # Notification content generator
-    │   │
-    │   ├── organizations/    # Team/organization management
-    │   │
+    │   ├── groups/           # Email grouping (+ ai/)
+    │   ├── knowledge/        # Knowledge base (+ ai/)
+    │   ├── mcp/              # Model Context Protocol (+ ai/)
+    │   ├── meeting-briefs/   # Meeting briefing (+ ai/)
+    │   ├── memory/           # RLM memory, embeddings, summaries
+    │   ├── notifications/    # In-app notifications (create, generator)
+    │   ├── organizations/   # Team/org management
     │   ├── premium/          # Premium subscription features
-    │   │
     │   ├── privacy/          # User privacy settings
-    │   │   └── service.ts    # Privacy settings service
-    │   │
     │   ├── referrals/        # Referral system
-    │   │
-    │   ├── reply-tracker/    # Reply tracking & conversation status
-    │   │   └── ai/           # AI logic for reply detection
-    │   │
-    │   ├── reports/          # Email analytics reports
-    │   │   └── ai/           # AI logic for reports
-    │   │
-    │   ├── rules/            # Automation rules
-    │   │   └── ai/           # AI logic for rule matching
-    │   │
+    │   ├── reply-tracker/    # Reply tracking & conversation status (+ ai/)
+    │   ├── reports/          # Email analytics reports (+ ai/)
+    │   ├── rules/            # Automation rules (+ ai/ run-rules, match, etc.)
     │   ├── scheduled/        # Scheduled actions
-    │   │
-    │   ├── snippets/         # Email snippets
-    │   │   └── ai/           # AI logic for snippets
-    │   │
-    │   ├── summaries/        # Conversation summarization
-    │   │   └── service.ts    # Summary service
-    │   │
-    │   ├── surfaces/         # Multi-channel agent (Slack, Discord, Telegram)
-    │   │   ├── executor.ts   # Agent execution with approval workflows
-    │   │   └── context-manager.ts # Context pack builder
-    │   │
-    │   ├── web-chat/         # Web UI chat & email-based assistant
-    │   │   ├── ai/           # AI logic (chat.ts, process-user-request.ts)
-    │   │   ├── is-assistant-email.ts
-    │   │   └── process-assistant-email.ts
-    │   │
+    │   ├── snippets/         # Email snippets (+ ai/)
+    │   ├── summaries/        # Conversation summarization (SummaryService)
+    │   ├── tasks/            # Task triage, scheduling, context (triage/, audit)
+    │   ├── web-chat/         # Web UI chat (ai/ chat, process-user-request)
     │   └── webhooks/         # Webhook processing (Gmail/Outlook push)
     │
-    ├── integrations/         # External API clients ONLY
-    │   ├── google/           # Google APIs (Gmail, Drive, Calendar, People)
-    │   ├── microsoft/        # Microsoft Graph API
-    │   └── qstash/           # Upstash QStash queue
-    │
-    ├── lib/                  # Shared server utilities
-    │   ├── auth/             # Auth helpers
-    │   ├── constants/        # Constants
-    │   ├── llms/             # LLM provider abstraction
-    │   ├── oauth/            # OAuth utilities
-    │   ├── outlook/          # Outlook-specific helpers
-    │   ├── parse/            # Parsing utilities (HTML, emails)
-    │   ├── queue/            # Queue utilities
-    │   ├── redis/            # Redis caching utilities
-    │   ├── retry/            # Retry logic
-    │   ├── sso/              # SSO utilities
-    │   ├── upstash/          # Upstash utilities
-    │   ├── user/             # User utilities
-    │   ├── config.ts         # Configuration
-    │   ├── date.ts           # Date utilities
-    │   ├── error.ts          # Error handling
-    │   ├── logger.ts         # Logging
-    │   ├── mail.ts           # Email sending (Resend)
-    │   ├── middleware.ts     # API middleware
-    │   └── ...               # Other utilities
-    │
-    ├── packages/             # Internal packages (@amodel/*)
-    │
-    ├── scripts/              # Utility scripts (migrations, verification)
-    │
+    ├── integrations/        # External API clients ONLY (google, microsoft, qstash)
+    ├── lib/                  # Shared server utilities (auth, llms, redis, queue, etc.)
+    ├── packages/            # Internal packages (@amodel/*)
+    ├── scripts/             # Utility scripts
     └── types/                # Shared TypeScript types
 ```
+
+**Root-level:**
+- `prisma/` — Schema and migrations (`schema.prisma`, `migrations/`).
+- `surfaces/` — Sidecar service for Slack/Discord/Telegram bots; uses `features/channels/executor` for the agent.
+- `docs/` — Documentation (e.g. `01-FEATURES.md`).
+- `ARCHITECTURE.md` — This file.
 
 ## Import Path Conventions
 
@@ -176,7 +93,7 @@ src/
 | Alias | Points To | Usage |
 |-------|-----------|-------|
 | `@/*` | `./src/*` | Catch-all for src directory |
-| `@/server/*` | `./src/server/*` | Server-side code |
+| `@/server/*` | `./src/server/*` | Server-side code (db, auth, etc.) |
 | `@/features/*` | `./src/server/features/*` | Feature modules |
 | `@/actions/*` | `./src/server/actions/*` | Server actions |
 | `@/integrations/*` | `./src/server/integrations/*` | External API clients |
@@ -184,8 +101,10 @@ src/
 | `@/components/*` | `./src/components/*` | React components |
 | `@/hooks/*` | `./src/hooks/*` | React hooks |
 | `@/lib/*` | `./src/lib/*` | Frontend utilities |
-| `@/generated/*` | `./generated/*` | Generated code (Prisma) |
+| `@/generated/*` | `./generated/*` | Generated code (if used) |
 | `@amodel/*` | `./src/server/packages/*` | Internal packages |
+
+Schema and migrations live in `prisma/` (root); Prisma client is generated into `node_modules` by `prisma generate`.
 
 ### Import Guidelines
 
@@ -207,16 +126,19 @@ Self-contained feature modules. Each feature should:
 - Export a clear public API
 
 Key features include:
-- **ai/** - Core AI orchestration, agent executor, and tool definitions
+- **ai/** - Core AI orchestration and tool definitions
   - `system-prompt.ts` - Unified system prompt (single source of truth for all agents)
-  - `rule-tools.ts` - Shared rule management tools
-  - `tools/` - Polymorphic agentic tools (query, get, create, modify, delete, analyze)
-- **approvals/** - Human-in-the-loop approval workflow for AI actions
-- **channels/** - Multi-channel communication (Slack, Discord, Telegram, Web)
-- **conversations/** - Conversation state and history management
+  - `tools/` - Agent tools: query, get, analyze, create, modify, delete, **send** (DANGEROUS, approval-gated), **rules** (polymorphic), **triage** (task prioritization + approval-backed actions)
+  - `rule-tools.ts` - Web-chat wiring for rule management (main tool in `tools/rules.ts`)
+- **approvals/** - Human-in-the-loop workflow; **secure action tokens** for approval links (push/email)
+- **channels/** - Multi-channel executor (Slack, Discord, Telegram); one-shot agent runtime
+- **calendar/** - Google Calendar (events, watch, renewal cron, conflict resolution, schedule proposals)
+- **tasks/** - Task triage service, context assembler, audit; panel API and approval-backed actions
+- **drive/** - Drive providers (Google/Microsoft), watch/webhooks, renewal cron, delete file/folder (no download)
+- **conversations/** - Conversation state and history (RLM context)
+- **memory/** - RLM memory, embeddings, rolling summaries
 - **privacy/** - User privacy settings and data retention
 - **summaries/** - Automatic conversation summarization
-- **surfaces/** - Multi-channel agent executor (Slack, Discord, Telegram)
 - **web-chat/** - Web UI chat assistant
 
 ### `/server/integrations/`
@@ -287,8 +209,8 @@ When adding a new feature:
 - `approvals/` - Human-in-the-loop workflow
 
 ### Integrations
-- `calendar/` - Calendar integration
-- `drive/` - Drive/document integration
+- `calendar/` - Google Calendar (events, watch, renewal, conflict resolution)
+- `drive/` - Drive (watch, renewal, delete file/folder; document filing)
 - `mcp/` - Model Context Protocol
 - `meeting-briefs/` - Meeting briefings
 
@@ -298,7 +220,7 @@ When adding a new feature:
 
 ### Unified System Prompt
 
-All AI agents (web-chat, surfaces) use the same system prompt built by `buildAgentSystemPrompt()` in `features/ai/system-prompt.ts`. This ensures consistent AI behavior across all platforms.
+All AI agents (web-chat, Slack, Discord, Telegram) use the same system prompt from `features/ai/system-prompt.ts` via `buildAgentSystemPrompt()`. This ensures consistent behavior across platforms.
 
 ```typescript
 import { buildAgentSystemPrompt } from "@/features/ai/system-prompt";
@@ -309,43 +231,53 @@ const prompt = buildAgentSystemPrompt({
 });
 ```
 
+### Agent Tools
+
+| Tool | Security | Description |
+|------|----------|-------------|
+| query, get, analyze | SAFE | Read-only search and analysis |
+| create, modify, delete | CAUTION | Drafts, events, archive/label/trash; Drive delete file/folder |
+| **send** | **DANGEROUS** | Send email (draft→sent); requires explicit per-email approval (in-app or verbal) |
+| **rules** | CAUTION | Polymorphic: list/create/update/delete/enable/disable rules |
+| **triage** | CAUTION | "What should I do next?"—rank tasks with rationale; approval-backed actions |
+
+DANGEROUS tools are gated by the approval system; approval links use **secure signed action tokens** (`features/approvals/action-token.ts`).
+
 ### Agent Platforms
 
-| Platform | Entry Point | Features |
-|----------|-------------|----------|
-| Web Chat | `features/web-chat/ai/chat.ts` | Full rule management, draft review |
-| Slack | `features/surfaces/executor.ts` | DM chat, interactive buttons |
-| Discord | `features/surfaces/executor.ts` | Channel/DM chat, embeds |
-| Telegram | `features/surfaces/executor.ts` | Bot chat, inline keyboard |
+| Platform | Entry Point | Notes |
+|----------|-------------|-------|
+| Web Chat | `features/web-chat/ai/` (chat, process-user-request) | Full tools; rule management via `rules` tool |
+| Slack / Discord / Telegram | `features/channels/executor.ts` | One-shot agent; same tools; interactive draft/triage payloads |
+
+The **surfaces** sidecar (`surfaces/` at repo root) runs the bot servers; they call into the Next app or use the shared executor.
 
 ### Draft Review & Send Flow
 
-AI creates drafts but NEVER sends emails. Users must explicitly send:
+- **Drafts**: AI creates drafts; users send via explicit action (button or approval).
+- **Send tool**: AI can send email only after explicit user approval (in-app notification or verbal). Implemented as a DANGEROUS tool with approval-gated execution.
 
 ```
-User Request → AI creates draft → Interactive preview + buttons → User clicks Send
+User Request → AI creates draft → Interactive preview + Send/Edit/Discard → User clicks Send
+         or → AI proposes send → Approval request (secure token) → User approves → Send
 ```
 
-**API Endpoints:**
-- `GET /api/drafts` - List all user drafts
-- `GET /api/drafts/:id` - Get draft details
-- `POST /api/drafts/:id/send` - Send a draft (user-initiated only)
-- `DELETE /api/drafts/:id` - Discard a draft
+**API Endpoints (examples):**
+- `GET /api/drafts`, `GET /api/drafts/:id`, `POST /api/drafts/:id/send`, `DELETE /api/drafts/:id`
+- `GET /api/rules`, `POST /api/rules`, `GET /api/rules/:id`, `PATCH /api/rules/:id`, `DELETE /api/rules/:id`
+- `GET /api/tasks/triage`, `POST /api/tasks/triage/action`, `GET /api/tasks/triage/audit`
+- `POST /api/google/calendar/watch/renew`, `POST /api/google/drive/watch/renew` (cron; use CRON_SECRET)
 
-**Surfaces Interactive Payload:**
+### Surfaces Interactive Payload
 
-When AI creates a draft, it returns an `InteractivePayload` with preview data:
+When the AI creates a draft (or a triage/send approval), it can return an `InteractivePayload`:
 
 ```typescript
 {
   type: "draft_created",
   draftId: "...",
   summary: "Draft to john@example.com - Subject",
-  preview: {
-    to: ["john@example.com"],
-    subject: "Re: Meeting",
-    body: "Hi John, ..."
-  },
+  preview: { to: [...], subject: "...", body: "..." },
   actions: [
     { label: "Send", value: "send" },
     { label: "Edit in Gmail", value: "edit", url: "..." },
@@ -354,7 +286,7 @@ When AI creates a draft, it returns an `InteractivePayload` with preview data:
 }
 ```
 
-Surfaces render this as:
-- **Slack**: Block Kit with header, fields, body section, and action buttons
-- **Discord**: Embed with fields and button row
+Rendering:
+- **Slack**: Block Kit with header, fields, body, action buttons
+- **Discord**: Embed with button row
 - **Telegram**: Markdown message with inline keyboard

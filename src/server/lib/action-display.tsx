@@ -81,6 +81,12 @@ export function getActionDisplay(
       return "Notify Sender";
     case ActionType.NOTIFY_USER:
       return "Notify User";
+    case ActionType.SET_TASK_PREFERENCES:
+      return "Update Task Preferences";
+    case ActionType.CREATE_TASK:
+      return "Create Task";
+    case ActionType.CREATE_CALENDAR_EVENT:
+      return "Create Calendar Event";
     default: {
       const exhaustiveCheck: never = action.type;
       return exhaustiveCheck;
@@ -115,6 +121,12 @@ export function getActionIcon(actionType: ActionType) {
     case ActionType.NOTIFY_SENDER:
       return BellIcon;
     case ActionType.NOTIFY_USER:
+      return BellIcon;
+    case ActionType.SET_TASK_PREFERENCES:
+      return BellIcon;
+    case ActionType.CREATE_TASK:
+      return FileTextIcon;
+    case ActionType.CREATE_CALENDAR_EVENT:
       return BellIcon;
     default: {
       const exhaustiveCheck: never = actionType;

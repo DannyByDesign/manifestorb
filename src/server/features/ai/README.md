@@ -6,23 +6,22 @@ This module houses the core logic for the AI Agent, including tool definitions, 
 
 ```
 ai/
-├── tools/              # Polymorphic agentic tools
-│   ├── index.ts        # Tool registry and factory
+├── tools/              # Agentic tools
+│   ├── index.ts        # Tool registry and factory (createAgentTools)
 │   ├── query.ts        # Search across resources
 │   ├── get.ts          # Retrieve item details
-│   ├── create.ts       # Create drafts/items
+│   ├── create.ts       # Create drafts/items/events
 │   ├── modify.ts       # Modify item state
-│   ├── delete.ts       # Remove items
+│   ├── delete.ts       # Remove items (email, automation, drive file/folder)
 │   ├── analyze.ts      # AI-powered analysis
+│   ├── send.ts         # Send email (DANGEROUS; approval-gated)
+│   ├── rules.ts        # Single polymorphic rules tool (list/create/update/delete/enable/disable)
+│   ├── triage.ts       # Task triage ("what should I do next?"; approval-backed actions)
 │   ├── types.ts        # Tool type definitions
-│   ├── security.ts     # Permission checks
-│   └── providers/      # Resource providers
-│       ├── email.ts    # Email provider
-│       ├── calendar.ts # Calendar provider
-│       ├── drive.ts    # Drive provider
-│       └── automation.ts # Rules provider
+│   ├── security.ts     # Permission checks (SAFE/CAUTION/DANGEROUS)
+│   └── providers/      # Resource providers (email, calendar, drive, automation)
 ├── system-prompt.ts    # Unified system prompt (single source of truth)
-├── rule-tools.ts       # Shared rule management tools
+├── rule-tools.ts       # Web-chat wiring for rule management (main tool: tools/rules.ts)
 ├── memory-tools.ts     # Memory management tools (remember/recall/forget)
 ├── helpers.ts          # Shared AI helpers
 ├── security.ts         # Prompt injection protection
@@ -30,18 +29,21 @@ ai/
 └── types.ts            # AI types
 ```
 
-## 1. The Polymorphic Toolset (`tools/`)
+## 1. The Agent Toolset (`tools/`)
 
-We use a standardized set of 6 "Polymorphic" tools to interact with all backend resources.
+We use a set of agent tools to interact with backend resources. **DANGEROUS** tools (e.g. `send`) require explicit per-action approval (secure action tokens).
 
-| Tool | Purpose | Key Resources |
-|------|---------|---------------|
-| `query` | Search and list items | `email`, `calendar`, `automation`, `patterns`, `approval`, `drive`, `contacts` |
-| `get` | Retrieve item details | `email`, `approval` |
-| `create` | Create new items (Drafts) | `email`, `automation`, `knowledge`, `drive`, `notification`, `contacts` |
-| `modify` | Update item state | `email` (archive/label/track), `automation`, `approval` |
-| `delete` | Remove items | `email`, `automation` |
-| `analyze` | AI analysis/extraction | `email` (clean/categorize), `calendar` (briefing), `patterns` |
+| Tool | Security | Purpose | Key Resources |
+|------|----------|---------|---------------|
+| `query` | SAFE | Search and list items | `email`, `calendar`, `automation`, `patterns`, `approval`, `drive`, `contacts` |
+| `get` | SAFE | Retrieve item details | `email`, `approval` |
+| `create` | CAUTION | Create drafts/items/events | `email`, `automation`, `knowledge`, `drive`, `notification`, `contacts` |
+| `modify` | CAUTION | Update item state | `email`, `automation`, `approval` |
+| `delete` | CAUTION | Remove items | `email`, `automation`, **drive** (file/folder; download excluded) |
+| `analyze` | SAFE | AI analysis/extraction | `email` (clean/categorize), `calendar` (briefing), `patterns` |
+| `send` | **DANGEROUS** | Send email (draft→sent) | Requires explicit user approval (in-app or verbal) |
+| `rules` | CAUTION | Rule management (polymorphic) | List/create/update/delete/enable/disable rules |
+| `triage` | CAUTION | Task prioritization | Rank tasks with rationale; approval-backed actions; panel API |
 
 ## 2. Memory Tools (`memory-tools.ts`)
 
@@ -72,20 +74,9 @@ const memoryTools = createMemoryTools({
 
 See `docs/CONTEXT-MEMORY-ARCHITECTURE.md` for full memory system documentation.
 
-## 3. Rule Management Tools (`rule-tools.ts`)
+## 3. Rule Management (`rules` tool + `rule-tools.ts`)
 
-Shared tools for rule configuration, used by both `web-chat` and `surfaces` agents:
-
-| Tool | Purpose |
-|------|---------|
-| `getUserRulesAndSettings` | Retrieve all rules and user settings |
-| `getLearnedPatterns` | Get patterns for a rule |
-| `createRule` | Create automation rule |
-| `updateRuleConditions` | Update rule conditions |
-| `updateRuleActions` | Update rule actions |
-| `updateLearnedPatterns` | Update learned patterns |
-| `updateAbout` | Update user preferences |
-| `addToKnowledgeBase` | Add to knowledge base |
+Rule management is exposed as a **single polymorphic `rules` tool** in `tools/rules.ts` (list/create/update/delete/enable/disable). The same behavior is available on web-chat and surfaces. `rule-tools.ts` wires the rules tool for the web-chat agent. Rules portal APIs: `GET/POST /api/rules`, `GET/PATCH/DELETE /api/rules/[id]`.
 
 ## 4. Providers (`tools/providers/`)
 
@@ -153,23 +144,46 @@ interface InteractivePayload {
 - `POST /api/drafts/:id/send` - Send draft (user-initiated)
 - `DELETE /api/drafts/:id` - Discard draft
 
-**Security:** AI can NEVER send emails directly. The send endpoint requires:
-1. Valid user session OR surfaces shared secret
-2. User-initiated request (button click)
-3. Draft ownership verification
+**Security:** Sending email is gated. Two paths:
+1. **Draft flow**: User clicks Send on a draft (draft endpoint requires session or surfaces secret + ownership).
+2. **Send tool**: The `send` tool (DANGEROUS) can send only after explicit user approval (in-app notification or verbal). Approval links use **secure signed action tokens** (`features/approvals/action-token.ts`).
+
+## 8. Action Requests (Calendar/Task)
+
+Calendar/task changes that require approval emit an `InteractivePayload` of type `action_request`.
+These are generated in `features/channels/router.ts` from approval requests and rendered in sidecar UIs.
+
+```typescript
+interface ActionRequestContext {
+  resource: "calendar" | "task";
+  action: "create" | "modify" | "delete" | "reschedule";
+  title?: string;
+  timeRange?: string;
+}
+
+interface InteractivePayload {
+  type: "action_request";
+  approvalId: string;
+  summary: string; // Conversational copy for sidecar
+  actions: InteractiveAction[]; // Approve/Deny buttons
+  context?: ActionRequestContext;
+}
+```
 
 ## Related Modules
 
 - **`features/web-chat/`** - Web UI chat assistant using these tools
-- **`features/surfaces/`** - Multi-channel agent (Slack/Discord/Telegram)
-- **`features/channels/`** - Channel router and types (InteractivePayload)
+- **`features/channels/`** - Multi-channel executor (Slack/Discord/Telegram) and types (InteractivePayload)
+- **`features/approvals/`** - Human-in-the-loop and secure action tokens for approval links
 - **`features/rules/ai/`** - Rule matching and execution AI
+- **`features/tasks/`** - Task triage service and panel API (`/api/tasks/triage`, `/api/tasks/triage/action`, `/api/tasks/triage/audit`)
 - **`features/memory/`** - Unified memory system (recording, embeddings, decay)
-- **`features/memory/`** - Memory decay and lifecycle management
 - **`app/api/drafts/`** - Draft management API endpoints
-- **`app/api/jobs/record-memory/`** - Memory recording job endpoint
+- **`app/api/rules/`** - Rules portal API
+- **`app/api/jobs/record-memory/`** - Memory recording job endpoint (if present)
 
 ## Documentation
 
 - [Memory Architecture](../memory/ARCHITECTURE.md) - Full memory system overview
-- [LLM Registry](../../../../docs/LLM_REGISTRY.md) - Model configuration
+- [Features List](../../../../docs/01-FEATURES.md) - Feature list and launch prioritization
+- Root [ARCHITECTURE.md](../../../../ARCHITECTURE.md) - Codebase architecture

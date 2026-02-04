@@ -9,12 +9,14 @@ export const getTool: ToolDefinition<any> = {
 
     parameters: z.object({
         resource: z.enum([
-            "email", "calendar", "automation", "approval"
+            "email", "calendar", "automation", "approval", "task"
         ]),
         ids: z.array(z.string()).max(20), // Max 20 objects per step as per Hardening Budget
+        calendarId: z.string().optional(),
+        includeReason: z.boolean().optional(),
     }),
 
-    execute: async ({ resource, ids }, { providers }) => {
+    execute: async ({ resource, ids, calendarId, includeReason }, { providers }) => {
         switch (resource) {
             case "email":
                 return {
@@ -23,11 +25,17 @@ export const getTool: ToolDefinition<any> = {
                 };
 
             case "calendar":
-                // Stub - assume getEvents exists or similar
+                if (!providers.calendar) {
+                    return { success: false, error: "Calendar provider not available" };
+                }
+
+                const events = await Promise.all(ids.map((id: string) =>
+                    providers.calendar.getEvent({ eventId: id, calendarId })
+                ));
+
                 return {
                     success: true,
-                    data: [],
-                    error: "Calendar get not implemented yet"
+                    data: events.filter(Boolean)
                 };
 
             case "automation":
@@ -47,6 +55,35 @@ export const getTool: ToolDefinition<any> = {
                     success: true,
                     data: approvals
                 };
+
+            case "task":
+                const tasks = await prisma.task.findMany({
+                    where: { id: { in: ids } }
+                });
+                if (!includeReason) {
+                    return { success: true, data: tasks };
+                }
+
+                const reasons = await prisma.taskSchedulingReason.findMany({
+                    where: {
+                        taskId: { in: ids },
+                        expiresAt: { gt: new Date() }
+                    },
+                    select: {
+                        taskId: true,
+                        reason: true,
+                        expiresAt: true,
+                        updatedAt: true
+                    }
+                });
+
+                const reasonByTaskId = new Map(reasons.map((r) => [r.taskId, r]));
+                const tasksWithReason = tasks.map((task) => ({
+                    ...task,
+                    schedulingReason: reasonByTaskId.get(task.id) ?? null
+                }));
+
+                return { success: true, data: tasksWithReason };
 
             default:
                 return { success: false, error: `Resource ${resource} not supported yet` };

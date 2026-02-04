@@ -8,6 +8,10 @@ import {
 } from "@/features/calendar/client";
 import type { CalendarOAuthProvider, CalendarTokens } from "../oauth-types";
 import { autoPopulateTimezone } from "../timezone-helpers";
+import {
+  ensureGoogleCalendarWatch,
+  syncGoogleCalendarChanges,
+} from "@/features/calendar/sync/google";
 
 export function createGoogleCalendarProvider(
   logger: Logger,
@@ -71,7 +75,7 @@ export function createGoogleCalendarProvider(
         for (const googleCalendar of googleCalendars) {
           if (!googleCalendar.id) continue;
 
-          await prisma.calendar.upsert({
+          const calendar = await prisma.calendar.upsert({
             where: {
               connectionId_calendarId: {
                 connectionId,
@@ -92,6 +96,46 @@ export function createGoogleCalendarProvider(
               isEnabled: true,
             },
           });
+
+          await ensureGoogleCalendarWatch({
+            calendar: {
+              id: calendar.id,
+              calendarId: calendar.calendarId,
+              googleSyncToken: calendar.googleSyncToken,
+              googleChannelId: calendar.googleChannelId,
+              googleResourceId: calendar.googleResourceId,
+              googleChannelToken: calendar.googleChannelToken,
+              googleChannelExpiresAt: calendar.googleChannelExpiresAt,
+            },
+            connection: {
+              accessToken,
+              refreshToken,
+              expiresAt,
+              emailAccountId,
+            },
+            logger,
+          });
+
+          if (!calendar.googleSyncToken) {
+            await syncGoogleCalendarChanges({
+              calendar: {
+                id: calendar.id,
+                calendarId: calendar.calendarId,
+                googleSyncToken: calendar.googleSyncToken,
+                googleChannelId: calendar.googleChannelId,
+                googleResourceId: calendar.googleResourceId,
+                googleChannelToken: calendar.googleChannelToken,
+                googleChannelExpiresAt: calendar.googleChannelExpiresAt,
+              },
+              connection: {
+                accessToken,
+                refreshToken,
+                expiresAt,
+                emailAccountId,
+              },
+              logger,
+            });
+          }
         }
 
         await autoPopulateTimezone(emailAccountId, googleCalendars, logger);

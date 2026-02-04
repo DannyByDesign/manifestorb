@@ -1,6 +1,6 @@
 # Microsoft Integration (`src/server/integrations/microsoft`)
 
-This module handles all interactions with the Microsoft Graph API (Outlook & Exchange).
+This module handles interactions with the Microsoft Graph API (Outlook & Exchange). Microsoft Calendar is on the roadmap; Gmail/Google Calendar are implemented first.
 
 ## Core Capabilities
 

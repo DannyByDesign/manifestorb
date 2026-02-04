@@ -86,7 +86,9 @@ export async function runRules({
   skipArchive?: boolean;
 }): Promise<RunRulesResult[]> {
   const batchTimestamp = new Date(); // Single timestamp for this batch execution
-  const { regularRules, conversationRules } = prepareRulesWithMetaRule(rules);
+  const { regularRules, conversationRules } = prepareRulesWithMetaRule(
+    filterExpiredRules(rules, logger),
+  );
 
   const results = await findMatchingRules({
     rules: regularRules,
@@ -227,6 +229,19 @@ export async function runRules({
   return executedRules;
 }
 
+function filterExpiredRules(rules: RuleWithActions[], logger: Logger) {
+  const now = new Date();
+  const activeRules = rules.filter((rule) => {
+    if (!rule.expiresAt) return true;
+    return rule.expiresAt > now;
+  });
+  const expiredCount = rules.length - activeRules.length;
+  if (expiredCount > 0) {
+    logger.info("Skipping expired rules", { expiredCount });
+  }
+  return activeRules;
+}
+
 function prepareRulesWithMetaRule(rules: RuleWithActions[]): {
   regularRules: RuleWithActions[];
   conversationRules: RuleWithActions[];
@@ -295,6 +310,10 @@ async function executeMatchedRule(
     isTest,
   });
 
+  actionItems = actionItems.filter(
+    (item) => item.type !== ActionType.SET_TASK_PREFERENCES,
+  );
+
   if (skipArchive) {
     actionItems = actionItems.filter(
       (item) => item.type !== ActionType.ARCHIVE,
@@ -330,7 +349,10 @@ async function executeMatchedRule(
                   const {
                     delayInMinutes: _delayInMinutes,
                     ...executedActionFields
-                  } = sanitizeActionFields(item);
+                  } = sanitizeActionFields({
+                    ...item,
+                    payload: item.payload ?? undefined,
+                  });
                   return executedActionFields;
                 }) || [],
             },

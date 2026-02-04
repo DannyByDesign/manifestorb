@@ -1,35 +1,35 @@
 # Amodel
 
-**Your AI-powered email command center.**
+**Your AI-powered email and calendar command center.**
 
-Amodel is an intelligent email assistant that lives wherever you work—web, Slack, Discord, or Telegram. It understands your inbox, drafts responses, organizes files, and automates the mundane, while keeping you in control of every action that matters.
+Amodel is an intelligent assistant that lives wherever you work—web, Slack, Discord, or Telegram. It understands your inbox and calendar, drafts responses, schedules time, triages tasks, and automates the mundane—while keeping you in control of every action that matters.
 
 ---
 
 ## What Makes Amodel Different
 
 ### AI That Assists, Not Replaces
-Unlike traditional automation, Amodel uses an agentic AI that understands context. Ask it to *"draft a follow-up to Sarah about the Q3 report"* and it will compose a contextual response. But **the AI never sends emails directly**—you review, edit, and send. Human judgment stays in the loop.
+Amodel uses an agentic AI that understands context. Ask it to *"draft a follow-up to Sarah about the Q3 report"* or *"find 30 minutes this week for the proposal"* and it composes or proposes. **Sending email** is approval-gated: the AI can send only after explicit user approval (in-app or verbal). Human judgment stays in the loop.
 
 ### One AI, Every Platform
 The same AI assistant works across:
-- **Web App** — Full dashboard with 3D visual interface
-- **Slack** — Manage email without leaving your workspace
+- **Web App** — Dashboard, chat, and 3D experience (Orb)
+- **Slack** — Manage email and calendar without leaving your workspace
 - **Discord** — For teams that live in Discord
 - **Telegram** — Mobile-friendly access anywhere
 
-Ask *"show me my rules"* in Slack, get the same answer in the web app.
+Ask *"show me my rules"* or *"what should I do next?"* in Slack—get the same answer in the web app.
 
 ### Rules + AI = Smart Automation
-Create rules using natural language:
+Create and manage rules via a single polymorphic **rules** tool and rules portal APIs:
 - *"Archive newsletters unless they mention product updates"*
 - *"Notify me when my boss emails me"*
 - *"Label emails from @company.com as Work"*
 
-Rules combine static conditions (from/to/subject) with AI-powered instructions—automation that actually understands your intent.
+Rules combine static conditions with AI-powered instructions. Reminders and notification preferences are managed through rules (app-first/sidecar flow).
 
 ### User-Controlled Notifications
-You decide what deserves a push notification. No hardcoded spam. Tell the AI *"remind me when this client responds"* and it creates a rule. Your inbox, your rules.
+You decide what deserves a push. Actionable approvals use **secure signed action tokens**; no unsolicited spam.
 
 ---
 
@@ -37,19 +37,23 @@ You decide what deserves a push notification. No hardcoded spam. Tell the AI *"r
 
 | Feature | Description |
 |---------|-------------|
-| **Email Management** | Draft, reply, archive, label, trash—all through conversation |
+| **Email Management** | Draft, reply, archive, label, trash—all through conversation; send only with explicit approval |
+| **Google Calendar** | Event read/write (draft-first), free/busy, watch/webhooks, watch renewal cron, conflict resolution (schedule proposals + verbal selection) |
+| **Tasks** | Task model, time-blocking, reschedule engine, **task triage** ("what should I do next?" with rationale + approval-backed actions), panel API |
+| **Smart Rules** | Single polymorphic rules tool + rules portal APIs (`/api/rules`, `/api/rules/[id]`) |
+| **Drive** | Connect, auto-filing, **watch/webhooks**, **watch renewal**, **delete file/folder** via AI (download explicitly excluded) |
 | **Document Filing** | Auto-file attachments to Google Drive with AI categorization |
-| **Smart Rules** | Natural language automation with AI + static conditions |
 | **Cold Email Detection** | Identify and handle unsolicited emails |
 | **Newsletter Management** | Categorize and control subscription emails |
 | **Thread Tracking** | Monitor conversations for replies |
 | **Daily Digest** | Summarized email updates on your schedule |
 | **Contacts** | Search and create contacts from context |
+| **Actionable Approvals** | Secure action tokens for push/email approval links; triage and send approvals |
 
-### Coming Soon
+### Roadmap
 | Feature | Status |
 |---------|--------|
-| **Google Calendar** | Integration in progress |
+| **Daily Briefing** | Flagship (today: meetings + tasks + emails)—planned |
 | **Microsoft Outlook** | On roadmap |
 | **Microsoft Calendar** | On roadmap |
 
@@ -66,15 +70,16 @@ You decide what deserves a push notification. No hardcoded spam. Tell the AI *"r
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                    UNIFIED AI AGENT                         │
-│   • Same personality across all platforms                   │
-│   • Tool-calling architecture (read, draft, organize)       │
-│   • Human-in-the-loop for sensitive actions                 │
+│   • Same system prompt across all platforms                 │
+│   • Tools: query, get, analyze, create, modify, delete,     │
+│     send (approval-gated), rules, triage                    │
+│   • Human-in-the-loop for sensitive/DANGEROUS actions       │
 └─────────────────────────────────────────────────────────────┘
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                     INTEGRATIONS                            │
-│   Gmail · Google Drive · Google Calendar (soon)            │
+│   Gmail · Google Drive · Google Calendar (implemented)      │
 │   Outlook · OneDrive · Microsoft Calendar (roadmap)         │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -83,11 +88,11 @@ You decide what deserves a push notification. No hardcoded spam. Tell the AI *"r
 
 ## Security Philosophy
 
-1. **AI Never Sends Directly** — Drafts require explicit user approval
-2. **Approval Workflows** — Destructive actions (delete, modify) need confirmation
-3. **Prompt Injection Protection** — Guardrails against malicious email content
-4. **User-Controlled Notifications** — No unsolicited push notifications
-5. **OAuth Standard** — Secure, revocable access to email providers
+1. **Send Only With Approval** — Email send is a DANGEROUS tool; requires explicit per-email approval (in-app or verbal).
+2. **Approval Workflows** — Destructive actions (delete, modify) and triage/send need confirmation; **secure action tokens** for approval links.
+3. **Prompt Injection Protection** — Guardrails against malicious email content.
+4. **User-Controlled Notifications** — Rule-based reminders and preferences; no unsolicited push.
+5. **OAuth Standard** — Secure, revocable access to email and calendar providers.
 
 ---
 
@@ -118,61 +123,53 @@ You decide what deserves a push notification. No hardcoded spam. Tell the AI *"r
 amodel/
 ├── src/
 │   ├── app/                    # Next.js App Router
-│   │   ├── api/                # API routes
+│   │   ├── api/                # API routes (chat, drafts, rules, tasks/triage, google/calendar|drive/watch, etc.)
 │   │   ├── (dashboard)/        # Dashboard pages
 │   │   └── page.tsx            # Main page
 │   │
 │   ├── components/             # React components
 │   │   └── experience/         # 3D experience (Orb, Sparkles, etc.)
 │   │
-│   ├── lib/                    # Frontend utilities
-│   │   ├── stores/             # Zustand state stores
-│   │   ├── audio.ts            # Web Audio API
-│   │   └── capabilities.ts     # WebGL detection
-│   │
-│   ├── shaders/                # GLSL shaders
-│   │   ├── lib/                # Shader utilities
-│   │   └── sim/                # Simulation shaders
-│   │
-│   ├── hooks/                  # React hooks
+│   ├── lib/                    # Frontend utilities (stores, audio, capabilities)
+│   ├── shaders/                # GLSL shaders (orb, particles, sim)
+│   ├── hooks/                  # React hooks (e.g. notification poll)
 │   │
 │   ├── server/                 # Server-only code
 │   │   ├── actions/            # Server actions (next-safe-action)
 │   │   ├── auth/               # Authentication (better-auth)
 │   │   ├── db/                 # Database (Prisma client)
 │   │   ├── features/           # Feature modules
-│   │   │   ├── ai/             # AI orchestration & tools
+│   │   │   ├── ai/             # AI orchestration, system prompt, tools (query, get, analyze, create, modify, delete, send, rules, triage)
 │   │   │   ├── web-chat/       # Web UI chat assistant
-│   │   │   ├── surfaces/       # Multi-channel agent (Slack/Discord/Telegram)
+│   │   │   ├── channels/       # Multi-channel executor (Slack/Discord/Telegram)
+│   │   │   ├── calendar/       # Calendar integration (Google; watch, conflict resolution)
+│   │   │   ├── tasks/          # Task triage, scheduling, context
 │   │   │   ├── email/          # Email provider abstraction
-│   │   │   ├── calendar/       # Calendar integration
-│   │   │   ├── drive/          # Drive integration
-│   │   │   ├── rules/          # Automation rules
-│   │   │   ├── approvals/      # Human-in-the-loop approvals
-│   │   │   └── ...             # Other features
-│   │   ├── integrations/       # External API clients
-│   │   │   ├── google/         # Gmail, Calendar, Drive
-│   │   │   ├── microsoft/      # Outlook, Graph API
-│   │   │   └── qstash/         # Queue service
+│   │   │   ├── drive/          # Drive integration (watch, delete, filing)
+│   │   │   ├── rules/          # Automation rules + AI matching
+│   │   │   ├── approvals/      # Human-in-the-loop + secure action tokens
+│   │   │   ├── notifications/  # In-app notifications, generator
+│   │   │   ├── memory/         # RLM context, embeddings, summaries
+│   │   │   └── ...             # reply-tracker, digest, clean, etc.
+│   │   ├── integrations/       # External API clients (google, microsoft, qstash)
 │   │   ├── lib/                # Server utilities
 │   │   ├── packages/           # Internal packages (@amodel/*)
-│   │   ├── scripts/            # Utility scripts
 │   │   └── types/              # TypeScript types
 │   │
-│   ├── enterprise/             # Premium features
-│   │
+│   ├── enterprise/             # Premium features (Stripe)
 │   └── __tests__/              # Test files
 │
-├── generated/                  # Auto-generated code
-│   └── prisma/                 # Prisma types
+├── prisma/                     # Schema and migrations
+│   ├── schema.prisma
+│   └── migrations/
 │
-├── surfaces/                   # Sidecar service (Slack/Discord/Telegram)
+├── surfaces/                   # Sidecar service (Slack/Discord/Telegram bots)
 │
 ├── docs/                       # Documentation
-│   ├── ARCHITECTURE.md         # Codebase architecture (source of truth)
-│   ├── 01-FEATURES.md          # Feature list
+│   ├── 01-FEATURES.md          # Feature list and launch prioritization
 │   └── ...
 │
+├── ARCHITECTURE.md             # Codebase architecture (source of truth)
 └── scripts/                    # Root-level scripts
 ```
 
@@ -187,11 +184,13 @@ amodel/
 | Add a React component | `src/components/` |
 | Add client-side state | `src/lib/stores/` |
 | Create an API endpoint | `src/app/api/` |
-| Add AI logic | `src/server/features/ai/` |
+| Add or change AI tools | `src/server/features/ai/tools/` |
+| Modify system prompt | `src/server/features/ai/system-prompt.ts` |
 | Modify email integration | `src/server/integrations/google/` or `microsoft/` |
 | Add server action | `src/server/actions/` |
-| Change database schema | `generated/prisma/` (schema in Prisma Studio) |
+| Change database schema | `prisma/schema.prisma` (migrate with `bunx prisma migrate dev`) |
 | Add a new feature | `src/server/features/[feature-name]/` |
+| Surfaces (Slack/Discord/Telegram) | `surfaces/` (sidecar) + `src/server/features/channels/` (executor) |
 
 ---
 
@@ -207,11 +206,10 @@ import { useQuality } from "@/lib/stores/qualityStore";
 // Backend
 import prisma from "@/server/db/client";
 import { createAgentTools } from "@/features/ai/tools";
-import { createRuleManagementTools } from "@/features/ai/rule-tools";
 
-// Features
+// Features (server code under src/server/features)
 import { aiProcessAssistantChat } from "@/features/web-chat/ai/chat";
-import { runOneShotAgent } from "@/features/surfaces/executor";
+import { runOneShotAgent } from "@/features/channels/executor";
 
 // Packages
 import { sendEmail } from "@amodel/resend";
@@ -244,6 +242,6 @@ Open [http://localhost:3000](http://localhost:3000) to see the app.
 
 ## Documentation
 
-- **[Architecture](docs/ARCHITECTURE.md)** - Codebase organization and conventions
+- **[Architecture](ARCHITECTURE.md)** - Codebase organization and conventions (root)
 - **[Features](docs/01-FEATURES.md)** - Complete feature list with implementation status
-- **[Issues](docs/04-ISSUES.md)** - Known issues and their status
+- **[Issues](docs/04-ISSUES.md)** - Known issues and their status (if present)

@@ -78,11 +78,11 @@
 
 ---
 
-## 2. Agentic Capabilities (6 features)
+## 2. Agentic Capabilities (8 features)
 
 > These are the **agent “tools”**. They should exist at launch, but most of the time they do **not** need separate UI beyond confirmations, previews, and logs.
 >
-> **Note**: All tools are ✅ for **email operations**. Calendar operations return "not implemented" (acceptable since Calendar is 🕒).
+> **Note**: All tools are ✅ for **email operations**. Calendar CRUD is implemented for Google; Outlook remains deferred. **DANGEROUS** tools (e.g. `send`) require explicit per-action approval.
 
 | Status | Tool | Description | Key Files | Security Limit | Primary UX Surface |
 |---|---|---|---|---|---|
@@ -91,7 +91,10 @@
 | ✅ | **Analyze Tool** | AI analysis of content | `server/features/ai/tools/analyze.ts` | SAFE | **Chat-first** |
 | ✅ | **Create Tool** | Create drafts (reply/forward/new) + events | `server/features/ai/tools/create.ts` | CAUTION | **Hybrid** (preview/confirm) |
 | ✅ | **Modify Tool** | Archive/label/mark read etc. | `server/features/ai/tools/modify.ts` | CAUTION | **Hybrid** (fast actions UI) |
-| ✅ | **Delete Tool** | Trash items | `server/features/ai/tools/delete.ts` | CAUTION | **Hybrid** (confirmations) |
+| ✅ | **Delete Tool** | Trash items; Drive file/folder delete | `server/features/ai/tools/delete.ts` | CAUTION | **Hybrid** (confirmations) |
+| ✅ | **Send Tool** | Send email (draft→sent); requires explicit user approval | `server/features/ai/tools/send.ts` | **DANGEROUS** | **Hybrid** (in-app or verbal approval) |
+| ✅ | **Rules Tool** | Single polymorphic tool: list/create/update/delete/enable/disable rules | `server/features/ai/tools/rules.ts` | CAUTION | **Chat-first** + rules portal APIs |
+| ✅ | **Triage Tool** | "What should I do next?"—rank tasks with rationale; approval-backed actions | `server/features/ai/tools/triage.ts` | CAUTION | **Chat-first** + panel API |
 
 ---
 
@@ -114,7 +117,7 @@
 | ✅ | **Attachment Handling** | Download/process attachments | `server/integrations/google/attachment.ts` | **UI-first** | Yes (`get`) |
 | ✅ | **Contacts Search** | Search contacts | `server/integrations/google/contact.ts` | **Chat-first** + light picker | Yes (`query`) |
 | ✅ | **Signature Settings** | Manage signatures | `server/integrations/google/signature-settings.ts` | **UI-first** (settings) | No |
-| 🕒 | **Email Sending** | Send emails (non-draft) | `server/integrations/google/mail.ts` | **UI-first** | No (draft only) |
+| ✅ | **Email Sending** | Send emails via AI tool; **DANGEROUS**—requires explicit per-email approval (in-app notification or verbal) | `server/integrations/google/mail.ts`, `server/features/ai/tools/send.ts` | **Hybrid** (approval UX) | Yes (`send` tool, approval-gated) |
 | ✅ | **Gmail Filters** | Create filters | `server/integrations/google/filter.ts` | **UI-first** (advanced) | No |
 | ✅ | **Gmail Watch/Webhooks** | Real-time sync via Pub/Sub | `server/integrations/google/watch.ts`, `watch-manager.ts` | **Backend-only** | No |
 | ✅ | **History Processing** | Incremental sync via history API | `server/integrations/google/history.ts` | **Backend-only** | No |
@@ -192,12 +195,15 @@
 
 | Status | Feature | Description | Key Files | Primary UX Surface | Agentic Supported? |
 |---|---|---|---|---|---|
-| 🕒 | **Calendar Connection** | Connect calendars | `CalendarConnection` | UI-first | No |
-| 🕒 | **Calendar Availability** | Free/busy checks | `server/integrations/ai/calendar/availability.ts` | Chat-first | Yes (`query`) |
+| ✅ | **Calendar Connection** | Connect calendars | `app/api/google/calendar/*`, `features/calendar/handle-calendar-callback.ts` | UI-first | No |
+| ✅ | **Calendar Availability** | Free/busy checks | `server/features/calendar/ai/availability.ts`, `server/features/calendar/unified-availability.ts` | Chat-first | Yes (`query`) |
 | 🕒 | **Meeting Briefings** | Pre-meeting context | `MeetingBriefing` | UI-first | Yes |
-| 🕒 | **Drive Connection** | Connect Drive/OneDrive | `DriveConnection` | UI-first | No |
-| 🕒 | **Document Auto-Filing** | File attachments | `DocumentFiling` | UI-first | Yes |
-| 🕒 | **Filing Folders** | Manage folder structure | `FilingFolder` | UI-first | Yes |
+| ✅ | **Drive Connection** | Connect Drive/OneDrive | `app/api/google/drive/*`, `features/drive/providers/*` | UI-first | No |
+| ✅ | **Drive Watch/Webhooks** | Real-time Drive change notifications | `app/api/google/drive/watch/*`, drive webhook handlers | Backend-only | No |
+| ✅ | **Drive Watch Renewal** | Cron renews Drive watch channels | Backend-only | `app/api/google/drive/watch/renew` (CRON_SECRET) |
+| ✅ | **Drive Delete (File/Folder)** | Delete files/folders via AI `delete` tool | `server/features/drive/providers/*` (deleteFile/deleteFolder) | **Hybrid** (confirmations) | Yes (`delete` tool). **Download excluded.** |
+| ✅ | **Document Auto-Filing** | File attachments | `server/features/document-filing/*`, `features/drive/*` | UI-first | Yes |
+| ✅ | **Filing Folders** | Manage folder structure | `server/features/drive/folder-utils.ts` | UI-first | Yes |
 
 ---
 
@@ -260,7 +266,7 @@
 | Status | Feature | Description | Key Files | Notes |
 |---|---------|-------------|-----------|-------|
 | ✅ | **Unified System Prompt** | Same AI personality across all platforms | `features/ai/system-prompt.ts` | Single source of truth |
-| ✅ | **Shared Rule Tools** | Rule management available on all platforms | `features/ai/rule-tools.ts` | Full parity with web |
+| ✅ | **Shared Rule Tools** | Single polymorphic `rules` tool (list/create/update/delete/enable/disable); rules portal APIs | `server/features/ai/tools/rules.ts`, `app/api/rules/route.ts`, `app/api/rules/[id]/route.ts` | Full parity with web; dedicated rules UI supported |
 | ✅ | **Draft Review & Send** | AI creates drafts, users send via buttons | `app/api/drafts/` | Human-in-the-loop |
 | ✅ | **Interactive Payloads** | Rich previews with Send/Edit/Discard | `features/channels/types.ts` | Platform-specific rendering |
 
@@ -371,23 +377,24 @@ To become “calendar + task agent + push assistant,” you are missing:
 
 ---
 
-## 1. Calendar Provider Integration (Missing)
+## 1. Calendar Provider Integration (Google implemented; Outlook deferred)
 
 ### Google Calendar (Core)
 
 | Status | Feature | Description | Primary UX Surface | Notes / Why |
 |---|---|---|---|---|
-| 🚀 | **Google Calendar OAuth Connection** | Connect GCal with correct scopes | UI-first | Must exist to claim calendar agent |
-| 🚀 | **Calendar List + Selection** | Choose which calendars to sync/use | UI-first | Users have many calendars |
-| 🚀 | **Event Read APIs** | List events, get event details | Hybrid | Needed for “what’s my day” |
-| 🚀 | **Free/Busy + Availability** | Accurate availability window queries | Chat-first | Needed for scheduling tasks/meetings |
-| 🚀 | **Event Create (Draft-first)** | AI proposes event → user approves → create | Hybrid | “Nothing automatic” requirement |
-| 🚀 | **Event Update (Draft-first)** | AI proposes edits → user approves | Hybrid | Critical for rescheduling |
-| 🚀 | **Event Delete/Cancel (Draft-first)** | Propose cancellation | Hybrid | Must require explicit approval |
-| 🚀 | **Calendar Watch/Webhooks** | Real-time updates via push channel | Backend-only | Equivalent of Gmail watch renewal problem |
-| 🚀 | **Incremental Sync Cursor** | Store syncToken; process deltas | Backend-only | Avoid full sync; reliable performance |
-| 🕒 | **Recurring Event Handling** | Exceptions, series edits | Hybrid | Complex edge cases |
-| 🕒 | **Time Zone Normalization** | Multi-timezone correctness | Backend-only | Important but can tighten later |
+| ✅ | **Google Calendar OAuth Connection** | Connect GCal with correct scopes | UI-first | Implemented backend; UI pending |
+| ✅ | **Calendar List + Selection** | Choose which calendars to sync/use | UI-first | Backend selection via `TaskPreference.selectedCalendarIds` |
+| ✅ | **Event Read APIs** | List events, get event details | Hybrid | Implemented in providers + tools |
+| ✅ | **Free/Busy + Availability** | Accurate availability window queries | Chat-first | Implemented in unified availability |
+| ✅ | **Event Create (Draft-first)** | AI proposes event → user approves → create | Hybrid | Implemented via tools + approvals |
+| ✅ | **Event Update (Draft-first)** | AI proposes edits → user approves | Hybrid | Implemented via tools + approvals |
+| ✅ | **Event Delete/Cancel (Draft-first)** | Propose cancellation | Hybrid | Implemented via tools + approvals |
+| ✅ | **Calendar Watch/Webhooks** | Real-time updates via push channel | Backend-only | Implemented for Google |
+| ✅ | **Calendar Watch Renewal** | Cron renews watch channels before expiry | Backend-only | `app/api/google/calendar/watch/renew` (CRON_SECRET) |
+| ✅ | **Incremental Sync Cursor** | Store syncToken; process deltas | Backend-only | Implemented for Google |
+| ✅ | **Recurring Event Handling** | Exceptions, series edits | Hybrid | Implemented for Google |
+| ✅ | **Time Zone Normalization** | Multi-timezone correctness | Backend-only | Implemented in scheduling utils |
 | 🕒 | **Conference Links** | Meet/Zoom creation support | Hybrid | Adds value but non-essential |
 | 🕒 | **Invitees & RSVP** | Update attendee status | UI-first | Highly sensitive; approval required |
 | 🕒 | **Room/Resource Calendars** | Enterprise-ish | UI-first | Defer until teams |
@@ -403,19 +410,19 @@ To become “calendar + task agent + push assistant,” you are missing:
 
 ---
 
-## 2. Task System (Missing)
+## 2. Task System (Partially implemented)
 
 > Right now you have “email rules + follow-ups,” but not a general-purpose task system with scheduling.
 
 | Status | Feature | Description | Primary UX Surface | Notes / Why |
 |---|---|---|---|---|
-| 🚀 | **Task Data Model** | Task table: title, status, due, duration, priority, tags, source links | UI-first | Foundation for everything |
-| 🚀 | **Email → Task Conversion** | Turn threads into tasks w/ links & context | Hybrid | Bridges email-first → task-first |
-| 🚀 | **Task List Views** | Today / Upcoming / Overdue / Project | UI-first | High-frequency daily use |
-| 🚀 | **Time Blocking (Calendar Scheduling)** | Place tasks into calendar as blocks | Hybrid | Core “Motion-like” value |
-| 🚀 | **Reschedule Engine** | Move task blocks when conflicts arise | Chat-first | “Agentic scheduling” core |
-| 🚀 | **Task Approval Flow** | Proposed schedule changes require approve | Hybrid | Your hard requirement |
-| 🚀 | **Task Templates / Quick Add** | Repeatable tasks, shortcuts | UI-first | Reduces friction |
+| ✅ | **Task Data Model** | Task table: title, status, due, duration, priority, tags, source links | UI-first | Foundation for everything |
+| 🕒 | **Email → Task Conversion** | Turn threads into tasks w/ links & context | Hybrid | Bridges email-first → task-first |
+| 🕒 | **Task List Views** | Today / Upcoming / Overdue / Project | UI-first | High-frequency daily use |
+| ✅ | **Time Blocking (Calendar Scheduling)** | Place tasks into calendar as blocks | Hybrid | Core “Motion-like” value |
+| ✅ | **Reschedule Engine** | Move task blocks when conflicts arise | Chat-first | “Agentic scheduling” core |
+| ✅ | **Task Approval Flow** | Proposed schedule changes require approve | Hybrid | Your hard requirement |
+| 🕒 | **Task Templates / Quick Add** | Repeatable tasks, shortcuts | UI-first | Reduces friction |
 | 🕒 | **Projects / Goals** | Group tasks beyond simple tags | UI-first | Useful but not v1 required |
 | 🕒 | **Dependencies** | Task A blocks task B | UI-first | Complex; later |
 | 🕒 | **Delegation / Assignments** | Multi-user tasks | UI-first | Team feature |
@@ -429,7 +436,7 @@ To become “calendar + task agent + push assistant,” you are missing:
 
 ---
 
-## 4. Push Notifications + Actionable Approvals (Missing)
+## 4. Push Notifications + Actionable Approvals (Partially implemented)
 
 > Without push, “assistant” feels passive. Push is how you get “ClaudeBot-like” responsiveness.
 
@@ -438,9 +445,9 @@ To become “calendar + task agent + push assistant,” you are missing:
 | Status | Feature | Description | Key Files | Primary UX Surface | Notes |
 |---|---|---|---|---|---|
 | ✅ | **Web Push Setup** | Surfaces Sidecar (`/notify`) | `surfaces/` | UI-first | HTTP Server ready |
-| ✅ | **Agentic Push** | AI-generated "Heads Up" notifications | `server/services/notification/generator.ts` | Backend-only | "Triple-Safe" Filtering |
-| 🚀 | **Actionable Notifications** | Approve/reject proposed action | Hybrid | Requires secure action tokens |
-| 🚀 | **Notification Preferences** | Quiet hours, categories, urgency | UI-first | Prevent spam |
+| ✅ | **Agentic Push** | AI-generated "Heads Up" notifications | `server/features/notifications/generator.ts` | Backend-only | "Triple-Safe" Filtering |
+| ✅ | **Actionable Notifications** | Approve/reject proposed action via secure signed action tokens | Hybrid | Secure action tokens implemented for approval links |
+| ✅ | **Notification Preferences** | Quiet hours, categories, urgency; **managed via rules** (app-first/sidecar flow) | UI-first + Chat | System prompt reinforces rule-based reminders + preferences |
 
 ### Mobile Push (later)
 
@@ -451,30 +458,31 @@ To become “calendar + task agent + push assistant,” you are missing:
 
 ---
 
-## 5. Core Assistant Experiences (Missing)
+## 5. Core Assistant Experiences (Partially implemented)
 
 These are the “marketable” behaviors that make calendar/task feel agentic.
 
 | Status | Feature | Description | Primary UX Surface | Notes |
 |---|---|---|---|---|
 | 🚀 | **Daily Briefing** | “Here’s today: meetings + tasks + emails” | Chat-first + UI summary | Flagship |
-| 🚀 | **Schedule Something** | “Find 30 min this week for X” | Chat-first | Must propose + confirm |
-| 🚀 | **Conflict Resolution** | “Meeting moved—reschedule tasks” | Chat-first | Requires calendar watches |
-| 🚀 | **Meeting Prep Pack** | Agenda + attendees + context from email | Hybrid | Leverages your email advantage |
-| 🚀 | **Task Triage** | “What should I do next?” with rationale | Chat-first | Needs task model |
+| ✅ | **Schedule Something** | “Find 30 min this week for X” | Chat-first | Proposes 1–3 options; user replies 1/2/3 |
+| ✅ | **Conflict Resolution** | "Meeting moved—reschedule tasks"; schedule proposal + resolver + verbal selection in agent | Chat-first | Webhook detects external calendar changes with deduplication; user can accept proposal via chat (e.g. 1/2/3) or approval UI |
+| ✅ | **Meeting Prep Pack** | Agenda + attendees + context from email | Hybrid | Leverages your email advantage |
+| ✅ | **Task Triage** | “What should I do next?” with rationale; panel API + approval-backed actions | Chat-first + UI | `server/features/ai/tools/triage.ts`, `server/features/tasks/triage/*`, `app/api/tasks/triage` (GET), `app/api/tasks/triage/action` (POST), `app/api/tasks/triage/audit` (GET) |
 | 🕒 | **Multi-step Plans** | “Plan my week” with iterations | Chat-first | Later polish |
 | 🕒 | **Natural Language Calendar Editing** | “Move my 3pm to tomorrow” | Chat-first | Needs strong approval UI |
 | 🕒 | **Follow-up Automation Across Surfaces** | follow-ups become tasks and blocks | Hybrid | Nice-to-have |
 
 ---
 
-## 6. Agent Safety / Governance (Missing or needs expansion)
+## 6. Agent Safety / Governance (Partially implemented)
 
 You already have prompt security. “True assistant” requires surface-level safety.
 
 | Status | Feature | Description | Primary UX Surface | Notes |
 |---|---|---|---|---|
-| 🚀 | **Unified Approval Ledger** | Every action proposal logged + who approved | UI-first | Trust building |
+| ✅ | **Unified Approval Ledger** | Every action proposal logged + who approved | UI-first | Trust building |
+| ✅ | **Secure Action Tokens** | Signed tokens for approval links (push/email); prevents forgery | Backend-only | Used for actionable notifications and triage/send approvals |
 | 🚀 | **Action Sandbox Mode** | Draft-only by default (emails + events) | UI-first | Aligns with your requirement |
 | 🚀 | **Action Scopes & Permissions** | Per-connector permissions (read-only vs write) | UI-first | Required for enterprise later too |
 | 🚀 | **Rollback/Undo Where Possible** | Undo archive/label; calendar “revert proposal” | UI-first | Reduces fear |
@@ -482,15 +490,15 @@ You already have prompt security. “True assistant” requires surface-level sa
 
 ---
 
-## 7. Calendar + Task Tooling (Agent Tool Calls Missing)
+## 7. Calendar + Task Tooling (Partially implemented)
 
 Your current tool set covers Email/Calendar/Automation in concept, but calendar/task providers are incomplete.
 
 | Status | Tooling Feature | Description | Primary UX Surface | Notes |
 |---|---|---|---|---|
-| 🚀 | **Calendar Provider for Query/Get** | query events, get event details | Chat-first | Must exist for agent |
-| 🚀 | **Calendar Provider for Create/Modify** | create/update events (draft-first) | Hybrid | Approval required |
-| 🚀 | **Task Provider for Query/Get/Create/Modify** | tasks as first-class tool resource | Chat-first + UI | Critical |
+| ✅ | **Calendar Provider for Query/Get** | query events, get event details | Chat-first | Must exist for agent |
+| ✅ | **Calendar Provider for Create/Modify** | create/update events (draft-first) | Hybrid | Approval required |
+| ✅ | **Task Provider for Query/Get/Create/Modify** | tasks as first-class tool resource | Chat-first + UI | Critical |
 | 🕒 | **Automation Provider Enhancements** | e.g. schedule-based triggers for tasks | Hybrid | Later |
 
 ---

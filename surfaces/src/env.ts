@@ -9,6 +9,7 @@ const envSchema = z
     GOOGLE_API_KEY: z.string().optional(),
     JOBS_SHARED_SECRET: z.string().optional(),
     SURFACES_SHARED_SECRET: z.string().optional(),
+    INTERNAL_API_KEY: z.string().optional(),
     BRAIN_API_URL: z
       .string()
       .url()
@@ -29,6 +30,7 @@ const envSchema = z
       "GOOGLE_API_KEY",
       "JOBS_SHARED_SECRET",
       "SURFACES_SHARED_SECRET",
+      "INTERNAL_API_KEY",
     ];
 
     for (const key of requiredKeys) {

@@ -1,5 +1,6 @@
 
 import { z } from "zod";
+import { env } from "@/env";
 import { type ToolDefinition } from "./types";
 import prisma from "@/server/db/client";
 import { getEmailAccountWithAi } from "@/server/lib/user/get";
@@ -11,9 +12,34 @@ import { aiCollectReplyContext } from "@/features/reply-tracker/ai/reply-context
 import { createScopedLogger } from "@/server/lib/logger";
 import { isDefined } from "@/server/types";
 import { type EmailForLLM, type MessageWithPayload } from "@/server/types";
+import { scheduleTasksForUser, resolveSchedulingEmailAccountId } from "@/features/calendar/scheduling/TaskSchedulingService";
+import { addDays, isAmbiguousLocalTime, resolveTimeZoneOrUtc } from "@/features/calendar/scheduling/date-utils";
+import { CalendarServiceImpl } from "@/features/calendar/scheduling/CalendarServiceImpl";
+import { TimeSlotManagerImpl } from "@/features/calendar/scheduling/TimeSlotManager";
+import { ApprovalService } from "@/features/approvals/service";
+import { createHash } from "crypto";
 
 const router = new ChannelRouter();
 const logger = createScopedLogger("tools/create");
+const approvalService = new ApprovalService(prisma);
+
+const formatSlotLabel = (start: Date, end: Date | null | undefined, timeZone: string) => {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+        timeZone
+    });
+    const startLabel = formatter.format(start);
+    if (!end) {
+        return startLabel;
+    }
+    const endLabel = formatter.format(end);
+    return `${startLabel} - ${endLabel}`;
+};
 
 export const createTool: ToolDefinition<any> = {
     name: "create",
@@ -24,12 +50,14 @@ Email: Creates a DRAFT only. User must manually send from UI.
 - For reply/forward: provide parentId (thread ID / message ID)
 - Returns: { draftId, previewUrl } for user to review and send
 
-Calendar: Not implemented.
+Calendar: Can create events or return scheduling suggestions.
+
+Task: Creates a task and optionally auto-schedules it. If flexibility is not specified by the user, choose a reschedulePolicy.
 
 Automation: Create Rules & Knowledge supported.`,
 
     parameters: z.object({
-        resource: z.enum(["email", "calendar", "automation", "knowledge", "drive", "notification", "contacts"]),
+        resource: z.enum(["email", "calendar", "automation", "knowledge", "drive", "notification", "contacts", "task"]),
         type: z.enum(["new", "reply", "forward"]).optional(),
         parentId: z.string().optional(),
         data: z.object({
@@ -42,10 +70,32 @@ Automation: Create Rules & Knowledge supported.`,
 
             // Calendar
             title: z.string().optional(),
+            description: z.string().optional(),
             start: z.string().optional(),
             end: z.string().optional(),
+            durationMinutes: z.number().min(5).max(480).optional(),
+            autoSchedule: z.boolean().optional(),
+            calendarId: z.string().optional(),
+            allDay: z.boolean().optional(),
+            isRecurring: z.boolean().optional(),
+            recurrenceRule: z.string().optional(),
+            timeZone: z.string().optional(),
             attendees: z.array(z.string()).optional(),
             location: z.string().optional(),
+            ambiguityResolved: z.boolean().optional(),
+
+            // Task
+            reschedulePolicy: z.enum(["FIXED", "FLEXIBLE", "APPROVAL_REQUIRED"]).optional(),
+            status: z.enum(["PENDING", "IN_PROGRESS", "COMPLETED", "CANCELLED"]).optional(),
+            priority: z.enum(["NONE", "LOW", "MEDIUM", "HIGH"]).optional(),
+            energyLevel: z.enum(["LOW", "MEDIUM", "HIGH"]).optional(),
+            preferredTime: z.enum(["MORNING", "AFTERNOON", "EVENING"]).optional(),
+            dueDate: z.string().optional(),
+            startDate: z.string().optional(),
+            isAutoScheduled: z.boolean().optional(),
+            scheduleLocked: z.boolean().optional(),
+            scheduledStart: z.string().optional(),
+            scheduledEnd: z.string().optional(),
 
             // Automation
             name: z.string().optional(),
@@ -249,7 +299,331 @@ Automation: Create Rules & Knowledge supported.`,
                 return { success: true, data: { text: notifText, pushed: true } };
 
             case "calendar":
-                return { success: false, error: "Calendar create not implemented" };
+                if (!providers.calendar) {
+                    return { success: false, error: "Calendar provider not available" };
+                }
+
+                if (!data.autoSchedule && !data.start) {
+                    return { success: false, error: "Calendar scheduling requires autoSchedule or a start time" };
+                }
+
+                if (!env.NEXT_PUBLIC_CALENDAR_SCHEDULING_ENABLED) {
+                    return { success: false, error: "Calendar scheduling is disabled" };
+                }
+
+                if (!data.title) {
+                    return { success: false, error: "Calendar title is required" };
+                }
+
+                if (data.autoSchedule || !data.start || !data.end) {
+                    const durationMinutes = data.durationMinutes || 30;
+                    const slots = await providers.calendar.findAvailableSlots({
+                        durationMinutes,
+                        start: data.start ? new Date(data.start) : undefined,
+                        end: data.end ? new Date(data.end) : undefined
+                    });
+                    const timeZoneResult = resolveTimeZoneOrUtc(data.timeZone);
+                    const options = slots.slice(0, 3).map((slot) => ({
+                        start: slot.start.toISOString(),
+                        end: slot.end.toISOString(),
+                        timeZone: timeZoneResult.timeZone
+                    }));
+                    if (options.length === 0) {
+                        return { success: false, error: "No available slots found" };
+                    }
+
+                    const idempotencyKey = createHash("sha256")
+                        .update(`schedule-proposal:event:${context.userId}:${JSON.stringify(data)}:${durationMinutes}`)
+                        .digest("hex");
+
+                    const request = await approvalService.createRequest({
+                        userId: context.userId,
+                        provider: "system",
+                        externalContext: { source: "schedule_proposal" },
+                        requestPayload: {
+                            actionType: "schedule_proposal",
+                            description: "Schedule proposal",
+                            tool: "create",
+                            originalIntent: "event",
+                            args: { resource, type, parentId, data },
+                            options
+                        },
+                        idempotencyKey,
+                        expiresInSeconds: 3600
+                    } as any);
+
+                    const lines = options.map((option, index) => {
+                        const start = new Date(option.start);
+                        const end = option.end ? new Date(option.end) : undefined;
+                        return `${index + 1}) ${formatSlotLabel(start, end, option.timeZone)}`;
+                    });
+
+                    return {
+                        success: true,
+                        data: {
+                            status: "schedule_proposal",
+                            scheduleProposalId: request.id,
+                            options
+                        },
+                        message: `Here are a few options:\n${lines.join("\n")}\nReply 1, 2, or 3.`
+                    };
+                }
+
+                const timeZoneResult = resolveTimeZoneOrUtc(data.timeZone);
+                if (timeZoneResult.isFallback && data.timeZone) {
+                    logger.warn("Invalid time zone for calendar create; falling back to UTC", {
+                        originalTimeZone: data.timeZone
+                    });
+                }
+
+                const ambiguityResolved = (data as any).ambiguityResolved === true;
+                if (!ambiguityResolved && data.timeZone && data.start && isAmbiguousLocalTime(new Date(data.start), timeZoneResult.timeZone)) {
+                    const start = new Date(data.start);
+                    const end = data.end ? new Date(data.end) : undefined;
+                    const durationMs = end ? end.getTime() - start.getTime() : undefined;
+                    const earlierStart = new Date(start);
+                    const earlierStartUtc = (await import("date-fns-tz")).fromZonedTime(earlierStart, timeZoneResult.timeZone);
+                    const laterStartUtc = new Date(earlierStartUtc.getTime() + 60 * 60 * 1000);
+                    const earlierEndUtc = durationMs ? new Date(earlierStartUtc.getTime() + durationMs) : undefined;
+                    const laterEndUtc = durationMs ? new Date(laterStartUtc.getTime() + durationMs) : undefined;
+
+                    const idempotencyKey = createHash("sha256")
+                        .update(`ambiguous-create:${context.userId}:${data.start}:${data.end}:${timeZoneResult.timeZone}`)
+                        .digest("hex");
+
+                    const request = await approvalService.createRequest({
+                        userId: context.userId,
+                        provider: "system",
+                        externalContext: { source: "ambiguous_time" },
+                        requestPayload: {
+                            actionType: "ambiguous_time",
+                            tool: "create",
+                            args: { resource, type, parentId, data },
+                            options: {
+                                earlier: {
+                                    start: earlierStartUtc.toISOString(),
+                                    end: earlierEndUtc?.toISOString()
+                                },
+                                later: {
+                                    start: laterStartUtc.toISOString(),
+                                    end: laterEndUtc?.toISOString()
+                                },
+                                timeZone: timeZoneResult.timeZone
+                            },
+                            message: "That time happens twice because of daylight saving. Which one did you mean?"
+                        },
+                        idempotencyKey,
+                        expiresInSeconds: 3600
+                    } as any);
+
+                    return {
+                        success: true,
+                        data: { status: "ambiguous_time" },
+                        interactive: {
+                            type: "ambiguous_time" as const,
+                            ambiguousRequestId: request.id,
+                            summary: "That time happens twice because of daylight saving. Which one did you mean?",
+                            actions: [
+                                { label: "Earlier", style: "primary" as const, value: "earlier" },
+                                { label: "Later", style: "primary" as const, value: "later" }
+                            ]
+                        }
+                    };
+                }
+
+                if (!ambiguityResolved && data.timeZone && data.end && isAmbiguousLocalTime(new Date(data.end), timeZoneResult.timeZone)) {
+                    const end = new Date(data.end);
+                    const start = data.start ? new Date(data.start) : undefined;
+                    const earlierEndUtc = (await import("date-fns-tz")).fromZonedTime(end, timeZoneResult.timeZone);
+                    const laterEndUtc = new Date(earlierEndUtc.getTime() + 60 * 60 * 1000);
+                    const earlierStartUtc = start ? new Date(start) : undefined;
+                    const laterStartUtc = start ? new Date(start) : undefined;
+
+                    const idempotencyKey = createHash("sha256")
+                        .update(`ambiguous-create-end:${context.userId}:${data.start}:${data.end}:${timeZoneResult.timeZone}`)
+                        .digest("hex");
+
+                    const request = await approvalService.createRequest({
+                        userId: context.userId,
+                        provider: "system",
+                        externalContext: { source: "ambiguous_time" },
+                        requestPayload: {
+                            actionType: "ambiguous_time",
+                            tool: "create",
+                            args: { resource, type, parentId, data },
+                            options: {
+                                earlier: {
+                                    start: earlierStartUtc?.toISOString(),
+                                    end: earlierEndUtc.toISOString()
+                                },
+                                later: {
+                                    start: laterStartUtc?.toISOString(),
+                                    end: laterEndUtc.toISOString()
+                                },
+                                timeZone: timeZoneResult.timeZone
+                            },
+                            message: "That time happens twice because of daylight saving. Which one did you mean?"
+                        },
+                        idempotencyKey,
+                        expiresInSeconds: 3600
+                    } as any);
+
+                    return {
+                        success: true,
+                        data: { status: "ambiguous_time" },
+                        interactive: {
+                            type: "ambiguous_time" as const,
+                            ambiguousRequestId: request.id,
+                            summary: "That time happens twice because of daylight saving. Which one did you mean?",
+                            actions: [
+                                { label: "Earlier", style: "primary" as const, value: "earlier" },
+                                { label: "Later", style: "primary" as const, value: "later" }
+                            ]
+                        }
+                    };
+                }
+
+                const event = await providers.calendar.createEvent({
+                    calendarId: data.calendarId,
+                    input: {
+                        title: data.title,
+                        description: data.description,
+                        location: data.location,
+                        start: new Date(data.start),
+                        end: new Date(data.end),
+                        allDay: data.allDay,
+                        isRecurring: data.isRecurring,
+                        recurrenceRule: data.recurrenceRule,
+                        timeZone: timeZoneResult.timeZone
+                    }
+                });
+                await scheduleTasksForUser({ userId: context.userId, emailAccountId, source: "ai" });
+                return { success: true, data: event };
+
+            case "task":
+                if (!data.title) {
+                    return { success: false, error: "Task title is required" };
+                }
+
+                if (data.isAutoScheduled && !data.scheduledStart && !data.scheduledEnd) {
+                    const preferences = await prisma.taskPreference.findUnique({
+                        where: { userId: context.userId }
+                    });
+                    if (!preferences) {
+                        return { success: false, error: "Task preferences not found for scheduling" };
+                    }
+
+                    const timeZoneResult = resolveTimeZoneOrUtc(preferences.timeZone);
+                    const settings = {
+                        workHourStart: preferences.workHourStart,
+                        workHourEnd: preferences.workHourEnd,
+                        workDays: preferences.workDays,
+                        bufferMinutes: preferences.bufferMinutes,
+                        selectedCalendarIds: preferences.selectedCalendarIds,
+                        timeZone: timeZoneResult.timeZone,
+                        groupByProject: preferences.groupByProject,
+                    };
+
+                    const resolvedEmailAccountId = await resolveSchedulingEmailAccountId({
+                        userId: context.userId,
+                        emailAccountId,
+                        selectedCalendarIds: preferences.selectedCalendarIds,
+                        logger,
+                    });
+
+                    const calendarService = new CalendarServiceImpl(resolvedEmailAccountId, logger);
+                    const timeSlotManager = new TimeSlotManagerImpl(settings, calendarService);
+                    const now = new Date();
+                    const taskWindowEnd = addDays(now, 7);
+                    const slots = await timeSlotManager.findAvailableSlots({
+                        id: "preview",
+                        userId: context.userId,
+                        title: data.title,
+                        durationMinutes: data.durationMinutes ?? 30,
+                        status: "PENDING",
+                        priority: data.priority ?? "NONE",
+                        energyLevel: data.energyLevel ?? null,
+                        preferredTime: data.preferredTime ?? null,
+                        dueDate: data.dueDate ? new Date(data.dueDate) : null,
+                        startDate: data.startDate ? new Date(data.startDate) : null,
+                        scheduleLocked: false,
+                        isAutoScheduled: true,
+                        scheduledStart: null,
+                        scheduledEnd: null,
+                        scheduleScore: null,
+                    }, now, taskWindowEnd);
+
+                    const options = slots.slice(0, 3).map((slot) => ({
+                        start: slot.start.toISOString(),
+                        end: slot.end.toISOString(),
+                        timeZone: timeZoneResult.timeZone
+                    }));
+                    if (options.length === 0) {
+                        return { success: false, error: "No available slots found" };
+                    }
+
+                    const idempotencyKey = createHash("sha256")
+                        .update(`schedule-proposal:task:${context.userId}:${JSON.stringify(data)}`)
+                        .digest("hex");
+
+                    const request = await approvalService.createRequest({
+                        userId: context.userId,
+                        provider: "system",
+                        externalContext: { source: "schedule_proposal" },
+                        requestPayload: {
+                            actionType: "schedule_proposal",
+                            description: "Schedule proposal",
+                            tool: "create",
+                            originalIntent: "task",
+                            args: { resource, type, parentId, data },
+                            options
+                        },
+                        idempotencyKey,
+                        expiresInSeconds: 3600
+                    } as any);
+
+                    const lines = options.map((option, index) => {
+                        const start = new Date(option.start);
+                        const end = option.end ? new Date(option.end) : undefined;
+                        return `${index + 1}) ${formatSlotLabel(start, end, option.timeZone)}`;
+                    });
+
+                    return {
+                        success: true,
+                        data: {
+                            status: "schedule_proposal",
+                            scheduleProposalId: request.id,
+                            options
+                        },
+                        message: `Here are a few options:\n${lines.join("\n")}\nReply 1, 2, or 3.`
+                    };
+                }
+
+                const task = await prisma.task.create({
+                    data: {
+                        userId: context.userId,
+                        title: data.title,
+                        description: data.description ?? null,
+                        durationMinutes: data.durationMinutes ?? null,
+                        status: data.status ?? "PENDING",
+                        priority: data.priority ?? "NONE",
+                        energyLevel: data.energyLevel ?? null,
+                        preferredTime: data.preferredTime ?? null,
+                        dueDate: data.dueDate ? new Date(data.dueDate) : null,
+                        startDate: data.startDate ? new Date(data.startDate) : null,
+                        isAutoScheduled: data.isAutoScheduled ?? true,
+                        scheduleLocked: data.scheduleLocked ?? false,
+                        reschedulePolicy: data.reschedulePolicy ?? "FLEXIBLE",
+                        scheduledStart: data.scheduledStart ? new Date(data.scheduledStart) : null,
+                        scheduledEnd: data.scheduledEnd ? new Date(data.scheduledEnd) : null,
+                    }
+                });
+
+                if (task.isAutoScheduled && !task.scheduledStart && !task.scheduledEnd) {
+                    await scheduleTasksForUser({ userId: context.userId, emailAccountId, source: "ai" });
+                }
+
+                return { success: true, data: task };
 
             case "automation":
                 // Create Rule

@@ -12,11 +12,13 @@ import { Cron } from 'croner';
 import { processEmbeddingQueue, recoverStaleJobs, getQueueStats } from './embedding-worker';
 import { runMemoryDecay, getDecayStats } from './decay-worker';
 import { processMemoryRecording, findUsersNeedingRecording } from './recording-worker';
+import { runCalendarReconcile } from './calendar-reconcile';
 
 // Track running jobs to prevent overlap
 let embeddingJobRunning = false;
 let decayJobRunning = false;
 let recordingBackupRunning = false;
+let calendarReconcileRunning = false;
 
 /**
  * Start the background job scheduler
@@ -119,13 +121,33 @@ export function startScheduler() {
         }
     });
 
+    // Every 15 minutes: calendar reconcile
+    const calendarReconcileJob = Cron('*/15 * * * *', async () => {
+        if (calendarReconcileRunning) {
+            console.log('[Scheduler] Calendar reconcile already running, skipping');
+            return;
+        }
+
+        calendarReconcileRunning = true;
+        console.log('[Scheduler] Running calendar reconcile');
+
+        try {
+            await runCalendarReconcile();
+        } catch (error) {
+            console.error('[Scheduler] Calendar reconcile failed:', error);
+        } finally {
+            calendarReconcileRunning = false;
+        }
+    });
+
     console.log('[Scheduler] Cron jobs registered:');
     console.log('  - Embedding queue: every 5 minutes');
     console.log('  - Memory decay: daily at 3:00 AM UTC');
     console.log('  - Memory recording backup: every 30 minutes');
+    console.log('  - Calendar reconcile: every 15 minutes');
 
     // Return job handles for potential cleanup
-    return { embeddingJob, decayJob, recordingBackupJob };
+    return { embeddingJob, decayJob, recordingBackupJob, calendarReconcileJob };
 }
 
 /**

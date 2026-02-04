@@ -188,5 +188,5 @@ try {
 ## See Also
 
 - [Memory Architecture](../ARCHITECTURE.md)
-- [LLM Registry](../../../../docs/LLM_REGISTRY.md)
+- [LLM Registry](../../../../../docs/LLM_REGISTRY.md)
 - [Memory Tools](../../ai/memory-tools.ts)

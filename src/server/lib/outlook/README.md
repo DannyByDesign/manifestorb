@@ -1,4 +1,4 @@
-# Outlook Utilities (`src/server/utils/outlook`)
+# Outlook Utilities (`src/server/lib/outlook`)
 
 Specialized helpers for Microsoft's Graph API data structures.
 

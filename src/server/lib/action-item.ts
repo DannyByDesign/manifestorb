@@ -155,6 +155,9 @@ export const actionInputs: Record<
   [ActionType.NOTIFY_USER]: {
     fields: [],
   },
+  [ActionType.SET_TASK_PREFERENCES]: { fields: [] },
+  [ActionType.CREATE_TASK]: { fields: [] },
+  [ActionType.CREATE_CALENDAR_EVENT]: { fields: [] },
 };
 
 export function getActionFields(fields: Action | ExecutedAction | undefined) {
@@ -168,6 +171,7 @@ export function getActionFields(fields: Action | ExecutedAction | undefined) {
     url?: string;
     folderName?: string;
     folderId?: string;
+    payload?: Action["payload"];
   } = {};
 
   // only return fields with a value
@@ -180,6 +184,7 @@ export function getActionFields(fields: Action | ExecutedAction | undefined) {
   if (fields?.url) res.url = fields.url;
   if (fields?.folderName) res.folderName = fields.folderName;
   if (fields?.folderId) res.folderId = fields.folderId;
+  if (fields?.payload) res.payload = fields.payload;
 
   return res;
 }
@@ -197,12 +202,14 @@ type ActionFieldsSelection = Pick<
   | "url"
   | "folderName"
   | "folderId"
+  | "payload"
   | "delayInMinutes"
 >;
 
 export function sanitizeActionFields(
   action: Partial<ActionFieldsSelection> & { type: ActionType },
 ): ActionFieldsSelection {
+  const payloadValue = action.payload ?? undefined;
   const base: ActionFieldsSelection = {
     type: action.type,
     label: null,
@@ -215,6 +222,7 @@ export function sanitizeActionFields(
     url: null,
     folderName: null,
     folderId: null,
+    payload: payloadValue,
     delayInMinutes: action.delayInMinutes || null,
   };
 
@@ -286,6 +294,14 @@ export function sanitizeActionFields(
     }
     case ActionType.NOTIFY_USER: {
       return base;
+    }
+    case ActionType.SET_TASK_PREFERENCES:
+    case ActionType.CREATE_TASK:
+    case ActionType.CREATE_CALENDAR_EVENT: {
+      return {
+        ...base,
+        payload: payloadValue,
+      };
     }
     default:
       // biome-ignore lint/correctness/noSwitchDeclarations: intentional exhaustive check

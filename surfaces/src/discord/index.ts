@@ -84,6 +84,33 @@ export function startDiscord() {
             return;
         }
 
+        // Handle ambiguous time actions (ambiguous:choice:requestId)
+        if (customId.startsWith("ambiguous:")) {
+            const [, choice, requestId] = customId.split(":");
+            if (choice !== "earlier" && choice !== "later") return;
+
+            await interaction.deferReply();
+
+            const response = await fetch(`${CORE_BASE_URL}/api/ambiguous-time/${requestId}/resolve`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "x-surfaces-secret": SHARED_SECRET,
+                },
+                body: JSON.stringify({ choice })
+            });
+
+            if (response.ok) {
+                await interaction.editReply({
+                    content: `Got it — using the ${choice} time. ✅`,
+                    components: []
+                });
+            } else {
+                await interaction.editReply("Failed to resolve that time.");
+            }
+            return;
+        }
+
         // Handle approval actions (approve:requestId or deny:requestId)
         const [action, requestId] = customId.split(":");
         if (action !== "approve" && action !== "deny") return;
@@ -155,6 +182,9 @@ export function startDiscord() {
                 if (resp.interactive) {
                     const interactive = resp.interactive as InteractivePayload;
                     
+                    const isDraft = interactive.type === "draft_created";
+                    const isApprovalLike = interactive.type === "approval_request" || interactive.type === "action_request";
+
                     const buttons = interactive.actions.map((action: InteractiveAction) => {
                         const btn = new ButtonBuilder()
                             .setLabel(action.label)
@@ -166,20 +196,23 @@ export function startDiscord() {
                         }
 
                         // Build customId based on type
-                        if (interactive.type === "draft_created") {
+                        if (isDraft) {
                             // draft_send:draftId:emailAccountId:userId
                             return btn.setCustomId(`draft_${action.value}:${interactive.draftId}:${interactive.emailAccountId}:${interactive.userId}`);
-                        } else {
+                        } else if (interactive.type === "ambiguous_time") {
+                            return btn.setCustomId(`ambiguous:${action.value}:${interactive.ambiguousRequestId}`);
+                        } else if (isApprovalLike) {
                             // approve:requestId or deny:requestId
                             return btn.setCustomId(`${action.value}:${interactive.approvalId}`);
                         }
+                        return btn;
                     });
 
                     const row = new ActionRowBuilder().addComponents(buttons);
 
                     try {
                         // Build message options based on type
-                        if (interactive.type === "draft_created" && interactive.preview) {
+                        if (isDraft && interactive.preview) {
                             const preview = interactive.preview;
                             const bodySnippet = preview.body.length > 1000 
                                 ? preview.body.slice(0, 1000) + "..." 
@@ -204,7 +237,7 @@ export function startDiscord() {
                                 components: [row]
                             });
                         } else {
-                            // Default for approvals or drafts without preview
+                            // Default for approvals/action requests or drafts without preview
                             await message.reply({
                                 content: `**${interactive.summary}**\n${resp.content}`,
                                 components: [row]

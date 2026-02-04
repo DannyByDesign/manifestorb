@@ -224,6 +224,26 @@ export class OneDriveProvider implements DriveProvider {
     }
   }
 
+  async deleteFile(fileId: string): Promise<void> {
+    this.logger.info("Deleting file", { fileId });
+    try {
+      await this.client.api(`/me/drive/items/${fileId}`).delete();
+    } catch (error) {
+      this.logger.error("Error deleting file", { error, fileId });
+      throw error;
+    }
+  }
+
+  async deleteFolder(folderId: string): Promise<void> {
+    this.logger.info("Deleting folder", { folderId });
+    try {
+      await this.client.api(`/me/drive/items/${folderId}`).delete();
+    } catch (error) {
+      this.logger.error("Error deleting folder", { error, folderId });
+      throw error;
+    }
+  }
+
   // -------------------------------------------------------------------------
   // Helpers
   // -------------------------------------------------------------------------

@@ -71,6 +71,9 @@ export const createRuleAction = actionClient
         logger,
       );
 
+      const { filteredActions, preferencePayloads } =
+        splitTaskPreferenceActions(resolvedActions);
+
       try {
         const rule = await createRule({
           result: {
@@ -85,13 +88,21 @@ export const createRuleAction = actionClient
                 subject: conditions.subject || null,
               },
             },
-            actions: resolvedActions.map(mapActionToSanitizedFields),
+            actions: filteredActions.map(mapActionToSanitizedFields),
           },
           emailAccountId,
           provider,
           runOnThreads: runOnThreads ?? true,
           logger,
         });
+
+        if (preferencePayloads.length > 0) {
+          await applyTaskPreferencePayloads({
+            emailAccountId,
+            payloads: preferencePayloads,
+            logger,
+          });
+        }
 
         return { rule };
       } catch (error) {
@@ -124,6 +135,9 @@ export const updateRuleAction = actionClient
         logger,
       );
 
+      const { filteredActions, preferencePayloads } =
+        splitTaskPreferenceActions(resolvedActions);
+
       try {
         const rule = await updateRule({
           ruleId: id,
@@ -139,13 +153,21 @@ export const updateRuleAction = actionClient
                 subject: conditions.subject || null,
               },
             },
-            actions: resolvedActions.map(mapActionToSanitizedFields),
+            actions: filteredActions.map(mapActionToSanitizedFields),
           },
           emailAccountId,
           provider,
           logger,
           runOnThreads: runOnThreads ?? undefined,
         });
+
+        if (preferencePayloads.length > 0) {
+          await applyTaskPreferencePayloads({
+            emailAccountId,
+            payloads: preferencePayloads,
+            logger,
+          });
+        }
 
         return { rule };
       } catch (error) {
@@ -740,7 +762,15 @@ function mapActionToSanitizedFields(action: {
   folderName?: { value?: string | null } | null;
   folderId?: { value?: string | null } | null;
   delayInMinutes?: number | null;
+  payload?: { value?: unknown } | unknown | null;
 }) {
+  const payloadValue =
+    typeof action.payload === "object" && action.payload !== null
+      ? "value" in action.payload
+        ? (action.payload as { value?: unknown }).value ?? null
+        : action.payload
+      : null;
+
   const sanitized = sanitizeActionFields({
     type: action.type,
     label: action.labelId?.name,
@@ -753,6 +783,7 @@ function mapActionToSanitizedFields(action: {
     url: action.url?.value,
     folderName: action.folderName?.value,
     folderId: action.folderId?.value,
+    payload: payloadValue ?? undefined,
     delayInMinutes: action.delayInMinutes,
   });
 
@@ -767,11 +798,66 @@ function mapActionToSanitizedFields(action: {
       content: sanitized.content ?? null,
       webhookUrl: sanitized.url ?? null,
       folderName: sanitized.folderName ?? null,
+      payload: sanitized.payload ?? null,
     },
     labelId: sanitized.labelId ?? null,
     folderId: sanitized.folderId ?? null,
     delayInMinutes: sanitized.delayInMinutes ?? null,
   };
+}
+
+function splitTaskPreferenceActions<T extends { type: ActionType; payload?: unknown }>(
+  actions: T[],
+) {
+  const preferencePayloads: unknown[] = [];
+  const filteredActions = actions.filter((action) => {
+    if (action.type !== ActionType.SET_TASK_PREFERENCES) {
+      return true;
+    }
+    const payload =
+      typeof action.payload === "object" && action.payload !== null
+        ? "value" in (action.payload as Record<string, unknown>)
+          ? (action.payload as { value?: unknown }).value ?? null
+          : action.payload
+        : action.payload ?? null;
+    if (payload) {
+      preferencePayloads.push(payload);
+    }
+    return false;
+  });
+
+  return { filteredActions, preferencePayloads };
+}
+
+async function applyTaskPreferencePayloads({
+  emailAccountId,
+  payloads,
+  logger,
+}: {
+  emailAccountId: string;
+  payloads: unknown[];
+  logger: Logger;
+}) {
+  if (!payloads.length) return;
+
+  const emailAccount = await getEmailAccountWithAi({ emailAccountId });
+  if (!emailAccount) {
+    logger.warn("Email account not found for task preferences", { emailAccountId });
+    return;
+  }
+
+  const merged = payloads.reduce<Record<string, unknown>>((acc, payload) => {
+    if (payload && typeof payload === "object") {
+      return { ...acc, ...(payload as Record<string, unknown>) };
+    }
+    return acc;
+  }, {});
+
+  await prisma.taskPreference.upsert({
+    where: { userId: emailAccount.userId },
+    update: merged,
+    create: { userId: emailAccount.userId, ...merged },
+  });
 }
 
 function handleRuleError(error: unknown, logger: Logger) {

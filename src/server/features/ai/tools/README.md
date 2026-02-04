@@ -8,17 +8,20 @@ Polymorphic operations that abstract actions across different resources (Email, 
 tools/
 ├── index.ts           # Tool registry and factory (createAgentTools)
 ├── types.ts           # Shared types
-├── security.ts        # Permission checks
+├── security.ts        # Permission checks (SAFE/CAUTION/DANGEROUS)
 ├── query.ts           # Search resources
 ├── get.ts             # Get item details
 ├── modify.ts          # Change item state
-├── create.ts          # Create drafts/items
-├── delete.ts          # Remove items
+├── create.ts          # Create drafts/items/events
+├── delete.ts          # Remove items (email, automation, drive file/folder)
 ├── analyze.ts         # AI-powered analysis
+├── send.ts            # Send email (DANGEROUS; approval-gated)
+├── rules.ts           # Single polymorphic rules tool
+├── triage.ts          # Task triage; approval-backed actions
 └── providers/
     ├── email.ts       # Email provider (Gmail/Outlook)
     ├── calendar.ts    # Calendar provider
-    ├── drive.ts       # Drive provider
+    ├── drive.ts       # Drive provider (includes deleteFile/deleteFolder; download excluded)
     └── automation.ts  # Rules/Knowledge/Reports
 ```
 
@@ -27,7 +30,8 @@ tools/
 | Tier | Level | Operations |
 |------|-------|------------|
 | SAFE | Read-only | `query`, `get`, `analyze` |
-| CAUTION | Reversible | `modify`, `create`, `delete` |
+| CAUTION | Reversible / confirmations | `modify`, `create`, `delete`, `rules`, `triage` |
+| DANGEROUS | Explicit approval required | `send` (email) |
 
 ## Available Tools
 
@@ -63,15 +67,25 @@ Create new items.
 - **Automation**: New rules
 
 ### `delete` (CAUTION)
-Remove items (soft delete).
+Remove items (soft delete where applicable).
 - **Email**: Move to trash
 - **Automation**: Delete rule
+- **Drive**: Delete file or folder (download explicitly excluded)
 
 ### `analyze` (SAFE)
 AI-powered analysis.
 - **Email**: Summarize, clean suggestions, categorize
 - **Calendar**: Meeting briefings
 - **Patterns**: Suggest automation rules
+
+### `send` (DANGEROUS)
+Send email (draft→sent). Requires explicit per-email user approval (in-app notification or verbal). Approval links use secure signed action tokens.
+
+### `rules` (CAUTION)
+Single polymorphic tool: list, create, update, delete, enable, disable rules. Supports rules portal APIs (`/api/rules`, `/api/rules/[id]`).
+
+### `triage` (CAUTION)
+Task triage: "What should I do next?"—rank tasks with rationale. Approval-backed actions; panel API: `GET /api/tasks/triage`, `POST /api/tasks/triage/action`, `GET /api/tasks/triage/audit`.
 
 ## Usage
 
@@ -98,4 +112,4 @@ const approvalService = new ApprovalService(prisma);
 // Wrap tools with approval flow in executor/chat
 ```
 
-See `features/surfaces/executor.ts` and `features/web-chat/ai/chat.ts` for implementation.
+See `features/channels/executor.ts` and `features/web-chat/ai/chat.ts` for implementation. Approvals use secure action tokens (`features/approvals/action-token.ts`).

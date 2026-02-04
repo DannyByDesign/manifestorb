@@ -13,9 +13,32 @@ export interface CalendarEvent {
   startTime: Date;
   endTime: Date;
   attendees: CalendarEventAttendee[];
+  instances?: CalendarEvent[];
+}
+
+export interface CalendarEventCreateInput {
+  title: string;
+  description?: string;
+  location?: string;
+  start: Date;
+  end: Date;
+  allDay?: boolean;
+  isRecurring?: boolean;
+  recurrenceRule?: string;
+  timeZone?: string;
+}
+
+export interface CalendarEventUpdateInput
+  extends Partial<CalendarEventCreateInput> {
+  mode?: "single" | "series";
+}
+
+export interface CalendarEventDeleteOptions {
+  mode?: "single" | "series";
 }
 
 export interface CalendarEventProvider {
+  provider: "google" | "microsoft";
   fetchEventsWithAttendee(options: {
     attendeeEmail: string;
     timeMin: Date;
@@ -27,7 +50,25 @@ export interface CalendarEventProvider {
     timeMin?: Date;
     timeMax?: Date;
     maxResults?: number;
+    calendarId?: string;
   }): Promise<CalendarEvent[]>;
 
-  getEvent(eventId: string): Promise<CalendarEvent | null>;
+  getEvent(eventId: string, calendarId?: string): Promise<CalendarEvent | null>;
+
+  createEvent(
+    calendarId: string,
+    input: CalendarEventCreateInput,
+  ): Promise<CalendarEvent>;
+
+  updateEvent(
+    calendarId: string,
+    eventId: string,
+    input: CalendarEventUpdateInput,
+  ): Promise<CalendarEvent>;
+
+  deleteEvent(
+    calendarId: string,
+    eventId: string,
+    options?: CalendarEventDeleteOptions,
+  ): Promise<void>;
 }

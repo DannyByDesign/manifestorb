@@ -43,12 +43,20 @@ export type DraftPreview = {
     body: string;
 };
 
+export type ActionRequestContext = {
+    resource: "calendar" | "task";
+    action: "create" | "modify" | "delete" | "reschedule";
+    title?: string;
+    timeRange?: string;
+};
+
 export type InteractivePayload = {
-    type: "approval_request" | "draft_created";
+    type: "approval_request" | "draft_created" | "action_request" | "ambiguous_time";
     approvalId?: string;   // For approval_request
     draftId?: string;      // For draft_created
     emailAccountId?: string; // For draft_created
     userId?: string;       // For draft_created
+    ambiguousRequestId?: string; // For ambiguous_time
     summary: string;
     actions: {
         label: string;
@@ -57,4 +65,5 @@ export type InteractivePayload = {
         url?: string; // if a direct link (e.g., Edit in Gmail)
     }[];
     preview?: DraftPreview; // For draft_created - full draft content for review
+    context?: ActionRequestContext; // For action_request - calendar/task context
 };

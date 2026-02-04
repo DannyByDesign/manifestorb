@@ -9,6 +9,9 @@ export type CreateApprovalParams = {
         actionType: string;
         description: string;
         args: Record<string, any>;
+        tool?: string;
+        options?: Record<string, any>;
+        message?: string;
     };
     idempotencyKey: string;
     expiresInSeconds?: number;

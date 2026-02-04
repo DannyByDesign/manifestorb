@@ -7,14 +7,20 @@
 import { tool } from "ai";
 import prisma from "@/server/db/client";
 import { createAgentTools } from "@/features/ai/tools";
-import { createRuleManagementTools } from "@/features/ai/rule-tools";
 import { createMemoryTools } from "@/features/ai/memory-tools";
 import { buildAgentSystemPrompt, type Platform } from "@/features/ai/system-prompt";
 import { getModel } from "@/server/lib/llms/model";
 import { createGenerateText } from "@/server/lib/llms";
 import { createScopedLogger } from "@/server/lib/logger";
 import { ApprovalService } from "@/features/approvals/service";
+import { executeApprovalRequest } from "@/features/approvals/execute";
 import type { EmailAccount, User } from "@/generated/prisma/client";
+import {
+    getPendingScheduleProposal,
+    parseScheduleProposalChoice,
+    resolveScheduleProposalRequestById,
+    type ScheduleProposalPayload
+} from "@/features/calendar/schedule-proposal";
 
 const logger = createScopedLogger("AgentExecutor");
 
@@ -54,15 +60,7 @@ export async function runOneShotAgent({
     });
     const provider = account?.provider || "google";
 
-    // 3. Add rule management tools (same capabilities as web-chat)
-    const ruleTools = createRuleManagementTools({
-        email: emailAccount.email,
-        emailAccountId: emailAccount.id,
-        provider,
-        logger,
-    });
-
-    // 4. Add memory management tools
+    // 3. Add memory management tools
     const memoryTools = createMemoryTools({
         userId: user.id,
         email: emailAccount.email,
@@ -71,9 +69,113 @@ export async function runOneShotAgent({
 
     const approvalService = new ApprovalService(prisma);
 
+    const isSendApprovalMessage = (content: string) => {
+        const normalized = content.trim().toLowerCase();
+        if (!normalized) return false;
+        return (
+            normalized === "yes" ||
+            normalized === "approve" ||
+            normalized === "send" ||
+            normalized === "send it" ||
+            normalized === "ok" ||
+            normalized === "okay"
+        );
+    };
+
+    const formatSlotLabel = (start: Date, end: Date | null | undefined, timeZone: string) => {
+        const formatter = new Intl.DateTimeFormat("en-US", {
+            weekday: "short",
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+            timeZone
+        });
+        const startLabel = formatter.format(start);
+        if (!end) return startLabel;
+        return `${startLabel} - ${formatter.format(end)}`;
+    };
+
+    const pendingProposal = await getPendingScheduleProposal(user.id);
+    if (pendingProposal) {
+        const payload = pendingProposal.requestPayload as ScheduleProposalPayload;
+        const choiceIndex = parseScheduleProposalChoice(message, payload.options.length);
+        if (choiceIndex !== null) {
+            const result = await resolveScheduleProposalRequestById({
+                requestId: pendingProposal.id,
+                choiceIndex,
+                userId: user.id
+            });
+
+            if (!result.ok) {
+                return {
+                    text: "I couldn't apply that choice. Try replying with 1, 2, or 3.",
+                    approvals: []
+                };
+            }
+
+            const chosen = payload.options[choiceIndex];
+            const start = new Date(chosen.start);
+            const end = chosen.end ? new Date(chosen.end) : undefined;
+            const label = formatSlotLabel(start, end, chosen.timeZone);
+            const responseText =
+                payload.originalIntent === "event"
+                    ? `Scheduled the event for ${label}.`
+                    : `Scheduled the task for ${label}.`;
+
+            return {
+                text: responseText,
+                approvals: []
+            };
+        }
+    }
+
+    if (isSendApprovalMessage(message)) {
+        const pendingSendApproval = await prisma.approvalRequest.findFirst({
+            where: {
+                userId: user.id,
+                status: "PENDING",
+                expiresAt: { gt: new Date() },
+                requestPayload: {
+                    path: ["tool"],
+                    equals: "send"
+                } as any
+            },
+            orderBy: { createdAt: "desc" }
+        });
+
+        if (pendingSendApproval) {
+            try {
+                const execution = await executeApprovalRequest({
+                    approvalRequestId: pendingSendApproval.id,
+                    decidedByUserId: user.id
+                });
+
+                if (execution.decisionRecord?.decision !== "APPROVE") {
+                    return {
+                        text: "I couldn't approve that send request. Try again or open the app to approve.",
+                        approvals: []
+                    };
+                }
+
+                return {
+                    text: "✅ Sent. Let me know if you want any changes.",
+                    approvals: []
+                };
+            } catch (error) {
+                logger.error("Failed to execute send approval via verbal confirmation", { error });
+                return {
+                    text: "I couldn't send that yet. Try approving it in the app.",
+                    approvals: []
+                };
+            }
+        }
+    }
+
     // 5. Wrap Sensitive Tools (drafts don't need approval - user must manually send)
-    const sensitiveTools = ["modify", "delete"];
-    const tools: typeof baseTools & typeof ruleTools & typeof memoryTools = { ...baseTools, ...ruleTools, ...memoryTools };
+    const sensitiveTools = ["modify", "delete", "send"];
+    const tools: typeof baseTools & typeof memoryTools = { ...baseTools, ...memoryTools };
     const createdApprovals: any[] = [];
 
 

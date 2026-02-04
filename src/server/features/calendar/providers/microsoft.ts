@@ -7,6 +7,10 @@ import {
 } from "@/server/lib/outlook/calendar-client";
 import type { CalendarOAuthProvider, CalendarTokens } from "../oauth-types";
 import { autoPopulateTimezone } from "../timezone-helpers";
+import {
+  ensureMicrosoftCalendarSubscription,
+  syncMicrosoftCalendarChanges,
+} from "@/features/calendar/sync/microsoft";
 
 export function createMicrosoftCalendarProvider(
   logger: Logger,
@@ -106,7 +110,7 @@ export function createMicrosoftCalendarProvider(
         for (const microsoftCalendar of microsoftCalendars) {
           if (!microsoftCalendar.id) continue;
 
-          await prisma.calendar.upsert({
+          const calendar = await prisma.calendar.upsert({
             where: {
               connectionId_calendarId: {
                 connectionId,
@@ -127,6 +131,44 @@ export function createMicrosoftCalendarProvider(
               isEnabled: true,
             },
           });
+
+          await ensureMicrosoftCalendarSubscription({
+            calendar: {
+              id: calendar.id,
+              calendarId: calendar.calendarId,
+              microsoftSubscriptionId: calendar.microsoftSubscriptionId,
+              microsoftSubscriptionExpiresAt: calendar.microsoftSubscriptionExpiresAt,
+              microsoftDeltaToken: calendar.microsoftDeltaToken,
+              microsoftClientState: calendar.microsoftClientState,
+            },
+            connection: {
+              accessToken,
+              refreshToken,
+              expiresAt,
+              emailAccountId,
+            },
+            logger,
+          });
+
+          if (!calendar.microsoftDeltaToken) {
+            await syncMicrosoftCalendarChanges({
+              calendar: {
+                id: calendar.id,
+                calendarId: calendar.calendarId,
+                microsoftSubscriptionId: calendar.microsoftSubscriptionId,
+                microsoftSubscriptionExpiresAt: calendar.microsoftSubscriptionExpiresAt,
+                microsoftDeltaToken: calendar.microsoftDeltaToken,
+                microsoftClientState: calendar.microsoftClientState,
+              },
+              connection: {
+                accessToken,
+                refreshToken,
+                expiresAt,
+                emailAccountId,
+              },
+              logger,
+            });
+          }
         }
 
         await autoPopulateTimezone(emailAccountId, microsoftCalendars, logger);

@@ -11,7 +11,6 @@ import { getEmailForLLM } from "@/server/lib/get-email-from-message";
 import type { ParsedMessage } from "@/server/types";
 import { env } from "@/env";
 import { createAgentTools } from "@/features/ai/tools";
-import { createRuleManagementTools } from "@/features/ai/rule-tools";
 import { createMemoryTools } from "@/features/ai/memory-tools";
 import { buildAgentSystemPrompt } from "@/features/ai/system-prompt";
 import { createInAppNotification } from "@/features/notifications/create";
@@ -40,13 +39,6 @@ export async function aiProcessAssistantChat({
     platform: "web",
     emailSendEnabled: env.NEXT_PUBLIC_EMAIL_SEND_ENABLED === true,
   });
-
-  const toolOptions = {
-    email: user.email,
-    emailAccountId,
-    provider: user.account.provider,
-    logger,
-  };
 
   const accountId = emailAccountId; // fallback or logic depending on your existing code structure
   // The user suggested:
@@ -207,7 +199,7 @@ ${contextPack.knowledge.length > 0
   // Wrap sensitive tools (modify, delete) with approval workflow
   // Drafts (create) don't need approval since user must manually send them
   const approvalService = new ApprovalService(prisma);
-  const sensitiveTools = ["modify", "delete"] as const;
+  const sensitiveTools = ["modify", "delete", "send"] as const;
   const agentTools: typeof baseAgentTools = { ...baseAgentTools };
 
   for (const toolName of sensitiveTools) {
@@ -349,7 +341,6 @@ ${contextPack.knowledge.length > 0
     maxSteps: 10,
     tools: {
       ...agentTools,
-      ...createRuleManagementTools(toolOptions),
       ...createMemoryTools({
         userId: user.id,
         email: user.email,

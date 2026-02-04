@@ -111,6 +111,9 @@ model User {
   memoryFacts          MemoryFact[]
   privacySettings      PrivacySettings?
   userSummary          UserSummary?
+  tasks                Task[]
+  taskPreferences      TaskPreference?
+  calendarActionLogs   CalendarActionLog[]
 }
 
 // Migrating over to the new settings model. Currently most settings are in the User model, but will be moved to this model in the future.
@@ -405,6 +408,8 @@ model Rule {
   name         String
   actions      Action[]
   enabled      Boolean  @default(true)
+  isTemporary  Boolean  @default(false)
+  expiresAt    DateTime?
   automate     Boolean  @default(true) // @deprecated - No longer used. All rules are now automated. Kept for historical data only.
   runOnThreads Boolean  @default(false) // if disabled, only runs on individual emails
 
@@ -464,6 +469,7 @@ model Action {
   folderName     String?
   folderId       String?
   delayInMinutes Int?
+  payload        Json?
 
   @@index([ruleId])
 }
@@ -545,6 +551,7 @@ model ExecutedAction {
   url        String?
   folderName String?
   folderId   String?
+  payload    Json?
 
   // additional fields as a result of the action
   draftId         String? // Gmail draft ID created by DRAFT_EMAIL action
@@ -580,6 +587,7 @@ model ScheduledAction {
   folderName  String?
   folderId    String?
   scheduledId String?
+  payload     Json?
 
   executedAt       DateTime?
   executedActionId String?   @unique
@@ -985,10 +993,113 @@ model Calendar {
   isEnabled   Boolean @default(true)
   timezone    String?
 
+  googleChannelId        String?
+  googleResourceId       String?
+  googleChannelToken     String?
+  googleChannelExpiresAt DateTime?
+  googleSyncToken        String?
+
+  microsoftSubscriptionId        String?
+  microsoftSubscriptionExpiresAt DateTime?
+  microsoftDeltaToken            String?
+  microsoftClientState           String?
+
   connectionId String
   connection   CalendarConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
   @@unique([connectionId, calendarId])
+}
+
+model Task {
+  id              String        @id @default(cuid())
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  title           String
+  description     String?
+  durationMinutes Int?          @default(30)
+  status          TaskStatus    @default(PENDING)
+  priority        TaskPriority? @default(NONE)
+  reschedulePolicy TaskReschedulePolicy @default(FLEXIBLE)
+  energyLevel     TaskEnergyLevel?
+  preferredTime   TaskTimePreference?
+  dueDate         DateTime?
+  startDate       DateTime?
+  isAutoScheduled Boolean       @default(false)
+  scheduleLocked  Boolean       @default(false)
+  scheduledStart  DateTime?
+  scheduledEnd    DateTime?
+  scheduleScore   Float?
+  lastScheduled   DateTime?
+
+  userId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  schedule TaskSchedule?
+  schedulingReason TaskSchedulingReason?
+
+  @@index([userId])
+  @@index([status])
+}
+
+model TaskSchedulingReason {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  expiresAt DateTime
+  reason    Json
+
+  taskId String @unique
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+}
+
+model TaskSchedule {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  scheduledStart DateTime
+  scheduledEnd   DateTime
+  calendarId     String?
+
+  taskId String @unique
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+model TaskPreference {
+  id                  String   @id @default(cuid())
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  workHourStart       Int      @default(9)
+  workHourEnd         Int      @default(17)
+  workDays            Int[]    @default([1, 2, 3, 4, 5])
+  bufferMinutes       Int      @default(15)
+  selectedCalendarIds String[] @default([])
+  timeZone            String?
+  groupByProject      Boolean  @default(false)
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model CalendarActionLog {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now())
+  action         String
+  provider       String
+  calendarId     String?
+  eventId        String?
+  dryRun         Boolean  @default(false)
+  payload        Json?
+  response       Json?
+  error          Json?
+  emailAccountId String?
+
+  userId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([provider, action])
 }
 
 model MeetingBriefing {
@@ -1021,6 +1132,12 @@ model DriveConnection {
   refreshToken String?
   expiresAt    DateTime?
   isConnected  Boolean   @default(true)
+
+  googleChannelId        String?
+  googleResourceId       String?
+  googleChannelToken     String?
+  googleChannelExpiresAt DateTime?
+  googleStartPageToken   String?
 
   emailAccountId String
   emailAccount   EmailAccount @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
@@ -1193,6 +1310,9 @@ enum ActionType {
   MOVE_FOLDER
   NOTIFY_SENDER // Sends notification from Amodel (not user's email). Only for cold email rules.
   NOTIFY_USER // Sends push notification to user for matching emails
+  SET_TASK_PREFERENCES
+  CREATE_TASK
+  CREATE_CALENDAR_EVENT
   // SUMMARIZE
   // SNOOZE
   // ADD_TO_DO
@@ -1342,6 +1462,38 @@ enum GroupItemSource {
   AI
   USER
   LABEL_REMOVED
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum TaskPriority {
+  NONE
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum TaskEnergyLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum TaskTimePreference {
+  MORNING
+  AFTERNOON
+  EVENING
+}
+
+enum TaskReschedulePolicy {
+  FIXED
+  FLEXIBLE
+  APPROVAL_REQUIRED
 }
 
 // Approvals

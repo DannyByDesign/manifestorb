@@ -49,6 +49,7 @@ export interface EmailProvider {
     modify(ids: string[], changes: EmailChanges): Promise<{ success: boolean; count: number; data?: any }>;
     createDraft(params: DraftParams): Promise<{ draftId: string; preview: any }>;
     trash(ids: string[]): Promise<{ success: boolean; count: number }>;
+    sendDraft(draftId: string): Promise<{ messageId: string; threadId: string }>;
 
     // Extended (Found missing during audit)
     getThread(threadId: string): Promise<EmailThread>;
@@ -189,6 +190,10 @@ export async function createEmailProvider(
                 count++;
             }));
             return { success: true, count };
+        },
+
+        sendDraft: async (draftId: string) => {
+            return await service.sendDraft(draftId);
         },
 
         // Extended

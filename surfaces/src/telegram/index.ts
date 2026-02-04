@@ -67,6 +67,29 @@ export function startTelegram() {
             return;
         }
 
+        // Handle ambiguous time actions (ambiguous:choice:requestId)
+        if (data.startsWith("ambiguous:")) {
+            const [, choice, requestId] = data.split(":");
+            if (choice !== "earlier" && choice !== "later") return;
+
+            const response = await fetch(`${CORE_BASE_URL}/api/ambiguous-time/${requestId}/resolve`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "x-surfaces-secret": SHARED_SECRET,
+                },
+                body: JSON.stringify({ choice })
+            });
+
+            if (response.ok) {
+                await ctx.answerCbQuery(`Using the ${choice} time`);
+                await ctx.editMessageText(`Got it — using the ${choice} time. ✅`, { reply_markup: { inline_keyboard: [] } });
+            } else {
+                await ctx.answerCbQuery("Failed to resolve time");
+            }
+            return;
+        }
+
         // Handle approval actions
         const [action, requestId] = data.split(":");
         if (action !== "approve" && action !== "deny") return;
@@ -120,6 +143,9 @@ export function startTelegram() {
                 if (resp.interactive) {
                     const interactive = resp.interactive as InteractivePayload;
                     
+                    const isDraft = interactive.type === "draft_created";
+                    const isApprovalLike = interactive.type === "approval_request" || interactive.type === "action_request";
+
                     const buttons = interactive.actions.map((action: InteractiveAction) => {
                         // Handle URL buttons (Edit in Gmail) - use url button
                         if (action.url) {
@@ -127,23 +153,26 @@ export function startTelegram() {
                         }
                         
                         // Build callback data based on type
-                        if (interactive.type === "draft_created") {
+                        if (isDraft) {
                             // draft_send:draftId:emailAccountId:userId
                             return Markup.button.callback(
                                 action.label, 
                                 `draft_${action.value}:${interactive.draftId}:${interactive.emailAccountId}:${interactive.userId}`
                             );
-                        } else {
+                        } else if (interactive.type === "ambiguous_time") {
+                            return Markup.button.callback(action.label, `ambiguous:${action.value}:${interactive.ambiguousRequestId}`);
+                        } else if (isApprovalLike) {
                             // approve:requestId or deny:requestId
                             return Markup.button.callback(action.label, `${action.value}:${interactive.approvalId}`);
                         }
+                        return Markup.button.callback(action.label, action.value);
                     });
 
                     try {
                         // Build message based on type
                         let messageText: string;
                         
-                        if (interactive.type === "draft_created" && interactive.preview) {
+                        if (isDraft && interactive.preview) {
                             const preview = interactive.preview;
                             const bodySnippet = preview.body.length > 800 
                                 ? preview.body.slice(0, 800) + "..." 
@@ -164,7 +193,7 @@ export function startTelegram() {
                             lines.push("", "---", "", bodySnippet);
                             messageText = lines.join("\n");
                         } else {
-                            // Default for approvals or drafts without preview
+                            // Default for approvals/action requests or drafts without preview
                             messageText = `*${interactive.summary}*\n${resp.content}`;
                         }
                         

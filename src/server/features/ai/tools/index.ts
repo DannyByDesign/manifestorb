@@ -15,6 +15,9 @@ import { modifyTool } from "./modify";
 import { createTool } from "./create";
 import { deleteTool } from "./delete";
 import { analyzeTool } from "./analyze";
+import { triageTool } from "./triage";
+import { rulesTool } from "./rules";
+import { sendTool } from "./send";
 
 export async function createAgentTools({
     emailAccount,
@@ -27,7 +30,11 @@ export async function createAgentTools({
 }) {
     // Initialize Providers
     const emailProvider = await createEmailProvider(emailAccount, logger);
-    const calendarProvider = await createCalendarProvider(emailAccount, logger);
+    const calendarProvider = await createCalendarProvider(
+        emailAccount,
+        userId,
+        logger,
+    );
     const automationProvider = await createAutomationProvider(userId, logger);
 
     // Drive might fail if not connected
@@ -75,5 +82,8 @@ export async function createAgentTools({
         create: wrap(createTool),
         delete: wrap(deleteTool),
         analyze: wrap(analyzeTool),
+        triage: wrap(triageTool),
+        rules: wrap(rulesTool),
+        send: wrap(sendTool),
     };
 }

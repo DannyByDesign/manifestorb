@@ -52,6 +52,9 @@ export function getAvailableActions(provider: string) {
 export const getExtraActions = () => [
   ActionType.DIGEST,
   ActionType.CALL_WEBHOOK,
+  ActionType.SET_TASK_PREFERENCES,
+  ActionType.CREATE_TASK,
+  ActionType.CREATE_CALENDAR_EVENT,
 ];
 
 const actionSchema = (provider: string) =>
@@ -98,6 +101,12 @@ const actionSchema = (provider: string) =>
           .nullish()
           .transform((v) => v ?? null)
           .describe("The webhook URL to call"),
+        payload: z
+          .any()
+          .nullish()
+          .describe(
+            "Structured payload for task preferences, task creation, or calendar event creation actions.",
+          ),
         ...(isMicrosoftProvider(provider) && {
           folderName: z
             .string()
@@ -125,6 +134,12 @@ export const createRuleSchema = (provider: string) =>
       .nullish()
       .transform((v) => v ?? undefined)
       .describe("The ID of the rule if updating an existing rule"),
+    expiresAt: z
+      .string()
+      .nullish()
+      .describe(
+        "Optional ISO date-time when this rule should expire (for temporary rules).",
+      ),
     condition: conditionSchema,
     actions: z.array(actionSchema(provider)).describe("The actions to take"),
   });

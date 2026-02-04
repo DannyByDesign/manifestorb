@@ -155,14 +155,7 @@ const result = await createRuleAction(emailAccountId, { name: "My Rule", ... });
 ```
 
 ### 2. By AI Tools
-The AI agent uses actions through the automation tools:
-```typescript
-// features/ai/tools/providers/automation.ts
-import { createRuleAction } from "@/actions/rule";
-
-// AI can create rules on behalf of user
-await createRuleAction(emailAccountId, ruleData);
-```
+The AI agent uses actions through the tools and providers. Rule mutations can go through server actions or the **rules** tool (polymorphic) and rules portal APIs (`/api/rules`, `/api/rules/[id]`).
 
 ### 3. By API Routes
 Some API routes call actions internally:
