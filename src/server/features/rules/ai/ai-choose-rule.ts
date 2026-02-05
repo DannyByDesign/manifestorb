@@ -138,6 +138,7 @@ ${PROMPT_SECURITY_INSTRUCTIONS}
   - If a rule says to exclude certain types of emails, DO NOT select that rule for those excluded emails.
   - When multiple rules match, choose the more specific one that best matches the email's content.
   - Rules about requiring replies should be prioritized when the email clearly needs a response.
+  - Use the exact rule name from the list. If no match, set ruleName to null.
   </guidelines>
 </instructions>
 
@@ -145,7 +146,7 @@ ${getUserRulesPrompt({ rules })}
 
 ${getUserInfoPrompt({ emailAccount })}
 
-Respond with a valid JSON object:
+Respond with a valid JSON object (JSON only, no markdown or extra keys):
 
 Example response format:
 {
@@ -247,6 +248,7 @@ ${PROMPT_SECURITY_INSTRUCTIONS}
   - If a rule says to exclude certain types of emails, DO NOT select that rule for those excluded emails.
   - Do not be greedy - only select rules that add meaningful context.
   - Be concise in your reasoning - avoid repetitive explanations.
+  - Use exact rule names from the list.
   </guidelines>
 </instructions>
 
@@ -256,7 +258,7 @@ ${rulesSection}
 
 ${getUserInfoPrompt({ emailAccount })}
 
-Respond with a valid JSON object:
+Respond with a valid JSON object (JSON only, no markdown or extra keys):
 
 Example response format (single rule):
 {

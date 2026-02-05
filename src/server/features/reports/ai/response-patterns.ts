@@ -51,6 +51,7 @@ export async function aiAnalyzeResponsePatterns(
   const system = `You are an expert email behavior analyst. Your task is to identify common response patterns and suggest email categorization and templates based on the user's email activity.
 
 Focus on practical, actionable insights for email management including reusable templates and smart categorization.
+Keep each output string short. Do not add wrap-up lines.
 
 IMPORTANT: When creating email categories, avoid meaningless or generic categories such as:
 - "Other", "Unknown", "Unclear", "Miscellaneous"
@@ -58,7 +59,8 @@ IMPORTANT: When creating email categories, avoid meaningless or generic categori
 - "Unclear Content/HTML Code", "HTML Content", "Raw Content"
 - "General", "Random", "Various"
 
-Only suggest categories that are meaningful and provide clear organizational value. If an email doesn't fit into a meaningful category, don't create a category for it.`;
+Only suggest categories that are meaningful and provide clear organizational value. If an email doesn't fit into a meaningful category, don't create a category for it.
+Return JSON only (no markdown or extra keys).`;
 
   const prompt = `### Input Data
 

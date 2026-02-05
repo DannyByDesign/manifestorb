@@ -64,7 +64,7 @@ async function processEmailBatch(
 ): Promise<EmailSummary[] | null> {
   const system = `You are an assistant that processes user emails to extract their core meaning for later analysis.
 
-For each email, write a **factual summary of 3–5 sentences** that clearly describes:
+For each email, write a **factual summary of 1–2 short sentences** that clearly describes:
 - The main topic or purpose of the email  
 - What the sender wants, requests, or informs  
 - Any relevant secondary detail (e.g., urgency, timing, sender role, or context)  
@@ -82,7 +82,7 @@ For each email, write a **factual summary of 3–5 sentences** that clearly desc
 
 ${getEmailListPrompt({ messages: emails, messageMaxLength: 2000 })}
 
-Return the analysis as a JSON array of objects.`;
+Return the analysis as a JSON object with a "summaries" array. JSON only, no markdown.`;
 
   const modelOptions = getModel("economy");
 

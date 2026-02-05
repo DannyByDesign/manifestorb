@@ -120,8 +120,8 @@ ${coldEmailPrompt || DEFAULT_COLD_EMAIL_PROMPT}
 </instructions>
 
 <output_format>
-Return a JSON object with a "reason" and "coldEmail" field.
-The "reason" should be a concise explanation that explains why the email is or isn't considered a cold email.
+Return a JSON object with a "reason" and "coldEmail" field. Return JSON only.
+The "reason" should be a concise one-sentence explanation of why the email is or isn't considered a cold email.
 The "coldEmail" should be a boolean that is true if the email is a cold email and false otherwise.
 </output_format>
 

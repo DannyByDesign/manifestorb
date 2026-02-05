@@ -22,10 +22,10 @@ Your task:
 3. Extract and summarize information ONLY from the <knowledge_base> section that is directly relevant to answering the query in the email.
 4. Provide a brief explanation of why this specific information from the knowledge base is relevant to the email query.
 5. DO NOT include information about the email itself in 'relevantContent'. Your response should ONLY contain information extracted from the knowledge base.
-6. If no relevant information is found in the knowledge base, return an empty string for 'relevantContent'.
+6. If no relevant information is found in the knowledge base, return an empty string for 'relevantContent' and explain briefly that nothing matched.
 
 Keep the extracted content concise (max 2000 characters) but include all crucial information.
-Format your response as a JSON object with two fields:
+Format your response as a JSON object with two fields (JSON only, no markdown):
 - relevantContent: A string containing the extracted, relevant information from the knowledge base.
 - explanation: A brief string explaining why this information is relevant.
 

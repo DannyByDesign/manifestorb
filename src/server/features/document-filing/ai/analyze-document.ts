@@ -107,7 +107,7 @@ ${filingPrompt}
 </user_filing_preferences>
 
 <output_format>
-Your response must be in valid JSON format.
+Your response must be in valid JSON format (JSON only, no markdown or extra keys).
 </output_format>
 
 Choose one of:
@@ -127,7 +127,8 @@ Examples:
 - User wants "organize invoices by vendor" → Invoice arrives but no vendor folder exists → Create new folder for that vendor
 
 Prefer existing folders. Only create folders that align with user preferences. When in doubt, skip.
-Be conservative with confidence scores - only use 0.9+ when very certain.`;
+Be conservative with confidence scores - only use 0.9+ when very certain.
+Keep reasoning to 1 short sentence.`;
 }
 
 function buildPrompt({

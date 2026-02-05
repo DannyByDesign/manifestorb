@@ -65,7 +65,8 @@ A group is defined by two arrays:
 1. senders: An array of email addresses or partial email addresses to match senders.
 2. subjects: An array of specific phrases to match in email subject lines.
 
-Both arrays can be empty if no reliable patterns are found.`;
+Both arrays can be empty if no reliable patterns are found.
+Respond only by calling the generateGroupItems tool (no extra text).`;
 
   const prompt = `Create an email group named "${group.name}".
 The prompt is: "${group.prompt}".
@@ -131,7 +132,8 @@ async function verifyGroupItems(
 ): Promise<z.infer<typeof generateGroupItemsSchema>> {
   const system = `You are an AI assistant specializing in email management and organization.
 Your task is to identify and remove any incorrect or overly broad criteria from the generated email group.
-One word subjects are almost always too broad and should be removed.`;
+One word subjects are almost always too broad and should be removed.
+Respond only by calling the verifyGroupItems tool (no extra text).`;
 
   const prompt = `Review the following email group criteria for the group "${group.name}" and identify any items that should be removed:
 

@@ -60,11 +60,13 @@ BRIEFING GUIDELINES:
 - Keep it concise: <10 bullet points per guest, max 10 words per bullet
 - Focus on what's helpful before the meeting: role, company, recent discussions, pending items
 - Don't repeat meeting details (time, date, location) - the user already has those
+- Keep bullets short: short phrases, no wrap-up lines or long paragraphs
 - If a guest has no prior context and no search tools are available, note they are a new contact
 - ONLY include information about the specific guests listed. Do NOT mention other attendees or colleagues.
 - Note any uncertainty about identity (common names, conflicting info)
 
-IMPORTANT: You MUST call finalizeBriefing when you are done to submit your briefing.`;
+IMPORTANT: You MUST call finalizeBriefing when you are done to submit your briefing.
+Do not output any text outside finalizeBriefing.`;
 
 const searchInputSchema = z.object({
   query: z.string().describe("The search query"),

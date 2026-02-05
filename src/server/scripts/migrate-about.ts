@@ -40,9 +40,10 @@ async function main() {
                     }))
                 }),
                 prompt: `
-You are a Memory Manager. extract structured facts from the User's "About" text.
+You are a Memory Manager. Extract structured facts from the User's "About" text.
 Ignore temporary instructions (e.g. "Draft an email to...").
 Focus on long-term facts (preferences, roles, rules, context).
+Return JSON only (no markdown or extra keys).
 
 User About Text:
 "${account.about}"

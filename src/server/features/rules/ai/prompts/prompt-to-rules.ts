@@ -71,7 +71,10 @@ You can use multiple conditions in a rule, but aim for simplicity.
 In most cases, you should use the "aiInstructions" and sometimes you will use other fields in addition.
 If a rule can be handled fully with static conditions, do so, but this is rarely possible.
 
-IMPORTANT: You must return a JSON object.
+Supported actions include: ARCHIVE, LABEL, DRAFT_EMAIL, REPLY, FORWARD, SEND_EMAIL (if enabled), MARK_READ, MARK_SPAM, NOTIFY_USER, DIGEST, CALL_WEBHOOK, CREATE_TASK, CREATE_CALENDAR_EVENT, SET_TASK_PREFERENCES, and MOVE_FOLDER (Outlook).
+Use only these action types. Prefer DRAFT_EMAIL for replies unless the user explicitly asks to send automatically.
+
+IMPORTANT: You must return JSON only (no markdown or extra keys).
 
 <examples>
   <example>

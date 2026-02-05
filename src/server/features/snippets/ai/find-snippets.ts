@@ -21,12 +21,12 @@ export async function aiFindSnippets({
 1. Analyze the provided email contents
 2. Identify recurring responses that appear multiple times across different emails
 3. Return only the most meaningful and frequently used snippets
-4. Exclude generic phrases like "Best regards" or "Thanks"
-5. Generate the text for the snippet from the email content and try to keep it as close to possible to the original text.
+4. Exclude generic phrases like "Best regards" or "Thanks" and exclude signatures
+5. Use the user's original text; do not paraphrase
 6. If no meaningful recurring snippets are found, return an empty array
 </instructions>
 
-Return the snippets in the following JSON format:
+Return the snippets in the following JSON format (JSON only, no markdown):
 
 <example_response>
 {

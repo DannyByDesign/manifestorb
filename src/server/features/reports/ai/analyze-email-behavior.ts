@@ -31,9 +31,10 @@ export async function aiAnalyzeEmailBehavior(
   emailAccount: EmailAccountWithAI,
   sentEmailSummaries?: EmailSummary[],
 ): Promise<z.infer<typeof emailBehaviorSchema> | null> {
-  const system = `You are an expert AI system that analyzes a user's email behavior to infer timing patterns, content preferences, and automation opportunities.
+const system = `You are an expert AI system that analyzes a user's email behavior to infer timing patterns, content preferences, and engagement triggers.
 
-Focus on identifying patterns that can be automated and providing specific, actionable automation rules that would save time and improve email management efficiency.`;
+Focus on identifying consistent patterns that can inform automation decisions.
+Keep each output field short (short phrases, no wrap-up lines). Return JSON only (no markdown or extra keys).`;
 
   const prompt = `### Email Analysis Data
 
@@ -54,8 +55,7 @@ ${sentEmailSummaries.map((email, i) => `${i + 1}. To: ${email.sender} | Subject:
 Analyze the email patterns and identify:
 1. Timing patterns (when emails are most active, response preferences)
 2. Content preferences (what types of emails they engage with vs avoid)
-3. Engagement triggers (what prompts them to take action)
-4. Specific automation opportunities with estimated time savings`;
+3. Engagement triggers (what prompts them to take action)`;
 
   const modelOptions = getModel("economy");
 

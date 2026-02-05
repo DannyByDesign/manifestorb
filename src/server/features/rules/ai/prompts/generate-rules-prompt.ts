@@ -51,7 +51,7 @@ export async function aiGenerateRulesPrompt({
   const lastSentEmailsCount = hasSnippets ? 20 : 50;
 
   const system =
-    "You are an AI assistant that helps people manage their emails by generating rules based on their email behavior and existing labels. Generate a JSON response with the rule details.";
+    "You are an AI assistant that helps people manage their emails by generating rules based on their email behavior and existing labels. Return JSON only (no markdown or extra keys).";
 
   const prompt = `Analyze the user's email behavior and suggest general rules for managing their inbox effectively. Here's the context:
 
@@ -75,7 +75,7 @@ ${labelsList}
 </user_labels>
 
 <instructions>
-Generate a list of email management rules that would be broadly applicable for this user based on their email behavior and existing labels. The rules should be general enough to apply to various situations, not just specific recent emails. Include actions such as labeling, archiving,${env.NEXT_PUBLIC_EMAIL_SEND_ENABLED ? " forwarding, replying," : ""} and drafting responses.
+Generate a list of email management rules that would be broadly applicable for this user based on their email behavior and existing labels. The rules should be general enough to apply to various situations, not just specific recent emails. Include actions such as labeling, archiving,${env.NEXT_PUBLIC_EMAIL_SEND_ENABLED ? " forwarding, replying," : ""} drafting responses, notifications, digest inclusion, and webhooks when appropriate.
 </instructions>
 
 <example_rules>
@@ -103,7 +103,7 @@ ${
 
 IMPORTANT: Our system can perform email actions and can also create tasks or calendar events when explicitly requested. Only suggest task/event rules if they clearly follow the user's intent (avoid speculative task/event creation).
 
-Your response should only include the list of general rules. Aim for 3-10 broadly applicable rules that would be useful for this user's email management.
+Your response should only include the list of general rules. Aim for 3-10 broadly applicable rules that would be useful for this user's email management. Keep each rule to a single sentence.
 
 IMPORTANT: Do not create overly specific rules that only occur on a one off basis.`;
 

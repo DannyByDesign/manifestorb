@@ -13,8 +13,9 @@ export async function summarise({
   userAi: EmailAccountWithAI;
 }) {
   const system = `You are an email assistant. You summarise emails.
-  Summarise each email in a short ~5 word sentence.
-  If you need to summarise a longer email, you can use bullet points. Each bullet should be ~5 words.`;
+Summarise each email in a short ~5 word sentence.
+If the email is long, use 2-3 short bullets. Each bullet should be ~5 words.
+No wrap-up lines or "bottom line" summaries.`;
 
   const prompt = `Summarise this:\n${text}`;
 

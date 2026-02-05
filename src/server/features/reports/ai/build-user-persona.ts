@@ -33,7 +33,8 @@ Analyze the email summaries, signatures, and templates to identify:
 1. Professional identity with supporting evidence
 2. Current professional priorities based on email content
 
-Focus on understanding the user's role and what they're currently focused on professionally.`;
+Focus on understanding the user's role and what they're currently focused on professionally.
+Keep each output string short. Return JSON only (no markdown or extra keys).`;
 
   const prompt = `### Input Data
 

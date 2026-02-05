@@ -49,7 +49,8 @@ Explicitly mention if the user often skips a greeting.
 
 - Examples: Include 2-3 representative examples of the user's actual writing style, including sentences or short paragraphs extracted from their emails that best showcase their typical writing patterns.
 
-Provide this analysis in a structured format that serves as a personalized email style guide for the user. The result should be valid JSON.`;
+Provide this analysis in a structured format that serves as a personalized email style guide for the user.
+Return JSON only (no markdown or extra keys). Keep examples to 1-2 sentences each.`;
 
   const prompt = `Here are the emails I've sent previously. Please analyze my writing style:
 <emails>

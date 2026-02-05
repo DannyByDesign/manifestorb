@@ -44,6 +44,8 @@ OUTPUT RULES:
 - If you find no useful information: You may briefly explain what you searched for, then end with exactly "${NO_RELEVANT_INFO_FOUND}"
 - Do not ask for more tools or capabilities
 - Be concise and factual
+- Use short sentences. No wrap-up lines or bloated bullet lists
+- Do not invent details not found by tools
 
 Start searching immediately.`;
 

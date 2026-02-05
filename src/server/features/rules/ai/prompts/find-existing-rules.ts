@@ -33,7 +33,8 @@ ${promptRules.map((rule, index) => `${index + 1}: ${rule}`).join("\n")}
 ## Existing database rules:
 ${JSON.stringify(databaseRules, null, 2)}
 
-Please return the existing rules that match the prompt rules in JSON format.
+Please return the existing rules that match the prompt rules in JSON format (JSON only, no markdown).
+Use "promptNumber" as the 1-based index from the prompt rules list. Return an empty array if none match.
 
 <example>
 {

@@ -82,9 +82,6 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
             const { ChannelRouter } = await import("@/features/channels/router");
             const router = new ChannelRouter();
             const emailAccount = request.user.emailAccounts[0];
-            const payload = request.requestPayload as { tool: string };
-            const toolName = payload.tool || "action";
-
             let userMessage = "I've cancelled that request.";
 
             try {
@@ -101,10 +98,9 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
 
                 const { text } = await generator({
                     model: modelOptions.model,
-                    prompt: `You are a helpful AI assistant. The user just DENIED/REJECTED a request to use the tool "${toolName}".
-Write a brief, friendly, natural confirmation message acknowledging the cancellation.
-Examples: "Understood, I've cancelled that." or "Okay, I won't send that email."
-Max 1 sentence.`,
+                    prompt: `You are a helpful assistant. The user just denied a request.
+Write a brief, friendly confirmation acknowledging the cancellation.
+Do not mention tools or internal details. No emojis. Max 1 short sentence.`,
                 });
 
                 userMessage = text;

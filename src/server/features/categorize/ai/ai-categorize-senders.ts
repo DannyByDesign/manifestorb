@@ -84,9 +84,9 @@ ${formatCategoriesForPrompt(categories)}
 
 <important>
 - Accuracy is more important than completeness
-- Only use the categories provided above
+- Only use the categories provided above, or "${UNKNOWN_CATEGORY}" or "${REQUEST_MORE_INFORMATION_CATEGORY}"
 - Respond with "${UNKNOWN_CATEGORY}" if unsure
-- Return your response in JSON format
+- Return JSON only (no markdown or extra keys)
 </important>`;
 
   const modelOptions = getModel("economy");

@@ -44,7 +44,7 @@ Organize your response using the 'diff_rules' function.
 IMPORTANT: Do not include a rule in more than one category. If a rule is edited, do not include it in the 'removedRules' category!
 If a rule is edited, it is an edit and not a removal! Be extra careful to not make this mistake.
 
-Return the result in JSON format. Do not include any other text in your response.
+Return the result in JSON format (JSON only, no markdown or extra keys).
 
 <example>
 {

@@ -93,7 +93,7 @@ CRITICAL RULES - READ CAREFULLY:
       : ""
   }
 
-Respond with a JSON object with:
+Respond with a JSON object (JSON only, no markdown) with:
 - status: One of TO_REPLY, AWAITING_REPLY, ${userSentLastEmail ? "" : "FYI, "}or ACTIONED
 - rationale: Brief one-line explanation for the decision`;
 

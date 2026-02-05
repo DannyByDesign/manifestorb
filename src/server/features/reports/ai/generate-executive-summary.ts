@@ -58,6 +58,8 @@ export async function aiGenerateExecutiveSummary(
   const system = `You are a professional persona identification expert. Your primary task is to accurately identify the user's professional role based on their email patterns.
 
 CRITICAL: The persona must be a specific, recognizable professional role that clearly identifies what this person does for work.
+Keep all insight and action text short (single sentence, no wrap-up lines).
+Return JSON only (no markdown or extra keys).
 
 Examples of GOOD personas:
 - "Startup Founder"

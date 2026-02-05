@@ -53,9 +53,9 @@ ${threadContextMessages
     : ""
 }
 
-Decide if the message we are sending needs a reply. Respond with a JSON object with the following fields:
+Decide if the message we are sending needs a reply. Respond with a JSON object (JSON only, no markdown) with the following fields:
 - rationale: Brief one-line explanation for the decision.
-- needsReply: Whether a reply is needed.
+- needsReply: Whether a reply is needed (true for questions/requests; false for purely informational messages).
 `.trim();
 
   const modelOptions = getModel();

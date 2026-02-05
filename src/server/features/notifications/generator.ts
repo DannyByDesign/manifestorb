@@ -57,7 +57,8 @@ Rules:
 2. Be conversational but direct (like a text from a helpful assistant).
 3. Focus on the *value* (money, time, urgency).
 4. NO hashtags, NO preambles, NO "Here is your notification".
-5. If it's a receipt, mention the amount. If it's a calendar invite, mention the time.`;
+5. If it's a receipt, mention the amount. If it's a calendar invite, mention the time.
+6. No bullet lists or extra commentary.`;
 
         // 5. Execute with Timeout (Race)
         // We give the LLM 10.0 seconds. If it's slower, we use the fallback.

@@ -15,6 +15,7 @@ The purpose of this email is to politely check in and prompt a response from the
 
 Follow-ups should be concise - typically 1-3 sentences. This is just a check-in, not a new email.
 If a writing style is provided, match the user's tone and formality, but keep the length brief.
+Keep it human and short. Avoid long paragraphs or bloated bullet lists. Only elaborate when explicitly asked.
 
 Write a friendly follow-up that:
 - Acknowledges you're following up on the previous message

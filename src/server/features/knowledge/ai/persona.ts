@@ -82,7 +82,8 @@ Base your analysis on:
 - Decision-making authority evident
 - Communication frequency and urgency
 
-Return a JSON object with the analyzed persona information.`;
+Return a JSON object with the analyzed persona information. JSON only, no markdown or extra keys.
+Keep "responsibilities" to 3-5 short phrases and keep "reasoning" to 1-2 short sentences.`;
 
   const prompt = `The user's email address is: ${emailAccount.email}
 

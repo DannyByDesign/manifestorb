@@ -230,6 +230,7 @@ Extract facts in these categories:
 4. DO NOT extract: passwords, financial data, health info, one-time logistics
 5. Extract as many genuinely useful facts as you find (up to 20)
 6. Use specific, descriptive keys that won't conflict with other facts
+7. Use lowercase, underscore keys only (no spaces or special characters)
 
 Respond ONLY with valid JSON. No markdown code fences, no explanation.`;
 }

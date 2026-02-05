@@ -76,11 +76,12 @@ ${getUserRulesPrompt({ rules })}
 ${getUserInfoPrompt({ emailAccount })}
 
 <outputFormat>
-Respond with a JSON object with the following fields:
+Respond with a JSON object with the following fields (JSON only, no markdown or extra keys):
 - "matchedRule": string or null - the name of the existing rule that should handle all emails from this sender
 - "explanation": string - one sentence explanation of why this rule does or doesn't match
 
 If you're not confident (at least 90% certain) that a single rule should handle all emails from this sender, return null for "matchedRule".
+Use the exact rule name from the provided list when matching.
 </outputFormat>`;
 
   const prompt = `Analyze these emails and determine if they consistently match a rule:

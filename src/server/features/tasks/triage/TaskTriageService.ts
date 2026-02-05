@@ -111,7 +111,7 @@ export async function triageTasks(params: {
     modelOptions: getModel("chat"),
   });
 
-  const prompt = `You are a task triage assistant. Rank tasks and explain why.\n\nReturn JSON only.\n\nTasks:\n${candidates
+  const prompt = `You are a task triage assistant. Rank tasks and explain why.\n\nReturn JSON only. Do not include any extra keys or commentary.\n\nTasks:\n${candidates
     .map((task) => {
       return `- id: ${task.id}\n  title: ${task.title}\n  description: ${task.description ?? ""}\n  dueDate: ${task.dueDate?.toISOString() ?? "none"}\n  durationMinutes: ${task.durationMinutes ?? "unknown"}\n  priority: ${task.priority ?? "NONE"}\n  energyLevel: ${task.energyLevel ?? "unknown"}\n  preferredTime: ${task.preferredTime ?? "unknown"}\n  scheduledStart: ${task.scheduledStart?.toISOString() ?? "none"}\n  scheduledEnd: ${task.scheduledEnd?.toISOString() ?? "none"}\n  reschedulePolicy: ${task.reschedulePolicy ?? "unknown"}`;
     })
@@ -119,7 +119,7 @@ export async function triageTasks(params: {
     .map((fact) => `- ${fact.key}: ${fact.value}`)
     .join("\n") || "None"}\n\nRecent completions:\n${context.recentCompletions
     .map((task) => `- ${task.title} (${task.completedAt.toISOString()})`)
-    .join("\n") || "None"}\n\nCalendar busy periods (next 7 days): ${context.availability.busyPeriods.length}\n\nOutput JSON schema:\n{\n  \"ranked\": [\n    {\n      \"taskId\": \"string\",\n      \"rank\": 1,\n      \"reason\": \"string\",\n      \"suggestedAction\": \"optional string\",\n      \"confidence\": 0.0\n    }\n  ],\n  \"followUpQuestions\": [\"string\"]\n}\n\nRules:\n- Rank at most 5 tasks.\n- Prefer tasks that are due soon, blocked by meetings, or match available time.\n- If critical info is missing (e.g., due date or duration), ask 1-2 follow-up questions.\n`;
+    .join("\n") || "None"}\n\nCalendar busy periods (next 7 days): ${context.availability.busyPeriods.length}\n\nOutput JSON schema:\n{\n  \"ranked\": [\n    {\n      \"taskId\": \"string\",\n      \"rank\": 1,\n      \"reason\": \"string\",\n      \"suggestedAction\": \"optional string\",\n      \"confidence\": 0.0\n    }\n  ],\n  \"followUpQuestions\": [\"string\"]\n}\n\nRules:\n- Use only task IDs from the provided list.\n- Rank at most 5 tasks.\n- Prefer tasks that are due soon, blocked by meetings, or match available time.\n- If critical info is missing (e.g., due date or duration), ask 1-2 follow-up questions.\n- If no follow-up questions are needed, return an empty array.\n`;
 
   const aiResponse = await generateObject({
     system: "Return valid JSON only.",

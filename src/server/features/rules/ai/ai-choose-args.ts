@@ -137,6 +137,7 @@ ${PROMPT_SECURITY_INSTRUCTIONS}
 - IMPORTANT: For content and subject fields:
   - Use proper capitalization and punctuation (start sentences with capital letters)
   - Ensure the generated text flows naturally with surrounding template content
+- Keep generated text concise and human. Avoid long paragraphs or bloated bullet lists unless the rule explicitly asks for them.
 - IMPORTANT: ${PLAIN_TEXT_OUTPUT_INSTRUCTION}
 </key_instructions>`;
 }

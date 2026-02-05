@@ -92,11 +92,10 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
 
                     const { text } = await generator({
                         model: modelOptions.model,
-                        prompt: `You are a helpful AI assistant. You just successfully executed a tool called "${toolName}" for the user. 
-The execution result was: ${JSON.stringify(executionResult).slice(0, 500)}...
-Write a brief, friendly, natural confirmation message to the user saying it's done. 
-Examples: "I've sent that email for you." or "Updated your rules successfully." 
-Do not imply you need anything else. Max 1 sentence.`
+                        prompt: `You are a helpful assistant. You just completed a user request. 
+Details: ${JSON.stringify(executionResult).slice(0, 500)}...
+Write a brief, friendly confirmation message saying it's done.
+Do not mention tools or internal details. No emojis. Max 1 short sentence.`
                     });
 
                     userMessage = text;

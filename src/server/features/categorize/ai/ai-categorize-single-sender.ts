@@ -20,7 +20,7 @@ export async function aiCategorizeSender({
   categories: Pick<Category, "name" | "description">[];
 }) {
   const system = `You are an AI assistant specializing in email management and organization.
-Your task is to categorize an email accounts based on their name, email address, and content from previous emails.
+Your task is to categorize an email account based on their name, email address, and content from previous emails.
 Provide an accurate categorization to help users efficiently manage their inbox.`;
 
   const prompt = `Categorize the following email account:
@@ -44,9 +44,9 @@ ${formatCategoriesForPrompt(categories)}
 1. Analyze the sender's name and email address for clues about their category.
 2. Review the content of previous emails to gain more context about the account's relationship with us.
 3. If the category is clear, assign it.
-4. If you're not certain, respond with "Unknown".
-5. If multiple categories are possible, respond with "Unknown".
-6. Return your response in JSON format.
+4. If you're not certain, respond with "Other".
+5. If multiple categories are possible, respond with "Other".
+6. Only use categories provided above or "Other". Return JSON only (no markdown).
 </instructions>`;
 
   const modelOptions = getModel();

@@ -22,7 +22,8 @@ Provide a concise summary (max 500 characters) that captures the most important 
 - Important dates or deadlines established in past emails
 - Notable preferences or patterns in communication
 
-Return your response in JSON format.`;
+If no relevant historical context is found, set hasHistoricalContext to false and return an empty summary.
+Return JSON only (no markdown or extra keys).`;
 
 const getUserPrompt = ({
   currentThreadMessages,

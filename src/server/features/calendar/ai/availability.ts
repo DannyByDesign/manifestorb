@@ -89,6 +89,7 @@ Your task is to:
 4. Suggest ONLY times that DO NOT overlap with busy periods
 5. Return time slots with start AND end times (infer duration from context: "quick call" = 30min, "meeting" = 60min)
 6. If there are NO available times (user is busy all day), set noAvailability=true and return empty suggestedTimes array
+7. If the thread is NOT a scheduling request, return an empty suggestedTimes array and noAvailability=false
 
 CRITICAL: Do NOT suggest times overlapping with busy periods.
 Example: If busy 2025-11-17 09:00 to 2025-11-17 17:00, suggest times AFTER 17:00 or BEFORE 09:00.

@@ -16,7 +16,8 @@ Actions:
 - "undo": User wants to reverse the filing. We will move the file to a "To Delete" folder for them to review.
 - "none": No action needed, just answering a question or continuing conversation.
 
-Always write a helpful, concise reply.`;
+Always write a helpful, concise reply (1-3 short sentences). Return JSON only.
+If action is "move", include a folderPath. Otherwise omit folderPath.`;
 
 const schema = z.object({
   action: z.enum(["approve", "move", "undo", "none"]),

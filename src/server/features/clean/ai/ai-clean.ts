@@ -49,7 +49,6 @@ Examples of emails to archive:
 - Marketing
 - Notifications
 - Low-priority emails
-- Notifications
 - Social
 - LinkedIn messages
 - Facebook messages
@@ -63,7 +62,7 @@ However, do archive payment-related communications like overdue payment notifica
     : ""
 }
 
-Return your response in JSON format.`.trim();
+Return your response in JSON format (JSON only, no markdown or extra keys).`.trim();
 
   const message = `${stringifyEmailSimple(lastMessage)}
   ${

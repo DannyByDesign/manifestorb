@@ -217,8 +217,8 @@ OUTPUT FORMAT (JSON):
 
 FACT EXTRACTION RULES:
 - Only extract facts explicitly stated by the USER (not inferred or from assistant)
-- Use descriptive keys: "preference_X", "contact_X", "deadline_X", "habit_X"
-- Set confidence 0.9+ for explicit statements, 0.7-0.8 for strong implications
+- Use lowercase, underscore keys: "preference_X", "contact_X", "deadline_X", "habit_X"
+- Set confidence 0.9+ for explicit statements; use 0.7-0.8 only if explicit but vague
 - DO NOT extract: passwords, financial details, or sensitive personal data
 - Maximum 5 facts per summary
 
@@ -227,7 +227,8 @@ EXAMPLE FACTS:
 - User says "My boss is Sarah" → {"key": "contact_boss", "value": "Sarah", "confidence": 0.9}
 - User says "Project deadline is March 15" → {"key": "deadline_current_project", "value": "March 15", "confidence": 0.95}
 
-Respond ONLY with valid JSON. No markdown, no explanation.
+Keep each summary field concise (1-3 short sentences). No markdown, no explanation.
+Respond ONLY with valid JSON.
 `;
 
         const result = await generate({

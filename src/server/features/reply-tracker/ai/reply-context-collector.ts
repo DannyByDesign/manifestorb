@@ -55,7 +55,7 @@ IMPORTANT - For scheduling/meeting requests:
 When searching, use natural language queries that would find relevant emails. The search will look through the past 6 months automatically.
 
 Search Tips:
-- The search looks for EXACT text matches in emails
+- Use short keyword phrases; the provider search syntax applies
 - IMPORTANT: Try simpler queries if you don't get results for your first search
 - Try the subject line first if it contains the main topic
 

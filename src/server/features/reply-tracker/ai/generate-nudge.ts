@@ -26,6 +26,7 @@ Use context from the previous emails to make it relevant.
 Don't mention that you're an AI.
 Don't reply with a Subject. Only reply with the body of the email.
 Keep it short.
+Avoid long paragraphs and bloated bullet lists. Only elaborate when explicitly asked.
 ${PLAIN_TEXT_OUTPUT_INSTRUCTION}`;
 
   const prompt = `Here is the context of the email thread (from oldest to newest):

@@ -40,11 +40,13 @@ I will provide you with:
 - The email content
 
 Guidelines for summarizing the email:
-- If the email is spam, promotional, or irrelevant, return "null".
+- If the email is spam, promotional, or irrelevant, return an empty string.
+- If there is nothing worth summarizing, return an empty string.
 - Do NOT mention the sender's name or start with phrases like "This is a message from X" or "This email from Y" - the sender information is already displayed separately.
 - DO NOT use meta-commentary like "highlights", "discusses", "reflects on", "mentions", or "talks about" - just state the content directly.
 - Lead with the most interesting or important point - the hook, main insight, or key takeaway.
 - Be engaging and direct - write like you're telling someone the key points, not describing what the email contains.
+- Keep each line short. No wrap-up lines or "bottom line" summaries.
 - When there are multiple items or pieces of information, use newlines to separate them (they will be rendered as bullet points automatically).
 - DO NOT include bullet point characters (•, -, *, etc.) - just separate items with newlines.
 - For newsletters and content emails:
