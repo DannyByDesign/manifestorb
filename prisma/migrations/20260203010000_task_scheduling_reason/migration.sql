@@ -12,7 +12,3 @@ CREATE TABLE "TaskSchedulingReason" (
 
 CREATE UNIQUE INDEX "TaskSchedulingReason_taskId_key" ON "TaskSchedulingReason"("taskId");
 CREATE INDEX "TaskSchedulingReason_expiresAt_idx" ON "TaskSchedulingReason"("expiresAt");
-
-ALTER TABLE "TaskSchedulingReason"
-ADD CONSTRAINT "TaskSchedulingReason_taskId_fkey"
-FOREIGN KEY ("taskId") REFERENCES "Task"("id") ON DELETE CASCADE ON UPDATE CASCADE;

@@ -339,7 +339,7 @@ DigestEmail.PreviewProps = {
       from: "Product Hunt Daily",
       subject: "🚀 Today's hottest tech products",
       content:
-        "Claude Projects: Anthropic's new workspace for organizing AI conversations (847 upvotes)",
+        "Gemini Workspace: Google's new hub for organizing AI conversations (847 upvotes)",
     },
     {
       from: "TechCrunch",

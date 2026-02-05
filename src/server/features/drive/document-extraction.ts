@@ -9,7 +9,6 @@
  *
  * Architecture note (from CRE document research):
  * - Hybrid approach (OCR/extraction → LLM reasoning) outperforms vision-only
- * - For small PDFs (<10 pages), consider using Claude's native PDF support
  */
 
 import type { Logger } from "@/server/lib/logger";
@@ -86,8 +85,7 @@ export function isExtractableMimeType(mimeType: string): boolean {
 }
 
 /**
- * Check if a PDF is small enough for Claude's native PDF support.
- * Claude can process PDFs natively up to 100 pages / 32MB.
+ * Check if a PDF is small enough for native PDF processing.
  * For small documents, this can be more accurate than text extraction.
  */
 export function canUseNativePdfSupport(

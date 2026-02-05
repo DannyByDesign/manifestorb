@@ -108,7 +108,7 @@ You decide what deserves a push. Actionable approvals use **secure signed action
 | **State** | Zustand | Lightweight state management |
 | **Database** | PostgreSQL + Prisma | Data persistence & ORM |
 | **Auth** | Better Auth | OAuth authentication |
-| **AI** | Anthropic, OpenAI, Google, Groq, OpenRouter | Multi-provider AI |
+| **AI** | Google (Gemini), OpenAI (GPT/Embeddings) | AI inference + embeddings |
 | **Queue** | Upstash QStash | Background job processing |
 | **Cache** | Upstash Redis | Caching & rate limiting |
 | **Email** | Resend, Loops | Transactional & marketing email |

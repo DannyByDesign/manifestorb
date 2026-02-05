@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     restart: always
     environment:
       POSTGRES_USER: postgres
@@ -18,6 +18,18 @@ services:
     restart: always
     ports:
       - "6379:6379"
+
+  serverless-redis-http:
+    image: hiett/serverless-redis-http:latest
+    restart: always
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      TOKEN: local-dev-token
+    ports:
+      - "8079:80"
+    depends_on:
+      - redis
 
 volumes:
   postgres_data:

@@ -146,7 +146,7 @@ interface LLMErrorInfo {
 
 /**
  * Extracts error information to detect LLM rate limits across providers.
- * Supports OpenAI, Anthropic, Google, and OpenRouter error formats.
+ * Supports OpenAI and Google error formats.
  * Also handles p-retry's FailedAttemptError wrapper.
  */
 export function extractLLMErrorInfo(error: unknown): LLMErrorInfo {
@@ -168,7 +168,6 @@ export function extractLLMErrorInfo(error: unknown): LLMErrorInfo {
   const isRateLimit =
     status === 429 ||
     errorCode === "rate_limit_exceeded" || // OpenAI
-    errorCode === "rate_limit_error" || // Anthropic
     errorCode === "RESOURCE_EXHAUSTED" || // Google
     /rate.?limit/i.test(message) ||
     /quota.?exceeded/i.test(message) ||

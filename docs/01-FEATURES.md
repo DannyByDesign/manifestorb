@@ -438,7 +438,7 @@ To become “calendar + task agent + push assistant,” you are missing:
 
 ## 4. Push Notifications + Actionable Approvals (Partially implemented)
 
-> Without push, “assistant” feels passive. Push is how you get “ClaudeBot-like” responsiveness.
+> Without push, “assistant” feels passive. Push is how you get fast, assistant-like responsiveness.
 
 ### Web Push (Implemented)
 

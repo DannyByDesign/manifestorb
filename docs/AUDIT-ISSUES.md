@@ -475,13 +475,13 @@ const threadPattern = `thread:${userId}:*`;  // WRONG
 
 1. **`model.ts:76`** - Hardcoded default model "gpt-5.1" may not exist
 2. **`model.ts:90`** - API key fallback without validation
-3. **`model.ts:170-172`** - Non-null assertions for BEDROCK credentials
+3. **`model.ts:170-172`** - Non-null assertions for AI credentials
 4. **`index.ts:118`** - Non-null assertion `backupModel!` without null check
 5. **`index.ts:78-86`** - Missing error handling for `saveAiUsage`
 
 **VERIFIED WORKING:**
 - ✅ `retry.ts` - Proper exponential backoff, respects Retry-After headers
-- ✅ Rate limit handling for OpenAI, Anthropic, Google, OpenRouter
+- ✅ Rate limit handling for OpenAI and Google
 
 ### OAuth Utils (`utils/oauth/`)
 

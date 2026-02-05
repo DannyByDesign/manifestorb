@@ -34,7 +34,7 @@ GOOGLE_CLIENT_ID=
 MICROSOFT_CLIENT_ID=
 DEFAULT_LLM_PROVIDER=
 DEFAULT_LLM_MODEL=
-ANTHROPIC_API_KEY=
+GOOGLE_API_KEY=
 `;
 
   const baseEnv: EnvConfig = {
@@ -46,18 +46,18 @@ ANTHROPIC_API_KEY=
     GOOGLE_CLIENT_SECRET: "google-secret",
     MICROSOFT_CLIENT_ID: "microsoft-id",
     MICROSOFT_CLIENT_SECRET: "microsoft-secret",
-    DEFAULT_LLM_PROVIDER: "anthropic",
-    DEFAULT_LLM_MODEL: "claude-sonnet-4-5-20250929",
-    ECONOMY_LLM_PROVIDER: "anthropic",
-    ECONOMY_LLM_MODEL: "claude-haiku-4-5-20251001",
-    ANTHROPIC_API_KEY: "sk-ant-xxx",
+    DEFAULT_LLM_PROVIDER: "google",
+    DEFAULT_LLM_MODEL: "gemini-2.5-flash",
+    ECONOMY_LLM_PROVIDER: "google",
+    ECONOMY_LLM_MODEL: "gemini-2.5-flash",
+    GOOGLE_API_KEY: "google-key-xxx",
   };
 
   it("should replace existing values in template", () => {
     const result = generateEnvFile({
       env: baseEnv,
       useDockerInfra: false,
-      llmProvider: "anthropic",
+      llmProvider: "google",
       template: baseTemplate,
     });
 
@@ -85,7 +85,7 @@ POSTGRES_DB=
     const result = generateEnvFile({
       env: dockerEnv,
       useDockerInfra: true,
-      llmProvider: "anthropic",
+      llmProvider: "google",
       template: templateWithPostgres,
     });
 
@@ -98,12 +98,12 @@ POSTGRES_DB=
     const result = generateEnvFile({
       env: baseEnv,
       useDockerInfra: false,
-      llmProvider: "anthropic",
+      llmProvider: "google",
       template: baseTemplate,
     });
 
-    expect(result).toContain("ANTHROPIC_API_KEY=sk-ant-xxx");
-    expect(result).toContain("DEFAULT_LLM_PROVIDER=anthropic");
+    expect(result).toContain("GOOGLE_API_KEY=google-key-xxx");
+    expect(result).toContain("DEFAULT_LLM_PROVIDER=google");
   });
 
   it("should handle OpenAI provider", () => {
@@ -129,34 +129,6 @@ OPENAI_API_KEY=
     expect(result).toContain("DEFAULT_LLM_PROVIDER=openai");
   });
 
-  it("should handle Bedrock provider with multiple keys", () => {
-    const bedrockEnv: EnvConfig = {
-      ...baseEnv,
-      DEFAULT_LLM_PROVIDER: "bedrock",
-      DEFAULT_LLM_MODEL: "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
-      BEDROCK_ACCESS_KEY: "AKIA-xxx",
-      BEDROCK_SECRET_KEY: "secret-xxx",
-      BEDROCK_REGION: "us-west-2",
-    };
-
-    const templateWithBedrock = `${baseTemplate}
-BEDROCK_ACCESS_KEY=
-BEDROCK_SECRET_KEY=
-BEDROCK_REGION=
-`;
-
-    const result = generateEnvFile({
-      env: bedrockEnv,
-      useDockerInfra: false,
-      llmProvider: "bedrock",
-      template: templateWithBedrock,
-    });
-
-    expect(result).toContain("BEDROCK_ACCESS_KEY=AKIA-xxx");
-    expect(result).toContain("BEDROCK_SECRET_KEY=secret-xxx");
-    expect(result).toContain("BEDROCK_REGION=us-west-2");
-  });
-
   it("should handle commented lines in template", () => {
     const templateWithComments = `# Config
 # DATABASE_URL=commented-placeholder
@@ -169,7 +141,7 @@ AUTH_SECRET=
         AUTH_SECRET: "new-secret",
       },
       useDockerInfra: false,
-      llmProvider: "anthropic",
+      llmProvider: "google",
       template: templateWithComments,
     });
 
@@ -189,7 +161,7 @@ AUTH_SECRET=
         GOOGLE_CLIENT_ID: "google-id-value",
       },
       useDockerInfra: false,
-      llmProvider: "anthropic",
+      llmProvider: "google",
       template: minimalTemplate,
     });
 
@@ -216,7 +188,7 @@ AUTH_SECRET=
         AUTH_SECRET: "secret",
       },
       useDockerInfra: false,
-      llmProvider: "anthropic",
+      llmProvider: "google",
       template: templateWithStructure,
     });
 
@@ -277,7 +249,7 @@ DEFAULT_LLM_PROVIDER=
 DEFAULT_LLM_MODEL=
 ECONOMY_LLM_PROVIDER=
 ECONOMY_LLM_MODEL=
-ANTHROPIC_API_KEY=
+GOOGLE_API_KEY=
 
 # =============================================================================
 # Redis
@@ -315,17 +287,17 @@ UPSTASH_REDIS_TOKEN=
       MICROSOFT_TENANT_ID: "common",
       MICROSOFT_WEBHOOK_CLIENT_STATE: "webhook-state-hex",
       // LLM
-      DEFAULT_LLM_PROVIDER: "anthropic",
-      DEFAULT_LLM_MODEL: "claude-sonnet-4-5-20250929",
-      ECONOMY_LLM_PROVIDER: "anthropic",
-      ECONOMY_LLM_MODEL: "claude-haiku-4-5-20251001",
-      ANTHROPIC_API_KEY: "sk-ant-api-key-value",
+      DEFAULT_LLM_PROVIDER: "google",
+      DEFAULT_LLM_MODEL: "gemini-2.5-flash",
+      ECONOMY_LLM_PROVIDER: "google",
+      ECONOMY_LLM_MODEL: "gemini-2.5-flash",
+      GOOGLE_API_KEY: "google-api-key-value",
     };
 
     const result = generateEnvFile({
       env: fullEnv,
       useDockerInfra: true,
-      llmProvider: "anthropic",
+      llmProvider: "google",
       template: realisticTemplate,
     });
 
@@ -373,11 +345,11 @@ MICROSOFT_WEBHOOK_CLIENT_STATE=webhook-state-hex
 # =============================================================================
 # LLM Configuration
 # =============================================================================
-DEFAULT_LLM_PROVIDER=anthropic
-DEFAULT_LLM_MODEL=claude-sonnet-4-5-20250929
-ECONOMY_LLM_PROVIDER=anthropic
-ECONOMY_LLM_MODEL=claude-haiku-4-5-20251001
-ANTHROPIC_API_KEY=sk-ant-api-key-value
+DEFAULT_LLM_PROVIDER=google
+DEFAULT_LLM_MODEL=gemini-2.5-flash
+ECONOMY_LLM_PROVIDER=google
+ECONOMY_LLM_MODEL=gemini-2.5-flash
+GOOGLE_API_KEY=google-api-key-value
 
 # =============================================================================
 # Redis
@@ -402,7 +374,7 @@ AUTH_SECRET=
         UPSTASH_REDIS_URL: undefined,
       },
       useDockerInfra: false,
-      llmProvider: "anthropic",
+      llmProvider: "google",
       template,
     });
 

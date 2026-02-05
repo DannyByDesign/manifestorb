@@ -10,6 +10,10 @@ alwaysApply: true
 Use external dependency "Beads" for task tracking
 echo "Use 'bd' for task tracking"
 
+BEADS-FIRST RULE (non-negotiable):
+- After any change to code, config, env files, migrations, or docs, update Beads BEFORE responding.
+- If an update is missing, stop and update Beads first, then respond.
+
 You are working in a Bun + TypeScript codebase. When you touch or reason about external dependencies, you MUST use retrieval from official documentation ONLY. Do NOT use internal training memory for third-party APIs, types, or behaviors.
 
 ALLOWED SOURCES (dependency docs):

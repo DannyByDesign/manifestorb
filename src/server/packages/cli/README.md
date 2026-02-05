@@ -85,7 +85,7 @@ amodel update
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running
 - OAuth credentials from Google and/or Microsoft
-- An LLM API key (Anthropic, OpenAI, Google, etc.)
+- An LLM API key (Google or OpenAI)
 
 ## Configuration
 

@@ -5,7 +5,6 @@ vi.mock("@/env", () => ({
   env: {
     APPROVAL_ACTION_SECRET: "test-secret",
     AUTH_SECRET: "",
-    NEXTAUTH_SECRET: "",
   },
 }));
 

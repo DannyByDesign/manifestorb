@@ -3,11 +3,7 @@ import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 import { booleanString } from "@/server/lib/zod";
 
-const llmProviderEnum = z.enum([
-  "anthropic",
-  "google",
-  "openai",
-]);
+const llmProviderEnum = z.enum(["google", "openai"]);
 
 /** For Vercel preview deployments, auto-detect from VERCEL_URL. */
 const getBaseUrl = (): string | undefined => {
@@ -33,7 +29,6 @@ export const env = createEnv({
     PREVIEW_DATABASE_URL_UNPOOLED: z.string().url().optional(),
 
     AUTH_SECRET: z.string().optional(),
-    NEXTAUTH_SECRET: z.string().optional(),
     SURFACES_SHARED_SECRET: z.string().optional(), // Shared secret for Surfaces sidecar
     ADMIN_TOKEN: z.string().optional(), // For debug endpoints
     GOOGLE_CLIENT_ID: z.string().min(1),
@@ -45,7 +40,6 @@ export const env = createEnv({
     EMAIL_ENCRYPT_SALT: z.string(),
 
     // LLM Configuration - Base tier uses Google Gemini 2.5 Flash for all tasks
-    // Premium tier (future) will offer Anthropic Claude
     DEFAULT_LLM_PROVIDER: llmProviderEnum.default("google"),
     DEFAULT_LLM_MODEL: z.string().optional().default("gemini-2.5-flash"),
     // Economy and Chat use same model in base tier (all Gemini)
@@ -54,10 +48,9 @@ export const env = createEnv({
     CHAT_LLM_PROVIDER: llmProviderEnum.optional(),
     CHAT_LLM_MODEL: z.string().optional(),
 
-    // LLM API Keys
-    GOOGLE_API_KEY: z.string().optional(), // Primary provider for base tier
-    OPENAI_API_KEY: z.string().optional(), // Required for embeddings only
-    ANTHROPIC_API_KEY: z.string().optional(), // Future premium tier
+    // LLM API Keys (Google + OpenAI required)
+    GOOGLE_API_KEY: z.string().min(1), // Primary provider for base tier
+    OPENAI_API_KEY: z.string().min(1), // Required for embeddings only
 
     OPENAI_ZERO_DATA_RETENTION: z.coerce.boolean().optional().default(false),
 
@@ -231,14 +224,8 @@ export const env = createEnv({
   },
 });
 
-if (
-  env.NODE_ENV === "production" &&
-  !env.AUTH_SECRET &&
-  !env.NEXTAUTH_SECRET
-) {
-  throw new Error(
-    "AUTH_SECRET (or NEXTAUTH_SECRET) is required in production",
-  );
+if (env.NODE_ENV === "production" && !env.AUTH_SECRET) {
+  throw new Error("AUTH_SECRET is required in production");
 }
 
 if (env.NODE_ENV === "production") {

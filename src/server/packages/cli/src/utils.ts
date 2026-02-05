@@ -118,7 +118,6 @@ export function generateEnvFile(config: {
 
   // Set the API key for the selected provider
   const apiKeyMap: Record<string, string> = {
-    anthropic: "ANTHROPIC_API_KEY",
     openai: "OPENAI_API_KEY",
     google: "GOOGLE_API_KEY",
   };

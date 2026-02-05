@@ -56,7 +56,7 @@ export const betterAuthConfig = betterAuth({
     // Supports wildcards like https://*.vercel.app
     ...(env.ADDITIONAL_TRUSTED_ORIGINS ?? []),
   ],
-  secret: env.AUTH_SECRET || env.NEXTAUTH_SECRET,
+  secret: env.AUTH_SECRET,
   emailAndPassword: {
     enabled: false,
   },

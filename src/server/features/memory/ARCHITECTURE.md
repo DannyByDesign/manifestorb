@@ -391,8 +391,8 @@ from all user conversations and updates `UserSummary`.
 
 | Component | Model | Provider | Cost |
 |-----------|-------|----------|------|
-| Agent | `claude-sonnet-4-5` | Anthropic | Primary |
-| Memory Recording | `gpt-4o-mini` | OpenAI | $0.15/1M in |
+| Agent | `gemini-2.5-flash` | Google | Primary |
+| Memory Recording | `gemini-2.5-flash` | Google | Primary |
 | Embeddings | `text-embedding-3-small` | OpenAI | $0.02/1M |
 
 ---

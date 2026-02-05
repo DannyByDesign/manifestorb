@@ -114,7 +114,6 @@ export const ErrorType = {
   INVALID_AI_MODEL: "Invalid AI model",
   OPENAI_API_KEY_DEACTIVATED: "OpenAI API key deactivated",
   AI_QUOTA_ERROR: "AI quota error",
-  ANTHROPIC_INSUFFICIENT_BALANCE: "Anthropic insufficient balance",
   ACCOUNT_DISCONNECTED: "Account disconnected",
 };
 
@@ -139,11 +138,6 @@ const errorTypeConfig: Record<
   },
   [ErrorType.AI_QUOTA_ERROR]: {
     label: "AI Rate Limited",
-    actionUrl: "/settings",
-    actionLabel: "Update Settings",
-  },
-  [ErrorType.ANTHROPIC_INSUFFICIENT_BALANCE]: {
-    label: "Insufficient Credits",
     actionUrl: "/settings",
     actionLabel: "Update Settings",
   },

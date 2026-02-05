@@ -4,7 +4,6 @@ import type { MeetingBriefingData } from "@/features/meeting-briefs/gather-conte
 vi.mock("server-only", () => ({}));
 vi.mock("@/env", () => ({
   env: {
-    PERPLEXITY_API_KEY: "test-key",
     DEFAULT_LLM_PROVIDER: "openai",
     EMAIL_ENCRYPT_SECRET: "test-encrypt-secret-for-testing",
     EMAIL_ENCRYPT_SALT: "test-encrypt-salt-for-testing",
@@ -120,7 +119,7 @@ describe("buildPrompt timezone handling", () => {
 
       </guest_context>
 
-      Available search tools: perplexitySearch, webSearch
+      Available search tools: webSearch
 
       For each guest listed above:
       1. Review their email and meeting history provided
@@ -173,7 +172,7 @@ describe("buildPrompt timezone handling", () => {
 
       </guest_context>
 
-      Available search tools: perplexitySearch, webSearch
+      Available search tools: webSearch
 
       For each guest listed above:
       1. Review their email and meeting history provided

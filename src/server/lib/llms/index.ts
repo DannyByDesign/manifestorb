@@ -24,7 +24,6 @@ import {
 } from "@/server/lib/error-messages";
 import {
   captureException,
-  isAnthropicInsufficientBalanceError,
   isAWSThrottlingError,
   isIncorrectOpenAIAPIKeyError,
   isInvalidAIModelError,
@@ -371,16 +370,5 @@ async function handleError(
       });
     }
 
-    if (isAnthropicInsufficientBalanceError(error)) {
-      return await addUserErrorMessageWithNotification({
-        userId,
-        userEmail,
-        emailAccountId,
-        errorType: ErrorType.ANTHROPIC_INSUFFICIENT_BALANCE,
-        errorMessage:
-          "Your Anthropic account has insufficient credits. Please add credits or update your settings.",
-        logger,
-      });
-    }
   }
 }

@@ -121,28 +121,11 @@ export function isInvalidOpenAIModelError(error: APICallError): boolean {
 
 export function isInvalidAIModelError(error: APICallError): boolean {
   // OpenAI: "The model `xyz` does not exist or you do not have access to it"
-  if (
-    error.message.includes("does not exist or you do not have access to it")
-  ) {
-    return true;
-  }
-  // Anthropic: 404 with "not_found_error"
-  if (error.statusCode === 404 && error.message.includes("not_found_error")) {
-    return true;
-  }
-  return false;
+  return error.message.includes("does not exist or you do not have access to it");
 }
 
 export function isOpenAIAPIKeyDeactivatedError(error: APICallError): boolean {
   return error.message.includes("this API key has been deactivated");
-}
-
-export function isAnthropicInsufficientBalanceError(
-  error: APICallError,
-): boolean {
-  return error.message.includes(
-    "Your credit balance is too low to access the Anthropic API",
-  );
 }
 
 // Handling AI quota/retry errors. This can be related to the user's own API quota or the system's quota.
@@ -199,8 +182,7 @@ export function isKnownApiError(error: unknown): boolean {
     (APICallError.isInstance(error) &&
       (isIncorrectOpenAIAPIKeyError(error) ||
         isInvalidAIModelError(error) ||
-        isOpenAIAPIKeyDeactivatedError(error) ||
-        isAnthropicInsufficientBalanceError(error))) ||
+        isOpenAIAPIKeyDeactivatedError(error))) ||
     (RetryError.isInstance(error) && isAiQuotaExceededError(error))
   );
 }

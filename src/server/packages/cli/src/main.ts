@@ -429,7 +429,6 @@ Full guide: https://docs.getamodel.com/self-hosting/microsoft-oauth`,
     message: "LLM Provider",
     options: [
       { value: "google", label: "Google (Gemini 2.5 Flash)", hint: "recommended - best value" },
-      { value: "anthropic", label: "Anthropic (Claude)", hint: "premium - higher cost" },
       { value: "openai", label: "OpenAI (GPT)", hint: "alternative" },
     ],
   });
@@ -443,8 +442,7 @@ Full guide: https://docs.getamodel.com/self-hosting/microsoft-oauth`,
 
   const defaultModels: Record<string, string> = {
     google: "gemini-2.5-flash",
-    anthropic: "claude-sonnet-4-5-20250929",
-    openai: "gpt-4o",
+    openai: "gemini-2.5-flash",
   };
 
   env.DEFAULT_LLM_MODEL = defaultModels[llmProvider];
@@ -452,13 +450,11 @@ Full guide: https://docs.getamodel.com/self-hosting/microsoft-oauth`,
   // Economy and Chat inherit from default
 
   const llmLinks: Record<string, string> = {
-    anthropic: "https://console.anthropic.com/settings/keys",
     openai: "https://platform.openai.com/api-keys",
     google: "https://aistudio.google.com/apikey",
   };
 
   const apiKeyEnvVar: Record<string, string> = {
-    anthropic: "ANTHROPIC_API_KEY",
     openai: "OPENAI_API_KEY",
     google: "GOOGLE_API_KEY",
   };

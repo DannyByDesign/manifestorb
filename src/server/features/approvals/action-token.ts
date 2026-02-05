@@ -13,7 +13,6 @@ function getSecret() {
   return (
     env.APPROVAL_ACTION_SECRET ||
     env.AUTH_SECRET ||
-    env.NEXTAUTH_SECRET ||
     ""
   );
 }

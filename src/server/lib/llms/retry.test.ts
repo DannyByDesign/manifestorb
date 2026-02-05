@@ -42,14 +42,6 @@ describe("extractLLMErrorInfo", () => {
       expect(result.retryable).toBe(true);
     });
 
-    it("detects Anthropic rate_limit_error code", () => {
-      const error = { code: "rate_limit_error", message: "Rate limit" };
-      const result = extractLLMErrorInfo(error);
-
-      expect(result.isRateLimit).toBe(true);
-      expect(result.retryable).toBe(true);
-    });
-
     it("detects Google RESOURCE_EXHAUSTED code", () => {
       const error = { code: "RESOURCE_EXHAUSTED", message: "Quota exceeded" };
       const result = extractLLMErrorInfo(error);
