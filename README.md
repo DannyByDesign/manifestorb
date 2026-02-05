@@ -2,7 +2,7 @@
 
 **Your AI-powered email and calendar command center.**
 
-Amodel is an intelligent assistant that lives wherever you work—web, Slack, Discord, or Telegram. It understands your inbox and calendar, drafts responses, schedules time, triages tasks, and automates the mundane—while keeping you in control of every action that matters.
+Amodel is an intelligent assistant that lives wherever you work—web, Slack, Discord, or Telegram. It understands your inbox and calendar, drafts responses, schedules time, triages tasks, and automates the mundane—while keeping you in control of every action that matters. We're building an AI that eliminates coordination work for executives, EAs, and high-leverage professionals. Our product autonomously manages email correspondence and calendar scheduling—not by making people faster at these tasks, but by handling them entirely. The AI understands context across all communication channels, makes judgment calls within user-defined boundaries, negotiates meeting times, drafts contextually-aware responses, and surfaces only what genuinely requires human decision-making. Users set the strategy and handle exceptions; the AI executes everything else. Success means our customers reclaim 10-15 hours per week previously lost to inbox management and calendar Tetris, allowing them to focus exclusively on high-judgment work that actually moves their goals forward. We go radically deep on specific workflows—starting with executive assistants at tech companies—building something so tailored to their needs that horizontal competitors can't match our value even with better AI models.
 
 ---
 

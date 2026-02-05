@@ -1,14 +1,25 @@
 export const defaultCategory = {
   // Primary categories - used in rules and bulk archive UI
-  OTHER: {
-    name: "Other",
+  ACTION_REQUIRED: {
+    name: "Action Required",
     enabled: true,
-    description: "Senders that don't fit any other category",
+    description: "Emails that clearly require a response or decision",
   },
-  NEWSLETTER: {
-    name: "Newsletter",
+  SCHEDULING: {
+    name: "Scheduling",
     enabled: true,
-    description: "Newsletters",
+    description: "Meeting requests, invites, reschedules, and time coordination",
+  },
+  FINANCE: {
+    name: "Finance",
+    enabled: true,
+    description:
+      "Receipts, invoices, payments, renewals, and billing-related emails",
+  },
+  UPDATES: {
+    name: "Updates",
+    enabled: true,
+    description: "Informational updates, notifications, and FYI messages",
   },
   MARKETING: {
     name: "Marketing",
@@ -16,16 +27,20 @@ export const defaultCategory = {
     description:
       "Promotional content, product launches, and marketing campaigns",
   },
-  RECEIPT: {
-    name: "Receipt",
+  INTERNAL: {
+    name: "Internal",
     enabled: true,
-    description:
-      "Purchase confirmations, order receipts, and payment confirmations",
+    description: "Emails from the user's own organization or domain",
   },
-  NOTIFICATION: {
-    name: "Notification",
+  EXTERNAL_PEOPLE: {
+    name: "External People",
     enabled: true,
-    description: "Automated alerts, system notifications, and status updates",
+    description: "Human emails from outside the organization",
+  },
+  OTHER: {
+    name: "Other",
+    enabled: true,
+    description: "Senders that don't fit any other category",
   },
   // TODO: Secondary categories for future two-round categorization
   // These would refine "Other" senders for analytics purposes.

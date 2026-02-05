@@ -23,15 +23,20 @@ export async function processUserRequest({
   originalEmail,
   messages,
   matchedRules,
+  matchedRule,
   logger,
 }: {
   emailAccount: EmailAccountWithAI;
   rules: RuleWithRelations[];
   originalEmail: ParsedMessage | null;
   messages: { role: "assistant" | "user"; content: string }[];
-  matchedRules: RuleWithRelations[];
+  matchedRules?: RuleWithRelations[];
+  matchedRule?: RuleWithRelations | null;
   logger: Logger;
 }) {
+  const resolvedMatchedRules =
+    matchedRules ?? (matchedRule ? [matchedRule] : []);
+
   logger = logger.with({
     messageId: originalEmail?.id,
     threadId: originalEmail?.threadId,
@@ -39,7 +44,7 @@ export async function processUserRequest({
 
   posthogCaptureEvent(emailAccount.email, "AI Assistant Process Started", {
     hasOriginalEmail: !!originalEmail,
-    matchedRulesCount: matchedRules.length,
+    matchedRulesCount: resolvedMatchedRules.length,
   });
 
   if (messages[messages.length - 1].role === "assistant")
@@ -59,7 +64,7 @@ You can fix rules using these specific operations:
 - Create new rules when asked or when existing ones cannot be modified to fit the need
 - In general, you should NOT create new rules. Modify existing ones instead. If a user asked to exclude something from an existing rule, that's not a request to create a new rule, but to edit the existing rule.
 
-${matchedRules.some(r => r.group?.items?.length)
+${resolvedMatchedRules.some((r) => r.group?.items?.length)
       ? `3. Manage Learned Patterns:
 - These are patterns that have been learned from the user's email history to always be matched (and they ignore the conditionalOperator setting)
 - Patterns are email addresses or subjects
@@ -91,13 +96,13 @@ If you are unable to fix the rule, say so.`;
 
   const prompt = `${originalEmail
     ? `<matched_rules>
-${matchedRules.map(rule => ruleToXML(rule)).join("\n")}
-${matchedRules.length === 0 ? "No rule matched" : ""}
+${resolvedMatchedRules.map((rule) => ruleToXML(rule)).join("\n")}
+${resolvedMatchedRules.length === 0 ? "No rule matched" : ""}
 </matched_rules>`
     : ""
     }
 
-${matchedRules.length === 0 ? userRules : ""}
+${resolvedMatchedRules.length === 0 ? userRules : ""}
 
 ${getUserInfoPrompt({ emailAccount })}
 
@@ -283,7 +288,7 @@ ${stringifyEmailSimple(getEmailForLLM(originalEmail))}
       //     return { success: true };
       //   },
       // }),
-      ...(matchedRules.some(r => r.group)
+      ...(resolvedMatchedRules.some((r) => r.group)
         ? {
           remove_pattern: tool({
             description: "Remove a pattern",
@@ -312,8 +317,8 @@ ${stringifyEmailSimple(getEmailForLLM(originalEmail))}
                 return { error: "Invalid pattern type" };
               }
 
-              const groupItem = matchedRules
-                .flatMap(r => r.group?.items ?? [])
+              const groupItem = resolvedMatchedRules
+                .flatMap((r) => r.group?.items ?? [])
                 .find(
                   (item) => item.type === groupItemType && item.value === value,
                 );

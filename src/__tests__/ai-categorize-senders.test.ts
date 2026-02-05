@@ -19,33 +19,48 @@ const emailAccount = getEmailAccount();
 
 const testSenders = [
   {
-    emailAddress: "newsletter@company.com",
+    emailAddress: "colleague@test.com",
     emails: [
-      { subject: "Latest updates and news from our company", snippet: "" },
+      { subject: "Project update for Q2 roadmap", snippet: "" },
     ],
-    expectedCategory: "Newsletter",
+    expectedCategory: "Internal",
   },
   {
-    emailAddress: "support@service.com",
-    emails: [{ subject: "Your ticket #1234 has been updated", snippet: "" }],
-    expectedCategory: "Support",
+    emailAddress: "calendar@service.com",
+    emails: [{ subject: "Meeting request for next week", snippet: "" }],
+    expectedCategory: "Scheduling",
   },
   {
-    emailAddress: "unknown@example.com",
-    emails: [],
-    expectedCategory: "Unknown",
+    emailAddress: "billing@vendor.com",
+    emails: [{ subject: "Invoice #123 for February", snippet: "" }],
+    expectedCategory: "Finance",
   },
   {
-    emailAddress: "sales@business.com",
+    emailAddress: "updates@service.com",
+    emails: [{ subject: "Weekly status update", snippet: "" }],
+    expectedCategory: "Updates",
+  },
+  {
+    emailAddress: "marketing@business.com",
     emails: [
       { subject: "Special offer: 20% off our enterprise plan", snippet: "" },
     ],
     expectedCategory: "Marketing",
   },
   {
-    emailAddress: "noreply@socialnetwork.com",
-    emails: [{ subject: "John Smith mentioned you in a comment", snippet: "" }],
-    expectedCategory: "Social",
+    emailAddress: "alex@gmail.com",
+    emails: [{ subject: "Dinner plans this weekend?", snippet: "" }],
+    expectedCategory: "External People",
+  },
+  {
+    emailAddress: "client@partner.com",
+    emails: [{ subject: "Can you review the proposal?", snippet: "" }],
+    expectedCategory: "Action Required",
+  },
+  {
+    emailAddress: "unknown@example.com",
+    emails: [],
+    expectedCategory: "Other",
   },
 ];
 
@@ -62,23 +77,29 @@ describe.runIf(isAiTest)("AI Sender Categorization", () => {
 
         expect(result).toHaveLength(testSenders.length);
 
-        // Test newsletter categorization with snippet
-        const newsletterResult = result.find(
-          (r) => r.sender === "newsletter@company.com",
+        // Internal
+        const internalResult = result.find(
+          (r) => r.sender === "colleague@test.com",
         );
-        expect(newsletterResult?.category).toBe("Newsletter");
+        expect(internalResult?.category).toBe("Internal");
 
-        // Test support categorization with ticket snippet
-        const supportResult = result.find(
-          (r) => r.sender === "support@service.com",
+        // Scheduling
+        const schedulingResult = result.find(
+          (r) => r.sender === "calendar@service.com",
         );
-        expect(supportResult?.category).toBe("Support");
+        expect(schedulingResult?.category).toBe("Scheduling");
 
-        // Test sales categorization with offer snippet
-        const salesResult = result.find(
-          (r) => r.sender === "sales@business.com",
+        // Finance
+        const financeResult = result.find(
+          (r) => r.sender === "billing@vendor.com",
         );
-        expect(salesResult?.category).toBe("Marketing");
+        expect(financeResult?.category).toBe("Finance");
+
+        // Marketing
+        const marketingResult = result.find(
+          (r) => r.sender === "marketing@business.com",
+        );
+        expect(marketingResult?.category).toBe("Marketing");
       },
       TIMEOUT,
     );
@@ -96,26 +117,69 @@ describe.runIf(isAiTest)("AI Sender Categorization", () => {
     it(
       "should categorize senders for all valid SenderCategory values",
       async () => {
-        const senders = getEnabledCategories()
-          .filter((category) => category.name !== "Other")
-          .map((category) => `${category.name}@example.com`);
+        const examples: Record<
+          string,
+          { sender: string; subject: string; snippet?: string }
+        > = {
+          "Action Required": {
+            sender: "client@partner.com",
+            subject: "Action required: please review",
+          },
+          Scheduling: {
+            sender: "calendar@service.com",
+            subject: "Schedule a meeting next week",
+          },
+          Finance: {
+            sender: "billing@vendor.com",
+            subject: "Invoice #123 for February",
+          },
+          Updates: {
+            sender: "updates@service.com",
+            subject: "Weekly status update",
+          },
+          Marketing: {
+            sender: "marketing@business.com",
+            subject: "Special offer just for you",
+          },
+          Internal: {
+            sender: "colleague@test.com",
+            subject: "Internal update",
+          },
+          "External People": {
+            sender: "alex@gmail.com",
+            subject: "Dinner plans this weekend?",
+          },
+        };
+
+        const enabledCategories = getEnabledCategories().filter(
+          (category) => category.name !== "Other",
+        );
+        const senders = enabledCategories.map((category) => {
+          const example = examples[category.name];
+          if (!example) {
+            throw new Error(`Missing example for category: ${category.name}`);
+          }
+          return {
+            emailAddress: example.sender,
+            emails: [{ subject: example.subject, snippet: example.snippet ?? "" }],
+          };
+        });
 
         const result = await aiCategorizeSenders({
           emailAccount,
-          senders: senders.map((sender) => ({
-            emailAddress: sender,
-            emails: [],
-          })),
+          senders,
           categories: getEnabledCategories(),
         });
 
         expect(result).toHaveLength(senders.length);
 
-        for (const sender of senders) {
-          const category = sender.split("@")[0];
-          const senderResult = result.find((r) => r.sender === sender);
+        for (const category of enabledCategories) {
+          const example = examples[category.name];
+          const senderResult = result.find(
+            (r) => r.sender === example.sender,
+          );
           expect(senderResult).toBeDefined();
-          expect(senderResult?.category).toBe(category);
+          expect(senderResult?.category).toBe(category.name);
         }
       },
       TIMEOUT,
@@ -134,8 +198,8 @@ describe.runIf(isAiTest)("AI Sender Categorization", () => {
             categories: getEnabledCategories(),
           });
 
-          if (expectedCategory === "Unknown") {
-            expect([REQUEST_MORE_INFORMATION_CATEGORY, "Unknown"]).toContain(
+          if (expectedCategory === "Other") {
+            expect([REQUEST_MORE_INFORMATION_CATEGORY, "Other"]).toContain(
               result?.category,
             );
           } else {
@@ -161,7 +225,7 @@ describe.runIf(isAiTest)("AI Sender Categorization", () => {
           categories: getEnabledCategories(),
         });
 
-        expect([REQUEST_MORE_INFORMATION_CATEGORY, "Unknown"]).toContain(
+        expect([REQUEST_MORE_INFORMATION_CATEGORY, "Other"]).toContain(
           result?.category,
         );
       },
@@ -210,7 +274,7 @@ describe.runIf(isAiTest)("AI Sender Categorization", () => {
             expect(bulkResult?.category).toBe(singleResult?.category);
 
             // If not Unknown, check against expected category
-            if (expectedCategory !== "Unknown") {
+            if (expectedCategory !== "Other") {
               expect(bulkResult?.category).toBe(expectedCategory);
               expect(singleResult?.category).toBe(expectedCategory);
             }

@@ -46,6 +46,11 @@ export async function createRule({
       systemType,
     });
 
+    const groupId = await resolveGroupId({
+      emailAccountId,
+      groupName: result.condition.group,
+    });
+
     const { filteredActions, preferencePayloads } =
       splitTaskPreferenceActions(result.actions);
     const mappedActions = await mapActionFields(
@@ -80,6 +85,7 @@ export async function createRule({
         from: result.condition.static?.from,
         to: result.condition.static?.to,
         subject: result.condition.static?.subject,
+        groupId,
       },
       include: { actions: true, group: true },
     });
@@ -122,6 +128,11 @@ export async function updateRule({
       ruleId,
     });
 
+    const groupId = await resolveGroupId({
+      emailAccountId,
+      groupName: result.condition.group,
+    });
+
     const { filteredActions, preferencePayloads } =
       splitTaskPreferenceActions(result.actions);
 
@@ -152,6 +163,7 @@ export async function updateRule({
         from: result.condition.static?.from,
         to: result.condition.static?.to,
         subject: result.condition.static?.subject,
+        ...(groupId !== undefined && { groupId }),
         ...(runOnThreads !== undefined && { runOnThreads }),
       },
       include: { actions: true, group: true },
@@ -172,6 +184,30 @@ export async function updateRule({
     logger.error("Error updating rule", { error });
     throw error;
   }
+}
+
+async function resolveGroupId({
+  emailAccountId,
+  groupName,
+}: {
+  emailAccountId: string;
+  groupName?: string | null;
+}): Promise<string | null | undefined> {
+  if (groupName === null) return null;
+  if (!groupName) return undefined;
+
+  const group = await prisma.group.findFirst({
+    where: {
+      emailAccountId,
+      name: groupName,
+    },
+  });
+
+  if (!group) {
+    throw new Error(`Group not found: ${groupName}`);
+  }
+
+  return group.id;
 }
 
 export async function upsertSystemRule({

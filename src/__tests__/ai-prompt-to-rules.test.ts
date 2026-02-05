@@ -30,7 +30,7 @@ describe.runIf(isAiTest)("aiPromptToRules", () => {
       const result = await aiPromptToRules({
         emailAccount,
         promptFile,
-        isEditing: false,
+        availableGroups: ["Receipts", "Newsletters"],
       });
 
       console.log(JSON.stringify(result, null, 2));
@@ -47,7 +47,9 @@ describe.runIf(isAiTest)("aiPromptToRules", () => {
         actions: [
           {
             type: ActionType.LABEL,
-            label: "Receipt",
+            fields: {
+              label: "Receipt",
+            },
           },
         ],
       });
@@ -64,7 +66,9 @@ describe.runIf(isAiTest)("aiPromptToRules", () => {
           },
           {
             type: ActionType.LABEL,
-            label: "Newsletter",
+            fields: {
+              label: "Newsletter",
+            },
           },
         ],
       });
@@ -81,7 +85,9 @@ describe.runIf(isAiTest)("aiPromptToRules", () => {
           },
           {
             type: ActionType.LABEL,
-            label: "Marketing",
+            fields: {
+              label: "Marketing",
+            },
           },
         ],
       });
@@ -97,7 +103,9 @@ describe.runIf(isAiTest)("aiPromptToRules", () => {
         actions: [
           {
             type: ActionType.LABEL,
-            label: "Internal",
+            fields: {
+              label: "Internal",
+            },
           },
         ],
       });
@@ -123,7 +131,6 @@ describe.runIf(isAiTest)("aiPromptToRules", () => {
       aiPromptToRules({
         emailAccount,
         promptFile,
-        isEditing: false,
       }),
     ).rejects.toThrow();
   });
@@ -142,7 +149,6 @@ describe.runIf(isAiTest)("aiPromptToRules", () => {
       const result = await aiPromptToRules({
         emailAccount,
         promptFile,
-        isEditing: false,
       });
 
       expect(result.length).toBe(3);
@@ -156,11 +162,15 @@ describe.runIf(isAiTest)("aiPromptToRules", () => {
         actions: [
           {
             type: ActionType.FORWARD,
-            to: "urgent@company.com",
+            fields: {
+              to: "urgent@company.com",
+            },
           },
           {
             type: ActionType.LABEL,
-            label: "Urgent",
+            fields: {
+              label: "Urgent",
+            },
           },
         ],
       });
@@ -174,11 +184,15 @@ describe.runIf(isAiTest)("aiPromptToRules", () => {
         actions: [
           {
             type: ActionType.FORWARD,
-            to: "sales@company.com",
+            fields: {
+              to: "sales@company.com",
+            },
           },
           {
             type: ActionType.LABEL,
-            label: "Sales Lead",
+            fields: {
+              label: "Sales Lead",
+            },
           },
         ],
       });
@@ -194,7 +208,9 @@ describe.runIf(isAiTest)("aiPromptToRules", () => {
         actions: [
           {
             type: ActionType.FORWARD,
-            to: "vip-support@company.com",
+            fields: {
+              to: "vip-support@company.com",
+            },
           },
         ],
       });
@@ -219,7 +235,6 @@ describe.runIf(isAiTest)("aiPromptToRules", () => {
       const result = await aiPromptToRules({
         emailAccount,
         promptFile,
-        isEditing: false,
         availableCategories: ["Job Applications", "HR", "Recruiting"],
       } as any);
 
@@ -235,7 +250,9 @@ describe.runIf(isAiTest)("aiPromptToRules", () => {
         actions: [
           {
             type: ActionType.REPLY,
-            content: expect.stringMatching(/Thank you for your application/),
+            fields: {
+              content: expect.stringMatching(/Thank you for your application/),
+            },
           },
         ],
       });
@@ -256,7 +273,6 @@ describe.runIf(isAiTest)("aiPromptToRules", () => {
       const result = await aiPromptToRules({
         emailAccount,
         promptFile,
-        isEditing: false,
       });
 
       expect(result.length).toBe(1);
@@ -272,11 +288,15 @@ describe.runIf(isAiTest)("aiPromptToRules", () => {
         actions: [
           {
             type: ActionType.FORWARD,
-            to: "manager@company.com",
+            fields: {
+              to: "manager@company.com",
+            },
           },
           {
             type: ActionType.LABEL,
-            label: "Escalation",
+            fields: {
+              label: "Escalation",
+            },
           },
         ],
       });
@@ -304,7 +324,6 @@ describe.runIf(isAiTest)("aiPromptToRules", () => {
       const result = await aiPromptToRules({
         emailAccount,
         promptFile,
-        isEditing: false,
       });
 
       expect(result.length).toBe(1);
@@ -316,7 +335,9 @@ describe.runIf(isAiTest)("aiPromptToRules", () => {
         actions: [
           {
             type: ActionType.REPLY,
-            content: expect.stringMatching(/Hi {{firstName}}/),
+            fields: {
+              content: expect.stringMatching(/Hi {{firstName}}/),
+            },
           },
         ],
       });

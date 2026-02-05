@@ -34,6 +34,7 @@ const updateRuleConditionSchema = z.object({
     conditionalOperator: z
       .enum([LogicalOperator.AND, LogicalOperator.OR])
       .nullish(),
+    group: z.string().nullish(),
   }),
 });
 
@@ -148,6 +149,11 @@ export const rulesTool: ToolDefinition<any> = {
                     folderName: true,
                   },
                 },
+                group: {
+                  select: {
+                    name: true,
+                  },
+                },
               },
             },
           },
@@ -175,6 +181,7 @@ export const rulesTool: ToolDefinition<any> = {
                       rule.instructions && staticConditions
                         ? rule.conditionalOperator
                         : undefined,
+                    group: rule.group?.name,
                   },
                   actions: rule.actions.map((actionItem) => ({
                     type: actionItem.type,
@@ -282,6 +289,11 @@ export const rulesTool: ToolDefinition<any> = {
             to: true,
             subject: true,
             conditionalOperator: true,
+            group: {
+              select: {
+                name: true,
+              },
+            },
           },
         });
         if (!rule) {
@@ -299,7 +311,12 @@ export const rulesTool: ToolDefinition<any> = {
             subject: rule.subject,
           }),
           conditionalOperator: rule.conditionalOperator,
+          group: rule.group?.name,
         };
+        const groupId = await resolveGroupId({
+          emailAccountId: context.emailAccountId,
+          groupName: condition.group,
+        });
         await partialUpdateRule({
           ruleId: rule.id,
           data: {
@@ -308,6 +325,7 @@ export const rulesTool: ToolDefinition<any> = {
             to: condition.static?.to,
             subject: condition.static?.subject,
             conditionalOperator: condition.conditionalOperator ?? undefined,
+            ...(groupId !== undefined && { groupId }),
           },
         });
         const updatedConditions = {
@@ -320,6 +338,7 @@ export const rulesTool: ToolDefinition<any> = {
               })
             : undefined,
           conditionalOperator: condition.conditionalOperator,
+          group: condition.group,
         };
         return {
           success: true,
@@ -491,3 +510,27 @@ export const rulesTool: ToolDefinition<any> = {
     }
   },
 };
+
+async function resolveGroupId({
+  emailAccountId,
+  groupName,
+}: {
+  emailAccountId: string;
+  groupName?: string | null;
+}): Promise<string | null | undefined> {
+  if (groupName === null) return null;
+  if (!groupName) return undefined;
+
+  const group = await prisma.group.findFirst({
+    where: {
+      emailAccountId,
+      name: groupName,
+    },
+  });
+
+  if (!group) {
+    throw new Error(`Group not found: ${groupName}`);
+  }
+
+  return group.id;
+}

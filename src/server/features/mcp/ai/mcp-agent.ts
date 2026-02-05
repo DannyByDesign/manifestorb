@@ -76,6 +76,21 @@ ${getEmailListPrompt({ messages, messageMaxLength: 1000, maxMessages: 5 })}
     },
   });
 
+  const toolCallsWithResults = result.steps.flatMap((step) =>
+    step.toolCalls.map((call) => {
+      const toolResult = step.toolResults?.find(
+        (toolResult) => toolResult.toolCallId === call.toolCallId,
+      );
+      return {
+        toolName: call.toolName,
+        output: toolResult?.output,
+      };
+    }),
+  );
+
+  const hasToolOutput = toolCallsWithResults.some(
+    (call) => call.output !== undefined,
+  );
   const hasNoRelevantInfo = result.text.includes(NO_RELEVANT_INFO_FOUND);
 
   if (hasNoRelevantInfo) {
@@ -84,8 +99,15 @@ ${getEmailListPrompt({ messages, messageMaxLength: 1000, maxMessages: 5 })}
     });
   }
 
+  const responseText =
+    hasNoRelevantInfo && hasToolOutput
+      ? `Relevant information found from ${[
+          ...new Set(toolCallsWithResults.map((call) => call.toolName)),
+        ].join(", ")}.`
+      : result.text;
+
   return {
-    response: hasNoRelevantInfo ? null : result.text,
+    response: hasNoRelevantInfo && !hasToolOutput ? null : responseText,
     getToolCalls: () => {
       // Extract tool calls and results from all steps
       const allToolCallsWithResults = result.steps.flatMap((step) =>

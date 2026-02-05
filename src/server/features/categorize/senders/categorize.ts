@@ -141,10 +141,10 @@ function preCategorizeSendersWithStaticRules(
 ): { sender: string; category: SenderCategory | undefined }[] {
   return senders.map((sender) => {
     if (isNewsletterSender(sender))
-      return { sender, category: defaultCategory.NEWSLETTER.name };
+      return { sender, category: defaultCategory.MARKETING.name };
 
     if (isReceiptSender(sender))
-      return { sender, category: defaultCategory.RECEIPT.name };
+      return { sender, category: defaultCategory.FINANCE.name };
 
     return { sender, category: undefined };
   });

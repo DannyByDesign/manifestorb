@@ -264,11 +264,19 @@ export const saveRulesPromptAction = actionClient
           return { createdRules: 0, editedRules: 0, removedRules: 0 };
         }
 
+        const availableGroups = await prisma.group.findMany({
+          where: { emailAccountId },
+          select: { name: true },
+        });
+
+        const availableGroupNames = availableGroups.map((group) => group.name);
+
         if (diff.addedRules.length) {
           logger.info("Processing added rules");
           addedRules = await aiPromptToRules({
             emailAccount,
             promptFile: diff.addedRules.join("\n\n"),
+            availableGroups: availableGroupNames,
           });
           logger.info("Added rules", {
             addedRules: addedRules?.length || 0,
@@ -346,6 +354,7 @@ export const saveRulesPromptAction = actionClient
                 (r: any) => `Rule ID: ${r.rule?.id}. Prompt: ${r.updatedPromptRule}`,
               )
               .join("\n\n"),
+            availableGroups: availableGroupNames,
           });
 
           for (const rule of editedRules) {
@@ -374,9 +383,15 @@ export const saveRulesPromptAction = actionClient
         }
       } else {
         logger.info("Processing new rules prompt with AI", { emailAccountId });
+        const availableGroups = await prisma.group.findMany({
+          where: { emailAccountId },
+          select: { name: true },
+        });
+        const availableGroupNames = availableGroups.map((group) => group.name);
         addedRules = await aiPromptToRules({
           emailAccount,
           promptFile: rulesPrompt,
+          availableGroups: availableGroupNames,
         });
         logger.info("Rules to be added", { count: addedRules?.length || 0 });
       }
@@ -454,9 +469,16 @@ export const createRulesAction = actionClient
         throw new SafeError("Email account not found");
       }
 
+      const availableGroups = await prisma.group.findMany({
+        where: { emailAccountId },
+        select: { name: true },
+      });
+      const availableGroupNames = availableGroups.map((group) => group.name);
+
       const addedRules = await aiPromptToRules({
         emailAccount,
         promptFile: prompt,
+        availableGroups: availableGroupNames,
       });
 
       logger.info("Rules to be added", { count: addedRules?.length || 0 });

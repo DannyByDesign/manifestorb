@@ -170,6 +170,8 @@
 | 🕒 | **Multi-Rule Matching** | Apply multiple rules | `multiRuleSelectionEnabled` | UI-first (toggle) | No |
 | 🕒 | **Rule Testing** | Test against sample messages | `server/services/unsubscriber/ai-rule.ts` | UI-first (later) | Partial |
 
+**Group conditions (first-class):** Rules can reference a saved group by name. Group matching uses the group’s sender/subject patterns. If a group name doesn’t exist for the user, rule creation should fail rather than silently ignoring it.
+
 ---
 
 ## 5. Organization & User Management (8 features)

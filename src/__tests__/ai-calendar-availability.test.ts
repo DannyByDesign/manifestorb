@@ -180,7 +180,8 @@ describe.runIf(isAiTest)("aiGetCalendarAvailability", () => {
 
         // Check that suggested times are in correct format (YYYY-MM-DD HH:MM)
         result.suggestedTimes.forEach((time) => {
-          expect(time).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+          expect(time.start).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+          expect(time.end).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
         });
 
         console.debug("Generated suggested times:", result.suggestedTimes);

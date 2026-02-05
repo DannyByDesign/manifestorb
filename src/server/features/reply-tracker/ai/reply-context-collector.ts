@@ -78,6 +78,23 @@ export async function aiCollectReplyContext({
 }): Promise<ReplyContextCollectorResult | null> {
   try {
     const sixMonthsAgo = subMonths(new Date(), 6);
+    const subjectQuery = currentThread[0]?.subject?.trim();
+    let subjectSearchFallback: string[] = [];
+
+    if (subjectQuery) {
+      const { messages: subjectMessages } =
+        await emailProvider.getMessagesWithPagination({
+          query: subjectQuery,
+          maxResults: 20,
+          after: sixMonthsAgo,
+        });
+
+      subjectSearchFallback = subjectMessages.map((message) => {
+        const subject = message.subject ?? "";
+        const snippet = message.snippet ?? message.textPlain ?? "";
+        return `${subject}\n${snippet}`.trim();
+      });
+    }
 
     const prompt = `Current email thread to analyze:
 
@@ -178,6 +195,18 @@ ${getTodayForLLM()}`;
         }),
       },
     });
+
+    if (
+      result &&
+      result.relevantEmails.length === 0 &&
+      subjectSearchFallback.length > 0
+    ) {
+      return { notes: result.notes ?? null, relevantEmails: subjectSearchFallback };
+    }
+
+    if (!result && subjectSearchFallback.length > 0) {
+      return { notes: null, relevantEmails: subjectSearchFallback };
+    }
 
     return result;
   } catch (error) {

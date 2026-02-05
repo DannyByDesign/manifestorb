@@ -29,6 +29,12 @@ const conditionSchema = z
       .describe(
         "The static conditions to match. If multiple static conditions are specified, the rule will match if ALL of the conditions match (AND operation)",
       ),
+    group: z
+      .string()
+      .nullish()
+      .describe(
+        "The name of a saved group to match against (first-class group rule).",
+      ),
   })
   .describe("The conditions to match");
 

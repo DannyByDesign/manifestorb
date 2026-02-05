@@ -78,6 +78,12 @@ export async function aiGetCalendarAvailability({
 
   logger.trace("Determined user timezone", { userTimezone });
 
+  if (!calendarConnections.length) {
+    const isScheduling = isSchedulingThread(threadContent);
+    if (!isScheduling) return null;
+    return { suggestedTimes: [], noAvailability: false };
+  }
+
   const system = `You are an AI assistant that analyzes email threads to determine if they contain meeting or scheduling requests, and returns available meeting time slots.
 
 TIMEZONE: All times (busy periods, suggested times) are in ${userTimezone}.
@@ -89,7 +95,7 @@ Your task is to:
 4. Suggest ONLY times that DO NOT overlap with busy periods
 5. Return time slots with start AND end times (infer duration from context: "quick call" = 30min, "meeting" = 60min)
 6. If there are NO available times (user is busy all day), set noAvailability=true and return empty suggestedTimes array
-7. If the thread is NOT a scheduling request, return an empty suggestedTimes array and noAvailability=false
+7. If the thread is NOT a scheduling request, do NOT call returnSuggestedTimes
 
 CRITICAL: Do NOT suggest times overlapping with busy periods.
 Example: If busy 2025-11-17 09:00 to 2025-11-17 17:00, suggest times AFTER 17:00 or BEFORE 09:00.
@@ -175,7 +181,28 @@ ${threadContent}
     },
   });
 
+  if (
+    result &&
+    result.suggestedTimes.length === 0 &&
+    result.noAvailability !== true
+  ) {
+    return null;
+  }
+
   return result;
+}
+
+function isSchedulingThread(threadContent: string): boolean {
+  const normalized = threadContent.toLowerCase();
+  return (
+    normalized.includes("meeting") ||
+    normalized.includes("schedule") ||
+    normalized.includes("call") ||
+    normalized.includes("availability") ||
+    normalized.includes("reschedule") ||
+    normalized.includes("book a time") ||
+    normalized.includes("calendar invite")
+  );
 }
 
 function getUserTimezone(

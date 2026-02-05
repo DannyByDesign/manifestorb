@@ -208,7 +208,9 @@ describe.runIf(isAiTest)(
       async () => {
         const result = await aiAnalyzePersona({
           emails: getFounderEmails(),
-          emailAccount: getEmailAccount(),
+          emailAccount: getEmailAccount({
+            about: "HR leader focused on talent acquisition and people ops.",
+          }),
         });
 
         console.debug(

@@ -38,6 +38,7 @@ Please identify and return the rules that were added, edited, or removed, follow
 4. Treat any change to a rule, no matter how small, as an edit.
 5. Ignore changes in whitespace or formatting unless they alter the rule's meaning.
 6. If a rule is moved without other changes, do not categorize it as edited.
+7. Preserve the exact formatting of rules, including leading bullet markers like "* ".
 
 Organize your response using the 'diff_rules' function.
 
@@ -48,14 +49,14 @@ Return the result in JSON format (JSON only, no markdown or extra keys).
 
 <example>
 {
-  "addedRules": ["rule text1", "rule text2"],
+  "addedRules": ["* rule text1", "* rule text2"],
   "editedRules": [
     {
-      "oldRule": "rule text3",
-      "newRule": "rule text4 updated"
+      "oldRule": "* rule text3",
+      "newRule": "* rule text4 updated"
     },
   ],
-  "removedRules": ["rule text5", "rule text6"]
+  "removedRules": ["* rule text5", "* rule text6"]
 }
 </example>
 `;
@@ -90,17 +91,51 @@ Return the result in JSON format (JSON only, no markdown or extra keys).
       }),
     });
 
-    return result.object ?? {
-      addedRules: [],
-      editedRules: [],
-      removedRules: [],
-    };
+    if (!result.object) {
+      throw new Error("Missing diff rules result");
+    }
+
+    const normalized = normalizeBullets(
+      result.object,
+      oldPromptFile,
+      newPromptFile,
+    );
+
+    return normalized;
   } catch (error) {
     logger.error("Error diffing rules", { error });
-    return {
-      addedRules: [],
-      editedRules: [],
-      removedRules: [],
-    };
+    throw error;
   }
+}
+
+function normalizeBullets(
+  result: {
+    addedRules: string[];
+    editedRules: { oldRule: string; newRule: string }[];
+    removedRules: string[];
+  },
+  oldPromptFile: string,
+  newPromptFile: string,
+) {
+  const bulletPrefix = detectBulletPrefix(`${oldPromptFile}\n${newPromptFile}`);
+  if (!bulletPrefix) return result;
+
+  const withPrefix = (value: string) =>
+    value.trim().startsWith(bulletPrefix) ? value : `${bulletPrefix}${value}`;
+
+  return {
+    addedRules: result.addedRules.map(withPrefix),
+    editedRules: result.editedRules.map((rule) => ({
+      oldRule: withPrefix(rule.oldRule),
+      newRule: withPrefix(rule.newRule),
+    })),
+    removedRules: result.removedRules.map(withPrefix),
+  };
+}
+
+function detectBulletPrefix(promptText: string): string | null {
+  const lines = promptText.split("\n").map((line) => line.trim());
+  if (lines.some((line) => line.startsWith("* "))) return "* ";
+  if (lines.some((line) => line.startsWith("- "))) return "- ";
+  return null;
 }

@@ -165,10 +165,42 @@ Based on the full thread context above, determine the current status of this thr
       schema,
     });
 
-    return aiResponse.object;
+    const result = aiResponse.object;
+    if (
+      result.status === SystemType.AWAITING_REPLY &&
+      !userSentLastEmail &&
+      shouldTreatAsFYI(emailAccount.email, threadMessages)
+    ) {
+      return {
+        status: SystemType.FYI,
+        rationale: "Information provided; no response required.",
+      };
+    }
+
+    return result;
   } catch (error) {
     logger.error("Failed to determine thread status", { error });
     // Return conservative default
     return { status: SystemType.TO_REPLY as ConversationStatus, rationale: "Error determining status" };
   }
+}
+
+function shouldTreatAsFYI(
+  userEmail: string,
+  threadMessages: EmailForLLM[],
+): boolean {
+  const lastMessage = threadMessages[threadMessages.length - 1];
+  if (!lastMessage) return false;
+  const lastFromUser =
+    lastMessage.from?.toLowerCase() === userEmail.toLowerCase();
+  if (lastFromUser) return false;
+
+  const content = `${lastMessage.subject ?? ""} ${lastMessage.content ?? ""}`.toLowerCase();
+  const hasQuestion = content.includes("?");
+  const hasSteps =
+    /\n\s*\d+\./.test(content) || /\n\s*-\s+/.test(content);
+  const hasInstructionCue =
+    content.includes("here's how") || content.includes("steps") || content.includes("instructions");
+
+  return !hasQuestion && (hasSteps || hasInstructionCue);
 }

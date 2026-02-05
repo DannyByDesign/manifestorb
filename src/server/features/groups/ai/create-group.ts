@@ -121,7 +121,21 @@ Key guidelines:
     { senders: [], subjects: [] },
   );
 
-  return await verifyGroupItems(emailAccount, gmail, group, combinedArgs);
+  const verified = await verifyGroupItems(
+    emailAccount,
+    gmail,
+    group,
+    combinedArgs,
+  );
+
+  if (verified.subjects.length === 0) {
+    const derivedSubjects = await deriveSubjectPrefixes(gmail);
+    if (derivedSubjects.length > 0) {
+      return { ...verified, subjects: derivedSubjects };
+    }
+  }
+
+  return verified;
 }
 
 async function verifyGroupItems(
@@ -202,4 +216,27 @@ Guidelines:
   };
 
   return verifiedItems;
+}
+
+async function deriveSubjectPrefixes(
+  gmail: gmail_v1.Gmail,
+): Promise<string[]> {
+  const { messages } = await queryBatchMessages(gmail, {
+    query: "-label:sent",
+    maxResults: 20,
+  });
+
+  const prefixes = new Set<string>();
+  for (const message of messages) {
+    const subject = message.headers.subject;
+    if (!subject) continue;
+    const index = subject.indexOf(":");
+    if (index === -1) continue;
+    const prefix = `${subject.slice(0, index).trim()}:`;
+    if (prefix.length >= 6) {
+      prefixes.add(prefix);
+    }
+  }
+
+  return Array.from(prefixes);
 }

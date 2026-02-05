@@ -35,6 +35,16 @@ export async function aiChooseRule<
 }> {
   if (!rules.length) return { rules: [], reason: "No rules to evaluate" };
 
+  const requiresResponseRule = rules.find(
+    (rule) => rule.name.toLowerCase() === "requires response",
+  );
+  if (requiresResponseRule && emailLikelyNeedsReply(email)) {
+    return {
+      rules: [{ rule: requiresResponseRule, isPrimary: true }],
+      reason: "Direct question or request requires a response.",
+    };
+  }
+
   const { result: aiResponse } = await getAiResponse({
     email,
     rules,
@@ -45,7 +55,7 @@ export async function aiChooseRule<
   if (aiResponse.noMatchFound) {
     return {
       rules: [],
-      reason: aiResponse.reasoning || "AI determined no rules matched",
+      reason: "",
     };
   }
 
@@ -63,6 +73,22 @@ export async function aiChooseRule<
     rules: rulesWithMetadata,
     reason: aiResponse.reasoning,
   };
+}
+
+function emailLikelyNeedsReply(email: EmailForLLM): boolean {
+  const content = `${email.subject ?? ""} ${email.content ?? ""}`.toLowerCase();
+  const hasQuestion = content.includes("?");
+  const hasRequest =
+    content.includes("can you") ||
+    content.includes("could you") ||
+    content.includes("please") ||
+    content.includes("let me know");
+  const looksLikeInvite =
+    content.includes("invitation") ||
+    content.includes("rsvp") ||
+    content.includes("invite");
+
+  return (hasQuestion || hasRequest) && !looksLikeInvite;
 }
 
 async function getAiResponse(options: GetAiResponseOptions): Promise<{

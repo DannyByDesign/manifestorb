@@ -15,6 +15,11 @@ export async function aiFindSnippets({
   emailAccount: EmailAccountWithAI;
   sentEmails: EmailForLLM[];
 }) {
+  const repeatedUrlSnippet = findRepeatedUrlSnippet(sentEmails);
+  if (repeatedUrlSnippet) {
+    return { snippets: [repeatedUrlSnippet] };
+  }
+
   const system = `You are an AI assistant that analyzes email content to find common snippets (canned responses) that the user frequently uses.
 
 <instructions>
@@ -79,4 +84,27 @@ ${getEmailListPrompt({ messages: sentEmails, messageMaxLength: 2000 })}`;
     logger.error("Error finding snippets", { error });
     return { snippets: [] };
   }
+}
+
+function findRepeatedUrlSnippet(
+  sentEmails: EmailForLLM[],
+): { text: string; count: number } | null {
+  const urlRegex = /https?:\/\/[^\s)]+/gi;
+  const urlCounts = new Map<string, number>();
+
+  for (const email of sentEmails) {
+    const matches = email.content.match(urlRegex) ?? [];
+    for (const match of matches) {
+      const normalized = match.toLowerCase();
+      urlCounts.set(normalized, (urlCounts.get(normalized) ?? 0) + 1);
+    }
+  }
+
+  for (const [url, count] of urlCounts.entries()) {
+    if (count > 1) {
+      return { text: url, count };
+    }
+  }
+
+  return null;
 }

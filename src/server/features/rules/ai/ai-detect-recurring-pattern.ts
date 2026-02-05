@@ -10,6 +10,8 @@ import {
   getUserRulesPrompt,
 } from "@/features/ai/helpers";
 
+const REQUEST_KEYWORDS = ["can you", "could you", "please", "need", "request"];
+
 const schema = z.object({
   matchedRule: z.string().nullish(),
   explanation: z.string(),
@@ -37,6 +39,18 @@ export async function aiDetectRecurringPattern({
   const senderEmail = emails[0].from;
 
   if (!senderEmail) return null;
+
+  if (allEmailsRequireReply(emails)) {
+    const toReplyRule = rules.find((rule) =>
+      rule.name.toLowerCase().includes("to reply"),
+    );
+    if (toReplyRule) {
+      return {
+        matchedRule: toReplyRule.name,
+        explanation: "All emails contain explicit questions or requests.",
+      };
+    }
+  }
 
   const system = `You are an AI assistant that helps analyze if a sender's emails should consistently be matched to a specific rule.
 
@@ -108,9 +122,17 @@ ${getEmailListPrompt({ messages: emails, messageMaxLength: 500 })}
       schema,
     });
 
+    if (!aiResponse.object.matchedRule) return null;
     return aiResponse.object;
   } catch (error) {
     logger.error("Error detecting recurring pattern", { error });
     return null;
   }
+}
+
+function allEmailsRequireReply(emails: EmailForLLM[]): boolean {
+  return emails.every((email) => {
+    const content = `${email.subject ?? ""} ${email.content ?? ""}`.toLowerCase();
+    return content.includes("?") || REQUEST_KEYWORDS.some((k) => content.includes(k));
+  });
 }

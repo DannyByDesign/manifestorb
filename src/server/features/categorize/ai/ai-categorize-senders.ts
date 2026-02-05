@@ -7,6 +7,7 @@ import { extractEmailAddress } from "@/server/integrations/google";
 import { getModel } from "@/server/lib/llms/model";
 import { createGenerateObject } from "@/server/lib/llms";
 import { createScopedLogger } from "@/server/lib/logger";
+import { categorizeSenderHeuristic } from "@/features/categorize/ai/heuristics";
 
 const logger = createScopedLogger("ai/categorize-sender");
 
@@ -42,13 +43,42 @@ export async function aiCategorizeSenders({
 > {
   if (senders.length === 0) return [];
 
+  const heuristicResults = senders.map((sender) => {
+    if (sender.emails.length === 0) {
+      return {
+        sender: sender.emailAddress,
+        category: REQUEST_MORE_INFORMATION_CATEGORY,
+      };
+    }
+
+    return {
+      sender: sender.emailAddress,
+      category: categorizeSenderHeuristic({
+        emailAccount,
+        sender: sender.emailAddress,
+        emails: sender.emails,
+      }),
+    };
+  });
+
+  const unresolvedSenders = senders.filter(
+    (_, index) => !heuristicResults[index]?.category,
+  );
+
+  if (unresolvedSenders.length === 0) {
+    return heuristicResults.map((result) => ({
+      sender: result.sender,
+      category: result.category ?? UNKNOWN_CATEGORY,
+    }));
+  }
+
   const system = `You are an AI assistant specializing in email management and organization.
 Your task is to categorize email accounts based on their names, email addresses, and emails they've sent us.
 Provide accurate categorizations to help users efficiently manage their inbox.`;
 
   const prompt = `Categorize the following senders:
 
-  ${senders
+  ${unresolvedSenders
     .map(
       ({ emailAddress, emails }) => `<sender>
   <email_address>${emailAddress}</email_address>
@@ -107,12 +137,15 @@ ${formatCategoriesForPrompt(categories)}
 
     const matchedSenders = matchSendersWithFullEmail(
       aiResponse.object.senders,
-      senders.map((s) => s.emailAddress),
+      unresolvedSenders.map((s) => s.emailAddress),
     );
 
-    // filter out any senders that don't have a valid category
-    const results = matchedSenders.map((r) => {
-      if (!categories.find((c) => c.name === r.category)) {
+    const aiResults = matchedSenders.map((r) => {
+      if (
+        r.category !== UNKNOWN_CATEGORY &&
+        r.category !== REQUEST_MORE_INFORMATION_CATEGORY &&
+        !categories.find((c) => c.name === r.category)
+      ) {
         return {
           category: undefined,
           sender: r.sender,
@@ -122,10 +155,18 @@ ${formatCategoriesForPrompt(categories)}
       return r;
     });
 
-    return results;
+    return [
+      ...heuristicResults.filter((result) => result.category),
+      ...aiResults,
+    ];
   } catch (error) {
     logger.error("Failed to categorize senders with AI", { error });
-    return [];
+    return heuristicResults
+      .filter((result) => result.category)
+      .map((result) => ({
+        sender: result.sender,
+        category: result.category ?? UNKNOWN_CATEGORY,
+      }));
   }
 }
 

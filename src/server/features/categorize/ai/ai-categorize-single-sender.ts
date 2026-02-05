@@ -5,8 +5,10 @@ import { formatCategoriesForPrompt } from "@/features/categorize/ai/format-categ
 import { getModel } from "@/server/lib/llms/model";
 import { createGenerateObject } from "@/server/lib/llms";
 import { createScopedLogger } from "@/server/lib/logger";
+import { categorizeSenderHeuristic } from "@/features/categorize/ai/heuristics";
 
 const logger = createScopedLogger("ai/categorize-sender");
+const REQUEST_MORE_INFORMATION_CATEGORY = "RequestMoreInformation";
 
 export async function aiCategorizeSender({
   emailAccount,
@@ -19,6 +21,23 @@ export async function aiCategorizeSender({
   previousEmails: { subject: string; snippet: string }[];
   categories: Pick<Category, "name" | "description">[];
 }) {
+  if (previousEmails.length === 0) {
+    return {
+      rationale: "No previous emails available for categorization.",
+      category: REQUEST_MORE_INFORMATION_CATEGORY,
+    };
+  }
+
+  const heuristicCategory = categorizeSenderHeuristic({
+    emailAccount,
+    sender,
+    emails: previousEmails,
+  });
+
+  if (heuristicCategory) {
+    return { rationale: "Heuristic match", category: heuristicCategory };
+  }
+
   const system = `You are an AI assistant specializing in email management and organization.
 Your task is to categorize an email account based on their name, email address, and content from previous emails.
 Provide an accurate categorization to help users efficiently manage their inbox.`;
@@ -46,7 +65,8 @@ ${formatCategoriesForPrompt(categories)}
 3. If the category is clear, assign it.
 4. If you're not certain, respond with "Other".
 5. If multiple categories are possible, respond with "Other".
-6. Only use categories provided above or "Other". Return JSON only (no markdown).
+6. Use "RequestMoreInformation" if the available context is insufficient.
+7. Only use categories provided above, "Other", or "RequestMoreInformation". Return JSON only (no markdown).
 </instructions>`;
 
   const modelOptions = getModel();
@@ -68,7 +88,10 @@ ${formatCategoriesForPrompt(categories)}
       }),
     });
 
-    if (!categories.find((c) => c.name === aiResponse.object.category))
+    if (
+      aiResponse.object.category !== REQUEST_MORE_INFORMATION_CATEGORY &&
+      !categories.find((c) => c.name === aiResponse.object.category)
+    )
       return null;
 
     return aiResponse.object;

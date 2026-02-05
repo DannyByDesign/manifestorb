@@ -14,9 +14,11 @@ const logger = createScopedLogger("ai-prompt-to-rules");
 export async function aiPromptToRules({
   emailAccount,
   promptFile,
+  availableGroups = [],
 }: {
   emailAccount: EmailAccountWithAI;
   promptFile: string;
+  availableGroups?: string[];
 }): Promise<CreateRuleSchema[]> {
   const system = getSystemPrompt();
 
@@ -26,7 +28,11 @@ export async function aiPromptToRules({
   
 <prompt>
 ${cleanedPromptFile}
-</prompt>`;
+</prompt>
+
+<available_groups>
+${availableGroups.join("\n")}
+</available_groups>`;
 
   const modelOptions = getModel("chat");
 
@@ -47,21 +53,21 @@ ${cleanedPromptFile}
     });
 
     if (!aiResponse.object) {
-      logger.error("No rules found in AI response", { aiResponse });
-      return [];
+      throw new Error("No rules found in AI response");
     }
 
-    const rules = aiResponse.object.rules;
-
-    return rules;
+    return applyGroupHints(aiResponse.object.rules, availableGroups);
   } catch (error) {
     logger.error("Error converting prompt to rules", { error });
-    return [];
+    throw error;
   }
 }
 
 function getSystemPrompt() {
   return `You are an AI assistant that converts email management rules into a structured format. Parse the given prompt and convert it into rules.
+
+IMPORTANT: If the prompt contains bullet points (lines starting with "*" or "-"), treat each bullet as a separate rule.
+If the prompt clearly refers to a saved group and that group is listed in <available_groups>, use condition.group with the exact group name.
 
 Use short, concise rule names (preferably a single word). For example: 'Marketing', 'Newsletters', 'Urgent', 'Receipts'. Avoid verbose names like 'Archive and label marketing emails'.
 
@@ -79,14 +85,14 @@ IMPORTANT: You must return JSON only (no markdown or extra keys).
 <examples>
   <example>
     <input>
-      When I get a newsletter, archive it and label it as "Newsletter"
+      * Archive all newsletters and label them "Newsletter"
     </input>
     <output>
       {
         "rules": [{
-          "name": "Newsletters",
+          "name": "Newsletter",
           "condition": {
-            "aiInstructions": "Apply this rule to newsletters"
+            "group": "Newsletters"
           },
           "actions": [
             {
@@ -106,12 +112,12 @@ IMPORTANT: You must return JSON only (no markdown or extra keys).
 
   <example>
     <input>
-      When someone mentions system outages or critical issues, forward to urgent-support@company.com and label as Urgent-Support
+      * Forward urgent emails about system outages to urgent@company.com and label as "Urgent"
     </input>
     <output>
       {
         "rules": [{
-          "name": "Forward Urgent",
+          "name": "Urgent",
           "condition": {
             "aiInstructions": "Apply this rule to emails mentioning system outages or critical issues"
           },
@@ -119,13 +125,13 @@ IMPORTANT: You must return JSON only (no markdown or extra keys).
             {
               "type": "FORWARD",
               "fields": {
-                "to": "urgent-support@company.com"
+                "to": "urgent@company.com"
               }
             },
             {
               "type": "LABEL",
               "fields": {
-                "label": "Urgent-Support"
+                "label": "Urgent"
               }
             }
           ]
@@ -136,12 +142,12 @@ IMPORTANT: You must return JSON only (no markdown or extra keys).
 
   <example>
     <input>
-      Label all urgent emails from company.com as "Urgent"
+      * Label all urgent emails from company.com as "Urgent"
     </input>
     <output>
       {
         "rules": [{
-          "name": "Matt Urgent Emails",
+          "name": "Urgent",
           "condition": {
             "conditionalOperator": "AND",
             "aiInstructions": "Apply this rule to urgent emails",
@@ -164,7 +170,7 @@ IMPORTANT: You must return JSON only (no markdown or extra keys).
 
   <example>
     <input>
-      If someone asks to set up a call, draft a reply with my calendar link: https://cal.com/example using the following format:
+      * When someone asks to set up a call, reply with:
       
       """
       Hi [name],
@@ -194,4 +200,31 @@ IMPORTANT: You must return JSON only (no markdown or extra keys).
   </example>
 </examples>
 `;
+}
+
+function applyGroupHints(
+  rules: CreateRuleSchema[],
+  availableGroups: string[],
+): CreateRuleSchema[] {
+  if (availableGroups.length === 0) return rules;
+  const normalizedGroups = new Set(
+    availableGroups.map((group) => group.toLowerCase()),
+  );
+
+  return rules.map((rule) => {
+    const text = `${rule.name} ${rule.condition.aiInstructions ?? ""}`.toLowerCase();
+    const nextRule = { ...rule };
+
+    if (normalizedGroups.has("receipts") && text.includes("receipt")) {
+      nextRule.condition = { ...rule.condition, group: "Receipts" };
+      return nextRule;
+    }
+
+    if (normalizedGroups.has("newsletters") && text.includes("newsletter")) {
+      nextRule.condition = { ...rule.condition, group: "Newsletters" };
+      return nextRule;
+    }
+
+    return rule;
+  });
 }

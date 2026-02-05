@@ -80,7 +80,9 @@ export async function aiExtractFromEmailHistory({
       historicalCount: historicalMessages.length,
     });
 
-    if (historicalMessages.length === 0) return null;
+    if (historicalMessages.length === 0) {
+      return "No relevant historical context available.";
+    }
 
     const prompt = getUserPrompt({
       currentThreadMessages,

@@ -87,7 +87,12 @@ export async function aiExtractRelevantKnowledge({
   logger: Logger;
 }): Promise<ExtractedKnowledge | null> {
   try {
-    if (!knowledgeBase.length) return null;
+    if (!knowledgeBase.length) {
+      return {
+        relevantContent: "",
+        explanation: "No relevant knowledge found.",
+      };
+    }
 
     const prompt = getUserPrompt({ knowledgeBase, emailContent, emailAccount });
 
