@@ -22,7 +22,7 @@ export async function aiSummarizeEmailForDigest({
 }: {
   ruleName: string;
   emailAccount: EmailAccountWithAI & { name: string | null };
-  messageToSummarize: EmailForLLM;
+  messageToSummarize: EmailForLLM | null;
 }): Promise<AISummarizeResult | null> {
   // If messageToSummarize somehow is null/undefined, default to null.
   if (!messageToSummarize) return null;
@@ -40,8 +40,8 @@ I will provide you with:
 - The email content
 
 Guidelines for summarizing the email:
-- If the email is spam, promotional, or irrelevant, return an empty string.
-- If there is nothing worth summarizing, return an empty string.
+- If the email is spam or clearly irrelevant, return an empty string.
+- If there is nothing worth summarizing, return a short, direct summary based on the subject or first sentence.
 - Do NOT mention the sender's name or start with phrases like "This is a message from X" or "This email from Y" - the sender information is already displayed separately.
 - DO NOT use meta-commentary like "highlights", "discusses", "reflects on", "mentions", or "talks about" - just state the content directly.
 - Lead with the most interesting or important point - the hook, main insight, or key takeaway.
@@ -98,10 +98,42 @@ ${getUserInfoPrompt({ emailAccount })}`;
       schema,
     });
 
-    return aiResponse.object;
+    const content = aiResponse.object?.content?.trim();
+    const fallback = buildFallbackSummary(messageToSummarize);
+    if (!content) return fallback ? { content: fallback } : null;
+
+    const cleanedLines = content
+      .split("\n")
+      .map((line) => line.replace(/^[-*•]\s*/, "").trim())
+      .filter((line) => line.length > 0)
+      .slice(0, 5);
+
+    if (cleanedLines.length === 0) {
+      return fallback ? { content: fallback } : null;
+    }
+
+    return { content: cleanedLines.join("\n") };
   } catch (error) {
     logger.error("Failed to summarize email", { error });
 
     return null;
   }
+}
+
+function buildFallbackSummary(message: EmailForLLM): string | null {
+  const subject = message.subject?.trim();
+  const content = message.content?.trim();
+  const candidate = content && content.length > 0 ? content : subject;
+
+  if (!candidate) return null;
+
+  const firstLine =
+    candidate
+      .split("\n")
+      .map((line) => line.replace(/^[-*•]\s*/, "").trim())
+      .find((line) => line.length > 0) ?? "";
+
+  if (!firstLine) return null;
+
+  return firstLine.slice(0, 200);
 }

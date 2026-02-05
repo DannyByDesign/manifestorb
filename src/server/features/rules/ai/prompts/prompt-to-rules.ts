@@ -15,10 +15,12 @@ export async function aiPromptToRules({
   emailAccount,
   promptFile,
   availableGroups = [],
+  availableCategories = [],
 }: {
   emailAccount: EmailAccountWithAI;
   promptFile: string;
   availableGroups?: string[];
+  availableCategories?: string[];
 }): Promise<CreateRuleSchema[]> {
   const system = getSystemPrompt();
 
@@ -32,7 +34,11 @@ ${cleanedPromptFile}
 
 <available_groups>
 ${availableGroups.join("\n")}
-</available_groups>`;
+</available_groups>
+
+<available_categories>
+${availableCategories.join("\n")}
+</available_categories>`;
 
   const modelOptions = getModel("chat");
 
@@ -56,7 +62,20 @@ ${availableGroups.join("\n")}
       throw new Error("No rules found in AI response");
     }
 
-    return applyGroupHints(aiResponse.object.rules, availableGroups);
+    const groupedRules = applyGroupHints(
+      aiResponse.object.rules,
+      availableGroups,
+    );
+    const urgencyAdjusted = applyUrgencyHints(groupedRules, promptFile);
+    const normalizedDomains = normalizeStaticFromDomains(
+      urgencyAdjusted,
+      promptFile,
+    );
+    return applyCategoryHints(
+      normalizedDomains,
+      promptFile,
+      availableCategories,
+    );
   } catch (error) {
     logger.error("Error converting prompt to rules", { error });
     throw error;
@@ -68,14 +87,17 @@ function getSystemPrompt() {
 
 IMPORTANT: If the prompt contains bullet points (lines starting with "*" or "-"), treat each bullet as a separate rule.
 If the prompt clearly refers to a saved group and that group is listed in <available_groups>, use condition.group with the exact group name.
+If the prompt explicitly references categories and they appear in <available_categories>, use condition.categories with categoryFilterType and categoryFilters.
 
 Use short, concise rule names (preferably a single word). For example: 'Marketing', 'Newsletters', 'Urgent', 'Receipts'. Avoid verbose names like 'Archive and label marketing emails'.
 
 IMPORTANT: If a user provides a snippet, use that full snippet in the rule. Don't include placeholders unless it's clear one is needed.
+When converting template variables, convert [variableName] to {{variableName}} (e.g., [firstName] -> {{firstName}}).
 
 You can use multiple conditions in a rule, but aim for simplicity.
 In most cases, you should use the "aiInstructions" and sometimes you will use other fields in addition.
 If a rule can be handled fully with static conditions, do so, but this is rarely possible.
+If the rule mentions urgency, escalation, priority, or severity, you MUST include aiInstructions capturing those terms even when static conditions are present (use conditionalOperator "AND").
 
 Supported actions include: ARCHIVE, LABEL, DRAFT_EMAIL, REPLY, FORWARD, SEND_EMAIL (if enabled), MARK_READ, MARK_SPAM, NOTIFY_USER, DIGEST, CALL_WEBHOOK, CREATE_TASK, CREATE_CALENDAR_EVENT, SET_TASK_PREFERENCES, and MOVE_FOLDER (Outlook).
 Use only these action types. Prefer DRAFT_EMAIL for replies unless the user explicitly asks to send automatically.
@@ -226,5 +248,101 @@ function applyGroupHints(
     }
 
     return rule;
+  });
+}
+
+function applyUrgencyHints(
+  rules: CreateRuleSchema[],
+  promptFile: string,
+): CreateRuleSchema[] {
+  const promptLower = promptFile.toLowerCase();
+  const hasUrgency =
+    promptLower.includes("urgent") ||
+    promptLower.includes("escalation") ||
+    promptLower.includes("escalate") ||
+    promptLower.includes("priority") ||
+    promptLower.includes("critical");
+
+  if (!hasUrgency) return rules;
+
+  return rules.map((rule) => {
+    if (rule.condition.aiInstructions) return rule;
+    if (!rule.condition.static) return rule;
+
+    return {
+      ...rule,
+      condition: {
+        ...rule.condition,
+        conditionalOperator: rule.condition.conditionalOperator ?? "AND",
+        aiInstructions: "Apply this rule to urgent or escalation emails.",
+      },
+    };
+  });
+}
+
+function normalizeStaticFromDomains(
+  rules: CreateRuleSchema[],
+  promptFile: string,
+): CreateRuleSchema[] {
+  const domainMatches = Array.from(
+    promptFile.matchAll(/\bfrom\s+([a-z0-9.-]+\.[a-z]{2,})/gi),
+  ).map((match) => match[1]?.toLowerCase());
+  const domains = new Set(domainMatches.filter((domain) => domain));
+
+  if (domains.size === 0) return rules;
+
+  return rules.map((rule) => {
+    const fromValue = rule.condition.static?.from;
+    if (!fromValue || !fromValue.startsWith("@")) return rule;
+
+    const normalized = fromValue.slice(1).toLowerCase();
+    if (!domains.has(normalized)) return rule;
+
+    return {
+      ...rule,
+      condition: {
+        ...rule.condition,
+        static: {
+          ...rule.condition.static,
+          from: normalized,
+        },
+      },
+    };
+  });
+}
+
+function applyCategoryHints(
+  rules: CreateRuleSchema[],
+  promptFile: string,
+  availableCategories: string[],
+): CreateRuleSchema[] {
+  if (availableCategories.length === 0) return rules;
+
+  const promptLower = promptFile.toLowerCase();
+  const matchedCategories = availableCategories.filter((category) => {
+    const normalized = category.toLowerCase();
+    const singular = normalized.endsWith("s")
+      ? normalized.slice(0, -1)
+      : normalized;
+    return (
+      promptLower.includes(normalized) || promptLower.includes(singular)
+    );
+  });
+
+  if (matchedCategories.length === 0) return rules;
+
+  return rules.map((rule) => {
+    if (rule.condition.categories) return rule;
+
+    return {
+      ...rule,
+      condition: {
+        ...rule.condition,
+        categories: {
+          categoryFilterType: "INCLUDE",
+          categoryFilters: matchedCategories,
+        },
+      },
+    };
   });
 }

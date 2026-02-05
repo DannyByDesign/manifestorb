@@ -51,7 +51,7 @@ function getTestEmails() {
       subject: "Check in about the project status",
       content:
         "Hi team, Just wanted to check in about the project status. Let me know how things are going! Thanks, User",
-      date_sent: "2023-06-15T10:30:00Z",
+      date: new Date("2023-06-15T10:30:00Z"),
       to: "team@example.com",
     },
     {
@@ -60,7 +60,7 @@ function getTestEmails() {
       subject: "Report on the project status",
       content:
         "Here's the report you requested. Let me know if you need anything else.",
-      date_sent: "2023-06-14T15:45:00Z",
+      date: new Date("2023-06-14T15:45:00Z"),
       to: "client@example.com",
     },
     {
@@ -69,7 +69,7 @@ function getTestEmails() {
       subject: "Can we reschedule today's meeting to tomorrow?",
       content:
         "Can we reschedule today's meeting to tomorrow? I have a conflict.",
-      date_sent: "2023-06-13T09:15:00Z",
+      date: new Date("2023-06-13T09:15:00Z"),
       to: "colleague@example.com",
     },
   ];

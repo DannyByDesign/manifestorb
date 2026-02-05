@@ -81,7 +81,14 @@ export async function aiCollectReplyContext({
     const subjectQuery = currentThread[0]?.subject?.trim();
     let subjectSearchFallback: string[] = [];
 
-    if (subjectQuery) {
+    const normalizedSubjectQuery = subjectQuery?.toLowerCase();
+    const subjectTokens = normalizedSubjectQuery
+      ? normalizedSubjectQuery
+          .split(/\s+/)
+          .map((token) => token.replace(/[^a-z0-9]/g, ""))
+          .filter((token) => token.length >= 4)
+      : [];
+    if (normalizedSubjectQuery) {
       const { messages: subjectMessages } =
         await emailProvider.getMessagesWithPagination({
           query: subjectQuery,
@@ -89,11 +96,38 @@ export async function aiCollectReplyContext({
           after: sixMonthsAgo,
         });
 
-      subjectSearchFallback = subjectMessages.map((message) => {
-        const subject = message.subject ?? "";
-        const snippet = message.snippet ?? message.textPlain ?? "";
-        return `${subject}\n${snippet}`.trim();
-      });
+      subjectSearchFallback = subjectMessages
+        .map((message) => {
+          const subject = message.subject ?? "";
+          const snippet = message.snippet ?? message.textPlain ?? "";
+          return {
+            subject,
+            snippet,
+            combined: `${subject}\n${snippet}`.trim(),
+            subjectLower: subject.toLowerCase(),
+            snippetLower: snippet.toLowerCase(),
+          };
+        })
+        .filter((item) => {
+          if (!normalizedSubjectQuery) return true;
+
+          const directSubjectMatch = item.subjectLower.includes(
+            normalizedSubjectQuery,
+          );
+          const directSnippetMatch = item.snippetLower.includes(
+            normalizedSubjectQuery,
+          );
+          if (directSubjectMatch || directSnippetMatch) return true;
+
+          if (subjectTokens.length === 0) return false;
+
+          return subjectTokens.some(
+            (token) =>
+              item.subjectLower.includes(token) ||
+              item.snippetLower.includes(token),
+          );
+        })
+        .map((item) => item.combined);
     }
 
     const prompt = `Current email thread to analyze:

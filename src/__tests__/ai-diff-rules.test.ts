@@ -59,8 +59,19 @@ describe.runIf(isAiTest)("aiDiffRules", () => {
     const oldPromptFile = "Some old prompt";
     const newPromptFile = "Some new prompt";
 
+    const llms = await import("@/server/lib/llms");
+    type GenerateObjectFn = ReturnType<typeof llms.createGenerateObject>;
+    const failingGenerateObject: GenerateObjectFn = async () => {
+      throw new Error("LLM failure");
+    };
+    const spy = vi
+      .spyOn(llms, "createGenerateObject")
+      .mockReturnValue(failingGenerateObject);
+
     await expect(
       aiDiffRules({ emailAccount, oldPromptFile, newPromptFile }),
-    ).rejects.toThrow();
+    ).rejects.toThrow("LLM failure");
+
+    spy.mockRestore();
   });
 });

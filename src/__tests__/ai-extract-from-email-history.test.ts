@@ -9,6 +9,18 @@ import { getEmailAccount } from "@/__tests__/helpers";
 const TIMEOUT = 15_000;
 
 vi.mock("server-only", () => ({}));
+vi.mock("@/features/ai/helpers", async () => {
+  const actual = await vi.importActual<typeof import("@/features/ai/helpers")>(
+    "@/features/ai/helpers",
+  );
+  return {
+    ...actual,
+    getTodayForLLM: vi.fn((date?: Date) => {
+      const testDate = date ?? new Date("2024-03-22T10:00:00Z");
+      return `Today's date and time is: ${testDate.toISOString()}.`;
+    }),
+  };
+});
 
 // Skip tests unless explicitly running AI tests
 const isAiTest = process.env.RUN_AI_TESTS === "true";

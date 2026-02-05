@@ -127,12 +127,23 @@ describe.runIf(isAiTest)("aiPromptToRules", () => {
 
     const promptFile = "Some prompt";
 
+    const llms = await import("@/server/lib/llms");
+    type GenerateObjectFn = ReturnType<typeof llms.createGenerateObject>;
+    const failingGenerateObject: GenerateObjectFn = async () => {
+      throw new Error("LLM failure");
+    };
+    const spy = vi
+      .spyOn(llms, "createGenerateObject")
+      .mockReturnValue(failingGenerateObject);
+
     await expect(
       aiPromptToRules({
         emailAccount,
         promptFile,
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow("LLM failure");
+
+    spy.mockRestore();
   });
 
   it(

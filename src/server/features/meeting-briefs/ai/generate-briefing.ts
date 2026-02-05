@@ -1,4 +1,4 @@
-import { tool, type ToolSet } from "ai";
+import { stepCountIs, tool, type ToolSet } from "ai";
 import { z } from "zod";
 import { google } from "@ai-sdk/google";
 import { env } from "@/env";
@@ -111,19 +111,22 @@ export async function aiGenerateMeetingBriefing({
   let result: BriefingContent | null = null;
 
   try {
-    await generateText({
+    const response = await generateText({
       ...modelOptions,
       system: AGENTIC_SYSTEM_PROMPT,
       prompt,
       stopWhen: (stepResult) =>
         stepResult.steps.some((step) =>
           step.toolCalls?.some((call) => call.toolName === "finalizeBriefing"),
-        ) || stepResult.steps.length > MAX_AGENT_STEPS,
-      onStepFinish: async ({ toolCalls }) => {
+        ) || stepCountIs(MAX_AGENT_STEPS)(stepResult),
+      onStepFinish: async ({ toolCalls, text }) => {
         if (toolCalls.length > 0) {
           logger.info("Tool calls", {
             tools: toolCalls.map((call) => call.toolName),
           });
+        }
+        if (text) {
+          logger.trace("Tool step output", { text });
         }
       },
       tools: {
@@ -139,9 +142,19 @@ export async function aiGenerateMeetingBriefing({
             result = briefing;
             return { success: true };
           },
-        }) as any,
+        }),
       },
-    }) as any;
+    });
+
+    if (!result) {
+      const toolCall = response.steps
+        .flatMap((step) => step.toolCalls ?? [])
+        .find((call) => call.toolName === "finalizeBriefing");
+
+      if (toolCall?.input) {
+        result = toolCall.input as BriefingContent;
+      }
+    }
   } finally {
     await cleanup();
   }
@@ -293,7 +306,7 @@ function createWebSearchTool({
         return "Search failed. Try another search tool.";
       }
     },
-  }) as any;
+  });
 }
 
 // Exported for testing

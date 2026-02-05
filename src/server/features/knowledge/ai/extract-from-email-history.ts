@@ -29,10 +29,12 @@ const getUserPrompt = ({
   currentThreadMessages,
   historicalMessages,
   emailAccount,
+  todayString,
 }: {
   currentThreadMessages: EmailForLLM[];
   historicalMessages: EmailForLLM[];
   emailAccount: EmailAccountWithAI;
+  todayString: string;
 }) => {
   return `<current_email_thread>
 ${getEmailListPrompt({ messages: currentThreadMessages, messageMaxLength: 10_000 })}
@@ -48,7 +50,7 @@ ${getEmailListPrompt({ messages: historicalMessages, messageMaxLength: 10_000 })
 
 ${getUserInfoPrompt({ emailAccount })}
 
-${getTodayForLLM()}
+${todayString}
 Analyze the historical email threads and extract any relevant information that would be helpful for drafting a response to the current email thread. Provide a concise summary of the key historical context.`;
 };
 
@@ -84,10 +86,12 @@ export async function aiExtractFromEmailHistory({
       return "No relevant historical context available.";
     }
 
+    const todayString = getTodayForLLM();
     const prompt = getUserPrompt({
       currentThreadMessages,
       historicalMessages,
       emailAccount,
+      todayString,
     });
 
     const modelOptions = getModel("economy");
@@ -105,9 +109,53 @@ export async function aiExtractFromEmailHistory({
       schema,
     });
 
-    return result.object.summary;
+    return addWeekdayHints(result.object.summary, todayString);
   } catch (error) {
     logger.error("Failed to extract information from email history", { error });
     return null;
   }
+}
+
+const MONTHS: Record<string, number> = {
+  january: 0,
+  february: 1,
+  march: 2,
+  april: 3,
+  may: 4,
+  june: 5,
+  july: 6,
+  august: 7,
+  september: 8,
+  october: 9,
+  november: 10,
+  december: 11,
+};
+
+function addWeekdayHints(summary: string, todayString: string): string {
+  const dateMatch = summary.match(
+    /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})(st|nd|rd|th)?\b/i,
+  );
+  if (!dateMatch) return summary;
+
+  const monthName = dateMatch[1].toLowerCase();
+  const dayNumber = Number(dateMatch[2]);
+  const monthIndex = MONTHS[monthName];
+  if (monthIndex === undefined || Number.isNaN(dayNumber)) return summary;
+
+  const isoMatch = todayString.match(
+    /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z/,
+  );
+  const year = isoMatch ? new Date(isoMatch[0]).getUTCFullYear() : new Date().getUTCFullYear();
+  const date = new Date(Date.UTC(year, monthIndex, dayNumber));
+
+  if (Number.isNaN(date.getTime())) return summary;
+
+  const weekday = date.toLocaleDateString("en-US", {
+    weekday: "long",
+    timeZone: "UTC",
+  });
+
+  if (summary.toLowerCase().includes(weekday.toLowerCase())) return summary;
+
+  return summary.replace(dateMatch[0], `${weekday} ${dateMatch[0]}`);
 }

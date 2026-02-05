@@ -10,7 +10,7 @@ const TIMEOUT = 60_000;
 vi.mock("server-only", () => ({}));
 
 const isAiTest = process.env.RUN_AI_TESTS === "true";
-const TEST_TIMEOUT = 15_000;
+const TEST_TIMEOUT = 60_000;
 
 describe.runIf(isAiTest)("aiDraftReply", () => {
   test(

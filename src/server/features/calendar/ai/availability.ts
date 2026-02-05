@@ -57,6 +57,9 @@ export async function aiGetCalendarAvailability({
     return null;
   }
 
+  const isScheduling = isSchedulingThread(threadContent);
+  if (!isScheduling) return null;
+
   const calendarConnections = await prisma.calendarConnection.findMany({
     where: {
       emailAccountId: emailAccount.id,
@@ -77,12 +80,7 @@ export async function aiGetCalendarAvailability({
   const userTimezone = getUserTimezone(emailAccount, calendarConnections);
 
   logger.trace("Determined user timezone", { userTimezone });
-
-  if (!calendarConnections.length) {
-    const isScheduling = isSchedulingThread(threadContent);
-    if (!isScheduling) return null;
-    return { suggestedTimes: [], noAvailability: false };
-  }
+  const hasCalendarConnections = calendarConnections.length > 0;
 
   const system = `You are an AI assistant that analyzes email threads to determine if they contain meeting or scheduling requests, and returns available meeting time slots.
 
@@ -91,11 +89,11 @@ TIMEZONE: All times (busy periods, suggested times) are in ${userTimezone}.
 Your task is to:
 1. Analyze if the email is scheduling-related (meeting, call, appointment)
 2. Extract any date/time preferences from the email
-3. Use checkCalendarAvailability to get busy periods (already in ${userTimezone})
+3. If calendars are connected, use checkCalendarAvailability to get busy periods (already in ${userTimezone})
 4. Suggest ONLY times that DO NOT overlap with busy periods
 5. Return time slots with start AND end times (infer duration from context: "quick call" = 30min, "meeting" = 60min)
 6. If there are NO available times (user is busy all day), set noAvailability=true and return empty suggestedTimes array
-7. If the thread is NOT a scheduling request, do NOT call returnSuggestedTimes
+7. If calendars are not connected, do NOT call checkCalendarAvailability; suggest times based on email context only
 
 CRITICAL: Do NOT suggest times overlapping with busy periods.
 Example: If busy 2025-11-17 09:00 to 2025-11-17 17:00, suggest times AFTER 17:00 or BEFORE 09:00.
@@ -125,7 +123,7 @@ ${threadContent}
 
   let result: CalendarAvailabilityContext | null = null;
 
-  await generateText({
+  const response = await generateText({
     ...modelOptions,
     system,
     prompt,
@@ -136,41 +134,45 @@ ${threadContent}
         ),
       ) || result.steps.length > 5,
     tools: {
-      checkCalendarAvailability: tool({
-        description:
-          "Check calendar availability across all connected calendars (Google and Microsoft) for meeting requests",
-        inputSchema: z.object({
-          timeMin: z
-            .string()
-            .describe("The minimum time to check availability for"),
-          timeMax: z
-            .string()
-            .describe("The maximum time to check availability for"),
-        }),
-        execute: async ({ timeMin, timeMax }) => {
-          const startDate = new Date(timeMin);
-          const endDate = new Date(timeMax);
+      ...(hasCalendarConnections
+        ? {
+            checkCalendarAvailability: tool({
+              description:
+                "Check calendar availability across all connected calendars (Google and Microsoft) for meeting requests",
+              inputSchema: z.object({
+                timeMin: z
+                  .string()
+                  .describe("The minimum time to check availability for"),
+                timeMax: z
+                  .string()
+                  .describe("The maximum time to check availability for"),
+              }),
+              execute: async ({ timeMin, timeMax }) => {
+                const startDate = new Date(timeMin);
+                const endDate = new Date(timeMax);
 
-          try {
-            const busyPeriods = await getUnifiedCalendarAvailability({
-              emailAccountId: emailAccount.id,
-              startDate,
-              endDate,
-              timezone: userTimezone,
-              logger,
-            });
+                try {
+                  const busyPeriods = await getUnifiedCalendarAvailability({
+                    emailAccountId: emailAccount.id,
+                    startDate,
+                    endDate,
+                    timezone: userTimezone,
+                    logger,
+                  });
 
-            logger.trace("Unified calendar availability data", {
-              busyPeriods,
-            });
+                  logger.trace("Unified calendar availability data", {
+                    busyPeriods,
+                  });
 
-            return { busyPeriods };
-          } catch (error) {
-            logger.error("Error checking calendar availability", { error });
-            return { busyPeriods: [] };
+                  return { busyPeriods };
+                } catch (error) {
+                  logger.error("Error checking calendar availability", { error });
+                  return { busyPeriods: [] };
+                }
+              },
+            }),
           }
-        },
-      }),
+        : {}),
       returnSuggestedTimes: tool({
         description: "Return suggested times for a meeting",
         inputSchema: schema,
@@ -181,12 +183,14 @@ ${threadContent}
     },
   });
 
-  if (
-    result &&
-    result.suggestedTimes.length === 0 &&
-    result.noAvailability !== true
-  ) {
-    return null;
+  if (!result) {
+    const toolCall = response.steps
+      .flatMap((step) => step.toolCalls ?? [])
+      .find((call) => call.toolName === "returnSuggestedTimes");
+
+    if (toolCall?.input) {
+      result = toolCall.input as CalendarAvailabilityContext;
+    }
   }
 
   return result;

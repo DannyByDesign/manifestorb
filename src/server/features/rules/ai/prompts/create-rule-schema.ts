@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ActionType, LogicalOperator } from "@/generated/prisma/enums";
+import { ActionType, CategoryFilterType, LogicalOperator } from "@/generated/prisma/enums";
 import { delayInMinutesSchema } from "@/actions/rule.validation";
 import { isMicrosoftProvider } from "@/features/email/provider-types";
 import { isDefined } from "@/server/types";
@@ -29,6 +29,19 @@ const conditionSchema = z
       .describe(
         "The static conditions to match. If multiple static conditions are specified, the rule will match if ALL of the conditions match (AND operation)",
       ),
+    categories: z
+      .object({
+        categoryFilterType: z
+          .enum([CategoryFilterType.INCLUDE, CategoryFilterType.EXCLUDE])
+          .nullish()
+          .describe("Whether to include or exclude the listed categories"),
+        categoryFilters: z
+          .array(z.string())
+          .nullish()
+          .describe("List of category names to include or exclude"),
+      })
+      .nullish()
+      .describe("Category filters to apply to this rule condition"),
     group: z
       .string()
       .nullish()
@@ -72,40 +85,30 @@ const actionSchema = (provider: string) =>
       ),
     fields: z
       .object({
-        label: z
-          .string()
-          .nullish()
-          .transform((v) => v ?? null)
-          .describe("The label to apply to the email"),
+        label: z.string().nullish().describe("The label to apply to the email"),
         to: z
           .string()
           .nullish()
-          .transform((v) => v ?? null)
           .describe("The to email address to send the email to"),
         cc: z
           .string()
           .nullish()
-          .transform((v) => v ?? null)
           .describe("The cc email address to send the email to"),
         bcc: z
           .string()
           .nullish()
-          .transform((v) => v ?? null)
           .describe("The bcc email address to send the email to"),
         subject: z
           .string()
           .nullish()
-          .transform((v) => v ?? null)
           .describe("The subject of the email"),
         content: z
           .string()
           .nullish()
-          .transform((v) => v ?? null)
           .describe("The content of the email"),
         webhookUrl: z
           .string()
           .nullish()
-          .transform((v) => v ?? null)
           .describe("The webhook URL to call"),
         payload: z
           .any()
@@ -117,7 +120,6 @@ const actionSchema = (provider: string) =>
           folderName: z
             .string()
             .nullish()
-            .transform((v) => v ?? null)
             .describe("The folder to move the email to"),
         }),
       })
@@ -138,7 +140,6 @@ export const createRuleSchema = (provider: string) =>
     ruleId: z
       .string()
       .nullish()
-      .transform((v) => v ?? undefined)
       .describe("The ID of the rule if updating an existing rule"),
     expiresAt: z
       .string()

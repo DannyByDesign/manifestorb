@@ -7,6 +7,7 @@ import { getEmailListPrompt, getTodayForLLM } from "@/features/ai/helpers";
 import { getModel } from "@/server/lib/llms/model";
 
 const logger = createScopedLogger("DraftFollowUp");
+const FOLLOW_UP_TIMEOUT_MS = 55_000;
 
 const systemPrompt = `You are an expert assistant that drafts follow-up emails.
 
@@ -100,12 +101,16 @@ export async function aiDraftFollowUp({
       modelOptions,
     });
 
-    const result = await generateObject({
-      ...modelOptions,
-      system: systemPrompt,
-      prompt,
-      schema: draftSchema,
-    });
+    const result = await withTimeout(
+      generateObject({
+        ...modelOptions,
+        system: systemPrompt,
+        prompt,
+        schema: draftSchema,
+      }),
+      FOLLOW_UP_TIMEOUT_MS,
+      "Draft follow-up",
+    );
 
     return result.object.reply;
   } catch (error) {
@@ -114,4 +119,26 @@ export async function aiDraftFollowUp({
       error: "Failed to draft follow-up email",
     };
   }
+}
+
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error(`Timed out after ${timeoutMs}ms: ${label}`));
+    }, timeoutMs);
+
+    promise
+      .then((value) => {
+        clearTimeout(timeout);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+  });
 }

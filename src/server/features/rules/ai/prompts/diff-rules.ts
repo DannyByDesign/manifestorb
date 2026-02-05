@@ -101,7 +101,7 @@ Return the result in JSON format (JSON only, no markdown or extra keys).
       newPromptFile,
     );
 
-    return normalized;
+    return restoreRulesFromSources(normalized, oldPromptFile, newPromptFile);
   } catch (error) {
     logger.error("Error diffing rules", { error });
     throw error;
@@ -121,7 +121,9 @@ function normalizeBullets(
   if (!bulletPrefix) return result;
 
   const withPrefix = (value: string) =>
-    value.trim().startsWith(bulletPrefix) ? value : `${bulletPrefix}${value}`;
+    value.trim().startsWith(bulletPrefix)
+      ? value.trim()
+      : `${bulletPrefix}${value.trim()}`;
 
   return {
     addedRules: result.addedRules.map(withPrefix),
@@ -131,6 +133,52 @@ function normalizeBullets(
     })),
     removedRules: result.removedRules.map(withPrefix),
   };
+}
+
+function restoreRulesFromSources(
+  result: {
+    addedRules: string[];
+    editedRules: { oldRule: string; newRule: string }[];
+    removedRules: string[];
+  },
+  oldPromptFile: string,
+  newPromptFile: string,
+) {
+  const oldRules = extractRuleLines(oldPromptFile);
+  const newRules = extractRuleLines(newPromptFile);
+
+  return {
+    addedRules: result.addedRules.map((rule) =>
+      restoreRuleFromSource(rule, newRules),
+    ),
+    editedRules: result.editedRules.map((rule) => ({
+      oldRule: restoreRuleFromSource(rule.oldRule, oldRules),
+      newRule: restoreRuleFromSource(rule.newRule, newRules),
+    })),
+    removedRules: result.removedRules.map((rule) =>
+      restoreRuleFromSource(rule, oldRules),
+    ),
+  };
+}
+
+function extractRuleLines(promptText: string): string[] {
+  return promptText
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("* ") || line.startsWith("- "));
+}
+
+function restoreRuleFromSource(rule: string, sourceRules: string[]): string {
+  const trimmed = rule.trim();
+  const exact = sourceRules.find((line) => line.trim() === trimmed);
+  if (exact) return exact.trim();
+
+  const prefixMatch = sourceRules.find((line) =>
+    line.trim().startsWith(trimmed),
+  );
+  if (prefixMatch) return prefixMatch.trim();
+
+  return trimmed;
 }
 
 function detectBulletPrefix(promptText: string): string | null {

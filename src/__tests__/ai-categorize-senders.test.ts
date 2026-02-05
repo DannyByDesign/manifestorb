@@ -214,9 +214,9 @@ describe.runIf(isAiTest)("AI Sender Categorization", () => {
       "should handle unknown sender appropriately",
       async () => {
         const unknownSender = testSenders.find(
-          (s) => s.expectedCategory === "Unknown",
+          (s) => s.expectedCategory === "Other",
         );
-        if (!unknownSender) throw new Error("No unknown sender in test data");
+        if (!unknownSender) throw new Error("No other sender in test data");
 
         const result = await aiCategorizeSender({
           emailAccount,
@@ -273,7 +273,7 @@ describe.runIf(isAiTest)("AI Sender Categorization", () => {
             expect(singleResult?.category).toBeDefined();
             expect(bulkResult?.category).toBe(singleResult?.category);
 
-            // If not Unknown, check against expected category
+            // If not Other, check against expected category
             if (expectedCategory !== "Other") {
               expect(bulkResult?.category).toBe(expectedCategory);
               expect(singleResult?.category).toBe(expectedCategory);

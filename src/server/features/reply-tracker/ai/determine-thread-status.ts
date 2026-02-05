@@ -197,10 +197,16 @@ function shouldTreatAsFYI(
 
   const content = `${lastMessage.subject ?? ""} ${lastMessage.content ?? ""}`.toLowerCase();
   const hasQuestion = content.includes("?");
-  const hasSteps =
-    /\n\s*\d+\./.test(content) || /\n\s*-\s+/.test(content);
+  const hasNumberedSteps = /\d+\./.test(content) || /\n\s*\d+\./.test(content);
+  const hasBulletPoints =
+    /\n\s*-\s+/.test(content) || /\n\s*\*\s+/.test(content);
   const hasInstructionCue =
-    content.includes("here's how") || content.includes("steps") || content.includes("instructions");
+    content.includes("here's how") ||
+    content.includes("here is how") ||
+    content.includes("steps") ||
+    content.includes("instructions") ||
+    content.includes("how to") ||
+    content.includes("follow these");
 
-  return !hasQuestion && (hasSteps || hasInstructionCue);
+  return !hasQuestion && (hasNumberedSteps || hasBulletPoints || hasInstructionCue);
 }

@@ -13,6 +13,7 @@ import {
 } from "@/features/ai/security";
 
 const logger = createScopedLogger("DraftReply");
+const DRAFT_TIMEOUT_MS = 55_000;
 
 const systemPrompt = `You are an expert assistant that drafts email replies using knowledge base information.
 
@@ -242,12 +243,16 @@ export async function aiDraftReply({
       modelOptions,
     });
 
-    const result = await generateObject({
-      ...modelOptions,
-      system: systemPrompt,
-      prompt,
-      schema: draftSchema,
-    });
+    const result = await withTimeout(
+      generateObject({
+        ...modelOptions,
+        system: systemPrompt,
+        prompt,
+        schema: draftSchema,
+      }),
+      DRAFT_TIMEOUT_MS,
+      "Draft reply",
+    );
 
     return result.object.reply;
   } catch (error) {
@@ -256,4 +261,26 @@ export async function aiDraftReply({
       error: "Failed to draft email reply",
     };
   }
+}
+
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error(`Timed out after ${timeoutMs}ms: ${label}`));
+    }, timeoutMs);
+
+    promise
+      .then((value) => {
+        clearTimeout(timeout);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+  });
 }

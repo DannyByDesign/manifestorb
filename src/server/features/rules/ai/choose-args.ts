@@ -128,9 +128,12 @@ export function combineActionsWithAiArgs(
       ) {
         const originalValue = action[field];
         if (typeof originalValue === "string") {
+          const sanitizedVars = sanitizeVarValues(
+            vars as Record<`var${number}`, string>,
+          );
           (updatedAction[field] as string) = mergeTemplateWithVars(
             originalValue,
-            vars as Record<`var${number}`, string>,
+            sanitizedVars,
           );
         }
       }
@@ -337,4 +340,21 @@ export function mergeTemplateWithVars(
   }
 
   return result;
+}
+
+function sanitizeVarValues(
+  vars: Record<`var${number}`, string>,
+): Record<`var${number}`, string> {
+  const sanitized: Record<`var${number}`, string> = { ...vars };
+
+  for (const [key, value] of Object.entries(vars)) {
+    const cleaned = value
+      .replace(/\{\{|\}\}/g, "")
+      .replace(/\$PARAMETER_NAME/gi, "")
+      .replace(/^var\d+:\s*/i, "")
+      .trim();
+    sanitized[key as `var${number}`] = cleaned;
+  }
+
+  return sanitized;
 }

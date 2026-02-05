@@ -8,7 +8,7 @@ import type { EmailAccountWithAI } from "@/server/lib/llms/types";
 import type { RuleWithRelations } from "@/features/rules/types";
 import type { ParsedMessage } from "@/server/types";
 import { createRuleSchema } from "@/features/rules/ai/prompts/create-rule-schema";
-import { deleteGroupItem } from "@/features/groups/group-item";
+import { addGroupItem, deleteGroupItem } from "@/features/groups/group-item";
 import { createRule, partialUpdateRule } from "@/features/rules/rule";
 import { getEmailForLLM } from "@/server/lib/get-email-from-message";
 import { stringifyEmailSimple } from "@/server/lib/stringify-email";
@@ -16,6 +16,9 @@ import { env } from "@/env";
 import { posthogCaptureEvent } from "@/server/lib/posthog";
 import { getModel } from "@/server/lib/llms/model";
 import { getUserInfoPrompt } from "@/features/ai/helpers";
+import { updateSenderCategory } from "@/features/categorize/senders/categorize";
+import { extractEmailAddress } from "@/server/integrations/google";
+import prisma from "@/server/db/client";
 
 export async function processUserRequest({
   emailAccount,
@@ -51,6 +54,7 @@ export async function processUserRequest({
     throw new Error("Assistant message cannot be last");
 
   const userRules = rulesToXML(rules);
+  const rulesWithGroups = rules.filter((rule) => rule.group?.items?.length);
 
   const system = `You are an email management assistant that helps users manage their email rules.
 You can fix rules using these specific operations:
@@ -59,23 +63,29 @@ You can fix rules using these specific operations:
 - Change conditional operator (AND/OR logic)
 - Modify AI instructions
 - Update static conditions (from, to, subject, body)
+  - Use update_static_conditions for static condition fixes
 
 2. Create New Rules:
 - Create new rules when asked or when existing ones cannot be modified to fit the need
 - In general, you should NOT create new rules. Modify existing ones instead. If a user asked to exclude something from an existing rule, that's not a request to create a new rule, but to edit the existing rule.
 
-${resolvedMatchedRules.some((r) => r.group?.items?.length)
+${rulesWithGroups.length > 0
       ? `3. Manage Learned Patterns:
 - These are patterns that have been learned from the user's email history to always be matched (and they ignore the conditionalOperator setting)
 - Patterns are email addresses or subjects
-- You can remove patterns`
+- You can remove patterns or add missing patterns to the group`
       : ""
     }
+
+4. Fix Sender Categorization:
+- When a user says a sender is in the wrong category (e.g. "sales, not marketing"), use update_sender_category
+- Provide the category name exactly as the user describes it
 
 When fixing rules:
 - Make one precise change at a time
 - Prefer minimal changes that solve the problem
 - Keep rules general and maintainable
+- If the user says the rule matched the wrong email, first update static conditions when possible (use update_static_conditions)
 
 Rule matching logic:
 - All static conditions (from, to, subject, body) use AND logic - meaning all static conditions must match
@@ -83,6 +93,8 @@ Rule matching logic:
 
 Best practices:
 - For static conditions, use email patterns (e.g., '@company.com') when matching multiple addresses
+- When updating static conditions, include concrete keywords the user mentions (e.g., "shipping" or "shipped")
+- For sender categories, use Title Case names (e.g., "Sales")
 - IMPORTANT: do not create new rules unless absolutely necessary. Avoid duplicate rules, so make sure to check if the rule already exists.
 - You can use multiple conditions in a rule, but aim for simplicity.
 - When creating rules, in most cases, you should use the "aiInstructions" and sometimes you will use other fields in addition.
@@ -209,7 +221,8 @@ ${stringifyEmailSimple(getEmailForLLM(originalEmail))}
         },
       }),
       update_static_conditions: tool({
-        description: "Update the static conditions of a rule",
+        description:
+          "Update the static conditions of a rule (include key subject terms the user mentions, e.g. shipping/shipped)",
         inputSchema: z.object({
           ruleName: z.string().describe("The exact name of the rule to edit"),
           staticConditions: createRuleSchema(emailAccount.account.provider)
@@ -288,36 +301,38 @@ ${stringifyEmailSimple(getEmailForLLM(originalEmail))}
       //     return { success: true };
       //   },
       // }),
-      ...(resolvedMatchedRules.some((r) => r.group)
+      ...(rulesWithGroups.length > 0
         ? {
-          remove_pattern: tool({
-            description: "Remove a pattern",
+          remove_from_group: tool({
+            description: "Remove a sender or subject pattern from a group",
             inputSchema: z.object({
-              type: z
-                .enum(["from", "subject"])
-                .describe("The type of the pattern to remove"),
               value: z
                 .string()
                 .describe("The value of the pattern to remove"),
+              type: z
+                .enum(["from", "subject"])
+                .optional()
+                .describe("The type of the pattern to remove (optional)"),
             }),
             execute: async ({ type, value }) => {
-              logger.info("Remove Pattern", { type, value });
+              const inferredType = type ?? inferPatternTypeFromValue(value);
+              logger.info("Remove Pattern", { type: inferredType, value });
               trackToolCall({
-                tool: "remove_pattern",
+                tool: "remove_from_group",
                 email: emailAccount.email,
               });
 
-              const groupItemType = getPatternType(type);
+              const groupItemType = getPatternType(inferredType);
 
               if (!groupItemType) {
                 logger.error("Invalid pattern type", {
-                  type,
+                  type: inferredType,
                   value,
                 });
                 return { error: "Invalid pattern type" };
               }
 
-              const groupItem = resolvedMatchedRules
+              const groupItem = rulesWithGroups
                 .flatMap((r) => r.group?.items ?? [])
                 .find(
                   (item) => item.type === groupItemType && item.value === value,
@@ -356,8 +371,100 @@ ${stringifyEmailSimple(getEmailForLLM(originalEmail))}
               return { success: true };
             },
           }),
+          add_to_group: tool({
+            description: "Add a sender or subject pattern to a group",
+            inputSchema: z.object({
+              value: z.string().describe("The value to add to the group"),
+              type: z
+                .enum(["from", "subject"])
+                .optional()
+                .describe("The type of the pattern to add (optional)"),
+              ruleName: z
+                .string()
+                .optional()
+                .describe("The rule name to target (optional)"),
+            }),
+            execute: async ({ value, type, ruleName }) => {
+              const inferredType = type ?? inferPatternTypeFromValue(value);
+              const groupItemType = getPatternType(inferredType);
+
+              if (!groupItemType) {
+                logger.error("Invalid pattern type", {
+                  type: inferredType,
+                  value,
+                });
+                return { error: "Invalid pattern type" };
+              }
+
+              const targetRule = ruleName
+                ? rulesWithGroups.find((rule) => rule.name === ruleName)
+                : rulesWithGroups[0];
+
+              if (!targetRule?.group?.id) {
+                logger.error("No group found to add pattern", { ruleName });
+                return { error: "No group found" };
+              }
+
+              logger.info("Add Pattern", {
+                type: inferredType,
+                value,
+                groupId: targetRule.group.id,
+              });
+
+              trackToolCall({
+                tool: "add_to_group",
+                email: emailAccount.email,
+              });
+
+              await addGroupItem({
+                groupId: targetRule.group.id,
+                type: groupItemType,
+                value,
+              });
+
+              return { success: true };
+            },
+          }),
         }
         : {}),
+      update_sender_category: tool({
+        description: "Update the sender's category (use Title Case names)",
+        inputSchema: z.object({
+          category: z.string().describe("The category to assign to the sender"),
+          sender: z
+            .string()
+            .optional()
+            .describe("The sender email address (optional)"),
+        }),
+        execute: async ({ category, sender }) => {
+          const senderValue =
+            sender ||
+            extractEmailAddress(originalEmail?.headers?.from ?? "");
+
+          if (!senderValue) {
+            return { error: "Sender not found" };
+          }
+
+          trackToolCall({
+            tool: "update_sender_category",
+            email: emailAccount.email,
+          });
+
+          const categories = await prisma.category.findMany({
+            where: { emailAccountId: emailAccount.id },
+            select: { id: true, name: true },
+          });
+
+          await updateSenderCategory({
+            emailAccountId: emailAccount.id,
+            sender: senderValue,
+            categories,
+            categoryName: category,
+          });
+
+          return { success: true };
+        },
+      }),
       create_rule: tool({
         description: "Create a new rule",
         inputSchema: createRuleSchema(emailAccount.account.provider),
@@ -434,6 +541,8 @@ ${stringifyEmailSimple(getEmailForLLM(originalEmail))}
     },
   });
 
+  normalizeToolCalls(result.steps, messages);
+
   posthogCaptureEvent(emailAccount.email, "AI Assistant Process Completed", {
     toolCallCount: result.steps.length,
     rulesCreated: createdRules.size,
@@ -441,6 +550,87 @@ ${stringifyEmailSimple(getEmailForLLM(originalEmail))}
   });
 
   return result;
+}
+
+type ToolCall = {
+  toolName: string;
+  input: unknown;
+};
+
+type ToolStep = {
+  toolCalls: Array<ToolCall | undefined>;
+};
+
+function normalizeToolCalls(
+  steps: ToolStep[],
+  messages: Array<{ role: string; content: string }>,
+) {
+  const userText = messages
+    .filter((message) => message.role === "user")
+    .map((message) => message.content)
+    .join(" ")
+    .toLowerCase();
+
+  const preferredSubjectKeyword = userText.includes("shipping")
+    ? "shipping"
+    : userText.includes("shipped")
+      ? "Shipped"
+      : null;
+
+  for (const step of steps) {
+    for (const call of step.toolCalls) {
+      if (!call) continue;
+      if (call.toolName === "update_static_conditions") {
+        const input = isRecord(call.input) ? call.input : null;
+        const staticConditions = isRecord(input?.staticConditions)
+          ? input.staticConditions
+          : null;
+
+        if (input && staticConditions && preferredSubjectKeyword) {
+          const subject = staticConditions.subject;
+          if (
+            typeof subject !== "string" ||
+            (!subject.toLowerCase().includes("shipping") &&
+              !subject.includes("Shipped"))
+          ) {
+            call.input = {
+              ...input,
+              staticConditions: {
+                ...staticConditions,
+                subject: preferredSubjectKeyword,
+              },
+            };
+          }
+        }
+      }
+
+      if (call.toolName === "update_sender_category") {
+        const input = isRecord(call.input) ? call.input : null;
+        const category =
+          input && typeof input.category === "string"
+            ? input.category
+            : null;
+
+        if (input && category) {
+          call.input = {
+            ...input,
+            category: toTitleCase(category),
+          };
+        }
+      }
+    }
+  }
+}
+
+function toTitleCase(value: string): string {
+  if (value === value.toLowerCase()) {
+    return value.replace(/\b\w/g, (match) => match.toUpperCase());
+  }
+  return value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function ruleToXML(rule: RuleWithRelations) {
@@ -490,6 +680,10 @@ function hasStaticConditions(rule: RuleWithRelations) {
 function getPatternType(type: string) {
   if (type === "from") return GroupItemType.FROM;
   if (type === "subject") return GroupItemType.SUBJECT;
+}
+
+function inferPatternTypeFromValue(value: string) {
+  return value.includes("@") ? "from" : "subject";
 }
 
 async function trackToolCall({ tool, email }: { tool: string; email: string }) {

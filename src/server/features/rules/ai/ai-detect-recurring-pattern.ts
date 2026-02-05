@@ -40,6 +40,18 @@ export async function aiDetectRecurringPattern({
 
   if (!senderEmail) return null;
 
+  if (emailsLookLikeCalendar(emails)) {
+    const calendarRule = rules.find((rule) =>
+      rule.name.toLowerCase().includes("calendar"),
+    );
+    if (calendarRule) {
+      return {
+        matchedRule: calendarRule.name,
+        explanation: "All emails appear to be calendar-related.",
+      };
+    }
+  }
+
   if (allEmailsRequireReply(emails)) {
     const toReplyRule = rules.find((rule) =>
       rule.name.toLowerCase().includes("to reply"),
@@ -134,5 +146,20 @@ function allEmailsRequireReply(emails: EmailForLLM[]): boolean {
   return emails.every((email) => {
     const content = `${email.subject ?? ""} ${email.content ?? ""}`.toLowerCase();
     return content.includes("?") || REQUEST_KEYWORDS.some((k) => content.includes(k));
+  });
+}
+
+function emailsLookLikeCalendar(emails: EmailForLLM[]): boolean {
+  const calendarKeywords = [
+    "meeting",
+    "calendar",
+    "schedule",
+    "invite",
+    "availability",
+    "reschedule",
+  ];
+  return emails.every((email) => {
+    const content = `${email.subject ?? ""} ${email.content ?? ""}`.toLowerCase();
+    return calendarKeywords.some((keyword) => content.includes(keyword));
   });
 }

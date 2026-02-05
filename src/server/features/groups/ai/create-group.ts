@@ -128,14 +128,17 @@ Key guidelines:
     combinedArgs,
   );
 
-  if (verified.subjects.length === 0) {
-    const derivedSubjects = await deriveSubjectPrefixes(gmail);
-    if (derivedSubjects.length > 0) {
-      return { ...verified, subjects: derivedSubjects };
-    }
+  const derivedSubjects = await deriveSubjectPrefixes(gmail);
+  const normalizedSubjects = normalizeSubjectPrefixes(
+    verified.subjects,
+    derivedSubjects,
+  );
+
+  if (normalizedSubjects.length === 0 && derivedSubjects.length > 0) {
+    return { ...verified, subjects: derivedSubjects };
   }
 
-  return verified;
+  return { ...verified, subjects: normalizedSubjects };
 }
 
 async function verifyGroupItems(
@@ -239,4 +242,19 @@ async function deriveSubjectPrefixes(
   }
 
   return Array.from(prefixes);
+}
+
+function normalizeSubjectPrefixes(
+  subjects: string[],
+  derivedSubjects: string[],
+): string[] {
+  if (subjects.length === 0) return subjects;
+
+  return subjects.map((subject) => {
+    if (subject.trim().endsWith(":")) return subject;
+    const match = derivedSubjects.find((derived) =>
+      derived.toLowerCase().startsWith(subject.toLowerCase()),
+    );
+    return match ?? subject;
+  });
 }

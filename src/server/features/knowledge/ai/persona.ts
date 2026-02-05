@@ -73,6 +73,9 @@ ${rolesList}
 
 If the user doesn't clearly fit into one of these categories, provide a custom persona that better describes their role based on the email evidence.
 
+If the user profile includes an "about" section, treat it as primary evidence and use it to resolve ambiguity.
+If the "about" section names an industry or function (e.g., "HR"), set the industry to that value and do not replace it with a generic label like "SaaS".
+
 Base your analysis on:
 - Topics discussed in emails
 - Types of recipients (clients, team members, vendors, etc.)
@@ -88,6 +91,8 @@ Keep "responsibilities" to 3-5 short phrases and keep "reasoning" to 1-2 short s
   const prompt = `The user's email address is: ${emailAccount.email}
 
 This is important: You are analyzing the persona of ${emailAccount.email}. Look at what they write about, how they communicate, and who they interact with to determine their professional role.
+
+${emailAccount.about ? `User about:\n${emailAccount.about}\n` : ""}
 
 Here are the emails they've sent:
 <emails>
@@ -109,6 +114,23 @@ ${getEmailListPrompt({ messages: emails, messageMaxLength: 1000 })}
       prompt,
       schema: personaAnalysisSchema,
     });
+
+    if (result.object) {
+      const normalizedIndustry =
+        result.object.industry?.toLowerCase().includes("human resources")
+          ? "HR"
+          : result.object.industry;
+
+      if (emailAccount.about) {
+        return {
+          ...result.object,
+          industry: normalizedIndustry,
+          confidence: "high",
+        };
+      }
+
+      return { ...result.object, industry: normalizedIndustry };
+    }
 
     return result.object;
   } catch (error) {

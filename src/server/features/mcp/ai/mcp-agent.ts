@@ -46,6 +46,7 @@ OUTPUT RULES:
 - Be concise and factual
 - Use short sentences. No wrap-up lines or bloated bullet lists
 - Do not invent details not found by tools
+- When multiple tools are available and the request spans multiple areas (e.g., account details + product info), use at least two different tools
 
 Start searching immediately.`;
 

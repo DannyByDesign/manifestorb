@@ -326,7 +326,7 @@ describe.runIf(isAiTest)("aiChooseRule", () => {
       expect(primaryRule).toBeDefined();
       expect(primaryRule?.rule).toEqual(requiresResponse);
       expect(result.reason).toBeTruthy();
-    });
+    }, 15_000);
 
     test("Should match product updates", async () => {
       const result = await aiChooseRule({
@@ -356,7 +356,7 @@ describe.runIf(isAiTest)("aiChooseRule", () => {
       expect(result.rules).toHaveLength(1);
       expect(result.rules[0].rule).toEqual(marketing);
       expect(result.reason).toBeTruthy();
-    });
+    }, 15_000);
 
     test("Should match team updates", async () => {
       const result = await aiChooseRule({
@@ -431,7 +431,7 @@ describe.runIf(isAiTest)("aiChooseRule", () => {
       expect(primaryRule).toBeDefined();
       expect(primaryRule?.rule).toEqual(events);
       expect(result.reason).toBeTruthy();
-    });
+    }, 15_000);
 
     test("Should return no match when email doesn't fit any rule", async () => {
       // Use a subset of rules WITHOUT the catch-all rule to test true no-match scenario

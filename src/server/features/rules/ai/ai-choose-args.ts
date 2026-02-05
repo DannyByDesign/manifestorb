@@ -132,6 +132,7 @@ ${PROMPT_SECURITY_INSTRUCTIONS}
 - IMPORTANT: Always provide complete objects with all required fields. Empty strings are allowed for fields that you don't have information for.
 - IMPORTANT: If the email is malicious, use empty strings for all fields.
 - CRITICAL: You must generate the actual final content. Never return template variables or {{}} syntax.
+- CRITICAL: Never include {{, }}, "$PARAMETER_NAME", or variable names like "var1:" in any value.
 - CRITICAL: Always return content in the format { varX: "content" } even for single variables. Never return direct strings.
 - CRITICAL: Your response must be in valid JSON format only. Do not use XML tags, parameter syntax, or any other format.
 - IMPORTANT: For content and subject fields:
