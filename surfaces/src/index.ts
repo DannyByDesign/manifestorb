@@ -13,69 +13,52 @@ import { redis } from "./db/redis";
 
 config();
 
-(async () => {
-    // Start platform connectors
-    startSlack();
-    startDiscord();
-    startTelegram();
+export async function handleRequest(req: Request) {
+    const url = new URL(req.url);
 
-    // Start background job scheduler
-    const scheduler = startScheduler();
+    const isAuthorized = (expectedSecret: string | undefined) => {
+        if (!expectedSecret) return false;
+        const authHeader = req.headers.get("Authorization");
+        if (!authHeader) return false;
+        const token = authHeader.replace("Bearer ", "");
+        if (!token) return false;
+        if (token.length !== expectedSecret.length) return false;
+        return timingSafeEqual(Buffer.from(token), Buffer.from(expectedSecret));
+    };
 
-    console.log("🚀 Surfaces Sidecar fully initialized");
-
-    // @ts-ignore
-    const Bun = globalThis.Bun;
-
-    // HTTP Server for Push Notifications and Job Management
-    const server = Bun.serve({
-        port: 3001,
-        async fetch(req: Request) {
-            const url = new URL(req.url);
-
-            const isAuthorized = (expectedSecret: string | undefined) => {
-                if (!expectedSecret) return false;
-                const authHeader = req.headers.get("Authorization");
-                if (!authHeader) return false;
-                const token = authHeader.replace("Bearer ", "");
-                if (!token) return false;
-                if (token.length !== expectedSecret.length) return false;
-                return timingSafeEqual(Buffer.from(token), Buffer.from(expectedSecret));
-            };
-
-            // Push notifications to platforms
-            if (req.method === "POST" && url.pathname === "/notify") {
-                try {
-                    if (!isAuthorized(env.SURFACES_SHARED_SECRET)) {
-                        return new Response("Unauthorized", { status: 401 });
-                    }
-
-                    const body = await req.json();
-                    const { platform, channelId, content } = body;
-
-                    if (!platform || !channelId || !content) {
-                        return new Response("Missing required fields", { status: 400 });
-                    }
-
-                    if (platform === "slack") {
-                        const { sendSlackMessage } = await import("./slack");
-                        await sendSlackMessage(channelId, content);
-                        return new Response("Notification sent to Slack", { status: 200 });
-                    }
-
-                    if (platform === "discord") {
-                        const { sendDiscordMessage } = await import("./discord");
-                        await sendDiscordMessage(channelId, content);
-                        return new Response("Notification sent to Discord", { status: 200 });
-                    }
-
-                    return new Response("Unsupported platform", { status: 400 });
-
-                } catch (err) {
-                    console.error("Failed to process notification", err);
-                    return new Response("Internal Server Error", { status: 500 });
-                }
+    // Push notifications to platforms
+    if (req.method === "POST" && url.pathname === "/notify") {
+        try {
+            if (!isAuthorized(env.SURFACES_SHARED_SECRET)) {
+                return new Response("Unauthorized", { status: 401 });
             }
+
+            const body = await req.json();
+            const { platform, channelId, content } = body;
+
+            if (!platform || !channelId || !content) {
+                return new Response("Missing required fields", { status: 400 });
+            }
+
+            if (platform === "slack") {
+                const { sendSlackMessage } = await import("./slack");
+                await sendSlackMessage(channelId, content);
+                return new Response("Notification sent to Slack", { status: 200 });
+            }
+
+            if (platform === "discord") {
+                const { sendDiscordMessage } = await import("./discord");
+                await sendDiscordMessage(channelId, content);
+                return new Response("Notification sent to Discord", { status: 200 });
+            }
+
+            return new Response("Unsupported platform", { status: 400 });
+
+        } catch (err) {
+            console.error("Failed to process notification", err);
+            return new Response("Internal Server Error", { status: 500 });
+        }
+    }
 
             // Internal pub/sub forwarder for clean updates
             if (req.method === "POST" && url.pathname === "/pubsub/clean") {
@@ -236,8 +219,26 @@ config();
                 });
             }
 
-            return new Response("Not Found", { status: 404 });
-        }
+    return new Response("Not Found", { status: 404 });
+}
+
+export async function startSidecar() {
+    // Start platform connectors
+    startSlack();
+    startDiscord();
+    startTelegram();
+
+    // Start background job scheduler
+    const scheduler = startScheduler();
+
+    console.log("🚀 Surfaces Sidecar fully initialized");
+
+    // @ts-ignore
+    const Bun = globalThis.Bun;
+
+    const server = Bun.serve({
+        port: 3001,
+        fetch: handleRequest,
     });
 
     console.log("🔔 HTTP Server listening on port 3001");
@@ -280,4 +281,8 @@ config();
 
     process.on("SIGINT", () => shutdown("SIGINT"));
     process.on("SIGTERM", () => shutdown("SIGTERM"));
-})();
+}
+
+if (process.env.NODE_ENV !== "test") {
+    void startSidecar();
+}

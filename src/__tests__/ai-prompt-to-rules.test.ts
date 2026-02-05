@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { aiPromptToRulesOld as aiPromptToRules } from "@/integrations/ai/rule/prompt-to-rules-old";
+import { aiPromptToRules } from "@/features/rules/ai/prompts/prompt-to-rules";
 import { createRuleSchema } from "@/features/rules/ai/prompts/create-rule-schema";
 import { ActionType } from "@/generated/prisma/enums";
 import { getEmailAccount } from "@/__tests__/helpers";

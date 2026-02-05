@@ -2,6 +2,8 @@
 import { describe, expect, test, vi } from "vitest";
 import { analyzeTool } from "@/server/features/ai/tools/analyze";
 
+vi.mock("server-only", () => ({}));
+
 vi.mock("@/server/lib/user/get", () => ({
   getEmailAccountWithAi: vi.fn().mockResolvedValue({
     id: "email-account-id",

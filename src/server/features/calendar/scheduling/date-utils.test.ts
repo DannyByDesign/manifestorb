@@ -32,7 +32,8 @@ describe("date-utils timezone helpers", () => {
 
   it("detects ambiguous local time during DST fall-back", () => {
     const timeZone = "America/Los_Angeles";
-    const local = new Date(Date.UTC(2024, 10, 3, 1, 30, 0));
+    const utc = new Date("2024-11-03T08:30:00.000Z");
+    const local = toZonedTime(utc, timeZone);
     expect(isAmbiguousLocalTime(local, timeZone)).toBe(true);
   });
 });

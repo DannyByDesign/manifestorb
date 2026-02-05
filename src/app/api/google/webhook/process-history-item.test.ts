@@ -59,7 +59,7 @@ vi.mock("@/features/web-chat/process-assistant-email", () => ({
 vi.mock("@/features/digest/index", () => ({
   enqueueDigestItem: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock("@/server/integrations/google/provider", () => ({
+vi.mock("@/features/email/provider", () => ({
   createEmailProvider: vi.fn().mockResolvedValue({
     getMessage: vi.fn().mockImplementation(async (messageId) => ({
       id: messageId,

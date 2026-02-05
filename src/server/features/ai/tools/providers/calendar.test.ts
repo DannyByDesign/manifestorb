@@ -1,17 +1,17 @@
 import { describe, it, expect, vi } from "vitest";
 import { createCalendarProvider } from "./calendar";
 
-const mockProvider = {
-  provider: "google" as const,
-  fetchEvents: vi.fn(),
-  getEvent: vi.fn(),
-  createEvent: vi.fn(),
-  updateEvent: vi.fn(),
-  deleteEvent: vi.fn(),
-};
-
 vi.mock("@/features/calendar/event-provider", () => ({
-  createCalendarEventProviders: vi.fn().mockResolvedValue([mockProvider]),
+  createCalendarEventProviders: vi.fn().mockResolvedValue([
+    {
+      provider: "google" as const,
+      fetchEvents: vi.fn(),
+      getEvent: vi.fn(),
+      createEvent: vi.fn(),
+      updateEvent: vi.fn(),
+      deleteEvent: vi.fn(),
+    },
+  ]),
 }));
 
 vi.mock("@/server/db/client", () => ({

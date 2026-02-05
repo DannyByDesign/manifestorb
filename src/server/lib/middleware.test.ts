@@ -30,8 +30,8 @@ vi.mock("better-auth", () => {
   };
 });
 
-// Mock the auth function from @/server/lib/auth
-vi.mock("@/server/lib/auth", () => ({
+// Mock the auth function from @/server/auth
+vi.mock("@/server/auth", () => ({
   auth: vi.fn(),
 }));
 
@@ -50,7 +50,7 @@ vi.mock("@/server/lib/error", async (importActual) => {
 vi.mock("@/server/lib/error.server");
 
 // Import from the local path as before
-import { auth } from "@/server/lib/auth";
+import { auth } from "@/server/auth";
 import { getEmailAccount } from "@/server/lib/redis/account-validation";
 import { captureException, checkCommonErrors, SafeError } from "@/server/lib/error";
 
@@ -217,7 +217,7 @@ describe("Middleware", () => {
     };
 
     const mockUserId = "user-123";
-    const mockAccountId = "acc-456";
+    const mockAccountId = "11111111-1111-1111-1111-111111111111";
     const mockEmail = "test@example.com";
 
     beforeEach(() => {
@@ -281,21 +281,42 @@ describe("Middleware", () => {
       });
     });
 
+    it("should return 400 if email account ID format is invalid", async () => {
+      mockReq = createMockRequest("GET", "http://localhost/api/test", {
+        [EMAIL_ACCOUNT_HEADER]: "invalid-id",
+      });
+      const handler = vi.fn(
+        async (
+          _req: RequestWithAuthAndEmail,
+          _ctx: { params: Promise<Record<string, string>> },
+        ): Promise<NextResponse> => NextResponse.json({}),
+      );
+      const wrappedHandler = withEmailAccount(handler);
+
+      const response = await wrappedHandler(mockReq, mockContext);
+      const responseBody = await response.json();
+
+      expect(auth).toHaveBeenCalledTimes(1);
+      expect(getEmailAccount).not.toHaveBeenCalled();
+      expect(handler).not.toHaveBeenCalled();
+      expect(response.status).toBe(400);
+      expect(responseBody).toEqual({
+        error: "Invalid email account ID format",
+        isKnownError: true,
+      });
+    });
+
     it("should return 403 if email account ID is invalid", async () => {
       mockReq = createMockRequest("GET", "http://localhost/api/test", {
         [EMAIL_ACCOUNT_HEADER]: mockAccountId,
       });
       mockGetEmailAccount.mockResolvedValue(null); // Simulate invalid account
 
-      // Provide a typed mock implementation to satisfy the wrapper
       const handler = vi.fn(
         async (
           _req: RequestWithAuthAndEmail,
           _ctx: { params: Promise<Record<string, string>> },
-        ): Promise<NextResponse> => {
-          // Implementation won't run, just for types
-          return NextResponse.json({});
-        },
+        ): Promise<NextResponse> => NextResponse.json({}),
       );
       const wrappedHandler = withEmailAccount(handler);
 

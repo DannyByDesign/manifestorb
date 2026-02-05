@@ -101,8 +101,8 @@ describe("cleanThread", () => {
     });
 
     mockGetUserPremium.mockResolvedValue({
-      tier: "pro",
-
+      tier: "PRO_MONTHLY",
+      stripeSubscriptionStatus: "active",
     });
 
     mockPublishToQstash.mockResolvedValue(undefined);
