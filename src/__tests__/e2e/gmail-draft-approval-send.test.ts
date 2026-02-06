@@ -56,4 +56,42 @@ describe("E2E gmail draft approval send", () => {
 
     expect(sendResult.success).toBe(true);
   });
+
+  it("passes cc and bcc through when creating a draft", async () => {
+    vi.mocked(getEmailAccountWithAi).mockResolvedValue({
+      id: "email-1",
+      account: { provider: "google" },
+    } as unknown as object);
+
+    const createDraft = vi.fn().mockResolvedValue({ draftId: "draft-2" });
+
+    const result = await createTool.execute(
+      {
+        resource: "email",
+        type: "new",
+        data: {
+          to: ["user@test.com"],
+          cc: ["cc@test.com"],
+          bcc: ["bcc@test.com"],
+          subject: "Hello",
+          body: "Body",
+        },
+      },
+      {
+        emailAccountId: "email-1",
+        userId: "user-1",
+        providers: { email: { createDraft } },
+      } as unknown as object,
+    );
+
+    expect(createDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cc: ["cc@test.com"],
+        bcc: ["bcc@test.com"],
+      }),
+    );
+    expect(result.success).toBe(true);
+    expect(result.interactive?.preview.cc).toEqual(["cc@test.com"]);
+    expect(result.interactive?.preview.bcc).toEqual(["bcc@test.com"]);
+  });
 });

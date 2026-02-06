@@ -109,6 +109,65 @@ describe("processHistoryForUser", () => {
     expect(prisma.$executeRaw).toHaveBeenCalled();
   });
 
+  it("dedupes duplicate message events within a history batch", async () => {
+    vi.mocked(getWebhookEmailAccount).mockResolvedValue({
+      id: "email-1",
+      email: "user@test.com",
+      lastSyncedHistoryId: "0",
+    } as unknown as object);
+    vi.mocked(validateWebhookAccount).mockResolvedValue({
+      success: true,
+      data: {
+        emailAccount: {
+          id: "email-1",
+          userId: "user-1",
+          email: "user@test.com",
+          account: {
+            provider: "google",
+            access_token: "a",
+            refresh_token: "r",
+          },
+          rules: [],
+        },
+        hasAutomationRules: false,
+        hasAiAccess: false,
+      },
+    } as unknown as object);
+
+    vi.mocked(getHistory).mockResolvedValue({
+      history: [
+        {
+          id: "124",
+          messagesAdded: [
+            {
+              message: {
+                id: "msg-dup",
+                threadId: "thread-dup",
+                labelIds: [GmailLabel.INBOX],
+              },
+            },
+            {
+              message: {
+                id: "msg-dup",
+                threadId: "thread-dup",
+                labelIds: [GmailLabel.INBOX],
+              },
+            },
+          ],
+        },
+      ],
+    } as unknown as object);
+    prisma.$executeRaw.mockResolvedValue(undefined as unknown as object);
+
+    await processHistoryForUser(
+      { emailAddress: "user@test.com", historyId: 124 },
+      {},
+      logger,
+    );
+
+    expect(vi.mocked(processHistoryItem)).toHaveBeenCalledTimes(1);
+  });
+
   it("returns ok when history id expired", async () => {
     vi.mocked(getWebhookEmailAccount).mockResolvedValue({
       id: "email-1",

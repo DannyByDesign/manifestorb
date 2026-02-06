@@ -10,6 +10,7 @@ import { processAssistantEmail } from "@/features/web-chat/process-assistant-ema
 import { getEmailAccount } from "@/__tests__/helpers";
 import { createEmailProvider } from "@/features/email/provider";
 import { createScopedLogger } from "@/server/lib/logger";
+import { handleLabelRemovedEvent } from "@/app/api/google/webhook/process-label-removed-event";
 
 const logger = createScopedLogger("test");
 
@@ -55,6 +56,9 @@ vi.mock("@/features/rules/ai/run-rules", () => ({
 }));
 vi.mock("@/features/web-chat/process-assistant-email", () => ({
   processAssistantEmail: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("@/app/api/google/webhook/process-label-removed-event", () => ({
+  handleLabelRemovedEvent: vi.fn(),
 }));
 vi.mock("@/features/digest/index", () => ({
   enqueueDigestItem: vi.fn().mockResolvedValue(undefined),
@@ -267,5 +271,33 @@ describe("processHistoryItem", () => {
     await processHistoryItem(createHistoryItem(), options as any, logger);
 
     expect(mockProvider.blockUnsubscribedEmail).toHaveBeenCalledWith("123");
+  });
+
+  it("delegates label removed events to the label handler", async () => {
+    const options = {
+      ...defaultOptions,
+      emailAccount: getDefaultEmailAccount(),
+    };
+
+    const historyItem = createHistoryItem(
+      "789",
+      "thread-789",
+      HistoryEventType.LABEL_REMOVED,
+      [GmailLabel.INBOX],
+    );
+
+    await processHistoryItem(
+      historyItem,
+      options as unknown as typeof options,
+      logger,
+    );
+
+    expect(handleLabelRemovedEvent).toHaveBeenCalledWith(
+      historyItem.item,
+      expect.objectContaining({
+        emailAccount: options.emailAccount,
+      }),
+      logger,
+    );
   });
 });

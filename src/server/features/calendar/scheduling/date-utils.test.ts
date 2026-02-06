@@ -4,6 +4,8 @@ import {
   fromZonedTime,
   resolveTimeZoneOrUtc,
   isAmbiguousLocalTime,
+  roundDateUp,
+  differenceInMinutes,
 } from "./date-utils";
 
 describe("date-utils timezone helpers", () => {
@@ -35,5 +37,17 @@ describe("date-utils timezone helpers", () => {
     const utc = new Date("2024-11-03T08:30:00.000Z");
     const local = toZonedTime(utc, timeZone);
     expect(isAmbiguousLocalTime(local, timeZone)).toBe(true);
+  });
+
+  it("rounds dates up to the nearest interval", () => {
+    const date = new Date("2024-05-01T10:07:00.000Z");
+    const rounded = roundDateUp(date, 30);
+    expect(rounded.toISOString()).toBe("2024-05-01T10:30:00.000Z");
+  });
+
+  it("computes minute differences", () => {
+    const a = new Date("2024-05-01T10:00:00.000Z");
+    const b = new Date("2024-05-01T09:30:00.000Z");
+    expect(differenceInMinutes(a, b)).toBe(30);
   });
 });

@@ -73,6 +73,7 @@ vi.mock("@/env", () => ({
 
 import { aiDraftReply } from "@/features/reply-tracker/ai/draft-reply";
 import prisma from "@/server/db/client";
+import { saveReply } from "@/server/lib/redis/reply";
 
 const mockLogger = {
   info: vi.fn(),
@@ -226,5 +227,27 @@ describe("fetchMessagesAndGenerateDraft - AI content escaping", () => {
 
     // Normal text should be unchanged
     expect(result).toBe(normalAiOutput);
+  });
+
+  it("saves generated drafts for later review", async () => {
+    vi.mocked(aiDraftReply).mockResolvedValue("Saved draft content");
+    vi.mocked(prisma.emailAccount.findUnique).mockResolvedValue({
+      includeReferralSignature: false,
+      signature: null,
+    } as unknown as object);
+
+    await fetchMessagesAndGenerateDraft(
+      createMockEmailAccount(),
+      "thread-1",
+      createMockClient(),
+      createMockMessage(),
+      mockLogger,
+    );
+
+    expect(saveReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: "msg-1",
+      }),
+    );
   });
 });

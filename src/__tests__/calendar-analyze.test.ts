@@ -62,6 +62,54 @@ describe("calendar analyze tool", () => {
     expect(result.data.suggestedTimes.length).toBe(1);
   });
 
+  test("suggest_times respects limit", async () => {
+    const providers = {
+      calendar: {
+        findAvailableSlots: vi.fn().mockResolvedValue([
+          {
+            start: new Date("2024-05-01T10:00:00Z"),
+            end: new Date("2024-05-01T10:30:00Z"),
+            score: 0.9,
+          },
+          {
+            start: new Date("2024-05-01T11:00:00Z"),
+            end: new Date("2024-05-01T11:30:00Z"),
+            score: 0.8,
+          },
+          {
+            start: new Date("2024-05-01T12:00:00Z"),
+            end: new Date("2024-05-01T12:30:00Z"),
+            score: 0.7,
+          },
+        ]),
+      },
+      email: {},
+    };
+
+    const result = await analyzeTool.execute(
+      {
+        resource: "calendar",
+        analysisType: "suggest_times",
+        options: {
+          dateRange: {
+            after: "2024-05-01T00:00:00Z",
+            before: "2024-05-02T00:00:00Z",
+          },
+          durationMinutes: 30,
+          limit: 2,
+        },
+      },
+      {
+        emailAccountId: "email-account-id",
+        logger,
+        providers,
+      } as unknown as object,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data.suggestedTimes.length).toBe(2);
+  });
+
   test("find_conflicts returns overlapping events", async () => {
     const providers = {
       calendar: {

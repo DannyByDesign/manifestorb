@@ -5,7 +5,8 @@ import { config as loadEnv } from "dotenv";
 import prismaMock, { resetPrismaMock } from "@/server/lib/__mocks__/prisma";
 
 const envFileCandidates = [".env.test.local", ".env.test"];
-const shouldLoadTestEnv = process.env.RUN_AI_TESTS === "true";
+const shouldLoadTestEnv =
+  process.env.RUN_AI_TESTS === "true" || process.env.RUN_LIVE_E2E === "true";
 if (shouldLoadTestEnv) {
   for (const envFile of envFileCandidates) {
     const envPath = path.resolve(process.cwd(), envFile);

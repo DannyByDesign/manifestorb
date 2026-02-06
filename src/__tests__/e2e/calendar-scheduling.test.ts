@@ -52,6 +52,11 @@ describe("E2E calendar scheduling", () => {
     expect(execute).toHaveBeenCalled();
   });
 
+  it("parses natural language schedule choices", async () => {
+    const choice = parseScheduleProposalChoice("later works for me", 3);
+    expect(choice).toBe(2);
+  });
+
   it("resolves schedule proposal with multi-party constraints", async () => {
     const requestRecord = {
       id: "req-2",

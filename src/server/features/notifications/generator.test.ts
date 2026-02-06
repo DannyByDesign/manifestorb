@@ -66,4 +66,25 @@ describe("generateNotification", () => {
 
     expect(result).toContain("📧 Uber: Receipt - $45.23");
   });
+
+  it("uses fallback icon and caps length", async () => {
+    mockCreateGenerateText.mockImplementation(() => {
+      throw new Error("LLM down");
+    });
+
+    const longDetail = "x".repeat(200);
+    const result = await generateNotification(
+      {
+        type: "calendar",
+        source: "Calendar",
+        title: "Standup",
+        detail: longDetail,
+        importance: "high",
+      },
+      { emailAccount },
+    );
+
+    expect(result.startsWith("📅")).toBe(true);
+    expect(result.length).toBeLessThanOrEqual(150);
+  });
 });

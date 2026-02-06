@@ -32,6 +32,7 @@ vi.mock("@/server/features/drive/sync/google", () => ({
 }));
 
 import { createDriveProviderWithRefresh } from "@/features/drive/provider";
+import { extractTextFromDocument } from "@/features/drive/document-extraction";
 
 const logger = {
   info: vi.fn(),
@@ -90,6 +91,7 @@ describe("E2E drive filing + webhook", () => {
     });
 
     expect(result.success).toBe(true);
+    expect(vi.mocked(extractTextFromDocument)).toHaveBeenCalled();
 
     prisma.driveConnection.findFirst.mockResolvedValue({
       id: "conn-1",

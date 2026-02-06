@@ -76,4 +76,19 @@ describe("E2E sidecar inbound + notify", () => {
     );
     expect(notifyRes.status).toBe(200);
   });
+
+  it("rejects notify requests with missing content", async () => {
+    const { handleRequest } = await import("../../../surfaces/src/index");
+    const notifyRes = await handleRequest(
+      new Request("http://localhost/notify", {
+        method: "POST",
+        headers: { Authorization: "Bearer secret" },
+        body: JSON.stringify({
+          platform: "slack",
+          channelId: "c1",
+        }),
+      }),
+    );
+    expect(notifyRes.status).toBe(400);
+  });
 });
