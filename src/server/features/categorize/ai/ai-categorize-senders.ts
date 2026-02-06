@@ -152,11 +152,14 @@ ${formatCategoriesForPrompt(categories)}
         };
       }
 
-      return r;
+      return { sender: r.sender, category: r.category ?? undefined };
     });
 
     return [
-      ...heuristicResults.filter((result) => result.category),
+      ...heuristicResults.filter(
+        (result): result is { sender: string; category: string } =>
+          Boolean(result.category),
+      ),
       ...aiResults,
     ];
   } catch (error) {

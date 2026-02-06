@@ -1,5 +1,6 @@
 
 import prisma from "@/server/db/client";
+import type { Prisma } from "@/generated/prisma/client";
 import { getQstashClient } from "@/server/integrations/qstash";
 import { getInternalApiUrl } from "@/server/lib/internal-api";
 import { createScopedLogger } from "@/server/lib/logger";
@@ -10,8 +11,8 @@ type CreateNotificationParams = {
     userId: string;
     title: string;
     body?: string;
-    type?: "info" | "warning" | "success" | "error" | "approval";
-    metadata?: Record<string, any>;
+    type?: "info" | "warning" | "success" | "error" | "approval" | "calendar";
+    metadata?: Prisma.InputJsonValue;
     dedupeKey?: string;
 };
 
@@ -26,7 +27,7 @@ export async function createInAppNotification(params: CreateNotificationParams) 
                 title,
                 body,
                 type,
-                metadata: metadata || {},
+                metadata: metadata ?? {},
                 dedupeKey: dedupeKey || undefined
             }
         });
@@ -46,8 +47,12 @@ export async function createInAppNotification(params: CreateNotificationParams) 
 
         return notification;
 
-    } catch (error: any) {
-        if (error.code === 'P2002') {
+    } catch (error: unknown) {
+        const maybeCode =
+            typeof error === "object" && error !== null && "code" in error
+                ? (error as { code?: unknown }).code
+                : undefined;
+        if (maybeCode === "P2002") {
             logger.info("Duplicate notification skipped", { dedupeKey });
             return null;
         }

@@ -63,6 +63,7 @@ const updateRuleActionSchema = z.object({
         bcc: z.string().nullish(),
         subject: z.string().nullish(),
         folderName: z.string().nullish(),
+        payload: z.unknown().nullish(),
       }),
       delayInMinutes: delayInMinutesSchema,
     }),
@@ -100,14 +101,16 @@ const addKnowledgeSchema = z.object({
   content: z.string().min(1),
 });
 
-export const rulesTool: ToolDefinition<any> = {
+const rulesToolParameters = z.object({
+  action: actionSchema,
+  payload: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const rulesTool: ToolDefinition<typeof rulesToolParameters> = {
   name: "rules",
   description:
     "Manage email rules (list, create, update conditions/actions/patterns) and user about/knowledge.",
-  parameters: z.object({
-    action: actionSchema,
-    payload: z.record(z.string(), z.any()).optional(),
-  }),
+  parameters: rulesToolParameters,
   securityLevel: "CAUTION",
   execute: async ({ action, payload }, context) => {
     const emailAccount = await prisma.emailAccount.findUnique({

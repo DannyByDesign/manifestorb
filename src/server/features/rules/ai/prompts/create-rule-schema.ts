@@ -111,7 +111,7 @@ const actionSchema = (provider: string) =>
           .nullish()
           .describe("The webhook URL to call"),
         payload: z
-          .any()
+          .unknown()
           .nullish()
           .describe(
             "Structured payload for task preferences, task creation, or calendar event creation actions.",

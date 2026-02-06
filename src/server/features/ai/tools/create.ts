@@ -42,7 +42,74 @@ const formatSlotLabel = (start: Date, end: Date | null | undefined, timeZone: st
     return `${startLabel} - ${endLabel}`;
 };
 
-export const createTool: ToolDefinition<any> = {
+const createParameters = z.object({
+    resource: z.enum(["email", "calendar", "automation", "knowledge", "drive", "notification", "contacts", "task"]),
+    type: z.enum(["new", "reply", "forward"]).optional(),
+    parentId: z.string().optional(),
+    data: z.object({
+        // Email
+        to: z.array(z.string()).optional(),
+        cc: z.array(z.string()).optional(),
+        bcc: z.array(z.string()).optional(),
+        subject: z.string().optional(),
+        body: z.string().optional(),
+
+        // Calendar
+        title: z.string().optional(),
+        description: z.string().optional(),
+        start: z.string().optional(),
+        end: z.string().optional(),
+        durationMinutes: z.number().min(5).max(480).optional(),
+        autoSchedule: z.boolean().optional(),
+        calendarId: z.string().optional(),
+        allDay: z.boolean().optional(),
+        isRecurring: z.boolean().optional(),
+        recurrenceRule: z.string().optional(),
+        timeZone: z.string().optional(),
+        attendees: z.array(z.string()).optional(),
+        location: z.string().optional(),
+        ambiguityResolved: z.boolean().optional(),
+
+        // Task
+        reschedulePolicy: z.enum(["FIXED", "FLEXIBLE", "APPROVAL_REQUIRED"]).optional(),
+        status: z.enum(["PENDING", "IN_PROGRESS", "COMPLETED", "CANCELLED"]).optional(),
+        priority: z.enum(["NONE", "LOW", "MEDIUM", "HIGH"]).optional(),
+        energyLevel: z.enum(["LOW", "MEDIUM", "HIGH"]).optional(),
+        preferredTime: z.enum(["MORNING", "AFTERNOON", "EVENING"]).optional(),
+        dueDate: z.string().optional(),
+        startDate: z.string().optional(),
+        isAutoScheduled: z.boolean().optional(),
+        scheduleLocked: z.boolean().optional(),
+        scheduledStart: z.string().optional(),
+        scheduledEnd: z.string().optional(),
+
+        // Automation
+        name: z.string().optional(),
+        conditions: z.unknown().optional(),
+        actions: z.array(z.unknown()).optional(),
+
+        // Knowledge
+        // title uses Calendar's definition
+        content: z.string().optional(),
+
+        // Drive (Filing)
+        messageId: z.string().optional(),
+        attachmentId: z.string().optional(),
+
+        // Notification (Push)
+        type: z.enum(["email", "calendar", "system", "task"]).optional(),
+        source: z.string().optional(),
+        detail: z.string().optional(),
+        // Title also used for notification
+
+        // Contacts
+        phone: z.string().optional(),
+        company: z.string().optional(),
+        jobTitle: z.string().optional(),
+    }),
+});
+
+export const createTool: ToolDefinition<typeof createParameters> = {
     name: "create",
     description: `Create new items.
     
@@ -57,72 +124,7 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
 
 Automation: Create Rules & Knowledge supported.`,
 
-    parameters: z.object({
-        resource: z.enum(["email", "calendar", "automation", "knowledge", "drive", "notification", "contacts", "task"]),
-        type: z.enum(["new", "reply", "forward"]).optional(),
-        parentId: z.string().optional(),
-        data: z.object({
-            // Email
-            to: z.array(z.string()).optional(),
-            cc: z.array(z.string()).optional(),
-            bcc: z.array(z.string()).optional(),
-            subject: z.string().optional(),
-            body: z.string().optional(),
-
-            // Calendar
-            title: z.string().optional(),
-            description: z.string().optional(),
-            start: z.string().optional(),
-            end: z.string().optional(),
-            durationMinutes: z.number().min(5).max(480).optional(),
-            autoSchedule: z.boolean().optional(),
-            calendarId: z.string().optional(),
-            allDay: z.boolean().optional(),
-            isRecurring: z.boolean().optional(),
-            recurrenceRule: z.string().optional(),
-            timeZone: z.string().optional(),
-            attendees: z.array(z.string()).optional(),
-            location: z.string().optional(),
-            ambiguityResolved: z.boolean().optional(),
-
-            // Task
-            reschedulePolicy: z.enum(["FIXED", "FLEXIBLE", "APPROVAL_REQUIRED"]).optional(),
-            status: z.enum(["PENDING", "IN_PROGRESS", "COMPLETED", "CANCELLED"]).optional(),
-            priority: z.enum(["NONE", "LOW", "MEDIUM", "HIGH"]).optional(),
-            energyLevel: z.enum(["LOW", "MEDIUM", "HIGH"]).optional(),
-            preferredTime: z.enum(["MORNING", "AFTERNOON", "EVENING"]).optional(),
-            dueDate: z.string().optional(),
-            startDate: z.string().optional(),
-            isAutoScheduled: z.boolean().optional(),
-            scheduleLocked: z.boolean().optional(),
-            scheduledStart: z.string().optional(),
-            scheduledEnd: z.string().optional(),
-
-            // Automation
-            name: z.string().optional(),
-            conditions: z.any().optional(),
-            actions: z.array(z.any()).optional(),
-
-            // Knowledge
-            // title uses Calendar's definition
-            content: z.string().optional(),
-
-            // Drive (Filing)
-            messageId: z.string().optional(),
-            attachmentId: z.string().optional(),
-
-            // Notification (Push)
-            type: z.enum(["email", "calendar", "system", "task"]).optional(),
-            source: z.string().optional(),
-            detail: z.string().optional(),
-            // Title also used for notification
-
-            // Contacts
-            phone: z.string().optional(),
-            company: z.string().optional(),
-            jobTitle: z.string().optional(),
-        }),
-    }),
+    parameters: createParameters,
 
 
 
@@ -242,7 +244,9 @@ Automation: Create Rules & Knowledge supported.`,
                 const fileMsg = fileMessages[0];
 
                 // Find Attachment
-                const attachment = fileMsg.attachments?.find((a: any) => a.attachmentId === data.attachmentId);
+                const attachment = fileMsg.attachments?.find(
+                    (item) => item.attachmentId === data.attachmentId
+                );
                 if (!attachment) return { success: false, error: "Attachment not found" };
 
                 // Create Service Provider for helper

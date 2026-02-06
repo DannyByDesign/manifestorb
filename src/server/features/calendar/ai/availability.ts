@@ -175,7 +175,7 @@ ${threadContent}
     stopWhen: (result) =>
       result.steps.some((step) =>
         step.toolCalls?.some(
-          (call) => call.toolName === "returnSuggestedTimes",
+          (call) => call?.toolName === "returnSuggestedTimes",
         ),
       ) || result.steps.length > 5,
     tools: {
@@ -231,10 +231,13 @@ ${threadContent}
   if (!result) {
     const toolCall = response.steps
       .flatMap((step) => step.toolCalls ?? [])
-      .find((call) => call.toolName === "returnSuggestedTimes");
+      .find((call) => call?.toolName === "returnSuggestedTimes");
 
     if (toolCall?.input) {
-      result = toolCall.input as CalendarAvailabilityContext;
+      const parsed = schema.safeParse(toolCall.input);
+      if (parsed.success) {
+        result = parsed.data;
+      }
     }
   }
 

@@ -14,6 +14,11 @@ import { getEmailListPrompt, getUserInfoPrompt } from "@/features/ai/helpers";
 
 const logger = createScopedLogger("reply-context-collector");
 
+export type ReplyContextCollectorResult = {
+  notes?: string | null;
+  relevantEmails: string[];
+};
+
 const resultSchema = z.object({
   notes: z
     .string()
@@ -24,8 +29,7 @@ const resultSchema = z.object({
     .describe(
       "Past email conversations from search results that could help draft the response. Leave empty if no relevant past emails found.",
     ),
-});
-export type ReplyContextCollectorResult = z.infer<typeof resultSchema>;
+}) satisfies z.ZodType<ReplyContextCollectorResult>;
 
 const agentSystem = `You are an intelligent email assistant that gathers historical context from the user's email history to inform a later drafting step.
 
@@ -148,7 +152,7 @@ ${getTodayForLLM()}`;
       modelOptions,
     });
 
-    let result: ReplyContextCollectorResult | null = null;
+    let finalResult: ReplyContextCollectorResult | null = null;
 
     await generateText({
       ...modelOptions,
@@ -213,16 +217,16 @@ ${getTodayForLLM()}`;
           description:
             "Finalize and return your compiled results for downstream drafting",
           inputSchema: resultSchema,
-          execute: async (finalResult) => {
+          execute: async (resultPayload) => {
             logger.info("Finalizing results", {
-              relevantEmails: finalResult.relevantEmails.length,
+              relevantEmails: resultPayload.relevantEmails.length,
             });
             logger.trace("Finalizing results", {
-              notes: finalResult.notes,
-              relevantEmails: finalResult.relevantEmails,
+              notes: resultPayload.notes,
+              relevantEmails: resultPayload.relevantEmails,
             });
 
-            result = finalResult;
+            finalResult = resultPayload;
 
             return { success: true };
           },
@@ -230,19 +234,25 @@ ${getTodayForLLM()}`;
       },
     });
 
+    const parsedResult = resultSchema.safeParse(finalResult);
+    const resolvedResult = parsedResult.success ? parsedResult.data : null;
+
     if (
-      result &&
-      result.relevantEmails.length === 0 &&
+      resolvedResult &&
+      resolvedResult.relevantEmails.length === 0 &&
       subjectSearchFallback.length > 0
     ) {
-      return { notes: result.notes ?? null, relevantEmails: subjectSearchFallback };
+      return {
+        notes: resolvedResult.notes ?? null,
+        relevantEmails: subjectSearchFallback,
+      };
     }
 
-    if (!result && subjectSearchFallback.length > 0) {
+    if (!resolvedResult && subjectSearchFallback.length > 0) {
       return { notes: null, relevantEmails: subjectSearchFallback };
     }
 
-    return result;
+    return resolvedResult;
   } catch (error) {
     logger.error("Reply context collection failed", {
       email: emailAccount.email,

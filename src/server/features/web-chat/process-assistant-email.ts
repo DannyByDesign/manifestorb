@@ -109,6 +109,8 @@ async function processAssistantEmailInternal({
         userId: true,
         email: true,
         about: true,
+        filingEnabled: true,
+        filingPrompt: true,
         multiRuleSelectionEnabled: true,
         timezone: true,
         calendarBookingLink: true,

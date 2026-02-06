@@ -361,7 +361,8 @@ function applyCategoryHints(
 
   return rules.map((rule) => {
     if (rule.condition.categories) {
-      const filtered = rule.condition.categories.categoryFilters.filter((category) =>
+      const existingFilters = rule.condition.categories.categoryFilters ?? [];
+      const filtered = existingFilters.filter((category) =>
         matchedCategories.includes(category),
       );
       if (filtered.length === 0) return rule;

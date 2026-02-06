@@ -6,6 +6,7 @@ import { syncGoogleCalendarChanges } from "@/features/calendar/sync/google";
 import { scheduleTasksForUser } from "@/features/calendar/scheduling/TaskSchedulingService";
 import { createInAppNotification } from "@/features/notifications/create";
 import { wasRecentCalendarAction } from "@/features/calendar/action-log";
+import { isDefined } from "@/server/lib/types";
 
 export const maxDuration = 300;
 
@@ -132,13 +133,17 @@ export const POST = withError("google/calendar/webhook", async (request) => {
             ? `${primary.summary || "A meeting"} moved. I adjusted your schedule to fit it.`
             : `${externalEvents.length} meetings changed. I adjusted your schedule to fit them.`;
 
+        const eventIds = externalEvents
+          .map((event) => event.id)
+          .filter(isDefined);
+
         await createInAppNotification({
           userId: calendar.connection.emailAccount.userId,
           title,
           body,
           type: "calendar",
           metadata: {
-            eventIds: externalEvents.map((event) => event.id),
+            eventIds,
           },
           dedupeKey: `calendar-external-change:${primary.id ?? "unknown"}:${primary.updated ?? Date.now()}`,
         });

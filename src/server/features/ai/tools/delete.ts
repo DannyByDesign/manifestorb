@@ -3,7 +3,15 @@ import { z } from "zod";
 import { type ToolDefinition } from "./types";
 import prisma from "@/server/db/client";
 
-export const deleteTool: ToolDefinition<any> = {
+const deleteParameters = z.object({
+    resource: z.enum(["email", "calendar", "automation", "knowledge", "task", "drive"]),
+    ids: z.array(z.string()).max(50),
+    calendarId: z.string().optional(),
+    mode: z.enum(["single", "series"]).optional(),
+    driveItemType: z.enum(["file", "folder"]).optional(),
+});
+
+export const deleteTool: ToolDefinition<typeof deleteParameters> = {
     name: "delete",
     description: `Delete items.
     
@@ -12,13 +20,7 @@ Calendar: Cancels event
 Automation: Deletes rule
 Drive: Deletes file or folder`,
 
-    parameters: z.object({
-        resource: z.enum(["email", "calendar", "automation", "knowledge", "task", "drive"]),
-        ids: z.array(z.string()).max(50),
-        calendarId: z.string().optional(),
-        mode: z.enum(["single", "series"]).optional(),
-        driveItemType: z.enum(["file", "folder"]).optional(),
-    }),
+    parameters: deleteParameters,
 
     execute: async ({ resource, ids, calendarId, mode, driveItemType }, { providers }) => {
         switch (resource) {

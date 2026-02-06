@@ -1,4 +1,5 @@
 import prisma from "@/server/db/client";
+import { TaskStatus } from "@/generated/prisma/enums";
 
 export type TaskReadinessReport = {
   totalTasks: number;
@@ -30,11 +31,13 @@ function toPercent(count: number, total: number) {
 
 export async function getTaskReadinessReport(userId: string): Promise<TaskReadinessReport> {
   const totalTasks = await prisma.task.count({ where: { userId } });
+  const activeStatuses: TaskStatus[] = [TaskStatus.COMPLETED, TaskStatus.CANCELLED];
+
   const openTasks = await prisma.task.count({
-    where: { userId, status: { notIn: ["COMPLETED", "CANCELLED"] } },
+    where: { userId, status: { notIn: activeStatuses } },
   });
 
-  const baseWhere = { userId, status: { notIn: ["COMPLETED", "CANCELLED"] } };
+  const baseWhere = { userId, status: { notIn: activeStatuses } };
 
   const [
     missingDueDate,

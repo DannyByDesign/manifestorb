@@ -83,7 +83,17 @@ Use "promptNumber" as the 1-based index from the prompt rules list. Return an em
       };
     }
 
-    const existingRules = result.object.existingRules.map((rule: { ruleId: string; promptNumber: number }) => {
+    type ExistingRuleMatch = {
+      rule: (Rule & { actions: Action[] }) | undefined;
+      promptNumber: number;
+      promptRule: string | null;
+      toRemove: boolean;
+      toEdit: boolean;
+      updatedPromptRule?: string;
+    };
+
+    const existingRules: ExistingRuleMatch[] = result.object.existingRules.map(
+      (rule: { ruleId: string; promptNumber: number }) => {
       const promptRule = rule.promptNumber
         ? promptRules[rule.promptNumber - 1]
         : null;
@@ -96,19 +106,20 @@ Use "promptNumber" as the 1-based index from the prompt rules list. Return an em
         ? promptRulesToEdit.find((r) => r.oldRule === promptRule)
         : null;
 
-      return {
-        rule: databaseRules.find((dbRule) => dbRule.id === rule.ruleId),
-        promptNumber: rule.promptNumber,
-        promptRule,
-        toRemove: !!toRemove,
-        toEdit: !!toEdit,
-        updatedPromptRule: toEdit?.newRule,
-      };
-    });
+        return {
+          rule: databaseRules.find((dbRule) => dbRule.id === rule.ruleId),
+          promptNumber: rule.promptNumber,
+          promptRule,
+          toRemove: Boolean(toRemove),
+          toEdit: Boolean(toEdit),
+          updatedPromptRule: toEdit?.newRule,
+        };
+      },
+    );
 
     return {
-      editedRules: existingRules.filter((rule: any) => rule.toEdit),
-      removedRules: existingRules.filter((rule: any) => rule.toRemove),
+      editedRules: existingRules.filter((rule) => rule.toEdit),
+      removedRules: existingRules.filter((rule) => rule.toRemove),
     };
   } catch (error) {
     logger.error("Error finding existing rules", { error });

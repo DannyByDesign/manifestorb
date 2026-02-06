@@ -17,6 +17,7 @@ import {
   saveRulesPromptBody,
 } from "@/actions/rule.validation";
 import { aiPromptToRules } from "@/features/rules/ai/prompts/prompt-to-rules";
+import type { CreateOrUpdateRuleSchema, CreateRuleSchema } from "@/features/rules/ai/prompts/create-rule-schema";
 import { aiDiffRules } from "@/features/rules/ai/prompts/diff-rules";
 import { aiFindExistingRules } from "@/features/rules/ai/prompts/find-existing-rules";
 import { aiGenerateRulesPrompt } from "@/features/rules/ai/prompts/generate-rules-prompt";
@@ -27,6 +28,13 @@ import { getEmailAccountWithAi } from "@/server/lib/user/get";
 import { SafeError } from "@/server/lib/error";
 import { createEmailProvider } from "@/features/email/provider";
 import type { CreateRuleResult } from "@/features/rules/types";
+
+function normalizeRule(rule: CreateRuleSchema): CreateOrUpdateRuleSchema {
+  return {
+    ...rule,
+    ruleId: rule.ruleId ?? undefined,
+  };
+}
 
 export const runRulesAction = actionClient
   .metadata({ name: "runRules" })
@@ -208,6 +216,8 @@ export const saveRulesPromptAction = actionClient
           email: true,
           userId: true,
           about: true,
+          filingEnabled: true,
+          filingPrompt: true,
           multiRuleSelectionEnabled: true,
           timezone: true,
           calendarBookingLink: true,
@@ -351,14 +361,16 @@ export const saveRulesPromptAction = actionClient
             emailAccount,
             promptFile: existingRules.editedRules
               .map(
-                (r: any) => `Rule ID: ${r.rule?.id}. Prompt: ${r.updatedPromptRule}`,
+                (r) =>
+                  `Rule ID: ${r.rule?.id}. Prompt: ${r.updatedPromptRule}`,
               )
               .join("\n\n"),
             availableGroups: availableGroupNames,
           });
 
           for (const rule of editedRules) {
-            if (!rule.ruleId) {
+            const normalizedRule = normalizeRule(rule);
+            if (!normalizedRule.ruleId) {
               logger.error("Rule ID not found for rule", {
                 promptRule: rule.name,
               });
@@ -366,15 +378,15 @@ export const saveRulesPromptAction = actionClient
             }
 
             logger.info("Editing rule", {
-              promptRule: rule.name,
-              ruleId: rule.ruleId,
+              promptRule: normalizedRule.name,
+              ruleId: normalizedRule.ruleId,
             });
 
             editRulesCount++;
 
             await updateRule({
-              ruleId: rule.ruleId,
-              result: rule,
+              ruleId: normalizedRule.ruleId,
+              result: normalizedRule,
               emailAccountId,
               provider: emailAccount.account.provider,
               logger,
@@ -398,11 +410,12 @@ export const saveRulesPromptAction = actionClient
 
       // add new rules
       for (const rule of addedRules || []) {
-        logger.info("Creating rule", { ruleName: rule.name });
+        const normalizedRule = normalizeRule(rule);
+        logger.info("Creating rule", { ruleName: normalizedRule.name });
 
         try {
           await createRule({
-            result: rule,
+            result: normalizedRule,
             emailAccountId,
             provider: emailAccount.account.provider,
             runOnThreads: true,
@@ -410,10 +423,10 @@ export const saveRulesPromptAction = actionClient
           });
         } catch (error) {
           if (isDuplicateError(error, "name")) {
-            logger.info("Skipping duplicate rule", { ruleName: rule.name });
+            logger.info("Skipping duplicate rule", { ruleName: normalizedRule.name });
           } else {
             logger.error("Failed to create rule", {
-              ruleName: rule.name,
+              ruleName: normalizedRule.name,
               error,
             });
           }
@@ -451,6 +464,8 @@ export const createRulesAction = actionClient
           email: true,
           userId: true,
           about: true,
+          filingEnabled: true,
+          filingPrompt: true,
           multiRuleSelectionEnabled: true,
           timezone: true,
           calendarBookingLink: true,
@@ -487,11 +502,12 @@ export const createRulesAction = actionClient
       const errors: { ruleName: string; error: string }[] = [];
 
       for (const rule of addedRules || []) {
-        logger.info("Creating rule", { ruleName: rule.name });
+        const normalizedRule = normalizeRule(rule);
+        logger.info("Creating rule", { ruleName: normalizedRule.name });
 
         try {
           const createdRule = await createRule({
-            result: rule,
+            result: normalizedRule,
             emailAccountId,
             provider: emailAccount.account.provider,
             runOnThreads: true,
@@ -500,16 +516,16 @@ export const createRulesAction = actionClient
           createdRules.push(createdRule);
         } catch (error) {
           if (isDuplicateError(error, "name")) {
-            logger.info("Skipping duplicate rule", { ruleName: rule.name });
+            logger.info("Skipping duplicate rule", { ruleName: normalizedRule.name });
           } else {
             const errorMessage =
               error instanceof Error ? error.message : String(error);
             logger.error("Failed to create rule", {
-              ruleName: rule.name,
+              ruleName: normalizedRule.name,
               error,
             });
             errors.push({
-              ruleName: rule.name,
+              ruleName: normalizedRule.name,
               error: errorMessage,
             });
           }

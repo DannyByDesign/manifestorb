@@ -399,6 +399,11 @@ async function mapActionFields(
         folderId = await emailProvider.getOrCreateFolderIdByName(folderName);
       }
 
+      const payload =
+        a.fields?.payload === null || a.fields?.payload === undefined
+          ? undefined
+          : (a.fields.payload as Prisma.InputJsonValue);
+
       return {
         type: a.type,
         label,
@@ -409,7 +414,7 @@ async function mapActionFields(
         subject: a.fields?.subject,
         content: a.fields?.content,
         url: a.fields?.webhookUrl,
-        payload: a.fields?.payload ?? null,
+        payload,
         ...(isMicrosoftProvider(provider) && {
           folderName: folderName ?? null,
           folderId,
