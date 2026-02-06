@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import prisma from "@/server/db/client";
-import { auth } from "@/server/lib/auth";
+import { auth } from "@/server/auth";
 import { getGmailClientForEmail } from "@/server/lib/account";
 import { createScopedLogger } from "@/server/lib/logger";
 import { ConnectClient } from "./ConnectClient";

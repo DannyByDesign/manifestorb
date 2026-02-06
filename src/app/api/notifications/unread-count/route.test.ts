@@ -2,10 +2,10 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { GET } from "./route";
 import prisma from "@/server/lib/__mocks__/prisma";
-import { auth } from "@/server/lib/auth";
+import { auth } from "@/server/auth";
 
 vi.mock("@/server/db/client");
-vi.mock("@/server/lib/auth", () => ({ auth: vi.fn() }));
+vi.mock("@/server/auth", () => ({ auth: vi.fn() }));
 
 const mockAuth = vi.mocked(auth);
 

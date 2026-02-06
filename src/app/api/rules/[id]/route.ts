@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import prisma from "@/server/db/client";
-import { auth } from "@/server/lib/auth";
+import { auth } from "@/server/auth";
 import { createScopedLogger } from "@/server/lib/logger";
 import { createRuleSchema } from "@/features/rules/ai/prompts/create-rule-schema";
 import { updateRule } from "@/features/rules/rule";

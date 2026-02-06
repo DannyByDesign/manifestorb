@@ -6,11 +6,11 @@ import { createScopedLogger } from "@/server/lib/logger";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/server/db/client");
-vi.mock("@/server/lib/auth", () => ({
+vi.mock("@/server/auth", () => ({
   auth: vi.fn(),
 }));
 
-import { auth } from "@/server/lib/auth";
+import { auth } from "@/server/auth";
 
 const mockAuth = vi.mocked(auth);
 const logger = createScopedLogger("test");

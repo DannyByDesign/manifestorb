@@ -1,4 +1,4 @@
-import { authkitMiddleware } from "@workos-inc/authkit-nextjs";
+import { authkitMiddleware } from "@/server/auth";
 
 export default authkitMiddleware();
 

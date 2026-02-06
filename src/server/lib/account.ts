@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
-import { auth } from "@/server/lib/auth";
+import { auth } from "@/server/auth";
 import {
   getGmailClientWithRefresh,
   getAccessTokenFromClient,

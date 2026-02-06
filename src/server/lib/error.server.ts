@@ -1,6 +1,6 @@
 import { setUser } from "@sentry/nextjs";
 import { trackError } from "@/server/lib/posthog";
-import { auth } from "@/server/lib/auth";
+import { auth } from "@/server/auth";
 import type { Logger } from "@/server/lib/logger";
 
 export async function logErrorToPosthog(

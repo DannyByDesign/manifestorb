@@ -7,7 +7,7 @@ import { deleteUser } from "@/server/lib/user/delete";
 import { actionClient, actionClientUser } from "@/actions/safe-action";
 import { SafeError } from "@/server/lib/error";
 import { updateAccountSeats } from "@/features/premium/server";
-import { signOut } from "@workos-inc/authkit-nextjs";
+import { signOut } from "@/server/auth";
 import {
   saveAboutBody,
   saveSignatureBody,

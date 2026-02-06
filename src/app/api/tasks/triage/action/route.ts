@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "crypto";
 import prisma from "@/server/db/client";
-import { auth } from "@/server/lib/auth";
+import { auth } from "@/server/auth";
 import { createScopedLogger } from "@/server/lib/logger";
 import { ApprovalService } from "@/features/approvals/service";
 import { createInAppNotification } from "@/features/notifications/create";

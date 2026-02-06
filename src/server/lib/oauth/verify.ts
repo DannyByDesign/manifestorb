@@ -1,5 +1,5 @@
 import prisma from "@/server/db/client";
-import { auth } from "@/server/lib/auth";
+import { auth } from "@/server/auth";
 import type { Logger } from "@/server/lib/logger";
 import { RedirectError } from "./redirect";
 

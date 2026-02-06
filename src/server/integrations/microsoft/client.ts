@@ -1,7 +1,7 @@
 import { Client } from "@microsoft/microsoft-graph-client";
 import type { User } from "@microsoft/microsoft-graph-types";
-import { saveTokens } from "@/server/lib/auth";
-import { cleanupInvalidTokens } from "@/server/lib/auth/cleanup-invalid-tokens";
+import { saveTokens } from "@/server/auth";
+import { cleanupInvalidTokens } from "@/server/auth/cleanup-invalid-tokens";
 import { env } from "@/env";
 import type { Logger } from "@/server/lib/logger";
 import { SCOPES } from "@/server/integrations/microsoft/scopes";
