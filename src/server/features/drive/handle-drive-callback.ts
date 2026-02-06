@@ -52,7 +52,7 @@ export async function handleDriveCallback(
     const cachedResult = await getOAuthCodeResult(code);
     if (cachedResult) {
       logger.info("OAuth code already processed, returning cached result");
-      const cachedRedirectUrl = new URL("/drive", env.NEXT_PUBLIC_BASE_URL);
+      const cachedRedirectUrl = new URL("/connect", env.NEXT_PUBLIC_BASE_URL);
       for (const [key, value] of Object.entries(cachedResult.params)) {
         cachedRedirectUrl.searchParams.set(key, value);
       }
@@ -67,7 +67,7 @@ export async function handleDriveCallback(
     const acquiredLock = await acquireOAuthCodeLock(code);
     if (!acquiredLock) {
       logger.info("OAuth code is being processed by another request");
-      const lockRedirectUrl = new URL("/drive", env.NEXT_PUBLIC_BASE_URL);
+      const lockRedirectUrl = new URL("/connect", env.NEXT_PUBLIC_BASE_URL);
       response.cookies.delete(DRIVE_STATE_COOKIE_NAME);
       return redirectWithMessage(
         lockRedirectUrl,
@@ -181,7 +181,7 @@ export async function handleDriveCallback(
     logger.error("Error in drive callback", { error });
 
     // Try to build a redirect URL, fallback to /drive
-    const errorRedirectUrl = new URL("/drive", env.NEXT_PUBLIC_BASE_URL);
+    const errorRedirectUrl = new URL("/connect", env.NEXT_PUBLIC_BASE_URL);
     return redirectWithError(
       errorRedirectUrl,
       "connection_failed",
@@ -206,7 +206,7 @@ async function validateOAuthCallback(
   const receivedState = searchParams.get("state");
   const storedState = request.cookies.get(DRIVE_STATE_COOKIE_NAME)?.value;
 
-  const redirectUrl = new URL("/drive", env.NEXT_PUBLIC_BASE_URL);
+  const redirectUrl = new URL("/connect", env.NEXT_PUBLIC_BASE_URL);
   const response = NextResponse.redirect(redirectUrl);
 
   response.cookies.delete(DRIVE_STATE_COOKIE_NAME);
@@ -264,10 +264,7 @@ function parseAndValidateDriveState(
 }
 
 function buildDriveRedirectUrl(emailAccountId: string): URL {
-  return new URL(
-    prefixPath(emailAccountId, "/drive"),
-    env.NEXT_PUBLIC_BASE_URL,
-  );
+  return new URL("/connect", env.NEXT_PUBLIC_BASE_URL);
 }
 
 async function upsertDriveConnection(params: {

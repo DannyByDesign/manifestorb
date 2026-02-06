@@ -209,8 +209,9 @@ async function authMiddleware(
   return authReq;
 }
 
-// UUID pattern for email account ID validation
+// UUID or CUID pattern for email account ID validation
 const UUID_PATTERN = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+const CUID_PATTERN = /^c[a-z0-9]{24}$/i;
 
 async function emailAccountMiddleware(
   req: NextRequest,
@@ -232,7 +233,7 @@ async function emailAccountMiddleware(
 
   // Sanitize and validate email account ID format
   const emailAccountId = rawEmailAccountId.trim();
-  if (!UUID_PATTERN.test(emailAccountId)) {
+  if (!UUID_PATTERN.test(emailAccountId) && !CUID_PATTERN.test(emailAccountId)) {
     return NextResponse.json(
       { error: "Invalid email account ID format", isKnownError: true },
       { status: 400 },

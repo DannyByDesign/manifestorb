@@ -32,7 +32,7 @@ export async function validateOAuthCallback(
   const receivedState = searchParams.get("state");
   const storedState = request.cookies.get(CALENDAR_STATE_COOKIE_NAME)?.value;
 
-  const redirectUrl = new URL("/calendars", env.NEXT_PUBLIC_BASE_URL);
+  const redirectUrl = new URL("/connect", env.NEXT_PUBLIC_BASE_URL);
   const response = NextResponse.redirect(redirectUrl);
 
   response.cookies.delete(CALENDAR_STATE_COOKIE_NAME);
@@ -89,10 +89,7 @@ export function parseAndValidateCalendarState(
  * Build redirect URL with emailAccountId
  */
 export function buildCalendarRedirectUrl(emailAccountId: string): URL {
-  return new URL(
-    prefixPath(emailAccountId, "/calendars"),
-    env.NEXT_PUBLIC_BASE_URL,
-  );
+  return new URL("/connect", env.NEXT_PUBLIC_BASE_URL);
 }
 
 /**

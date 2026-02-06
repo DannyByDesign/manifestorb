@@ -45,7 +45,7 @@ export async function handleCalendarCallback(
     const cachedResult = await getOAuthCodeResult(code);
     if (cachedResult) {
       logger.info("OAuth code already processed, returning cached result");
-      const cachedRedirectUrl = new URL("/calendars", env.NEXT_PUBLIC_BASE_URL);
+      const cachedRedirectUrl = new URL("/connect", env.NEXT_PUBLIC_BASE_URL);
       for (const [key, value] of Object.entries(cachedResult.params)) {
         cachedRedirectUrl.searchParams.set(key, value);
       }
@@ -60,7 +60,7 @@ export async function handleCalendarCallback(
     const acquiredLock = await acquireOAuthCodeLock(code);
     if (!acquiredLock) {
       logger.info("OAuth code is being processed by another request");
-      const lockRedirectUrl = new URL("/calendars", env.NEXT_PUBLIC_BASE_URL);
+      const lockRedirectUrl = new URL("/connect", env.NEXT_PUBLIC_BASE_URL);
       response.cookies.delete(CALENDAR_STATE_COOKIE_NAME);
       return redirectWithMessage(
         lockRedirectUrl,
@@ -176,7 +176,7 @@ export async function handleCalendarCallback(
     logger.error("Error in calendar callback", { error });
 
     // Try to build a redirect URL, fallback to /calendars
-    const errorRedirectUrl = new URL("/calendars", env.NEXT_PUBLIC_BASE_URL);
+    const errorRedirectUrl = new URL("/connect", env.NEXT_PUBLIC_BASE_URL);
     return redirectWithError(
       errorRedirectUrl,
       "connection_failed",
