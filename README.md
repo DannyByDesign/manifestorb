@@ -136,7 +136,7 @@ amodel/
 │   │
 │   ├── server/                 # Server-only code
 │   │   ├── actions/            # Server actions (next-safe-action)
-│   │   ├── auth/               # Authentication (better-auth)
+│   │   ├── auth/               # Authentication (WorkOS AuthKit)
 │   │   ├── db/                 # Database (Prisma client)
 │   │   ├── features/           # Feature modules
 │   │   │   ├── ai/             # AI orchestration, system prompt, tools (query, get, analyze, create, modify, delete, send, rules, triage)

@@ -1,178 +1,84 @@
-// based on: https://github.com/vercel/platforms/blob/main/lib/auth.ts
-
-import { sso } from "@better-auth/sso";
-import { oAuthProxy } from "better-auth/plugins";
+import { withAuth } from "@workos-inc/authkit-nextjs";
+import { cookies } from "next/headers";
 import { createContact as createResendContact } from "@amodel/resend";
-import type { Account, AuthContext } from "better-auth";
-import { betterAuth } from "better-auth";
-import { prismaAdapter } from "better-auth/adapters/prisma";
-import { nextCookies } from "better-auth/next-js";
-import { cookies, headers } from "next/headers";
-import { env } from "@/env";
-import {
-  isGoogleProvider,
-  isMicrosoftProvider,
-} from "@/features/email/provider-types";
-import { encryptToken } from "@/server/lib/encryption";
-import { captureException } from "@/server/lib/error";
-import { SCOPES as GMAIL_SCOPES } from "@/server/integrations/google/scopes";
-import { getContactsClient as getGoogleContactsClient } from "@/server/integrations/google/client";
-import { createScopedLogger } from "@/server/lib/logger";
-import { createOutlookClient } from "@/server/lib/outlook/client";
-import { SCOPES as OUTLOOK_SCOPES } from "@/server/lib/outlook/scopes";
-import {
-  claimPendingPremiumInvite,
-  updateAccountSeats,
-} from "@/features/premium/server";
-import { clearSpecificErrorMessages, ErrorType } from "@/server/lib/error-messages";
 import prisma from "@/server/db/client";
+import { createScopedLogger } from "@/server/lib/logger";
+import { captureException } from "@/server/lib/error";
+import { encryptToken } from "@/server/lib/encryption";
+import {
+  clearSpecificErrorMessages,
+  ErrorType,
+} from "@/server/lib/error-messages";
+import { isDuplicateError } from "@/server/db/client-helpers";
+import { claimPendingPremiumInvite } from "@/features/premium/server";
 
 const logger = createScopedLogger("auth");
 
-export const betterAuthConfig = betterAuth({
-  advanced: {
-    database: {
-      generateId: false,
-    },
-  },
-  logger: {
-    level: "info",
-    log: (level, message, ...args) => {
-      switch (level) {
-        case "info":
-          logger.info(message, { args });
-          break;
-        case "error":
-          logger.error(message, { args });
-          break;
+type AuthUser = {
+  id: string;
+  email: string;
+  name: string | null;
+};
+
+const buildDisplayName = (
+  firstName?: string | null,
+  lastName?: string | null,
+): string | null => {
+  const parts = [firstName, lastName]
+    .map((part) => (part ?? "").trim())
+    .filter((part) => part.length > 0);
+  return parts.length > 0 ? parts.join(" ") : null;
+};
+
+export const auth = async (): Promise<{ user: AuthUser } | null> => {
+  const { user } = await withAuth();
+  if (!user?.email) {
+    return null;
+  }
+
+  const existingUser = await prisma.user.findUnique({
+    where: { email: user.email },
+    select: { id: true, email: true, name: true },
+  });
+
+  if (existingUser) {
+    return { user: existingUser };
+  }
+
+  const name = buildDisplayName(user.firstName, user.lastName);
+
+  try {
+    const createdUser = await prisma.user.create({
+      data: {
+        email: user.email,
+        name,
+        image: user.profilePictureUrl ?? null,
+      },
+      select: { id: true, email: true, name: true },
+    });
+
+    await postSignUp({
+      id: createdUser.id,
+      email: createdUser.email,
+      name: createdUser.name,
+      image: user.profilePictureUrl ?? null,
+    });
+
+    return { user: createdUser };
+  } catch (error) {
+    if (isDuplicateError(error)) {
+      const fallbackUser = await prisma.user.findUnique({
+        where: { email: user.email },
+        select: { id: true, email: true, name: true },
+      });
+      if (fallbackUser) {
+        return { user: fallbackUser };
       }
-    },
-  },
-  baseURL: env.NEXT_PUBLIC_BASE_URL,
-  trustedOrigins: [
-    env.NEXT_PUBLIC_BASE_URL,
-    ...(env.OAUTH_PROXY_URL ? [env.OAUTH_PROXY_URL] : []),
-    // Additional trusted origins for cross-origin requests (e.g., from preview deployments)
-    // Supports wildcards like https://*.vercel.app
-    ...(env.ADDITIONAL_TRUSTED_ORIGINS ?? []),
-  ],
-  secret: env.AUTH_SECRET,
-  emailAndPassword: {
-    enabled: false,
-  },
-  database: prismaAdapter(prisma, {
-    provider: "postgresql",
-  }),
-  plugins: [
-    sso({
-      disableImplicitSignUp: false,
-      organizationProvisioning: { disabled: true },
-    }),
-    // OAuth proxy for preview deployments (Google doesn't allow wildcard redirect URIs)
-    ...(env.OAUTH_PROXY_URL || env.IS_OAUTH_PROXY_SERVER
-      ? [
-        oAuthProxy({
-          productionURL: env.OAUTH_PROXY_URL || env.NEXT_PUBLIC_BASE_URL,
-        }),
-      ]
-      : []),
-    nextCookies(), // Must be last
-  ],
-  session: {
-    modelName: "Session",
-    fields: {
-      token: "sessionToken",
-      expiresAt: "expires",
-    },
-    cookieCache: {
-      enabled: true,
-      maxAge: 60 * 60 * 24 * 30, // 30 days
-    },
-    expiresIn: 60 * 60 * 24 * 30, // 30 days
-    updateAge: 60 * 60 * 24 * 3, // 1 day (every 1 day the session expiration is updated)
-  },
-  account: {
-    modelName: "Account",
-    fields: {
-      accountId: "providerAccountId",
-      providerId: "provider",
-      refreshToken: "refresh_token",
-      refreshTokenExpiresAt: "refreshTokenExpiresAt",
-      accessToken: "access_token",
-      accessTokenExpiresAt: "expires_at",
-      idToken: "id_token",
-    },
-    storeStateStrategy: "cookie", // Required for oAuthProxy to encrypt state
-  },
-  verification: {
-    modelName: "VerificationToken",
-    fields: {
-      value: "token",
-      expiresAt: "expires",
-    },
-  },
-  socialProviders: {
-    google: {
-      clientId: env.GOOGLE_CLIENT_ID,
-      clientSecret: env.GOOGLE_CLIENT_SECRET,
-      scope: [...GMAIL_SCOPES],
-      accessType: "offline",
-      prompt: "select_account consent",
-      disableIdTokenSignIn: true,
-      // For preview deployments, redirect through staging (which proxies back to preview URL)
-      ...(env.OAUTH_PROXY_URL && {
-        redirectURI: `${env.OAUTH_PROXY_URL}/api/auth/callback/google`,
-      }),
-    },
-    microsoft: {
-      clientId: env.MICROSOFT_CLIENT_ID || "",
-      clientSecret: env.MICROSOFT_CLIENT_SECRET || "",
-      scope: [...OUTLOOK_SCOPES],
-      tenantId: env.MICROSOFT_TENANT_ID,
-      disableIdTokenSignIn: true,
-      // For preview deployments, redirect through staging (which proxies back to preview URL)
-      ...(env.OAUTH_PROXY_URL && {
-        redirectURI: `${env.OAUTH_PROXY_URL}/api/auth/callback/microsoft`,
-      }),
-    },
-  },
-  databaseHooks: {
-    user: {
-      create: {
-        after: async (user) => {
-          await postSignUp({
-            id: user.id,
-            email: user.email,
-            name: user.name,
-            image: user.image,
-          }).catch((error) => {
-            logger.error("Error posting sign up", { error, user });
-            captureException(error, { extra: { user } });
-          });
-        },
-      },
-    },
-    account: {
-      create: {
-        after: async (account: Account) => {
-          await handleLinkAccount(account);
-        },
-      },
-      update: {
-        after: async (account: Account) => {
-          await handleLinkAccount(account);
-        },
-      },
-    },
-  },
-  onAPIError: {
-    throw: true,
-    onError: (error: unknown, ctx: AuthContext) => {
-      logger.error("Auth API encountered an error", { error, ctx });
-    },
-    errorURL: "/login/error",
-  },
-});
+    }
+
+    throw error;
+  }
+};
 
 async function postSignUp({
   id: userId,
@@ -204,12 +110,10 @@ async function handlePendingPremiumInvite({ email }: { email: string }) {
   try {
     logger.info("Handling pending premium invite", { email });
 
-    // Check for pending invite
     const premium = await prisma.premium.findFirst({
       where: { pendingInvites: { has: email } },
       select: {
         id: true,
-
         stripeSubscriptionId: true,
       },
     });
@@ -264,7 +168,6 @@ export async function handleReferralOnSignUp({
       referralCode,
     });
 
-    // Import the createReferral function
     const { createReferral } = await import("@/features/referrals/referral-code");
     await createReferral(userId, referralCode);
     logger.info("Successfully created referral", {
@@ -277,175 +180,9 @@ export async function handleReferralOnSignUp({
       userId,
       email,
     });
-    // Don't throw error - referral failure shouldn't prevent sign up
     captureException(error, {
       extra: { userId, email, location: "handleReferralOnSignUp" },
     });
-  }
-}
-
-// TODO: move into email provider instead of checking the provider type
-async function getProfileData(providerId: string, accessToken: string) {
-  if (isGoogleProvider(providerId)) {
-    const contactsClient = getGoogleContactsClient({ accessToken });
-    const profileResponse = await contactsClient.people.get({
-      resourceName: "people/me",
-      personFields: "emailAddresses,names,photos",
-    });
-
-    return {
-      email: profileResponse.data.emailAddresses
-        ?.find((e) => e.metadata?.primary)
-        ?.value?.toLowerCase(),
-      name: profileResponse.data.names?.find((n) => n.metadata?.primary)
-        ?.displayName,
-      image: profileResponse.data.photos?.find((p) => p.metadata?.primary)?.url,
-    };
-  }
-
-  if (isMicrosoftProvider(providerId)) {
-    const client = createOutlookClient(accessToken, logger);
-    try {
-      const profileResponse = await client.getUserProfile();
-
-      // Get photo separately as it requires a different endpoint
-      let photoUrl = null;
-      try {
-        const photo = await client.getUserPhoto();
-        if (photo) {
-          photoUrl = photo;
-        }
-      } catch (error) {
-        logger.info("User has no profile photo", { error });
-      }
-
-      return {
-        email:
-          profileResponse.mail?.toLowerCase() ||
-          profileResponse.userPrincipalName?.toLowerCase(),
-        name: profileResponse.displayName,
-        image: photoUrl,
-      };
-    } catch (error) {
-      logger.error("Error fetching Microsoft profile data", { error });
-      throw error;
-    }
-  }
-}
-
-async function handleLinkAccount(account: Account) {
-  let primaryEmail: string | null | undefined;
-  let primaryName: string | null | undefined;
-  let primaryPhotoUrl: string | null | undefined;
-
-  try {
-    if (!account.accessToken) {
-      logger.error(
-        "[linkAccount] No access_token found in data, cannot fetch profile.",
-      );
-      throw new Error("Missing access token during account linking.");
-    }
-    const profileData = await getProfileData(
-      account.providerId,
-      account.accessToken,
-    );
-
-    if (!profileData?.email) {
-      logger.error("[handleLinkAccount] No email found in profile data");
-    }
-
-    primaryEmail = profileData?.email;
-    primaryName = profileData?.name;
-    primaryPhotoUrl = profileData?.image;
-
-    if (!primaryEmail) {
-      logger.error(
-        "[linkAccount] Primary email could not be determined from profile.",
-      );
-      throw new Error("Primary email not found for linked account.");
-    }
-
-    // Check if email already belongs to a different user
-    const existingEmailAccount = await prisma.emailAccount.findUnique({
-      where: { email: primaryEmail.trim().toLowerCase() },
-      select: { userId: true },
-    });
-
-    if (
-      existingEmailAccount &&
-      existingEmailAccount.userId !== account.userId
-    ) {
-      logger.error("[linkAccount] Email already linked to a different user", {
-        email: primaryEmail,
-        existingUserId: existingEmailAccount.userId,
-        newUserId: account.userId,
-      });
-      throw new Error("email_already_linked");
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { id: account.userId },
-      select: { email: true, name: true, image: true },
-    });
-
-    if (!user?.email) {
-      logger.error("[linkAccount] No user email found", {
-        userId: account.userId,
-      });
-      return;
-    }
-
-    const data = {
-      userId: account.userId,
-      accountId: account.id,
-      name: primaryName,
-      image: primaryPhotoUrl,
-    };
-
-    await prisma.$transaction([
-      prisma.emailAccount.upsert({
-        where: { email: profileData?.email },
-        update: data,
-        create: {
-          ...data,
-          email: primaryEmail,
-        },
-      }),
-      prisma.account.update({
-        where: { id: account.id },
-        data: { disconnectedAt: null },
-      }),
-    ]);
-
-    await clearSpecificErrorMessages({
-      userId: account.userId,
-      errorTypes: [ErrorType.ACCOUNT_DISCONNECTED],
-      logger,
-    });
-
-    // Handle premium account seats
-    await updateAccountSeats({ userId: account.userId }).catch((error) => {
-      logger.error("[linkAccount] Error updating premium account seats:", {
-        userId: account.userId,
-        error,
-      });
-      captureException(error, { extra: { userId: account.userId } });
-    });
-
-    logger.info("[linkAccount] Successfully linked account", {
-      email: user.email,
-      userId: account.userId,
-      accountId: account.id,
-    });
-  } catch (error) {
-    logger.error("[linkAccount] Error during linking process:", {
-      userId: account.userId,
-      error,
-    });
-    captureException(error, {
-      extra: { userId: account.userId, location: "linkAccount" },
-    });
-    throw error;
   }
 }
 
@@ -463,16 +200,16 @@ export async function saveTokens({
   };
   accountRefreshToken: string | null;
   provider: string;
-} & ( // provide one of these:
-    | {
+} & (
+  | {
       providerAccountId: string;
       emailAccountId?: never;
     }
-    | {
+  | {
       emailAccountId: string;
       providerAccountId?: never;
     }
-  )) {
+)) {
   const refreshToken = tokens.refresh_token ?? accountRefreshToken;
 
   if (!refreshToken) {
@@ -491,13 +228,12 @@ export async function saveTokens({
   };
 
   if (emailAccountId) {
-    // Encrypt tokens in data directly
-    // Usually we do this in prisma-extensions.ts but we need to do it here because we're updating the account via the emailAccount
-    // We could also edit prisma-extensions.ts to handle this case but this is easier for now
-    if (data.access_token)
+    if (data.access_token) {
       data.access_token = encryptToken(data.access_token) || undefined;
-    if (data.refresh_token)
+    }
+    if (data.refresh_token) {
       data.refresh_token = encryptToken(data.refresh_token) || "";
+    }
 
     const emailAccount = await prisma.emailAccount.update({
       where: { id: emailAccountId },
@@ -540,6 +276,3 @@ export async function saveTokens({
     return account;
   }
 }
-
-export const auth = async () =>
-  betterAuthConfig.api.getSession({ headers: await headers() });

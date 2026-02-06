@@ -15,21 +15,6 @@ import { EMAIL_ACCOUNT_HEADER } from "@/server/lib/config";
 // Mock server-only as per rule
 vi.mock("server-only", () => ({}));
 
-// Mock external dependencies
-vi.mock("better-auth", () => {
-  // Define the mock function INSIDE the factory
-  const mockAuthFn = vi.fn();
-  return {
-    // Mock the default export (the betterAuth function)
-    betterAuth: vi.fn(() => ({
-      // This is the object returned when betterAuth() is called
-      api: { getSession: mockAuthFn }, // Mock API methods
-      signIn: vi.fn(),
-      signOut: vi.fn(),
-    })),
-  };
-});
-
 // Mock the auth function from @/server/auth
 vi.mock("@/server/auth", () => ({
   auth: vi.fn(),

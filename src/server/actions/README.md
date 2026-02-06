@@ -229,7 +229,7 @@ ctx: {
 ## Validation Status
 
 All actions are:
-- Authenticated via `better-auth` session
+- Authenticated via WorkOS AuthKit session
 - Input-validated via Zod schemas
 - Logged with request IDs
 - Error-tracked via Sentry

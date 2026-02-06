@@ -7,7 +7,7 @@ The `src/server` directory contains the backend logic of the application, organi
 ```
 server/
 ├── actions/          # Server actions (next-safe-action handlers)
-├── auth/             # Authentication (better-auth)
+├── auth/             # Authentication (WorkOS AuthKit)
 ├── db/               # Database (Prisma client, extensions)
 ├── features/         # Feature modules (domain logic)
 ├── integrations/     # External API clients
@@ -62,7 +62,7 @@ Prisma client and extensions.
 - `encryption.ts` - Token encryption
 
 ### 6. `auth/` (Authentication)
-Better-auth configuration and utilities.
+WorkOS AuthKit configuration and utilities.
 
 ### 7. `packages/` (Internal Packages)
 Standalone packages used by the application.

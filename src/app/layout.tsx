@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { AuthKitProvider } from "@workos-inc/authkit-nextjs/components";
 import "./globals.css";
 import { ClientNotificationProvider } from "@/components/client-notification-provider";
 
@@ -28,8 +29,10 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <ClientNotificationProvider />
-        {children}
+        <AuthKitProvider>
+          <ClientNotificationProvider />
+          {children}
+        </AuthKitProvider>
       </body>
     </html>
   );

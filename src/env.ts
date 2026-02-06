@@ -29,6 +29,9 @@ export const env = createEnv({
     PREVIEW_DATABASE_URL_UNPOOLED: z.string().url().optional(),
 
     AUTH_SECRET: z.string().optional(),
+    WORKOS_API_KEY: z.string().min(1),
+    WORKOS_CLIENT_ID: z.string().min(1),
+    WORKOS_COOKIE_PASSWORD: z.string().min(32),
     SURFACES_SHARED_SECRET: z.string().optional(), // Shared secret for Surfaces sidecar
     ADMIN_TOKEN: z.string().optional(), // For debug endpoints
     GOOGLE_CLIENT_ID: z.string().min(1),
@@ -106,7 +109,12 @@ export const env = createEnv({
     CALENDAR_ACTIONS_DRY_RUN: z.coerce.boolean().optional().default(false),
     SIDECAR_URL: z.string().url().optional(), // URL of the surfaces sidecar for background jobs
     SURFACES_API_URL: z.string().url().optional(), // URL of the surfaces sidecar for push notifications
-    OAUTH_PROXY_URL: z.string().url().optional(),
+    OAUTH_PROXY_URL: z
+      .preprocess(
+        (value) =>
+          typeof value === "string" && value.trim() === "" ? undefined : value,
+        z.string().url().optional(),
+      ),
     // Set to true on the server that acts as the OAuth proxy (e.g., staging)
     IS_OAUTH_PROXY_SERVER: booleanString.optional().default(false),
     // Additional trusted origins for CORS (comma-separated, supports wildcards like https://*.vercel.app)
@@ -128,9 +136,10 @@ export const env = createEnv({
     NEXT_PUBLIC_STRIPE_BUSINESS_PLUS_MONTHLY_PRICE_ID: z.string().optional(),
     NEXT_PUBLIC_STRIPE_BUSINESS_PLUS_ANNUALLY_PRICE_ID: z.string().optional(),
 
+    NEXT_PUBLIC_WORKOS_REDIRECT_URI: z.string().url(),
 
 
-    NEXT_PUBLIC_FREE_UNSUBSCRIBE_CREDITS: z.number().default(5),
+    NEXT_PUBLIC_FREE_UNSUBSCRIBE_CREDITS: z.coerce.number().default(5),
     NEXT_PUBLIC_CALL_LINK: z
       .string()
       .default("https://cal.com/team/amodel/feedback"),
@@ -184,6 +193,7 @@ export const env = createEnv({
     NEXT_PUBLIC_STRIPE_BUSINESS_PLUS_ANNUALLY_PRICE_ID:
       process.env.NEXT_PUBLIC_STRIPE_BUSINESS_PLUS_ANNUALLY_PRICE_ID,
 
+    NEXT_PUBLIC_WORKOS_REDIRECT_URI: process.env.NEXT_PUBLIC_WORKOS_REDIRECT_URI,
 
 
     NEXT_PUBLIC_CALL_LINK: process.env.NEXT_PUBLIC_CALL_LINK,

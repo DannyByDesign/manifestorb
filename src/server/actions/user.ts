@@ -7,8 +7,7 @@ import { deleteUser } from "@/server/lib/user/delete";
 import { actionClient, actionClientUser } from "@/actions/safe-action";
 import { SafeError } from "@/server/lib/error";
 import { updateAccountSeats } from "@/features/premium/server";
-import { betterAuthConfig } from "@/server/auth";
-import { headers } from "next/headers";
+import { signOut } from "@workos-inc/authkit-nextjs";
 import {
   saveAboutBody,
   saveSignatureBody,
@@ -64,13 +63,9 @@ export const deleteAccountAction = actionClientUser
       logger.error("Failed to clear last email account cookie", { error });
     });
 
-    await betterAuthConfig.api
-      .signOut({
-        headers: await headers(),
-      })
-      .catch((error) => {
-        logger.error("Failed to sign out", { error });
-      });
+    await signOut().catch((error) => {
+      logger.error("Failed to sign out", { error });
+    });
     await deleteUser({ userId, logger });
   });
 

@@ -19,7 +19,7 @@ src/
     ├── actions/              # Server actions (next-safe-action handlers)
     │   └── validation/       # Zod validation schemas
     │
-    ├── auth/                 # Authentication (better-auth)
+    ├── auth/                 # Authentication (WorkOS AuthKit)
     ├── db/                   # Database (Prisma client, extensions)
     │
     ├── features/             # Feature modules (domain logic)
