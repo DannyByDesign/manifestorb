@@ -255,6 +255,10 @@ function normalizeSubjectPrefixes(
     const match = derivedSubjects.find((derived) =>
       derived.toLowerCase().startsWith(subject.toLowerCase()),
     );
-    return match ?? subject;
+    if (match) return match;
+    const containsMatch = derivedSubjects.find((derived) =>
+      derived.toLowerCase().includes(subject.toLowerCase()),
+    );
+    return containsMatch ?? subject;
   });
 }

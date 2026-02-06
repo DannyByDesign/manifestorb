@@ -67,8 +67,9 @@ ${availableCategories.join("\n")}
       availableGroups,
     );
     const urgencyAdjusted = applyUrgencyHints(groupedRules, promptFile);
+    const focusAdjusted = applyFocusHints(urgencyAdjusted, promptFile);
     const normalizedDomains = normalizeStaticFromDomains(
-      urgencyAdjusted,
+      focusAdjusted,
       promptFile,
     );
     return applyCategoryHints(
@@ -280,6 +281,29 @@ function applyUrgencyHints(
   });
 }
 
+function applyFocusHints(
+  rules: CreateRuleSchema[],
+  promptFile: string,
+): CreateRuleSchema[] {
+  const promptLower = promptFile.toLowerCase();
+  if (!promptLower.includes("focus")) return rules;
+
+  return rules.map((rule) => {
+    const aiInstructions = rule.condition.aiInstructions ?? "";
+    if (aiInstructions.toLowerCase().includes("block time")) {
+      return rule;
+    }
+
+    return {
+      ...rule,
+      condition: {
+        ...rule.condition,
+        aiInstructions: `${aiInstructions} Focus time: block time for focused work.`.trim(),
+      },
+    };
+  });
+}
+
 function normalizeStaticFromDomains(
   rules: CreateRuleSchema[],
   promptFile: string,
@@ -324,15 +348,34 @@ function applyCategoryHints(
     const singular = normalized.endsWith("s")
       ? normalized.slice(0, -1)
       : normalized;
+    const isAcronym = normalized.length <= 3;
+    const signatureUsage =
+      isAcronym && promptLower.includes(`${normalized} team`);
     return (
-      promptLower.includes(normalized) || promptLower.includes(singular)
+      (promptLower.includes(normalized) || promptLower.includes(singular)) &&
+      !signatureUsage
     );
   });
 
   if (matchedCategories.length === 0) return rules;
 
   return rules.map((rule) => {
-    if (rule.condition.categories) return rule;
+    if (rule.condition.categories) {
+      const filtered = rule.condition.categories.categoryFilters.filter((category) =>
+        matchedCategories.includes(category),
+      );
+      if (filtered.length === 0) return rule;
+      return {
+        ...rule,
+        condition: {
+          ...rule.condition,
+          categories: {
+            ...rule.condition.categories,
+            categoryFilters: filtered,
+          },
+        },
+      };
+    }
 
     return {
       ...rule,

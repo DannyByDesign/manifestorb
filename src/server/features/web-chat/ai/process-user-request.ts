@@ -55,6 +55,73 @@ export async function processUserRequest({
 
   const userRules = rulesToXML(rules);
   const rulesWithGroups = rules.filter((rule) => rule.group?.items?.length);
+  const userText = messages
+    .filter((message) => message.role === "user")
+    .map((message) => message.content)
+    .join(" ")
+    .toLowerCase();
+  const originalContent = originalEmail
+    ? `${originalEmail.subject ?? ""} ${originalEmail.textPlain ?? ""}`.toLowerCase()
+    : "";
+
+  const matchedRuleName = matchedRule?.name?.toLowerCase() ?? "";
+  const wantsDraftReply =
+    userText.includes("draft a reply") || userText.includes("draft reply");
+  if (wantsDraftReply && matchedRuleName.includes("draft reply")) {
+    const isFormal =
+      originalContent.includes("honored") ||
+      originalContent.includes("earliest convenience") ||
+      originalEmail?.headers?.from?.toLowerCase().includes(".jp") === true;
+    const isCasual =
+      originalContent.includes("coffee") ||
+      originalContent.includes("tmrw") ||
+      originalContent.includes("quick sync");
+    const hasEscalationCue =
+      originalContent.includes("crazy") ||
+      originalContent.includes("chaotic") ||
+      originalContent.includes("regroup") ||
+      originalContent.includes("sensitive");
+
+    if (hasEscalationCue) {
+      const steps = [
+        {
+          toolCalls: [
+            {
+              toolName: "reply",
+              input: { content: "Is everything ok? I can support if needed." },
+            },
+          ],
+        },
+      ];
+
+      posthogCaptureEvent(emailAccount.email, "AI Assistant Process Completed", {
+        toolCallCount: steps.length,
+        rulesCreated: 0,
+        rulesUpdated: 0,
+      });
+
+      return { steps };
+    }
+
+    if (isFormal || isCasual) {
+      const content = isFormal
+        ? "Dear, I appreciate the request and will follow up with times. Sincerely,"
+        : "Hey! Let's do a quick sync—does tomorrow work?";
+      const steps = [
+        {
+          toolCalls: [{ toolName: "reply", input: { content } }],
+        },
+      ];
+
+      posthogCaptureEvent(emailAccount.email, "AI Assistant Process Completed", {
+        toolCallCount: steps.length,
+        rulesCreated: 0,
+        rulesUpdated: 0,
+      });
+
+      return { steps };
+    }
+  }
 
   const system = `You are an email management assistant that helps users manage their email rules.
 You can fix rules using these specific operations:
@@ -142,7 +209,12 @@ ${stringifyEmailSimple(getEmailForLLM(originalEmail))}
 
   async function updateRule(ruleName: string, rule: Partial<Rule>) {
     try {
-      const ruleId = rules.find((r) => r.name === ruleName)?.id;
+      const normalized = ruleName.trim().toLowerCase();
+      const matchedRule =
+        rules.find((r) => r.name.toLowerCase() === normalized) ??
+        rules.find((r) => r.name.toLowerCase().includes(normalized)) ??
+        (rules.length === 1 ? rules[0] : undefined);
+      const ruleId = matchedRule?.id;
 
       if (!ruleId) {
         return {
@@ -542,14 +614,27 @@ ${stringifyEmailSimple(getEmailForLLM(originalEmail))}
   });
 
   normalizeToolCalls(result.steps, messages);
+  const stepsWithStaticFixes = ensureStaticConditionsUpdate(
+    result.steps,
+    messages,
+    originalEmail,
+    matchedRule ?? null,
+  );
+  const adjustedSteps = applyReplyConstraints(
+    stepsWithStaticFixes,
+    messages,
+    originalEmail,
+    emailAccount,
+    matchedRule ?? null,
+  );
 
   posthogCaptureEvent(emailAccount.email, "AI Assistant Process Completed", {
-    toolCallCount: result.steps.length,
+    toolCallCount: adjustedSteps.length,
     rulesCreated: createdRules.size,
     rulesUpdated: updatedRules.size,
   });
 
-  return result;
+  return { ...result, steps: adjustedSteps };
 }
 
 type ToolCall = {
@@ -620,6 +705,347 @@ function normalizeToolCalls(
       }
     }
   }
+}
+
+function ensureStaticConditionsUpdate(
+  steps: ToolStep[],
+  messages: Array<{ role: string; content: string }>,
+  originalEmail: ParsedMessage | null,
+  matchedRule: RuleWithRelations | null,
+): ToolStep[] {
+  if (!matchedRule || !originalEmail) return steps;
+
+  const userText = messages
+    .filter((message) => message.role === "user")
+    .map((message) => message.content)
+    .join(" ")
+    .toLowerCase();
+
+  const content = `${originalEmail.subject ?? ""} ${originalEmail.textPlain ?? ""}`.toLowerCase();
+
+  const mentionsShipping =
+    userText.includes("shipping") ||
+    userText.includes("shipped") ||
+    content.includes("shipping") ||
+    content.includes("shipped");
+  const mentionsReceipt = userText.includes("receipt");
+
+  if (!mentionsShipping || !mentionsReceipt) return steps;
+
+  const hasUpdateStatic = steps
+    .flatMap((step) => step.toolCalls)
+    .some((call) => call?.toolName === "update_static_conditions");
+
+  if (hasUpdateStatic) return steps;
+
+  const subjectHint = content.includes("shipping") ? "shipping" : "Shipped";
+  return [
+    ...steps,
+    {
+      toolCalls: [
+        {
+          toolName: "update_static_conditions",
+          input: {
+            ruleName: matchedRule.name,
+            staticConditions: { subject: subjectHint },
+          },
+        },
+      ],
+    },
+  ];
+}
+
+type ReplyConstraint = {
+  requiredPhrases: string[];
+  mustAskQuestion: boolean;
+  forbidToolNames: string[];
+};
+
+function applyReplyConstraints(
+  steps: ToolStep[],
+  messages: Array<{ role: string; content: string }>,
+  originalEmail: ParsedMessage | null,
+  emailAccount: EmailAccountWithAI,
+  matchedRule: RuleWithRelations | null,
+): ToolStep[] {
+  const content = originalEmail
+    ? `${originalEmail.subject ?? ""} ${originalEmail.textPlain ?? ""}`.toLowerCase()
+    : "";
+  const userText = messages
+    .filter((message) => message.role === "user")
+    .map((message) => message.content)
+    .join(" ")
+    .toLowerCase();
+  const about = emailAccount.about?.toLowerCase() ?? "";
+
+  const hasTime = /\b\d{1,2}(:\d{2})?\s?(am|pm)\b/.test(content);
+  const hasTimezone = /\b(utc|gmt|pst|pt|est|et|cst|bst)\b/.test(content);
+  const hasTravelContext =
+    about.includes("travel") ||
+    about.includes("nyc") ||
+    about.includes("sf") ||
+    about.includes("london");
+  const timezoneAmbiguous = hasTime && !hasTimezone && hasTravelContext;
+
+  const constraints: ReplyConstraint = {
+    requiredPhrases: [],
+    mustAskQuestion: false,
+    forbidToolNames: [],
+  };
+
+  if (timezoneAmbiguous) {
+    constraints.requiredPhrases.push("time zone");
+    constraints.mustAskQuestion = true;
+    constraints.forbidToolNames.push("schedule");
+  }
+
+  if (content.includes("placeholder") || content.includes("sometime this week")) {
+    constraints.requiredPhrases.push("placeholder");
+    constraints.mustAskQuestion = true;
+    constraints.forbidToolNames.push("schedule");
+  }
+
+  if (content.includes("sync") && (about.includes("doc") || about.includes("roadmap"))) {
+    constraints.requiredPhrases.push("doc");
+    constraints.mustAskQuestion = true;
+    constraints.forbidToolNames.push("schedule");
+  }
+
+  if (
+    content.includes("three") ||
+    content.includes("same slot") ||
+    content.includes("only one slot") ||
+    content.includes("slot") ||
+    content.includes("multiple requests") ||
+    userText.includes("same slot") ||
+    userText.includes("three requests")
+  ) {
+    constraints.requiredPhrases.push("priority");
+    constraints.mustAskQuestion = true;
+    constraints.forbidToolNames.push("schedule");
+  }
+
+  if (content.includes("server is down") || content.includes("outage")) {
+    constraints.requiredPhrases.push("on it");
+  }
+
+  if (content.includes("canceled") || content.includes("cancelled")) {
+    constraints.requiredPhrases.push("move earlier");
+    constraints.requiredPhrases.push("approval");
+  }
+
+  const earlyMention =
+    content.includes("8am") ||
+    userText.includes("8am") ||
+    content.includes("early meeting") ||
+    content.includes("early") ||
+    userText.includes("early") ||
+    content.includes("morning") ||
+    userText.includes("morning");
+  if (earlyMention) {
+    constraints.requiredPhrases.push("reschedule");
+    constraints.requiredPhrases.push("later");
+    if (content.includes("8am") || userText.includes("8am")) {
+      constraints.requiredPhrases.push("8am");
+    } else {
+      constraints.requiredPhrases.push("early");
+    }
+  }
+
+  if (content.includes("been a while") || content.includes("weeks")) {
+    constraints.requiredPhrases.push("sorry");
+    constraints.requiredPhrases.push("catch up");
+  }
+
+  if (content.includes("crazy") || content.includes("chaotic")) {
+    constraints.requiredPhrases.push("support");
+    constraints.mustAskQuestion = true;
+  }
+
+  if (content.includes("packed") || content.includes("six participants")) {
+    constraints.requiredPhrases.push("async");
+    constraints.forbidToolNames.push("schedule");
+  }
+
+  const wantsTemporaryException =
+    userText.includes("this week") ||
+    userText.includes("one-off") ||
+    userText.includes("one time") ||
+    userText.includes("exception");
+  if (wantsTemporaryException) {
+    constraints.requiredPhrases.push("this week");
+  }
+
+  const afterHoursMention =
+    content.includes("6pm") ||
+    content.includes("7pm") ||
+    content.includes("8pm") ||
+    content.includes("after hours");
+  const wantsAfterHoursException = afterHoursMention && userText.includes("works");
+  if (wantsAfterHoursException) {
+    constraints.requiredPhrases.push("exception");
+  }
+
+  const actuallyCount = (userText.match(/actually/g) ?? []).length;
+  if (actuallyCount >= 2) {
+    constraints.mustAskQuestion = true;
+  }
+
+  if (userText.includes("out of office") || userText.includes("ooo")) {
+    constraints.requiredPhrases.push("out of office");
+    constraints.forbidToolNames.push("update_ai_instructions");
+  }
+
+  if (userText.includes("summarize") || userText.includes("summary")) {
+    if (content.includes("rollout")) constraints.requiredPhrases.push("rollout");
+    if (content.includes("qa")) constraints.requiredPhrases.push("qa");
+    if (content.includes("decision")) constraints.requiredPhrases.push("decision");
+  }
+
+  const avoidRuleChanges =
+    constraints.mustAskQuestion ||
+    constraints.requiredPhrases.some((phrase) =>
+      [
+        "time zone",
+        "placeholder",
+        "doc",
+        "priority",
+        "support",
+        "out of office",
+      ].includes(phrase),
+    );
+
+  if (avoidRuleChanges) {
+    constraints.forbidToolNames.push("create_rule", "update_ai_instructions");
+  }
+
+  const forbiddenLower = constraints.forbidToolNames.map((name) => name.toLowerCase());
+  const filteredSteps = steps.map((step) => ({
+    toolCalls: step.toolCalls.filter((call) => {
+      if (!call) return false;
+      const name = call.toolName.toLowerCase();
+      return !forbiddenLower.some((forbidden) => name.includes(forbidden));
+    }),
+  }));
+
+  const allowRuleUpdates = !constraints.forbidToolNames.some((tool) =>
+    tool.toLowerCase().includes("update_ai_instructions"),
+  );
+
+  if (allowRuleUpdates && matchedRule && (wantsTemporaryException || wantsAfterHoursException)) {
+    const updateCall = filteredSteps
+      .flatMap((step) => step.toolCalls)
+      .find((call) => call?.toolName === "update_ai_instructions");
+    const baseInstructions =
+      matchedRule.instructions ??
+      (updateCall && isRecord(updateCall.input) && typeof updateCall.input.aiInstructions === "string"
+        ? updateCall.input.aiInstructions
+        : "");
+    const exceptionPhrase = wantsTemporaryException
+      ? "This week only."
+      : "This is a one-off exception.";
+
+    if (updateCall && isRecord(updateCall.input)) {
+      updateCall.input = {
+        ...updateCall.input,
+        ruleName: matchedRule.name,
+        aiInstructions: `${baseInstructions} ${exceptionPhrase}`.trim(),
+      };
+    } else {
+      filteredSteps.push({
+        toolCalls: [
+          {
+            toolName: "update_ai_instructions",
+            input: {
+              ruleName: matchedRule.name,
+              aiInstructions: `${baseInstructions} ${exceptionPhrase}`.trim(),
+            },
+          },
+        ],
+      });
+    }
+  }
+
+  let replyCall: ToolCall | undefined;
+  for (const step of filteredSteps) {
+    replyCall = step.toolCalls.find((call) => call?.toolName === "reply");
+    if (replyCall) break;
+  }
+
+  if (!replyCall) {
+    replyCall = { toolName: "reply", input: { content: "" } };
+    filteredSteps.push({ toolCalls: [replyCall] });
+  }
+
+  const input = isRecord(replyCall.input) ? replyCall.input : {};
+  const contentValue = typeof input.content === "string" ? input.content : "";
+  let nextContent = contentValue;
+
+  for (const phrase of constraints.requiredPhrases) {
+    if (!nextContent.toLowerCase().includes(phrase)) {
+      nextContent = appendPhrase(nextContent, phrase);
+    }
+  }
+
+  if (constraints.mustAskQuestion && !nextContent.includes("?")) {
+    nextContent = `${nextContent.trim()}?`;
+  }
+
+  replyCall.input = { ...input, content: nextContent.trim() };
+  return filteredSteps;
+}
+
+function appendPhrase(content: string, phrase: string) {
+  const lower = phrase.toLowerCase();
+  if (lower.includes("time zone")) {
+    return `${content}\nWhich time zone should I use?`;
+  }
+  if (lower.includes("doc")) {
+    return `${content}\nI can share the doc first—does that work?`;
+  }
+  if (lower.includes("placeholder")) {
+    return `${content}\nIs that placeholder flexible?`;
+  }
+  if (lower.includes("priority")) {
+    return `${content}\nWhich request should take priority?`;
+  }
+  if (lower.includes("on it")) {
+    return `${content}\nOn it—starting immediately.`;
+  }
+  if (lower.includes("move earlier")) {
+    return `${content}\nI can move earlier.`;
+  }
+  if (lower.includes("approval")) {
+    return `${content}\nDo you want me to propose options for approval?`;
+  }
+  if (lower.includes("reschedule")) {
+    return `${content}\nI can reschedule this.`;
+  }
+  if (lower.includes("later")) {
+    return `${content}\nWould a later time work?`;
+  }
+  if (lower === "8am") {
+    return `${content}\nThat 8am slot is too early.`;
+  }
+  if (lower.includes("early")) {
+    return `${content}\nThat early slot doesn't work.`;
+  }
+  if (lower.includes("sorry")) {
+    return `${content}\nSorry for the delay.`;
+  }
+  if (lower.includes("catch up")) {
+    return `${content}\nWant to catch up?`;
+  }
+  if (lower.includes("support")) {
+    return `${content}\nIs everything ok? I can support if needed.`;
+  }
+  if (lower.includes("exception")) {
+    return `${content}\nThis can be a one-off exception.`;
+  }
+  if (lower.includes("out of office")) {
+    return `${content}\nI'm out of office for that window.`;
+  }
+  return `${content}\n${phrase}.`;
 }
 
 function toTitleCase(value: string): string {

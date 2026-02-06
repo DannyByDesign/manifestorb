@@ -1,5 +1,6 @@
 /** biome-ignore-all lint/style/noMagicNumbers: test */
 import { describe, expect, test, vi, beforeEach } from "vitest";
+import stripIndent from "strip-indent";
 import { aiGetCalendarAvailability } from "@/features/calendar/ai/availability";
 import type { EmailForLLM } from "@/server/lib/types";
 import { getEmailAccount } from "@/__tests__/helpers";
@@ -298,6 +299,48 @@ describe.runIf(isAiTest)("aiGetCalendarAvailability", () => {
         // The AI should suggest alternative times when the requested time is busy
         expect(result.suggestedTimes.length).toBeGreaterThan(0);
         console.debug("Alternative time suggestions:", result.suggestedTimes);
+      }
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "handles multi-party scheduling constraints without giving up",
+    async () => {
+      const { getUnifiedCalendarAvailability } = vi.mocked(
+        await import("@/features/calendar/unified-availability"),
+      );
+      getUnifiedCalendarAvailability.mockResolvedValue([
+        {
+          start: "2024-03-28T12:00:00Z",
+          end: "2024-03-28T15:00:00Z",
+        },
+      ]);
+
+      const messages = [
+        getMockEmailForLLM({
+          subject: "Scheduling constraints",
+          content: stripIndent(`
+            My exec can't do Tuesdays.
+            The client can only do Thursday after 3pm their time.
+            I'm free Wednesday or Thursday afternoon.
+          `),
+          from: "assistant@example.com",
+        }),
+      ];
+
+      const emailAccount = getEmailAccount();
+
+      const result = await aiGetCalendarAvailability({
+        emailAccount,
+        messages,
+        logger,
+      });
+
+      expect(result).toBeDefined();
+      if (result) {
+        expect(result.suggestedTimes.length).toBeGreaterThan(0);
+        expect(result.noAvailability).not.toBe(true);
       }
     },
     TIMEOUT,

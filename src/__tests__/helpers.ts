@@ -31,7 +31,7 @@ export function getEmailAccount(
     id: "email-account-id",
     userId: "user1",
     email: overrides.email || "user@test.com",
-    about: null,
+    about: overrides.about ?? null,
     multiRuleSelectionEnabled: overrides.multiRuleSelectionEnabled ?? false,
     timezone: null,
     calendarBookingLink: null,

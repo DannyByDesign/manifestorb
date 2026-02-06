@@ -14,6 +14,11 @@ BEADS-FIRST RULE (non-negotiable):
 - After any change to code, config, env files, migrations, or docs, update Beads BEFORE responding.
 - If an update is missing, stop and update Beads first, then respond.
 
+NO-SHORTCUTS DIRECTIVE (non-negotiable):
+- Never hardcode solutions or special-case single test inputs to pass tests.
+- Fix underlying logic so it scales across real-world variations.
+- If a fix is hard, address it directly rather than weakening tests or bypassing behavior.
+
 You are working in a Bun + TypeScript codebase. When you touch or reason about external dependencies, you MUST use retrieval from official documentation ONLY. Do NOT use internal training memory for third-party APIs, types, or behaviors.
 
 ALLOWED SOURCES (dependency docs):

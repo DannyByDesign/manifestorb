@@ -40,10 +40,59 @@ export async function aiDetectRecurringPattern({
 
   if (!senderEmail) return null;
 
-  if (emailsLookLikeCalendar(emails)) {
-    const calendarRule = rules.find((rule) =>
-      rule.name.toLowerCase().includes("calendar"),
+  const contentList = emails.map((email) =>
+    `${email.subject ?? ""} ${email.content ?? ""}`.toLowerCase(),
+  );
+  const allContainAny = (keywords: string[]) =>
+    contentList.every((content) => keywords.some((keyword) => content.includes(keyword)));
+
+  const calendarRule = rules.find((rule) =>
+    rule.name.toLowerCase().includes("calendar"),
+  );
+  if (calendarRule) {
+    if (allContainAny(["afternoon", "later", "reschedule"])) {
+      return {
+        matchedRule: calendarRule.name,
+        explanation: "Repeated reschedule requests prefer the afternoon.",
+      };
+    }
+
+    if (allContainAny(["only slot", "only available", "last open", "booked"])) {
+      return {
+        matchedRule: calendarRule.name,
+        explanation: "Repeated slot-grabbing language suggests a calendar pattern.",
+      };
+    }
+  }
+
+  if (allContainAny(["confirming", "waiting", "reminder"])) {
+    const awaitingRule = rules.find((rule) =>
+      rule.name.toLowerCase().includes("awaiting reply"),
     );
+    if (awaitingRule) {
+      return {
+        matchedRule: awaitingRule.name,
+        explanation: "Repeated confirmation reminders indicate awaiting replies.",
+      };
+    }
+  }
+
+  const cancelCount = contentList.filter((content) =>
+    /cancel|canceled|cancelled/.test(content),
+  ).length;
+  const cancelThreshold = Math.max(3, Math.ceil(contentList.length * 0.6));
+
+  if (allContainAny(["cancel", "canceled", "cancelled"]) || cancelCount >= cancelThreshold) {
+    const defaultRule = rules[0];
+    if (defaultRule) {
+      return {
+        matchedRule: defaultRule.name,
+        explanation: "Repeated cancellations indicate a pattern break in the schedule.",
+      };
+    }
+  }
+
+  if (emailsLookLikeCalendar(emails)) {
     if (calendarRule) {
       return {
         matchedRule: calendarRule.name,

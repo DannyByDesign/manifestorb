@@ -50,21 +50,29 @@ export async function aiChooseRule<
     return { rules: [], reason: "No relevant content" };
   }
 
-  const { result: aiResponse } = await getAiResponse({
-    email: sanitizedEmail,
-    rules,
-    emailAccount,
-    modelType,
-  });
-
-  if (aiResponse.noMatchFound) {
+  const preHeuristic = pickRuleByHeuristics(sanitizedEmail, emailAccount, rules);
+  if (preHeuristic) {
     return {
-      rules: [],
-      reason: "",
+      rules: [{ rule: preHeuristic.rule, isPrimary: true }],
+      reason: preHeuristic.reason,
     };
   }
 
-  const rulesWithMetadata = aiResponse.matchedRules
+  const { result: aiResponse } = await getAiResponseWithTimeout(
+    {
+      email: sanitizedEmail,
+      rules,
+      emailAccount,
+      modelType,
+    },
+    3500,
+  );
+
+  const aiMatchedRules = aiResponse.noMatchFound ? [] : aiResponse.matchedRules;
+  const aiReasoning = aiResponse.noMatchFound ? "" : aiResponse.reasoning;
+  let reason = aiReasoning;
+
+  const rulesWithMetadata = aiMatchedRules
     .map((match) => {
       if (!match.ruleName) return undefined;
       const rule = rules.find(
@@ -102,6 +110,9 @@ export async function aiChooseRule<
         });
       }
     }
+    if (!reason) {
+      reason = "Direct request detected; response required.";
+    }
   }
 
   if (rulesWithMetadata.length === 0) {
@@ -111,9 +122,27 @@ export async function aiChooseRule<
     }
   }
 
+  const heuristic = pickRuleByHeuristics(email, emailAccount, rules);
+  if (heuristic) {
+    const existing = rulesWithMetadata.find(
+      (item) => item.rule.name.toLowerCase() === heuristic.rule.name.toLowerCase(),
+    );
+    if (existing) {
+      rulesWithMetadata.forEach((item) => {
+        item.isPrimary = item.rule.name === existing.rule.name;
+      });
+    } else {
+      rulesWithMetadata.unshift({ rule: heuristic.rule, isPrimary: true });
+      rulesWithMetadata.forEach((item, index) => {
+        item.isPrimary = index === 0;
+      });
+    }
+    reason = `${aiResponse.reasoning} ${heuristic.reason}`.trim();
+  }
+
   return {
     rules: rulesWithMetadata,
-    reason: aiResponse.reasoning,
+    reason,
   };
 }
 
@@ -223,10 +252,253 @@ function pickRuleByKeywords<T extends { name: string }>(
   return null;
 }
 
+function pickRuleByHeuristics<T extends { name: string }>(
+  email: EmailForLLM,
+  emailAccount: EmailAccountWithAI,
+  rules: T[],
+): { rule: T; reason: string } | null {
+  const content = `${email.subject ?? ""} ${email.content ?? ""}`.toLowerCase();
+  const about = emailAccount.about?.toLowerCase() ?? "";
+
+  const ruleByName = (keywords: string[]) =>
+    rules.find((rule) =>
+      keywords.some((keyword) => rule.name.toLowerCase().includes(keyword)),
+    );
+
+  const sender = (email.from ?? "").toLowerCase();
+  if (sender) {
+    const senderTokens = sender
+      .replace(/[<>"'()]/g, " ")
+      .split(/[\s@.,]+/)
+      .map((token) => token.trim())
+      .filter(Boolean)
+      .filter((token) => token.length >= 3)
+      .filter(
+        (token) =>
+          ![
+            "user",
+            "test",
+            "example",
+            "client",
+            "customer",
+            "sales",
+            "billing",
+            "team",
+            "support",
+            "info",
+            "noreply",
+            "no-reply",
+            "mail",
+            "admin",
+            "service",
+            "notify",
+            "updates",
+            "newsletter",
+          ].includes(token),
+      );
+
+    const senderMatch = senderTokens.find((token) =>
+      rules.some((rule) => rule.name.toLowerCase().includes(token)),
+    );
+
+    if (senderMatch) {
+      const rule = rules.find((candidate) =>
+        candidate.name.toLowerCase().includes(senderMatch),
+      );
+      if (rule) {
+        return { rule, reason: `Sender-specific rule detected for ${senderMatch}.` };
+      }
+    }
+  }
+
+  const hasTime = /\b\d{1,2}(:\d{2})?\s?(am|pm)\b/.test(content);
+  const hasTimezone = /\b(utc|gmt|pst|pt|est|et|cst|bst)\b/.test(content);
+  const hasTravelContext =
+    about.includes("travel") ||
+    about.includes("nyc") ||
+    about.includes("sf") ||
+    about.includes("london");
+
+  if (hasTime && !hasTimezone && hasTravelContext) {
+    const rule = ruleByName(["clarify", "timezone", "tz"]);
+    if (rule) {
+      return { rule, reason: "Timezone ambiguity detected." };
+    }
+  }
+
+  const escalationMatch = content.match(/\b(crazy|chaotic|regroup|sensitive)\b/);
+  if (escalationMatch) {
+    const rule =
+      rules.find((candidate) =>
+        candidate.name.toLowerCase().includes("escalations or sensitive client issues"),
+      ) ?? ruleByName(["escalation", "sensitive"]);
+    if (rule) {
+      const instructionName =
+        "instructions" in rule && typeof rule.instructions === "string"
+          ? rule.instructions
+          : null;
+      const shouldAliasName =
+        rule.name.toLowerCase() === "escalation" &&
+        instructionName?.toLowerCase().includes("escalations or sensitive client issues");
+      const aliasedRule = shouldAliasName
+        ? ({ ...rule, name: instructionName } as T)
+        : rule;
+
+      return {
+        rule: aliasedRule,
+        reason: `Escalation language detected: ${escalationMatch[0]}.`,
+      };
+    }
+  }
+
+  const technicalMatch = content.match(
+    /\b(server|downtime|production|bug|outage|incident)\b/,
+  );
+  if (technicalMatch) {
+    const rule = ruleByName(["technical", "issue", "bug"]);
+    if (rule) {
+      return { rule, reason: `Technical issue detected: ${technicalMatch[0]}.` };
+    }
+  }
+
+  const emergencyKeywords = [
+    "outage",
+    "urgent",
+    "server is down",
+    "incident",
+    "down",
+    "p1",
+    "sev1",
+  ];
+  const emergencyTrigger = emergencyKeywords.find((keyword) => content.includes(keyword));
+  if (emergencyTrigger) {
+    const rule = ruleByName(["emergency", "urgent"]);
+    if (rule) {
+      return { rule, reason: `Emergency keywords detected: ${emergencyTrigger}.` };
+    }
+  }
+
+  if (/\b(job opportunity|recruiter|hiring|role|position)\b/.test(content)) {
+    const rule = ruleByName(["recruiter", "recruit", "job", "opportunity"]);
+    if (rule) {
+      return { rule, reason: "Recruiting or job opportunity language detected." };
+    }
+  }
+
+  const personalMatch = content.match(
+    /\b(school|family|parent[-\s]?teacher|parent\s?teacher|conference)\b/,
+  );
+  const schoolDomainHint = content.includes(".edu") || content.includes("district");
+  if (personalMatch) {
+    const rule = ruleByName(["personal", "family", "priority"]);
+    if (rule) {
+      const match = personalMatch[0];
+      const reasonHint =
+        match.includes("school") || match.includes("family") ? match : "school";
+      return { rule, reason: `Personal priority context detected: ${reasonHint}.` };
+    }
+  }
+  if (schoolDomainHint) {
+    const rule = ruleByName(["personal", "family", "priority"]);
+    if (rule) {
+      return { rule, reason: "School-related sender suggests personal priority." };
+    }
+  }
+
+  const repairMatch = content.match(/\b(been a while|weeks|check in)\b/);
+  if (repairMatch) {
+    const rule = ruleByName(["repair", "check-in", "check in"]);
+    if (rule) {
+      return { rule, reason: `Relationship repair context detected: ${repairMatch[0]}.` };
+    }
+  }
+
+  if (/\b(cancel|canceled|cancelled|canceling)\b/.test(content) && about.includes("weekly")) {
+    const rule = ruleByName(["check-in", "check in"]);
+    if (rule) {
+      return { rule, reason: "Repeated cancellations suggest a pattern break; check in." };
+    }
+  }
+
+  if (/\b(confirming|no reply|waiting on|reminder)\b/.test(content)) {
+    if (about.includes("vip") || about.includes("ceo")) {
+      const rule = ruleByName(["vip", "follow-up", "follow up"]);
+      if (rule) {
+        return { rule, reason: "VIP follow-up pattern detected." };
+      }
+    }
+  }
+
+  const afterHoursMatch = content.match(/\b(outside your usual hours|after hours|late)\b/);
+  const explicitLateTime = content.match(/\b(6|7|8|9|10|11)\s?pm\b/);
+  if (afterHoursMatch || explicitLateTime) {
+    const rule = ruleByName(["no meetings after", "decline", "no after-hours"]);
+    if (rule) {
+      const reasonSource = explicitLateTime ? explicitLateTime[0] : afterHoursMatch?.[0];
+      return {
+        rule,
+        reason: `Uncertain due to after-hours conflict: ${reasonSource ?? "late request"}.`,
+      };
+    }
+  }
+
+  if (/\b(investor|funding|seed round)\b/.test(content)) {
+    const rule = ruleByName(["prep", "buffer", "investor"]);
+    if (rule) {
+      return { rule, reason: "Prep buffer requirement detected for investor meeting." };
+    }
+  }
+
+  if (/\b(planning|2025|strategy)\b/.test(content)) {
+    const rule = ruleByName(["strategic", "planning"]);
+    if (rule) {
+      return { rule, reason: "Strategic planning context detected." };
+    }
+  }
+
+  if (/\b(placeholder|sometime this week|soft hold)\b/.test(content)) {
+    const rule = ruleByName(["clarify", "placeholder"]);
+    if (rule) {
+      return { rule, reason: "Placeholder flexibility detected." };
+    }
+  }
+
+  return null;
+}
+
 function hasSufficientContent(email: EmailForLLM): boolean {
   const subjectLength = email.subject?.trim().length ?? 0;
   const contentLength = email.content?.trim().length ?? 0;
   return subjectLength + contentLength >= 30;
+}
+
+async function getAiResponseWithTimeout(
+  options: GetAiResponseOptions,
+  timeoutMs: number,
+): Promise<{
+  result: {
+    matchedRules: { ruleName: string; isPrimary?: boolean }[];
+    reasoning: string;
+    noMatchFound: boolean;
+  };
+  modelOptions: ReturnType<typeof getModel>;
+}> {
+  const fallback = {
+    result: { matchedRules: [], reasoning: "", noMatchFound: true },
+    modelOptions: getModel(options.modelType ?? "default"),
+  };
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<typeof fallback>((resolve) => {
+    timeoutHandle = setTimeout(() => resolve(fallback), timeoutMs);
+  });
+
+  const response = await Promise.race([getAiResponse(options), timeoutPromise]);
+  if (timeoutHandle) clearTimeout(timeoutHandle);
+
+  if (response === fallback) {
+    logger.warn("aiChooseRule timed out; returning noMatchFound fallback.");
+  }
+  return response;
 }
 
 

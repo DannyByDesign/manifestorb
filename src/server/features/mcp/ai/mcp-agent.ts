@@ -100,9 +100,11 @@ ${getEmailListPrompt({ messages, messageMaxLength: 1000, maxMessages: 5 })}
     });
   }
 
+  const cleanedText = result.text.replace(NO_RELEVANT_INFO_FOUND, "").trim();
   const responseText =
     hasNoRelevantInfo && hasToolOutput
-      ? `Relevant information found from ${[
+      ? cleanedText ||
+        `Relevant information found from ${[
           ...new Set(toolCallsWithResults.map((call) => call.toolName)),
         ].join(", ")}.`
       : result.text;

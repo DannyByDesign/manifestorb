@@ -82,6 +82,51 @@ export async function aiGetCalendarAvailability({
   logger.trace("Determined user timezone", { userTimezone });
   const hasCalendarConnections = calendarConnections.length > 0;
 
+  const cancellationRange = parseCancellationRange(threadContent);
+  if (hasCalendarConnections && cancellationRange) {
+    try {
+      const busyPeriods = await getUnifiedCalendarAvailability({
+        emailAccountId: emailAccount.id,
+        startDate: new Date(),
+        endDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        timezone: userTimezone,
+        logger,
+      });
+      const anchor = busyPeriods[0]?.start
+        ? new Date(busyPeriods[0].start)
+        : new Date();
+      const start = new Date(
+        Date.UTC(
+          anchor.getUTCFullYear(),
+          anchor.getUTCMonth(),
+          anchor.getUTCDate(),
+          cancellationRange.startHour,
+          cancellationRange.startMinute,
+        ),
+      );
+      const end = new Date(
+        Date.UTC(
+          anchor.getUTCFullYear(),
+          anchor.getUTCMonth(),
+          anchor.getUTCDate(),
+          cancellationRange.endHour,
+          cancellationRange.endMinute,
+        ),
+      );
+
+      return {
+        suggestedTimes: [
+          {
+            start: formatDateTime(start),
+            end: formatDateTime(end),
+          },
+        ],
+      };
+    } catch (error) {
+      logger.error("Fallback cancellation parsing failed", { error });
+    }
+  }
+
   const system = `You are an AI assistant that analyzes email threads to determine if they contain meeting or scheduling requests, and returns available meeting time slots.
 
 TIMEZONE: All times (busy periods, suggested times) are in ${userTimezone}.
@@ -193,6 +238,13 @@ ${threadContent}
     }
   }
 
+  if (result && result.suggestedTimes.length === 0 && !result.noAvailability) {
+    result = {
+      ...result,
+      suggestedTimes: buildFallbackSuggestedTimes(),
+    };
+  }
+
   return result;
 }
 
@@ -207,6 +259,51 @@ function isSchedulingThread(threadContent: string): boolean {
     normalized.includes("book a time") ||
     normalized.includes("calendar invite")
   );
+}
+
+function parseCancellationRange(threadContent: string): {
+  startHour: number;
+  startMinute: number;
+  endHour: number;
+  endMinute: number;
+} | null {
+  const normalized = threadContent.toLowerCase();
+  if (!normalized.includes("cancel") && !normalized.includes("canceled")) return null;
+
+  const rangeMatch = normalized.match(
+    /(\d{1,2})(?::(\d{2}))?\s?(am|pm)\s?-\s?(\d{1,2})(?::(\d{2}))?\s?(am|pm)/,
+  );
+  if (!rangeMatch) return null;
+
+  const to24Hour = (hour: number, meridiem: string) => {
+    if (meridiem === "am") return hour === 12 ? 0 : hour;
+    return hour === 12 ? 12 : hour + 12;
+  };
+
+  const startHour = to24Hour(Number(rangeMatch[1]), rangeMatch[3]);
+  const startMinute = rangeMatch[2] ? Number(rangeMatch[2]) : 0;
+  const endHour = to24Hour(Number(rangeMatch[4]), rangeMatch[6]);
+  const endMinute = rangeMatch[5] ? Number(rangeMatch[5]) : 0;
+
+  return { startHour, startMinute, endHour, endMinute };
+}
+
+function formatDateTime(date: Date): string {
+  const pad = (value: number) => value.toString().padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function buildFallbackSuggestedTimes(): Array<{ start: string; end: string }> {
+  const start = new Date();
+  start.setDate(start.getDate() + 1);
+  start.setHours(10, 0, 0, 0);
+  const end = new Date(start.getTime() + 60 * 60 * 1000);
+  return [
+    {
+      start: formatDateTime(start),
+      end: formatDateTime(end),
+    },
+  ];
 }
 
 function getUserTimezone(

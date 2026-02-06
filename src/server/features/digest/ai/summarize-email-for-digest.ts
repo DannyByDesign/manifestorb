@@ -106,7 +106,7 @@ ${getUserInfoPrompt({ emailAccount })}`;
       .split("\n")
       .map((line) => line.replace(/^[-*•]\s*/, "").trim())
       .filter((line) => line.length > 0)
-      .slice(0, 5);
+      .slice(0, 4);
 
     if (cleanedLines.length === 0) {
       return fallback ? { content: fallback } : null;

@@ -109,7 +109,11 @@ export async function aiExtractFromEmailHistory({
       schema,
     });
 
-    return addWeekdayHints(result.object.summary, todayString);
+    return addWeekdayHints(
+      result.object.summary,
+      todayString,
+      findWeekdayHint(historicalMessages),
+    );
   } catch (error) {
     logger.error("Failed to extract information from email history", { error });
     return null;
@@ -131,7 +135,14 @@ const MONTHS: Record<string, number> = {
   december: 11,
 };
 
-function addWeekdayHints(summary: string, todayString: string): string {
+function addWeekdayHints(
+  summary: string,
+  todayString: string,
+  weekdayHint: string | null,
+): string {
+  if (weekdayHint && !summary.toLowerCase().includes(weekdayHint.toLowerCase())) {
+    return `${summary} ${weekdayHint}.`.trim();
+  }
   const dateMatch = summary.match(
     /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})(st|nd|rd|th)?\b/i,
   );
@@ -158,4 +169,22 @@ function addWeekdayHints(summary: string, todayString: string): string {
   if (summary.toLowerCase().includes(weekday.toLowerCase())) return summary;
 
   return summary.replace(dateMatch[0], `${weekday} ${dateMatch[0]}`);
+}
+
+function findWeekdayHint(messages: EmailForLLM[]): string | null {
+  const combined = messages
+    .map((message) => `${message.subject ?? ""} ${message.content ?? ""}`.toLowerCase())
+    .join(" ");
+  const weekdays = [
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+  ];
+  const match = weekdays.find((weekday) => combined.includes(weekday));
+  if (!match) return null;
+  return match.charAt(0).toUpperCase() + match.slice(1);
 }

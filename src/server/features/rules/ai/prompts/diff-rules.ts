@@ -1,5 +1,6 @@
 import z from "zod";
 import { createPatch } from "diff";
+import * as stringSimilarity from "string-similarity";
 import type { EmailAccountWithAI } from "@/server/lib/llms/types";
 import { getModel } from "@/server/lib/llms/model";
 import { createGenerateObject } from "@/server/lib/llms";
@@ -16,6 +17,11 @@ export async function aiDiffRules({
   oldPromptFile: string;
   newPromptFile: string;
 }) {
+  const deterministic = diffRulesDeterministic(oldPromptFile, newPromptFile);
+  if (deterministic) {
+    return deterministic;
+  }
+
   const diff = createPatch("prompt", oldPromptFile, newPromptFile);
 
   const system =
@@ -106,6 +112,51 @@ Return the result in JSON format (JSON only, no markdown or extra keys).
     logger.error("Error diffing rules", { error });
     throw error;
   }
+}
+
+function diffRulesDeterministic(oldPromptFile: string, newPromptFile: string) {
+  const oldRules = extractRuleLines(oldPromptFile);
+  const newRules = extractRuleLines(newPromptFile);
+
+  if (oldRules.length === 0 && newRules.length === 0) return null;
+
+  const addedRules = newRules.filter(
+    (rule) => !oldRules.some((oldRule) => oldRule.trim() === rule.trim()),
+  );
+  const removedRules = oldRules.filter(
+    (rule) => !newRules.some((newRule) => newRule.trim() === rule.trim()),
+  );
+
+  const editedRules: { oldRule: string; newRule: string }[] = [];
+  const remainingAdded = [...addedRules];
+  const remainingRemoved = [...removedRules];
+
+  for (const removed of removedRules) {
+    let bestMatch: { rule: string; score: number } | null = null;
+    for (const added of remainingAdded) {
+      const score = stringSimilarity.compareTwoStrings(
+        removed.toLowerCase(),
+        added.toLowerCase(),
+      );
+      if (!bestMatch || score > bestMatch.score) {
+        bestMatch = { rule: added, score };
+      }
+    }
+
+    if (bestMatch && bestMatch.score >= 0.6) {
+      editedRules.push({ oldRule: removed, newRule: bestMatch.rule });
+      const addedIndex = remainingAdded.indexOf(bestMatch.rule);
+      if (addedIndex >= 0) remainingAdded.splice(addedIndex, 1);
+      const removedIndex = remainingRemoved.indexOf(removed);
+      if (removedIndex >= 0) remainingRemoved.splice(removedIndex, 1);
+    }
+  }
+
+  return {
+    addedRules: remainingAdded,
+    editedRules,
+    removedRules: remainingRemoved,
+  };
 }
 
 function normalizeBullets(

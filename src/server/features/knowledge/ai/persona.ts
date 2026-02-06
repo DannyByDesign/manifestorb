@@ -116,7 +116,11 @@ ${getEmailListPrompt({ messages: emails, messageMaxLength: 1000 })}
     });
 
     if (result.object) {
+      const aboutLower = emailAccount.about?.toLowerCase() ?? "";
+      const aboutOverridesIndustry =
+        aboutLower.includes("human resources") || aboutLower.includes("hr");
       const normalizedIndustry =
+        aboutOverridesIndustry ||
         result.object.industry?.toLowerCase().includes("human resources")
           ? "HR"
           : result.object.industry;
