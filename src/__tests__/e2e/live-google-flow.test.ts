@@ -7,11 +7,15 @@ import { sendEmailWithHtml } from "@/server/integrations/google/mail";
 
 vi.mock("server-only", () => ({}));
 
+// Use real Prisma client for live E2E (global setup mocks it)
+vi.unmock("@/server/db/client");
+
 const describeLive = describe.runIf(process.env.RUN_LIVE_E2E === "true");
 
 describeLive("live Google flow", () => {
   it("reads email, creates event, and sends confirmation", async () => {
     const required = [
+      "LIVE_EMAIL_ACCOUNT_ID",
       "LIVE_GOOGLE_ACCESS_TOKEN",
       "LIVE_GOOGLE_REFRESH_TOKEN",
       "LIVE_GOOGLE_EMAIL",
@@ -28,6 +32,7 @@ describeLive("live Google flow", () => {
     process.env.NEXT_PUBLIC_EMAIL_SEND_ENABLED = "true";
 
     const logger = createScopedLogger("live-google-flow");
+    const emailAccountId = process.env.LIVE_EMAIL_ACCOUNT_ID || "";
     const accessToken = process.env.LIVE_GOOGLE_ACCESS_TOKEN || "";
     const refreshToken = process.env.LIVE_GOOGLE_REFRESH_TOKEN || "";
     const userEmail = process.env.LIVE_GOOGLE_EMAIL || "";
@@ -40,11 +45,11 @@ describeLive("live Google flow", () => {
       accessToken,
       refreshToken,
       expiresAt: null,
-      emailAccountId: "live-e2e",
+      emailAccountId,
       logger,
     });
 
-    const gmailProvider = new GmailProvider(gmail, "live-e2e", logger);
+    const gmailProvider = new GmailProvider(gmail, emailAccountId, logger);
 
     const listResponse = await gmail.users.messages.list({
       userId: "me",
@@ -61,13 +66,18 @@ describeLive("live Google flow", () => {
     const thread = await gmailProvider.getThread(message.threadId);
     expect(thread.messages.length).toBeGreaterThan(0);
 
+    const calAccessToken =
+      process.env.LIVE_CALENDAR_ACCESS_TOKEN || accessToken;
+    const calRefreshToken =
+      process.env.LIVE_CALENDAR_REFRESH_TOKEN || refreshToken;
+
     const calendarProvider = new GoogleCalendarEventProvider(
       {
-        accessToken,
-        refreshToken,
+        accessToken: calAccessToken,
+        refreshToken: calRefreshToken,
         expiresAt: null,
-        emailAccountId: "live-e2e",
-        userId: "live-e2e",
+        emailAccountId,
+        userId: emailAccountId,
         timeZone,
       },
       logger,
@@ -87,6 +97,13 @@ describeLive("live Google flow", () => {
       });
       createdEventId = event.id;
       expect(event.id).toBeTruthy();
+      logger.info("Calendar event created", {
+        eventId: event.id,
+        calendarId,
+        title,
+        start: start.toISOString(),
+        end: end.toISOString(),
+      });
 
       await sendEmailWithHtml(gmail, {
         to: recipient,
@@ -99,7 +116,8 @@ describeLive("live Google flow", () => {
         },
       });
     } finally {
-      if (createdEventId) {
+      const skipCleanup = process.env.LIVE_E2E_SKIP_CLEANUP === "true";
+      if (createdEventId && !skipCleanup) {
         await calendarProvider.deleteEvent(calendarId, createdEventId, {
           mode: "single",
         });

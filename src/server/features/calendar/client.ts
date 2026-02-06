@@ -1,7 +1,7 @@
 import { auth, calendar, type calendar_v3 } from "@googleapis/calendar";
 import { env } from "@/env";
 import type { Logger } from "@/server/lib/logger";
-import { SCOPES as GOOGLE_CALENDAR_SCOPES } from "@/server/integrations/google/scopes";
+import { CALENDAR_SCOPES } from "@/server/integrations/google/scopes";
 import { SafeError } from "@/server/lib/error";
 import prisma from "@/server/db/client";
 
@@ -20,7 +20,7 @@ const getAuth = ({ accessToken, refreshToken, expiresAt }: AuthOptions) => {
     access_token: accessToken,
     refresh_token: refreshToken,
     expiry_date: expiresAt,
-    scope: GOOGLE_CALENDAR_SCOPES.join(" "),
+    scope: CALENDAR_SCOPES.join(" "),
   });
 
   return googleAuth;
