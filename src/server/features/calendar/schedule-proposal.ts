@@ -107,15 +107,24 @@ export async function resolveScheduleProposalRequestById(params: {
 
   args.data = data;
 
-  const emailAccount = requestRecord.user?.emailAccounts?.[0];
-  if (!emailAccount) {
+  const emailAccountRow = requestRecord.user?.emailAccounts?.[0];
+  if (!emailAccountRow) {
     return { ok: false, error: "No email account found" };
   }
+  const linkedAccount = emailAccountRow as { account?: { provider?: string } | null };
+  const provider = linkedAccount.account?.provider;
+  if (!provider) {
+    return { ok: false, error: "Email account has no linked provider" };
+  }
+  const emailAccount = {
+    ...emailAccountRow,
+    provider,
+  };
 
   try {
     const { createAgentTools } = await import("@/features/ai/tools");
     const tools = await createAgentTools({
-      emailAccount: emailAccount as any,
+      emailAccount: emailAccount as import("@/features/ai/tools/providers/email").EmailAccount,
       logger,
       userId: requestRecord.userId,
     });

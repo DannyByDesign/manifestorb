@@ -235,10 +235,19 @@ export async function saveTokens({
       data.refresh_token = encryptToken(data.refresh_token) || "";
     }
 
-    const emailAccount = await prisma.emailAccount.update({
+    const emailAccount = await prisma.emailAccount.findUnique({
       where: { id: emailAccountId },
-      data: { account: { update: data } },
-      select: { userId: true },
+      select: { accountId: true, userId: true },
+    });
+    if (!emailAccount) {
+      logger.error("Email account not found for saveTokens", {
+        emailAccountId,
+      });
+      return;
+    }
+    await prisma.account.update({
+      where: { id: emailAccount.accountId },
+      data,
     });
 
     await clearSpecificErrorMessages({

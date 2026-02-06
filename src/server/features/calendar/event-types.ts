@@ -26,6 +26,8 @@ export interface CalendarEventCreateInput {
   isRecurring?: boolean;
   recurrenceRule?: string;
   timeZone?: string;
+  /** When true, create a Google Meet / video conference link for the event. */
+  addGoogleMeet?: boolean;
 }
 
 export interface CalendarEventUpdateInput

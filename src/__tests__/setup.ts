@@ -50,6 +50,7 @@ setDefaultEnv(
 );
 setDefaultEnv("UPSTASH_REDIS_URL", "https://test-redis.upstash.io");
 setDefaultEnv("UPSTASH_REDIS_TOKEN", "test-redis-token");
+setDefaultEnv("NEXT_PUBLIC_CALENDAR_SCHEDULING_ENABLED", "true");
 
 // Mock next/server's after() to just run synchronously in tests
 vi.mock("next/server", async () => {

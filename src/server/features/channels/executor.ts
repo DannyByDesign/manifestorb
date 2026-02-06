@@ -119,9 +119,14 @@ export async function runOneShotAgent({
             const start = new Date(chosen.start);
             const end = chosen.end ? new Date(chosen.end) : undefined;
             const label = formatSlotLabel(start, end, chosen.timeZone);
+            
+            // Extract Meet link from the resolved event
+            const execData = result.data as { data?: { videoConferenceLink?: string; id?: string } } | undefined;
+            const meetLink = execData?.data?.videoConferenceLink;
+            
             const responseText =
                 payload.originalIntent === "event"
-                    ? `Scheduled the event for ${label}.`
+                    ? `Scheduled the event for ${label}.${meetLink ? `\nJoin: ${meetLink}` : ""}`
                     : `Scheduled the task for ${label}.`;
 
             return {
@@ -216,6 +221,21 @@ export async function runOneShotAgent({
 
                     createdApprovals.push(approval);
 
+                    // Create in-app notification so user sees toast with Approve/Deny buttons
+                    const { createInAppNotification } = await import("@/features/notifications/create");
+                    await createInAppNotification({
+                        userId: user.id,
+                        title: "Approval Required",
+                        body: `${toolName}: ${JSON.stringify(args).slice(0, 100)}...`,
+                        type: "approval",
+                        metadata: {
+                            approvalId: approval.id,
+                            tool: toolName,
+                            args: args
+                        },
+                        dedupeKey: `approval-${approval.id}`
+                    });
+
                     return {
                         status: "approval_pending",
                         approvalId: approval.id,
@@ -296,22 +316,29 @@ ${contextPack.system.safetyGuardrails.join("\n")}
         messages: finalMessages as any
     } as any);
 
-    // 8. Extract interactive payloads from tool results (e.g., draft buttons)
+    // 8. Extract interactive payloads and optional message from tool results
     const interactivePayloads: any[] = [];
+    let toolMessage: string | undefined;
+    const collectFromOutput = (out: unknown) => {
+        const raw = out && typeof out === 'object' && 'type' in out && (out as { type: string }).type === 'json' && 'value' in out
+            ? (out as { value: unknown }).value
+            : typeof out === 'string'
+                ? (() => { try { return JSON.parse(out) as Record<string, unknown>; } catch { return null; } })()
+                : (out && typeof out === 'object' ? out as Record<string, unknown> : null);
+        const obj = raw && typeof raw === 'object' ? raw as Record<string, unknown> : null;
+        if (obj) {
+            if ('interactive' in obj) interactivePayloads.push(obj.interactive);
+            if (typeof obj.message === 'string' && obj.message.trim()) toolMessage = obj.message.trim();
+        }
+    };
+    const toolResults = (result as { toolResults?: Array<{ output?: unknown }> }).toolResults ?? [];
+    for (const tr of toolResults) collectFromOutput(tr.output);
     if (result.steps) {
         for (const step of result.steps) {
-            if (step.toolResults) {
-                for (const toolResult of step.toolResults) {
-                    // AI SDK toolResult structure: { toolCallId, toolName, result, ... }
-                    // The 'result' is the actual tool return value
-                    const resultValue = (toolResult as any).result;
-                    if (resultValue && typeof resultValue === 'object' && 'interactive' in resultValue) {
-                        interactivePayloads.push(resultValue.interactive);
-                    }
-                }
-            }
+            for (const tr of step.toolResults ?? []) collectFromOutput((tr as { output?: unknown }).output);
         }
     }
+    const responseText = (result.text?.trim() ?? "") || (toolMessage ?? "");
 
     // 9. Persist Assistant Response
     const { createHash } = await import("crypto");
@@ -334,7 +361,7 @@ ${contextPack.system.safetyGuardrails.join("\n")}
                 create: {
                     userId: user.id,
                     role: "assistant",
-                    content: result.text,
+                    content: responseText,
                     provider: context.provider,
                     providerMessageId: null,
                     channelId: context.channelId,
@@ -362,7 +389,7 @@ ${contextPack.system.safetyGuardrails.join("\n")}
     })();
 
     return {
-        text: result.text,
+        text: responseText,
         approvals: createdApprovals,
         interactivePayloads
     };

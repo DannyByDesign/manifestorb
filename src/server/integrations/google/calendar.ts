@@ -28,6 +28,8 @@ export type GoogleCalendarEventInput = {
   isRecurring?: boolean;
   recurrenceRule?: string;
   timeZone: string;
+  /** When true, requests a Google Meet link for the event (requires conferenceDataVersion=1). */
+  addGoogleMeet?: boolean;
 };
 
 export type GoogleCalendarEventUpdate = Partial<
@@ -82,24 +84,36 @@ export async function createGoogleEvent(
     ? [normalizeRecurrenceRule(event.recurrenceRule)!].filter(Boolean)
     : undefined;
 
+  const requestBody: calendar_v3.Schema$Event = {
+    summary: event.title,
+    description: event.description,
+    location: event.location,
+    start: {
+      dateTime: event.allDay ? undefined : event.start.toISOString(),
+      date: event.allDay ? toDateOnly(event.start) : undefined,
+      timeZone: event.timeZone,
+    },
+    end: {
+      dateTime: event.allDay ? undefined : event.end.toISOString(),
+      date: event.allDay ? toDateOnly(event.end) : undefined,
+      timeZone: event.timeZone,
+    },
+    recurrence,
+  };
+
+  if (event.addGoogleMeet) {
+    requestBody.conferenceData = {
+      createRequest: {
+        requestId: `amodel-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+        conferenceSolutionKey: { type: "hangoutsMeet" },
+      },
+    };
+  }
+
   const response = await calendar.events.insert({
     calendarId,
-    requestBody: {
-      summary: event.title,
-      description: event.description,
-      location: event.location,
-      start: {
-        dateTime: event.allDay ? undefined : event.start.toISOString(),
-        date: event.allDay ? toDateOnly(event.start) : undefined,
-        timeZone: event.timeZone,
-      },
-      end: {
-        dateTime: event.allDay ? undefined : event.end.toISOString(),
-        date: event.allDay ? toDateOnly(event.end) : undefined,
-        timeZone: event.timeZone,
-      },
-      recurrence,
-    },
+    conferenceDataVersion: event.addGoogleMeet ? 1 : 0,
+    requestBody,
   });
 
   if (params.userId) {

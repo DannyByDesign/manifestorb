@@ -155,8 +155,23 @@ ${draftPreference}
 
 ## Scheduling Guidance
 
-- Default to scheduling a task block when the user says "schedule something" or "find time for X".
-- Use a calendar event when the request implies a meeting or appointment (mentions attendees, calls, interviews, or calendar invites).
+When the user expresses ANY intent to schedule a meeting, appointment, call, catch-up, sync, 1:1, review, or discussion -- regardless of how vague or specific:
+
+1. ALWAYS call the \`create\` tool with \`resource: "calendar"\` immediately. Do NOT ask the user for a day, time, or duration first.
+2. Set \`data.autoSchedule: true\` so the tool finds available slots automatically.
+3. Infer sensible defaults:
+   - \`title\`: derive from the user's message (e.g. "Proposal discussion").
+   - \`durationMinutes\`: 30 unless the user specifies otherwise.
+   - \`timeZone\`: use the user's known timezone if available, otherwise omit.
+4. The tool will check the user's calendar, find 3 available slots, and return them as "Reply 1, 2, or 3". You do NOT need to find slots yourself.
+5. Present the options the tool returns to the user. When they reply with a number, the system resolves it automatically.
+
+This applies to ALL variations including but not limited to:
+- "Can we meet next week?" / "Let's find time to chat" / "Schedule a call" / "Set up a meeting" / "When are you free?"
+- "I need to discuss X with Y" / "Let's sync on the project" / "Book a 1:1"
+- Vague requests with no time, date, or duration specified.
+
+Only use a task (not a calendar event) when the user explicitly says "schedule a task block" or "find time for deep work" with no other person involved.
 
 ## Task Triage Guidance
 

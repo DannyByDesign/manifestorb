@@ -225,22 +225,25 @@ export async function createCalendarProvider(
       const preferences = await prisma.taskPreference.findUnique({
         where: { userId },
       });
-      if (!preferences) {
-        scopedLogger.warn("Missing task preferences for scheduling", {
-          userId,
-        });
-        return [];
-      }
-
-      const settings: SchedulingSettings = {
-        workHourStart: preferences.workHourStart,
-        workHourEnd: preferences.workHourEnd,
-        workDays: preferences.workDays,
-        bufferMinutes: preferences.bufferMinutes,
-        selectedCalendarIds: preferences.selectedCalendarIds,
-        timeZone: preferences.timeZone || "UTC",
-        groupByProject: preferences.groupByProject,
-      };
+      const settings: SchedulingSettings = preferences
+        ? {
+            workHourStart: preferences.workHourStart,
+            workHourEnd: preferences.workHourEnd,
+            workDays: preferences.workDays,
+            bufferMinutes: preferences.bufferMinutes,
+            selectedCalendarIds: preferences.selectedCalendarIds,
+            timeZone: preferences.timeZone || "UTC",
+            groupByProject: preferences.groupByProject,
+          }
+        : {
+            workHourStart: 9,
+            workHourEnd: 17,
+            workDays: [1, 2, 3, 4, 5],
+            bufferMinutes: 15,
+            selectedCalendarIds: [],
+            timeZone: "UTC",
+            groupByProject: false,
+          };
 
       const calendarService = new CalendarServiceImpl(account.id, scopedLogger);
       const timeSlotManager = new TimeSlotManagerImpl(settings, calendarService);

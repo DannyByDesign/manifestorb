@@ -119,7 +119,11 @@ describe("saveTokens", () => {
   });
 
   it("clears disconnectedAt and error messages when saving tokens via emailAccountId", async () => {
-    prisma.emailAccount.update.mockResolvedValue({ userId: "user_1" } as any);
+    prisma.emailAccount.findUnique.mockResolvedValue({
+      accountId: "acc_1",
+      userId: "user_1",
+    } as any);
+    prisma.account.update.mockResolvedValue({ userId: "user_1" } as any);
 
     await saveTokens({
       emailAccountId: "ea_1",
@@ -132,15 +136,15 @@ describe("saveTokens", () => {
       provider: "google",
     });
 
-    expect(prisma.emailAccount.update).toHaveBeenCalledWith(
+    expect(prisma.emailAccount.findUnique).toHaveBeenCalledWith({
+      where: { id: "ea_1" },
+      select: { accountId: true, userId: true },
+    });
+    expect(prisma.account.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "ea_1" },
+        where: { id: "acc_1" },
         data: expect.objectContaining({
-          account: {
-            update: expect.objectContaining({
-              disconnectedAt: null,
-            }),
-          },
+          disconnectedAt: null,
         }),
       }),
     );

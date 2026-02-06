@@ -55,12 +55,12 @@ const createParameters = z.object({
         body: z.string().optional(),
 
         // Calendar
-        title: z.string().optional(),
+        title: z.string().optional().describe("Event or task title. Infer from the user's request."),
         description: z.string().optional(),
-        start: z.string().optional(),
-        end: z.string().optional(),
-        durationMinutes: z.number().min(5).max(480).optional(),
-        autoSchedule: z.boolean().optional(),
+        start: z.string().optional().describe("ISO 8601 start time. Omit when using autoSchedule."),
+        end: z.string().optional().describe("ISO 8601 end time. Omit when using autoSchedule."),
+        durationMinutes: z.number().min(5).max(480).optional().describe("Meeting duration in minutes. Defaults to 30 if omitted."),
+        autoSchedule: z.boolean().optional().describe("Set true to find 3 available calendar slots automatically. Use this when the user wants to schedule but hasn't specified an exact time."),
         calendarId: z.string().optional(),
         allDay: z.boolean().optional(),
         isRecurring: z.boolean().optional(),
@@ -118,7 +118,9 @@ Email: Creates a DRAFT only. User must manually send from UI.
 - For reply/forward: provide parentId (thread ID / message ID)
 - Returns: { draftId, previewUrl } for user to review and send
 
-Calendar: Can create events or return scheduling suggestions.
+Calendar: Creates events or finds available times.
+- To schedule a meeting/call/appointment: set resource="calendar", data.autoSchedule=true, data.title, and optionally data.durationMinutes (default 30). The tool checks the user's calendar and returns 3 available time slots for the user to pick from (1, 2, or 3). Do NOT ask the user for a specific day/time -- call this tool and let it find slots.
+- To create an event at a specific time: set data.start and data.end (ISO strings). The tool creates the event directly.
 
 Task: Creates a task and optionally auto-schedules it. If flexibility is not specified by the user, choose a reschedulePolicy.
 
@@ -507,7 +509,8 @@ Automation: Create Rules & Knowledge supported.`,
                         allDay: data.allDay,
                         isRecurring: data.isRecurring,
                         recurrenceRule: data.recurrenceRule,
-                        timeZone: timeZoneResult.timeZone
+                        timeZone: timeZoneResult.timeZone,
+                        addGoogleMeet: true
                     }
                 });
                 await scheduleTasksForUser({ userId: context.userId, emailAccountId, source: "ai" });

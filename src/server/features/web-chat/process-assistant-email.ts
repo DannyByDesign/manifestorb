@@ -1,6 +1,5 @@
 import { isDefined, type ParsedMessage } from "@/server/lib/types";
 import type { Logger } from "@/server/lib/logger";
-import { processUserRequest } from "@/features/web-chat/ai/process-user-request";
 import { extractEmailAddress } from "@/server/lib/email";
 import prisma from "@/server/db/client";
 import { emailToContent } from "@/server/lib/mail";
@@ -8,7 +7,9 @@ import { isAssistantEmail } from "@/features/web-chat/is-assistant-email";
 import { internalDateToDate } from "@/server/lib/date";
 import type { EmailProvider } from "@/features/email/types";
 import { labelMessageAndSync } from "@/server/lib/label.server";
-import type { RuleWithRelations } from "@/features/rules/types";
+import { runOneShotAgent } from "@/features/channels/executor";
+import { ConversationService } from "@/features/conversations/service";
+import type { EmailAccount as ToolsEmailAccount } from "@/features/ai/tools/providers/email";
 
 type ProcessAssistantEmailArgs = {
   emailAccountId: string;
@@ -198,23 +199,55 @@ async function processAssistantEmailInternal({
     return;
   }
 
-  const result = await processUserRequest({
-    emailAccount,
-    rules: emailAccount.rules,
-    originalEmail: originalMessage,
-    messages,
-    matchedRules: executedRules?.length
-      ? (executedRules.map((er) => er.rule).filter(isDefined) as unknown as RuleWithRelations[])
-      : [],
-    logger,
+  // Get the user object
+  const user = await prisma.user.findUnique({
+    where: { id: emailAccount.userId },
   });
 
-  const toolCalls = result.steps.flatMap((step) => step.toolCalls);
-  const lastToolCall = toolCalls[toolCalls.length - 1];
+  if (!user) {
+    logger.error("User not found");
+    return;
+  }
 
-  if (lastToolCall?.toolName === "reply") {
-    const input = lastToolCall.input as { content: string } | undefined;
-    await provider.replyToEmail(message, input?.content || "");
+  // Build emailAccount with provider field for runOneShotAgent
+  const linkedAccount = emailAccount.account as { provider?: string } | null;
+  const providerValue = linkedAccount?.provider;
+  if (!providerValue) {
+    logger.error("Email account has no linked provider");
+    return;
+  }
+
+  const emailAccountForAgent = {
+    ...emailAccount,
+    provider: providerValue,
+  } as ToolsEmailAccount;
+
+  // Get conversation for context
+  const conversation = await ConversationService.getPrimaryWebConversation(
+    emailAccount.userId,
+  );
+
+  // Extract the last user message content
+  const lastUserMessage = messages[messages.length - 1].content;
+
+  // Run the full agent with all tools (create/calendar, scheduling, etc.)
+  const result = await runOneShotAgent({
+    user: user as import("@/generated/prisma/client").User,
+    emailAccount: emailAccountForAgent as import("@/generated/prisma/client").EmailAccount,
+    message: lastUserMessage,
+    context: {
+      conversationId: conversation.id,
+      channelId: "email",
+      provider: "email",
+      userId: emailAccount.userId,
+      messageId: message.id,
+      threadId: message.threadId,
+    },
+  });
+
+  // Send the AI response back in the email thread
+  if (result.text) {
+    await provider.replyToEmail(message, result.text);
   }
 }
 
