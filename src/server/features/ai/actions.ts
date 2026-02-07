@@ -97,8 +97,13 @@ export const runActionFunction = async (options: {
       return create_calendar_event(opts);
     case ActionType.SCHEDULE_MEETING:
       return schedule_meeting(opts);
-    default:
+    default: {
+      await import("./actions/register-defaults");
+      const { getAction } = await import("./actions/registry");
+      const registered = getAction(String(type));
+      if (registered) return registered.execute(opts);
       throw new Error(`Unknown action: ${action}`);
+    }
   }
 };
 
@@ -418,7 +423,7 @@ const notify_sender: ActionFunction<Record<string, unknown>> = async ({
   }
 };
 
-const notify_user: ActionFunction<Record<string, unknown>> = async ({
+export const notify_user: ActionFunction<Record<string, unknown>> = async ({
   email,
   userId,
   emailAccountId,
@@ -596,10 +601,6 @@ const create_calendar_event: ActionFunction<{ payload?: any }> = async ({
   return event;
 };
 
-const SCHEDULE_MEETING_DURATION_MINUTES = 30;
-const SCHEDULE_MEETING_SLOT_COUNT = 3;
-const SCHEDULE_MEETING_EXPIRY_SECONDS = 86_400; // 24 hours
-
 /**
  * Proactive SCHEDULE_MEETING action:
  * 1. Finds available calendar slots
@@ -607,7 +608,7 @@ const SCHEDULE_MEETING_EXPIRY_SECONDS = 86_400; // 24 hours
  * 3. Creates a single approval request with slots + draft
  * 4. Sends a rich notification for one-tap approval
  */
-const schedule_meeting: ActionFunction<Record<string, unknown>> = async ({
+export const schedule_meeting: ActionFunction<Record<string, unknown>> = async ({
   client,
   email,
   userId,
@@ -618,7 +619,30 @@ const schedule_meeting: ActionFunction<Record<string, unknown>> = async ({
     extractEmailAddress(email.headers.from) || email.headers.from;
   const subject = email.headers.subject || "(No Subject)";
 
-  // 1. Find 3 available calendar slots
+  const [prefs, insights] = await Promise.all([
+    prisma.taskPreference.findUnique({
+      where: { userId },
+      select: {
+        defaultMeetingDurationMin: true,
+        meetingSlotCount: true,
+        meetingExpirySeconds: true,
+      },
+    }),
+    prisma.schedulingInsights.findUnique({
+      where: { userId },
+      select: { medianMeetingDurationMin: true },
+    }),
+  ]);
+  const durationMinutes =
+    prefs?.defaultMeetingDurationMin ??
+    (insights?.medianMeetingDurationMin != null
+      ? Math.round(insights.medianMeetingDurationMin)
+      : undefined) ??
+    30;
+  const slotCount = prefs?.meetingSlotCount ?? 3;
+  const expirySeconds = prefs?.meetingExpirySeconds ?? 86_400;
+
+  // 1. Find available calendar slots
   let slots: Array<{ start: Date; end: Date; score: number }> = [];
   try {
     const calendarProvider = await createCalendarProvider(
@@ -627,9 +651,9 @@ const schedule_meeting: ActionFunction<Record<string, unknown>> = async ({
       logger,
     );
     const allSlots = await calendarProvider.findAvailableSlots({
-      durationMinutes: SCHEDULE_MEETING_DURATION_MINUTES,
+      durationMinutes,
     });
-    slots = allSlots.slice(0, SCHEDULE_MEETING_SLOT_COUNT);
+    slots = allSlots.slice(0, slotCount);
   } catch (error) {
     logger.warn("SCHEDULE_MEETING: calendar not connected or no slots", {
       error,
@@ -713,6 +737,8 @@ const schedule_meeting: ActionFunction<Record<string, unknown>> = async ({
     userId,
     provider: "in_app",
     externalContext: {},
+    sourceType: "email_rule",
+    sourceId: email.id,
     requestPayload: {
       actionType: "schedule_proposal",
       description: `Meeting with ${senderEmail} re: ${subject}`,
@@ -734,7 +760,7 @@ const schedule_meeting: ActionFunction<Record<string, unknown>> = async ({
       emailAccountId,
     },
     idempotencyKey: `schedule-meeting-${email.id}`,
-    expiresInSeconds: SCHEDULE_MEETING_EXPIRY_SECONDS,
+    expiresInSeconds: expirySeconds,
   });
 
   // 6. Create rich notification

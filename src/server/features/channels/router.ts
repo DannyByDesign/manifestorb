@@ -160,7 +160,8 @@ export class ChannelRouter {
         }
 
         const user = account.user;
-        const emailAccount = user.emailAccounts[0];
+        const { resolveEmailAccount } = await import("@/server/lib/user-utils");
+        const emailAccount = resolveEmailAccount(user, null);
 
         if (!emailAccount) {
             return [{

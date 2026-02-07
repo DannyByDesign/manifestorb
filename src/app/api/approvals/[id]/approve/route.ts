@@ -84,21 +84,24 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
 
                     const modelOptions = getModel("chat");
 
-                    const generator = createGenerateText({
-                        emailAccount: request.user.emailAccounts[0] as any,
-                        label: "approval_confirmation",
-                        modelOptions
-                    });
+                    const { resolveEmailAccount } = await import("@/server/lib/user-utils");
+                    const emailAccountForLlm = resolveEmailAccount(request.user, null);
+                    if (emailAccountForLlm) {
+                        const generator = createGenerateText({
+                            emailAccount: emailAccountForLlm as any,
+                            label: "approval_confirmation",
+                            modelOptions
+                        });
 
-                    const { text } = await generator({
-                        model: modelOptions.model,
-                        prompt: `You are a helpful assistant. You just completed a user request. 
+                        const { text } = await generator({
+                            model: modelOptions.model,
+                            prompt: `You are a helpful assistant. You just completed a user request. 
 Details: ${JSON.stringify(executionResult).slice(0, 500)}...
 Write a brief, friendly confirmation message saying it's done.
 Do not mention tools or internal details. No emojis. Max 1 short sentence.`
-                    });
-
-                    userMessage = text;
+                        });
+                        userMessage = text;
+                    }
                 } catch (llmError) {
                     logger.error("Failed to generate LLM confirmation msg, falling back to static", { error: llmError });
                     // Fallback logic

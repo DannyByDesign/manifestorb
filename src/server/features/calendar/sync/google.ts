@@ -165,20 +165,32 @@ export async function syncGoogleCalendarChanges({
       });
     }
 
+    if (items.length > 0 && userId) {
+      import("@/server/features/calendar/scheduling/insights")
+        .then(({ updateSchedulingInsights }) => updateSchedulingInsights(userId))
+        .catch(() => {});
+    }
     return { changed: items.length > 0, items };
-  } catch (error: any) {
-    const status = error?.code || error?.response?.status;
+  } catch (error: unknown) {
+    const status =
+      (error as { code?: number; response?: { status?: number } })?.code ??
+      (error as { code?: number; response?: { status?: number } })?.response?.status;
     if (status === 410) {
       logger.warn("Google sync token expired; resetting", {
         calendarId: calendar.calendarId,
       });
 
-      const { items, nextSyncToken } = await listEvents(null);
+      const { items: retryItems, nextSyncToken } = await listEvents(null);
       await prisma.calendar.update({
         where: { id: calendar.id },
         data: { googleSyncToken: nextSyncToken ?? null },
       });
-      return { changed: items.length > 0, items };
+      if (retryItems.length > 0 && userId) {
+        import("@/server/features/calendar/scheduling/insights")
+          .then(({ updateSchedulingInsights }) => updateSchedulingInsights(userId))
+          .catch(() => {});
+      }
+      return { changed: retryItems.length > 0, items: retryItems };
     }
 
     throw error;

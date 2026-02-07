@@ -87,8 +87,8 @@ export async function POST(req: Request) {
 
         if (!user) return new NextResponse("User not found", { status: 404 });
 
-        // Pick primary email account (fallback logic)
-        const emailAccount = user.emailAccounts[0];
+        const { resolveEmailAccount } = await import("@/server/lib/user-utils");
+        const emailAccount = resolveEmailAccount(user, null);
         if (!emailAccount) return new NextResponse("No email account linked", { status: 400 });
 
         const result = await runOneShotAgent({

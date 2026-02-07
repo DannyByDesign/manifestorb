@@ -1,3 +1,12 @@
+/**
+ * AI Tool: modify
+ *
+ * Wraps server actions / equivalents:
+ * - email: archiveThreadAction, trashThreadAction, markReadThreadAction (via provider)
+ * - automation: updateRuleAction, toggleRuleAction (enabled, instructions)
+ * - preferences: applyDigestSchedule, applyToggleDigest, applyEmailSettings (Issue 08)
+ * - approval: ApprovalService.decideRequest, resolveScheduleProposalRequestById
+ */
 
 import { z } from "zod";
 import { type ToolDefinition } from "./types";
@@ -42,7 +51,14 @@ Task changes:
 - title, description, durationMinutes, status, priority, energyLevel, preferredTime
 - dueDate, startDate, scheduledStart, scheduledEnd
 - isAutoScheduled, scheduleLocked, reschedulePolicy
-- scheduleNow: true (trigger scheduling run)`,
+- scheduleNow: true (trigger scheduling run)
+
+Preferences changes:
+- digestEnabled: boolean (enable/disable daily digest)
+- digestTime: ISO date string (time of day for digest, e.g. "2026-01-01T09:00:00")
+- digestSchedule: { intervalDays, daysOfWeek, timeOfDay, occurrences }
+- statsEmailFrequency: "WEEKLY" | "NEVER"
+- summaryEmailFrequency: "WEEKLY" | "NEVER"`,
 
     parameters: z.object({
         resource: z.enum([
@@ -464,12 +480,34 @@ Task changes:
                 await scheduleTasksForUser({ userId, emailAccountId, source: "ai" });
                 return { success: true, data: results };
 
-            case "automation":
+            case "automation": {
                 if (!ids || ids.length === 0) return { success: false, error: "No Rule ID provided" };
+                const ruleId = ids[0]!;
+
+                if ("enabled" in changes) {
+                    await prisma.rule.update({
+                        where: { id: ruleId, emailAccountId },
+                        data: { enabled: Boolean(changes.enabled) },
+                    });
+                    return {
+                        success: true,
+                        message: `Rule ${changes.enabled ? "enabled" : "disabled"}.`,
+                    };
+                }
+
+                if ("instructions" in changes && typeof changes.instructions === "string") {
+                    await prisma.rule.update({
+                        where: { id: ruleId, emailAccountId },
+                        data: { instructions: changes.instructions },
+                    });
+                    return { success: true, message: "Rule instructions updated." };
+                }
+
                 const automationResults = await Promise.all(ids.map((id: string) =>
                     providers.automation.updateRule(id, changes)
                 ));
                 return { success: true, data: automationResults };
+            }
 
             case "drive":
                 if (!providers.drive) {
@@ -487,10 +525,119 @@ Task changes:
 
                 return { success: false, error: "Only move (targetFolderId) supported for Drive" };
 
+            case "preferences": {
+                const accountId = emailAccountId;
+
+                if ("digestEnabled" in changes && changes.digestEnabled !== undefined) {
+                    const { applyToggleDigest } = await import("@/server/actions/settings");
+                    await applyToggleDigest(accountId, {
+                        enabled: Boolean(changes.digestEnabled),
+                        timeOfDay:
+                            changes.digestTime != null
+                                ? new Date(changes.digestTime as string)
+                                : undefined,
+                    });
+                    return {
+                        success: true,
+                        message: `Digest ${changes.digestEnabled ? "enabled" : "disabled"}.`,
+                    };
+                }
+
+                if ("digestSchedule" in changes && changes.digestSchedule != null) {
+                    const schedule = changes.digestSchedule as Record<string, unknown>;
+                    const { applyDigestSchedule } = await import("@/server/actions/settings");
+                    await applyDigestSchedule(accountId, {
+                        intervalDays: (schedule.intervalDays as number) ?? null,
+                        daysOfWeek: (schedule.daysOfWeek as number) ?? null,
+                        timeOfDay:
+                            schedule.timeOfDay != null
+                                ? new Date(schedule.timeOfDay as string)
+                                : null,
+                        occurrences: (schedule.occurrences as number) ?? null,
+                    });
+                    return { success: true, message: "Digest schedule updated." };
+                }
+
+                if (
+                    "statsEmailFrequency" in changes ||
+                    "summaryEmailFrequency" in changes
+                ) {
+                    const emailAccount = await getEmailAccountWithAi({ emailAccountId: accountId });
+                    if (!emailAccount)
+                        return { success: false, error: "Email account not found" };
+                    const { applyEmailSettings } = await import("@/server/actions/settings");
+                    await applyEmailSettings(accountId, {
+                        statsEmailFrequency:
+                            (changes.statsEmailFrequency as string) ??
+                            emailAccount.statsEmailFrequency ??
+                            "NEVER",
+                        summaryEmailFrequency:
+                            (changes.summaryEmailFrequency as string) ??
+                            emailAccount.summaryEmailFrequency ??
+                            "NEVER",
+                    });
+                return {
+                    success: true,
+                    message: "Email notification settings updated.",
+                };
+                }
+
+                if ("approvalPolicy" in changes && changes.approvalPolicy != null) {
+                    const policyPayload = changes.approvalPolicy as {
+                        toolName: string;
+                        policy: string;
+                        conditions?: Record<string, unknown>;
+                    };
+                    const { toolName: prefToolName, policy, conditions } = policyPayload;
+                    await prisma.approvalPreference.upsert({
+                        where: { userId_toolName: { userId, toolName: prefToolName } },
+                        update: { policy, conditions: conditions ?? undefined },
+                        create: {
+                            userId,
+                            toolName: prefToolName,
+                            policy,
+                            conditions: conditions ?? undefined,
+                        },
+                    });
+                    return {
+                        success: true,
+                        message: `Approval policy for "${prefToolName}" set to "${policy}".`,
+                    };
+                }
+
+                if ("aiConfig" in changes && changes.aiConfig != null) {
+                    const config = changes.aiConfig as Record<string, unknown>;
+                    const data = {
+                        ...(config.maxSteps !== undefined && { maxSteps: Number(config.maxSteps) }),
+                        ...(config.customInstructions !== undefined && { customInstructions: String(config.customInstructions) }),
+                        ...(config.approvalInstructions !== undefined && { approvalInstructions: String(config.approvalInstructions) }),
+                        ...(config.conversationCategories !== undefined && {
+                            conversationCategories: Array.isArray(config.conversationCategories)
+                                ? (config.conversationCategories as unknown[]).map(String)
+                                : [],
+                        }),
+                        ...(config.defaultApprovalExpirySeconds !== undefined && {
+                            defaultApprovalExpirySeconds: Number(config.defaultApprovalExpirySeconds),
+                        }),
+                    };
+                    await prisma.userAIConfig.upsert({
+                        where: { userId },
+                        update: data,
+                        create: { userId, ...data },
+                    });
+                    return { success: true, message: "AI configuration updated." };
+                }
+
+                return {
+                    success: false,
+                    error:
+                        "Unknown preference key. Supported: digestEnabled, digestSchedule, statsEmailFrequency, summaryEmailFrequency, approvalPolicy, aiConfig.",
+                };
+            }
+
             case "marketing":
             case "notification":
             case "knowledge":
-            case "preferences":
                 return { success: false, error: "Modifying this resource not supported yet" };
 
             default:

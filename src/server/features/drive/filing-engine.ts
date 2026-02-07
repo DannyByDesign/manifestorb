@@ -15,6 +15,8 @@ import {
   sendFiledNotification,
   sendAskNotification,
 } from "@/features/drive/filing-notifications";
+import { findCrossReferences } from "@/features/ai/cross-reference";
+import { createInAppNotification } from "@/features/notifications/create";
 
 // ============================================================================
 // Types
@@ -257,6 +259,26 @@ export async function processAttachment({
       status: filing.status,
       wasAsked: shouldAsk,
     });
+
+    if (filing.status === "FILED" && emailAccount.userId) {
+      findCrossReferences({
+        userId: emailAccount.userId,
+        subject: attachment.filename,
+        logger: log,
+      })
+        .then((crossRef) => {
+          if (crossRef.relatedTasks?.length) {
+            return createInAppNotification({
+              userId: emailAccount.userId,
+              title: `Filed "${attachment.filename}" – related task`,
+              body: `This might be related to: "${crossRef.relatedTasks[0].title}"`,
+              type: "info",
+              dedupeKey: `filing-task-${filing.id}`,
+            });
+          }
+        })
+        .catch(() => {});
+    }
 
     // Step 10: Send notification email as a reply to the source email
     if (sendNotification) {

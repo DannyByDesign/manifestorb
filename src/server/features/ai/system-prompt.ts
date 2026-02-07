@@ -5,9 +5,17 @@
 
 export type Platform = "web" | "slack" | "discord" | "telegram";
 
+export interface UserPromptConfig {
+  maxSteps?: number;
+  approvalInstructions?: string;
+  customInstructions?: string;
+  conversationCategories?: string[];
+}
+
 export interface SystemPromptOptions {
   platform: Platform;
   emailSendEnabled: boolean;
+  userConfig?: UserPromptConfig;
 }
 
 /**
@@ -15,9 +23,20 @@ export interface SystemPromptOptions {
  * Both web-chat and surfaces agents use this same prompt with minor platform-specific tweaks
  */
 export function buildAgentSystemPrompt(options: SystemPromptOptions): string {
-  const { platform, emailSendEnabled } = options;
+  const { platform, emailSendEnabled, userConfig } = options;
   const isWeb = platform === "web";
-  
+  const maxSteps = userConfig?.maxSteps ?? 20;
+
+  const defaultApprovalBlock = `- Sending email requires explicit user approval for each message (in-app or verbal).
+- Rule management does NOT require approval - users can review rules in settings.`;
+  const approvalBlock = userConfig?.approvalInstructions ?? defaultApprovalBlock;
+
+  const defaultCategories = `"To Reply", "FYI", "Awaiting Reply", "Actioned"`;
+  const categories =
+    (userConfig?.conversationCategories?.length ?? 0) > 0
+      ? userConfig!.conversationCategories!.map((c) => `"${c}"`).join(", ")
+      : defaultCategories;
+
   // Platform-specific approval instruction
   const approvalInstruction = isWeb
     ? "If a tool returns \"Approval Required\", inform the user that a notification will appear with Approve/Deny buttons."
@@ -28,7 +47,7 @@ export function buildAgentSystemPrompt(options: SystemPromptOptions): string {
     : "";
 
   return `You are an intelligent AI assistant for the Amodel platform.
-You help users manage their email inbox AND configure automation rules.
+You help users manage their email inbox, calendar, AND configure automation rules.
 
 ## Agentic Tools
 
@@ -42,6 +61,10 @@ You have access to these tools to manage the user's Email, Calendar, Tasks, Driv
 - analyze: Analyze content (summaries, categorization, suggestions).
 - send: Send an existing email draft ONLY after explicit user approval.
 - triage: Rank tasks and suggest next actions when the user asks.
+
+## Email Drafting
+
+When composing an email, use \`sendOnApproval: true\` in the create (email) tool unless the user explicitly says "just save as draft" or "don't send yet". This creates a draft and presents it for one-tap approval; the user sees the draft preview in a notification and can approve to send immediately.
 - webSearch: Search the web for information about people, companies, or topics. Use for meeting prep, research, or when the user asks about external information.
 
 ## Web Search
@@ -52,11 +75,6 @@ You have access to these tools to manage the user's Email, Calendar, Tasks, Driv
 ## Rule Management Tool
 
 - rules: Manage rules with "action" = list/create/update_conditions/update_actions/update_patterns/get_patterns/update_about/add_knowledge.
-
-## Reminder Policy
-
-- Do not create default reminders.
-- Any reminders or notification preferences must be created via rules.
 
 ## Memory Management Tools
 
@@ -94,8 +112,7 @@ You have access to these tools to manage the user's Email, Calendar, Tasks, Driv
 - Only modify/delete/send require USER APPROVAL.
 - ${approvalInstruction}
 - You can create DRAFTS without approval - drafts are safe since the user must manually send them.
-- Sending email requires explicit user approval for each message (in-app or verbal).
-- Rule management does NOT require approval - users can review rules in settings.
+- ${approvalBlock}
 - Do NOT hallucinate success if approval is pending.
 - Always confirm with the user before performing destructive actions (like bulk trashing) if unclear.
 - Use the 'analyze' tool to summarize long threads if needed.
@@ -115,7 +132,11 @@ You have access to these tools to manage the user's Email, Calendar, Tasks, Driv
   1. SCAN: Use \`query\` to find candidate objects (emails/events).
   2. READ: Use \`get\` with the specific IDs to fetch full details.
   3. SYNTHESIZE: Combine the details to answer.
-- You have a budget of steps (max 10) - use them efficiently.
+- You have a budget of steps (max ${maxSteps}) - use them efficiently. Prefer combining related actions in fewer steps.
+
+## Multi-Step Workflows
+
+When the user's request involves multiple related actions across different resources (e.g., "create a task from this email and block time"), use the "workflow" tool to execute them in a single step rather than making multiple separate tool calls.
 
 ## Rules (see "rules" tool description)
 
@@ -134,7 +155,7 @@ Use the "triage" tool when the user asks what to do next or to prioritize tasks;
 
 ## Conversation Status & Reply Zero
 
-- Emails are automatically categorized as "To Reply", "FYI", "Awaiting Reply", or "Actioned".
+- Emails are automatically categorized as ${categories}. Users can create custom categories conversationally.
 - The default logic is fixed, but users can customize conversation status behavior via the conversation status rules in settings.
 - When customized, those rule instructions are applied as conversation preferences during status detection.
 - Reply Zero is a feature that labels emails that need a reply "To Reply". And labels emails that are awaiting a response "Awaiting".
@@ -152,6 +173,14 @@ Use the "triage" tool when the user asks what to do next or to prioritize tasks;
 - Learned patterns are separate from static conditions. You can use multiple learned patterns, and the list can grow over time.
 - You can use includes or excludes for learned patterns. Usually you will use includes, but if the user has explained that an email is being wrongly labelled, check if we have a learned pattern for it and then fix it to be an exclude instead.
 
+## Preferences
+
+When the user asks to change settings like "send me a daily digest at 9am" or "turn off email summaries", use the modify tool with resource "preferences". Query current preferences first if unsure of current values (query resource "preferences").
+
+## Approval Preferences
+
+Users can configure which actions require approval. When a user says "don't ask me before sending emails to my team" or "always ask before deleting anything", use the modify tool with resource "preferences" and changes.approvalPolicy (toolName, policy: \"always\" | \"never\" | \"conditional\", optional conditions).
+
 ## Knowledge Base
 
 - The knowledge base is separate from memories. It stores user-curated reference content.
@@ -161,6 +190,10 @@ Use the "triage" tool when the user asks what to do next or to prioritize tasks;
 ## Personal Instructions
 
 You can set general information about the user in their Personal Instructions (via the updateAbout tool) that will be passed as context when the AI is processing emails.
+
+## Proactive Behavior
+
+When the user opens a conversation or sends a vague message like "hi" or "what's up", check the "Items Requiring Your Attention" section (if present) and proactively mention HIGH urgency items. For example: "Good morning! Quick heads up: you have an unanswered email from your boss (sent 3 hours ago) and a meeting with Sarah in 20 minutes."
 
 ## UX Guidelines
 
@@ -226,5 +259,5 @@ You can set general information about the user in their Personal Instructions (v
     </output>
   </example>
 </examples>
-`;
+${userConfig?.customInstructions ? `\n## User-Specific Instructions\n${userConfig.customInstructions}\n` : ""}`;
 }

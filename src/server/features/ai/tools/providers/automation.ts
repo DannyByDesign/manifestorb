@@ -179,11 +179,11 @@ export async function createAutomationProvider(
             });
         },
 
-        // --- Knowledge ---
+        // --- Knowledge (per-user) ---
 
         async listKnowledge() {
             return prisma.knowledge.findMany({
-                where: { emailAccountId },
+                where: { userId },
                 orderBy: { createdAt: "desc" }
             });
         },
@@ -192,6 +192,7 @@ export async function createAutomationProvider(
             const validated = createKnowledgeBody.parse(data);
             return prisma.knowledge.create({
                 data: {
+                    userId,
                     emailAccountId,
                     title: validated.title,
                     content: validated.content
@@ -201,7 +202,7 @@ export async function createAutomationProvider(
 
         async deleteKnowledge(id: string) {
             await prisma.knowledge.delete({
-                where: { id, emailAccountId }
+                where: { id, userId }
             });
         },
 

@@ -15,6 +15,7 @@ import {
   clearOAuthCode,
 } from "@/server/lib/redis/oauth-code";
 import { isDuplicateError } from "@/server/db/client-helpers";
+import { setupIntegrationsAfterOAuth } from "@/server/features/integrations/post-oauth";
 
 export const GET = withError("google/linking/callback", async (request) => {
   const logger = request.logger;
@@ -203,6 +204,11 @@ export const GET = withError("google/linking/callback", async (request) => {
 
       await setOAuthCodeResult(code, { success: "account_created_and_linked" });
 
+      setupIntegrationsAfterOAuth({
+        userId: targetUserId,
+        provider: "google",
+      }).catch((err) => logger.error("Post-OAuth setup failed", { error: err }));
+
       const successUrl = new URL("/accounts", env.NEXT_PUBLIC_BASE_URL);
       successUrl.searchParams.set("success", "account_created_and_linked");
       const successResponse = NextResponse.redirect(successUrl);
@@ -227,6 +233,12 @@ export const GET = withError("google/linking/callback", async (request) => {
       });
 
       await setOAuthCodeResult(code, { success: "tokens_updated" });
+
+      setupIntegrationsAfterOAuth({
+        userId: targetUserId,
+        accountId: linkingResult.existingAccountId,
+        provider: "google",
+      }).catch((err) => logger.error("Post-OAuth setup failed", { error: err }));
 
       const successUrl = new URL("/accounts", env.NEXT_PUBLIC_BASE_URL);
       successUrl.searchParams.set("success", "tokens_updated");
@@ -265,6 +277,11 @@ export const GET = withError("google/linking/callback", async (request) => {
     });
 
     await setOAuthCodeResult(code, { success: successMessage });
+
+    setupIntegrationsAfterOAuth({
+      userId: targetUserId,
+      provider: "google",
+    }).catch((err) => logger.error("Post-OAuth setup failed", { error: err }));
 
     const successUrl = new URL("/accounts", env.NEXT_PUBLIC_BASE_URL);
     successUrl.searchParams.set("success", successMessage);

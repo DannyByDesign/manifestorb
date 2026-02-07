@@ -21,6 +21,7 @@ import { analyzeTool } from "./analyze";
 import { triageTool } from "./triage";
 import { rulesTool } from "./rules";
 import { sendTool } from "./send";
+import { workflowTool } from "./workflow";
 
 export async function createAgentTools({
     emailAccount,
@@ -111,6 +112,7 @@ export async function createAgentTools({
         triage: wrap(triageTool),
         rules: wrap(rulesTool),
         send: wrap(sendTool),
+        workflow: wrap(workflowTool),
         webSearch: webSearchTool,
     };
 }

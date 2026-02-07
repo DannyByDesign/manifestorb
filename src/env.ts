@@ -76,7 +76,7 @@ export const env = createEnv({
     DISABLE_LOG_ZOD_ERRORS: z.coerce.boolean().optional(),
     ENABLE_DEBUG_LOGS: z.coerce.boolean().default(false),
 
-
+    AI_RULE_TIMEOUT_MS: z.string().optional(),
 
     // Stripe
     STRIPE_SECRET_KEY: z.string().optional(),

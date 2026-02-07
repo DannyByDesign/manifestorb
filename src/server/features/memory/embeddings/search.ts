@@ -8,7 +8,7 @@ import { Prisma } from "@/generated/prisma/client";
 import prisma from "@/server/db/client";
 import { EmbeddingService } from "./service";
 import { createScopedLogger } from "@/server/lib/logger";
-import type { MemoryFact, Knowledge } from "@/generated/prisma/client";
+import type { MemoryFact, Knowledge, ConversationMessage } from "@/generated/prisma/client";
 
 const logger = createScopedLogger("SemanticSearch");
 
@@ -169,43 +169,38 @@ async function keywordSearchMemoryFacts({
 }
 
 /**
- * Search Knowledge using hybrid approach
- * Falls back to keyword-only search if embeddings are unavailable
+ * Search Knowledge using hybrid approach (scoped by user).
+ * Falls back to keyword-only search if embeddings are unavailable.
  */
 export async function searchKnowledge({
-  emailAccountId,
+  userId,
   query,
   limit = 5
 }: {
-  emailAccountId: string;
+  userId: string;
   query: string;
   limit?: number;
 }): Promise<SearchResult<Knowledge>[]> {
   try {
-    // Try semantic search if embeddings are available
     if (EmbeddingService.isAvailable()) {
-      return await hybridSearchKnowledge({ emailAccountId, query, limit });
+      return await hybridSearchKnowledge({ userId, query, limit });
     }
-
-    // Fallback to keyword-only search
-    return await keywordSearchKnowledge({ emailAccountId, query, limit });
+    return await keywordSearchKnowledge({ userId, query, limit });
   } catch (error) {
-    logger.error("Knowledge search failed", { error, emailAccountId });
-    
-    // Final fallback to keyword search
-    return await keywordSearchKnowledge({ emailAccountId, query, limit });
+    logger.error("Knowledge search failed", { error, userId });
+    return await keywordSearchKnowledge({ userId, query, limit });
   }
 }
 
 /**
- * Hybrid search for Knowledge
+ * Hybrid search for Knowledge (scoped by user)
  */
 async function hybridSearchKnowledge({
-  emailAccountId,
+  userId,
   query,
   limit
 }: {
-  emailAccountId: string;
+  userId: string;
   query: string;
   limit: number;
 }): Promise<SearchResult<Knowledge>[]> {
@@ -215,7 +210,7 @@ async function hybridSearchKnowledge({
   const semanticResults = await prisma.$queryRaw<(Knowledge & { distance: number })[]>`
     SELECT *, (embedding <=> ${Prisma.raw("'" + vectorLiteral + "'::vector")}) AS distance
     FROM "Knowledge"
-    WHERE "emailAccountId" = ${emailAccountId}
+    WHERE "userId" = ${userId}
       AND embedding IS NOT NULL
     ORDER BY embedding <=> ${Prisma.raw("'" + vectorLiteral + "'::vector")}
     LIMIT ${limit}
@@ -225,7 +220,7 @@ async function hybridSearchKnowledge({
   const keywordResults = keywords.length > 0
     ? await prisma.knowledge.findMany({
         where: {
-          emailAccountId,
+          userId,
           OR: keywords.flatMap(k => [
             { title: { contains: k, mode: 'insensitive' } },
             { content: { contains: k, mode: 'insensitive' } }
@@ -261,11 +256,11 @@ async function hybridSearchKnowledge({
  * Keyword-only search for Knowledge
  */
 async function keywordSearchKnowledge({
-  emailAccountId,
+  userId,
   query,
   limit
 }: {
-  emailAccountId: string;
+  userId: string;
   query: string;
   limit: number;
 }): Promise<SearchResult<Knowledge>[]> {
@@ -274,7 +269,7 @@ async function keywordSearchKnowledge({
 
   const results = await prisma.knowledge.findMany({
     where: {
-      emailAccountId,
+      userId,
       OR: keywords.flatMap(k => [
         { title: { contains: k, mode: 'insensitive' } },
         { content: { contains: k, mode: 'insensitive' } }
@@ -288,6 +283,63 @@ async function keywordSearchKnowledge({
     score: 0.5,
     matchType: "keyword" as const
   }));
+}
+
+// ============================================================================
+// Conversation history relevance search (Issue 24)
+// ============================================================================
+
+/**
+ * Search conversation history by semantic relevance to the current message.
+ * Returns messages sorted by relevance score. Requires ConversationMessage.embedding to exist.
+ * Falls back to empty array if embeddings unavailable or column missing.
+ */
+export async function searchConversationHistory({
+  userId,
+  query,
+  limit,
+}: {
+  userId: string;
+  query: string;
+  limit: number;
+}): Promise<SearchResult<ConversationMessage>[]> {
+  if (!EmbeddingService.isAvailable() || !query.trim()) return [];
+  try {
+    const queryEmbedding = await EmbeddingService.generateEmbedding(query);
+    const vectorLiteral = toPgVectorLiteral(queryEmbedding);
+
+    const rows = await prisma.$queryRaw<
+      Array<
+        ConversationMessage & { similarity: number }
+      >
+    >`
+      SELECT cm.id, cm."createdAt", cm."userId", cm."conversationId", cm."dedupeKey",
+             cm.role, cm.content, cm."toolCalls", cm.provider, cm."providerMessageId",
+             cm."channelId", cm."threadId", cm."emailAccountId",
+             1 - (cm.embedding <=> ${Prisma.raw("'" + vectorLiteral + "'::vector")}) as similarity
+      FROM "ConversationMessage" cm
+      WHERE cm."userId" = ${userId}
+        AND cm.embedding IS NOT NULL
+        AND (1 - (cm.embedding <=> ${Prisma.raw("'" + vectorLiteral + "'::vector")})) > 0.3
+      ORDER BY cm.embedding <=> ${Prisma.raw("'" + vectorLiteral + "'::vector")}
+      LIMIT ${limit}
+    `;
+
+    return rows.map((r) => {
+      const { similarity, ...msg } = r;
+      return {
+        item: msg as ConversationMessage,
+        score: similarity,
+        matchType: "semantic" as const,
+      };
+    });
+  } catch (error) {
+    logger.warn("Conversation history search failed (embedding column may be missing)", {
+      error,
+      userId,
+    });
+    return [];
+  }
 }
 
 // ============================================================================

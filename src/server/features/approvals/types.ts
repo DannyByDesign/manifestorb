@@ -16,6 +16,9 @@ export type CreateApprovalParams = {
     idempotencyKey: string;
     expiresInSeconds?: number;
     correlationId?: string;
+    /** Cross-feature: what triggered this approval (e.g. "email_rule", "ai_tool") */
+    sourceType?: string;
+    sourceId?: string;
 };
 
 export type DecideApprovalParams = {

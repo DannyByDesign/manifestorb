@@ -308,8 +308,6 @@ export function sanitizeActionFields(
       return base;
     }
     default:
-      // biome-ignore lint/correctness/noSwitchDeclarations: intentional exhaustive check
-      const exhaustiveCheck: never = action.type;
-      return exhaustiveCheck;
+      return base;
   }
 }

@@ -58,6 +58,12 @@ export function createGoogleCalendarProvider(
       emailAccountId: string,
       expiresAt: Date | null,
     ): Promise<void> {
+      const emailAccount = await prisma.emailAccount.findUnique({
+        where: { id: emailAccountId },
+        select: { userId: true },
+      });
+      const userId = emailAccount?.userId;
+
       try {
         const calendarClient = await getCalendarClientWithRefresh({
           accessToken,
@@ -134,6 +140,7 @@ export function createGoogleCalendarProvider(
                 emailAccountId,
               },
               logger,
+              userId,
             });
           }
         }

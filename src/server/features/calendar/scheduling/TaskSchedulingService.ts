@@ -114,8 +114,19 @@ export async function scheduleTasksForUser({
     });
 
     if (approvalRequiredTasks.length > 0) {
+      const proposedTasks = await schedulingService.scheduleMultipleTasks(
+        approvalRequiredTasks.map(mapDbTaskToSchedulingTask),
+      );
+      const proposedById = new Map(proposedTasks.map((t) => [t.id, t]));
       await createRescheduleApprovals({
-        tasks: approvalRequiredTasks,
+        tasks: approvalRequiredTasks.map((task) => {
+          const proposed = proposedById.get(task.id);
+          return {
+            ...task,
+            newStart: proposed?.scheduledStart ?? null,
+            newEnd: proposed?.scheduledEnd ?? null,
+          };
+        }),
         userId,
       });
     }
@@ -300,35 +311,69 @@ async function createRescheduleApprovals({
     title: string;
     scheduledStart: Date | null;
     scheduledEnd: Date | null;
+    newStart?: Date | null;
+    newEnd?: Date | null;
   }>;
   userId: string;
 }) {
   if (!tasks.length) return;
 
   const approvalService = new ApprovalService(prisma);
+  const { createInAppNotification } = await import("@/features/notifications/create");
 
-  await Promise.all(
-    tasks.map((task) => {
-      const idempotencyKey = createHash("sha256")
-        .update(
-          `reschedule-task:${task.id}:${task.scheduledStart?.toISOString() ?? "none"}:${task.scheduledEnd?.toISOString() ?? "none"}`,
-        )
-        .digest("hex");
+  const taskSummaries = tasks.map((task, i) => ({
+    index: i,
+    taskId: task.id,
+    title: task.title,
+    currentStart: task.scheduledStart?.toISOString() ?? null,
+    currentEnd: task.scheduledEnd?.toISOString() ?? null,
+    newStart: task.newStart?.toISOString() ?? null,
+    newEnd: task.newEnd?.toISOString() ?? null,
+  }));
 
-      return approvalService.createRequest({
-        userId,
-        provider: "system",
-        externalContext: {
-          source: "task-scheduler",
-          summary: `Reschedule task: ${task.title}`,
-        },
-        requestPayload: {
-          actionType: "reschedule_task",
-          description: `Approve rescheduling task "${task.title}"`,
-          args: { taskId: task.id },
-        },
-        idempotencyKey,
-      });
-    }),
-  );
+  const batchKey = createHash("sha256")
+    .update(`reschedule-batch:${userId}:${tasks.map((t) => t.id).sort().join(",")}:${Date.now()}`)
+    .digest("hex");
+
+  const approval = await approvalService.createRequest({
+    userId,
+    provider: "system",
+    externalContext: { source: "task-scheduler" },
+    requestPayload: {
+      actionType: "batch_reschedule_tasks",
+      description: `Reschedule ${tasks.length} task(s)`,
+      args: { tasks: taskSummaries },
+    },
+    idempotencyKey: batchKey,
+    expiresInSeconds: 3600,
+  });
+
+  const taskList = tasks
+    .map((t) => {
+      const newTime =
+        t.newStart != null
+          ? new Date(t.newStart).toLocaleString("en-US", {
+              weekday: "short",
+              month: "short",
+              day: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+            })
+          : "TBD";
+      return `- ${t.title} -> ${newTime}`;
+    })
+    .join("\n");
+
+  await createInAppNotification({
+    userId,
+    title: `Reschedule ${tasks.length} task(s)?`,
+    body: `The scheduler wants to move:\n${taskList}\n\nApprove all or deny.`,
+    type: "approval",
+    metadata: {
+      approvalId: approval.id,
+      taskCount: tasks.length,
+      tasks: taskSummaries,
+    },
+    dedupeKey: `batch-reschedule-${approval.id}`,
+  });
 }

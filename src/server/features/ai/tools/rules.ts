@@ -501,6 +501,7 @@ Rule structure: condition (aiInstructions and/or static from/to/subject) + actio
         }
         const knowledge = await prisma.knowledge.create({
           data: {
+            userId: context.userId,
             emailAccountId: context.emailAccountId,
             title: parsed.data.title,
             content: parsed.data.content,

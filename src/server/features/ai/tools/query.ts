@@ -7,16 +7,21 @@ import { getEmailAccountWithAi } from "@/server/lib/user/get";
 export const queryTool: ToolDefinition<any> = {
     name: "query",
     description: `Search and retrieve items from any resource.
-    
+
 Resources:
 - email: Search emails (supports Gmail/Outlook query syntax)
 - calendar: Search events by date range, attendees, title
 - task: Search tasks by title/description
-- automation: List rules and their configurations`,
+- automation: List rules and their configurations
+- notification: Search notifications by title/body, filter by type
+- draft: List email drafts, optionally filter by query
+- conversation: Search conversation history across all platforms
+- preferences: Read current email and scheduling preferences`,
 
     parameters: z.object({
         resource: z.enum([
-            "email", "calendar", "drive", "automation", "knowledge", "report", "patterns", "contacts", "task"
+            "email", "calendar", "drive", "automation", "knowledge", "report", "patterns", "contacts", "task",
+            "notification", "draft", "conversation", "preferences"
         ]),
         filter: z.object({
             query: z.string().optional(),      // Search query
@@ -27,10 +32,11 @@ Resources:
             }).optional(),
             limit: z.number().max(50).default(20),
             status: z.enum(["PENDING", "APPROVED", "DENIED", "EXPIRED", "CANCELLED"]).optional(),
+            type: z.string().optional(),       // Notification type (info, warning, success, error)
         }).optional(),
     }),
 
-    execute: async ({ resource, filter }, { emailAccountId, providers }) => {
+    execute: async ({ resource, filter }, { emailAccountId, providers, userId }) => {
         const limit = filter?.limit || 20;
 
         switch (resource) {
@@ -220,6 +226,135 @@ Resources:
                         data: c
                     }))
                 };
+
+            case "notification": {
+                const notifType = filter?.type?.toLowerCase();
+                const validNotifTypes = ["info", "warning", "success", "error"] as const;
+                const notifications = await prisma.inAppNotification.findMany({
+                    where: {
+                        userId,
+                        ...(notifType && validNotifTypes.includes(notifType as (typeof validNotifTypes)[number])
+                            ? { type: notifType }
+                            : {}),
+                        ...(filter?.query ? {
+                            OR: [
+                                { title: { contains: filter.query, mode: "insensitive" } },
+                                { body: { contains: filter.query, mode: "insensitive" } },
+                            ],
+                        } : {}),
+                    },
+                    orderBy: { createdAt: "desc" },
+                    take: limit,
+                    select: {
+                        id: true,
+                        title: true,
+                        body: true,
+                        type: true,
+                        readAt: true,
+                        createdAt: true,
+                        metadata: true,
+                    },
+                });
+                return {
+                    success: true,
+                    data: notifications,
+                    message: notifications.length === 0
+                        ? "No notifications found."
+                        : `Found ${notifications.length} notification(s).`,
+                };
+            }
+
+            case "draft": {
+                if (!providers.email) {
+                    return { success: false, error: "Email provider not available" };
+                }
+                const drafts = await providers.email.getDrafts({
+                    maxResults: limit,
+                });
+                return {
+                    success: true,
+                    data: drafts.map((d: any) => ({
+                        id: d.id,
+                        subject: d.headers?.subject || "(No subject)",
+                        snippet: d.textPlain?.substring(0, 200) || "",
+                        from: d.headers?.from,
+                        date: d.date,
+                    })),
+                    message: drafts.length === 0
+                        ? "No drafts found."
+                        : `Found ${drafts.length} draft(s).`,
+                };
+            }
+
+            case "conversation": {
+                const conversations = await prisma.conversation.findMany({
+                    where: {
+                        userId,
+                        ...(filter?.query ? {
+                            messages: {
+                                some: {
+                                    content: { contains: filter.query, mode: "insensitive" },
+                                },
+                            },
+                        } : {}),
+                    },
+                    orderBy: { updatedAt: "desc" },
+                    take: limit,
+                    include: {
+                        messages: {
+                            orderBy: { createdAt: "desc" },
+                            take: 3,
+                            select: {
+                                role: true,
+                                content: true,
+                                createdAt: true,
+                                provider: true,
+                            },
+                        },
+                    },
+                });
+                return {
+                    success: true,
+                    data: conversations.map((c) => ({
+                        id: c.id,
+                        provider: c.provider,
+                        updatedAt: c.updatedAt,
+                        recentMessages: c.messages,
+                    })),
+                    message: conversations.length === 0
+                        ? "No conversations found."
+                        : `Found ${conversations.length} conversation(s).`,
+                };
+            }
+
+            case "preferences": {
+                const emailAccount = await prisma.emailAccount.findFirst({
+                    where: { userId },
+                    select: {
+                        about: true,
+                        statsEmailFrequency: true,
+                        summaryEmailFrequency: true,
+                    },
+                });
+                const taskPreference = await prisma.taskPreference.findUnique({
+                    where: { userId },
+                    select: {
+                        workHourStart: true,
+                        workHourEnd: true,
+                        workDays: true,
+                        bufferMinutes: true,
+                        timeZone: true,
+                    },
+                });
+                return {
+                    success: true,
+                    data: {
+                        email: emailAccount,
+                        scheduling: taskPreference,
+                    },
+                    message: "Current preferences loaded.",
+                };
+            }
 
             default:
                 return { success: false, error: `Resource ${resource} not supported yet` };

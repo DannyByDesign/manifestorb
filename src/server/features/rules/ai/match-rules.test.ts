@@ -2607,7 +2607,7 @@ describe("evaluateRuleConditions", () => {
     expect(result.matchReasons).toEqual([]);
   });
 
-  it("OR: should match immediately with STATIC, ignoring AI", () => {
+  it("OR: when STATIC matches and rule has AI condition, require AI confirmation", () => {
     const rule = getRule({
       conditionalOperator: LogicalOperator.OR,
       from: "test@example.com",
@@ -2619,8 +2619,8 @@ describe("evaluateRuleConditions", () => {
 
     const result = evaluateRuleConditions({ rule, message, logger });
 
-    expect(result.matched).toBe(true);
-    expect(result.potentialAiMatch).toBe(false);
+    expect(result.matched).toBe(false);
+    expect(result.potentialAiMatch).toBe(true);
     expect(result.matchReasons).toEqual([{ type: ConditionType.STATIC }]);
   });
 

@@ -114,6 +114,11 @@ model User {
   tasks                Task[]
   taskPreferences      TaskPreference?
   calendarActionLogs   CalendarActionLog[]
+  knowledge            Knowledge[]
+  approvalPreferences  ApprovalPreference[]
+  schedulingInsights   SchedulingInsights?
+  userAIConfig         UserAIConfig?
+  categories           Category[]
 }
 
 // Migrating over to the new settings model. Currently most settings are in the User model, but will be moved to this model in the future.
@@ -159,6 +164,8 @@ model EmailAccount {
   followUpAwaitingReplyDays Float?
   followUpNeedsReplyDays    Float?
   followUpAutoDraftEnabled  Boolean @default(true)
+
+  aiRuleTimeoutMs Int? // Per-account AI rule selection timeout in ms. Null = use default.
 
   digestSchedule Schedule?
 
@@ -726,6 +733,8 @@ model EmailMessage {
   emailAccountId String
   emailAccount   EmailAccount @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
 
+  sourcedTasks Task[] @relation("TaskSourceEmail")
+
   @@unique([emailAccountId, threadId, messageId])
   @@index([emailAccountId, threadId])
   @@index([emailAccountId, date])
@@ -833,10 +842,15 @@ model Knowledge {
   title     String
   content   String
 
-  emailAccountId String
-  emailAccount   EmailAccount @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
+  // Kept for backward compatibility (nullable)
+  emailAccountId String?
+  emailAccount   EmailAccount? @relation(fields: [emailAccountId], references: [id], onDelete: SetNull)
 
-  @@unique([emailAccountId, title])
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, title])
+  @@index([userId])
 }
 
 model Conversation {
@@ -853,8 +867,13 @@ model Conversation {
 
   isPrimary Boolean  @default(false)
 
-  messages ConversationMessage[]
-  summary  ConversationSummary?
+  // Cross-feature: primary topic references
+  relatedEmailThreadId   String?
+  relatedCalendarEventId String?
+
+  messages     ConversationMessage[]
+  summary      ConversationSummary?
+  sourcedTasks Task[] @relation("TaskSourceConversation")
 
   @@unique([userId, provider, channelId, threadId])
   @@index([userId, updatedAt])
@@ -1033,11 +1052,19 @@ model Task {
   userId String
   user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  schedule TaskSchedule?
+  // Cross-feature: where this task originated
+  sourceEmailMessageId String?
+  sourceEmailMessage   EmailMessage?  @relation("TaskSourceEmail", fields: [sourceEmailMessageId], references: [id], onDelete: SetNull)
+  sourceConversationId String?
+  sourceConversation   Conversation?  @relation("TaskSourceConversation", fields: [sourceConversationId], references: [id], onDelete: SetNull)
+
+  schedule         TaskSchedule?
   schedulingReason TaskSchedulingReason?
+  documentFilings  DocumentFiling[]
 
   @@index([userId])
   @@index([status])
+  @@index([sourceEmailMessageId])
 }
 
 model TaskSchedulingReason {
@@ -1066,19 +1093,52 @@ model TaskSchedule {
 }
 
 model TaskPreference {
-  id                  String   @id @default(cuid())
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  workHourStart       Int      @default(9)
-  workHourEnd         Int      @default(17)
-  workDays            Int[]    @default([1, 2, 3, 4, 5])
-  bufferMinutes       Int      @default(15)
-  selectedCalendarIds String[] @default([])
-  timeZone            String?
-  groupByProject      Boolean  @default(false)
+  id                        String   @id @default(cuid())
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+  workHourStart             Int      @default(9)
+  workHourEnd               Int      @default(17)
+  workDays                  Int[]    @default([1, 2, 3, 4, 5])
+  bufferMinutes             Int      @default(15)
+  selectedCalendarIds       String[] @default([])
+  timeZone                  String?
+  groupByProject            Boolean  @default(false)
+  defaultMeetingDurationMin Int       @default(30)
+  meetingSlotCount          Int       @default(3)
+  meetingExpirySeconds      Int       @default(86400)
 
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SchedulingInsights {
+  id                    String    @id @default(cuid())
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  userId                String    @unique
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  avgMeetingDurationMin Float?
+  medianMeetingDurationMin Float?
+  avgBufferMin          Float?
+  actualWorkHourStart   Float?
+  actualWorkHourEnd     Float?
+  activeWorkDays        Int[]     @default([])
+  lastAnalyzedAt        DateTime?
+
+  @@index([userId])
+}
+
+model UserAIConfig {
+  id                          String   @id @default(cuid())
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+  userId                      String   @unique
+  user                        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  maxSteps                    Int?
+  approvalInstructions        String?
+  customInstructions          String?
+  conversationCategories      String[] @default([])
+  defaultApprovalExpirySeconds Int?
 }
 
 model CalendarActionLog {
@@ -1097,8 +1157,13 @@ model CalendarActionLog {
   userId String
   user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // Cross-feature: related email thread
+  relatedThreadId  String?
+  relatedMessageId String?
+
   @@index([userId])
   @@index([provider, action])
+  @@index([relatedThreadId])
 }
 
 model MeetingBriefing {
@@ -1201,6 +1266,10 @@ model DocumentFiling {
   driveConnection   DriveConnection @relation(fields: [driveConnectionId], references: [id], onDelete: Cascade)
   emailAccountId    String
   emailAccount      EmailAccount    @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
+
+  // Cross-feature: related task or calendar event
+  relatedTaskId String?
+  relatedTask   Task?   @relation(fields: [relatedTaskId], references: [id], onDelete: SetNull)
 
   @@index([emailAccountId, status])
   @@index([driveConnectionId])
@@ -1366,6 +1435,23 @@ enum SystemType {
   NOTIFICATION
 }
 
+model Category {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  name        String
+  description String?
+  color       String?
+  isSystem    Boolean  @default(false)
+  isLearned   Boolean  @default(false)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
 enum ReferralStatus {
   PENDING // Referral created, waiting for trial completion
   COMPLETED // Referral completed and reward granted
@@ -1439,6 +1525,21 @@ enum TaskReschedulePolicy {
 
 // Approvals
 // -----------------------------------------------------------------------------
+
+model ApprovalPreference {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  toolName String // "modify", "delete", "send", "create", "workflow"
+  policy   String // "always" | "never" | "conditional"
+  conditions Json?
+
+  @@unique([userId, toolName])
+  @@index([userId])
+}
 
 model ApprovalRequest {
   id             String   @id @default(cuid())

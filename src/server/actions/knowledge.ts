@@ -24,10 +24,9 @@ export const createKnowledgeAction = actionClient
       parsedInput: { title, content },
     }) => {
       const knowledgeCount = await prisma.knowledge.count({
-        where: { emailAccountId },
+        where: { userId },
       });
 
-      // premium check
       if (
         knowledgeCount >= KNOWLEDGE_BASIC_MAX_ITEMS ||
         content.length > KNOWLEDGE_BASIC_MAX_CHARS
@@ -48,6 +47,7 @@ export const createKnowledgeAction = actionClient
         data: {
           title,
           content,
+          userId,
           emailAccountId,
         },
       });
@@ -76,7 +76,7 @@ export const updateKnowledgeAction = actionClient
       }
 
       await prisma.knowledge.update({
-        where: { id, emailAccountId },
+        where: { id, userId },
         data: { title, content },
       });
     },
@@ -85,8 +85,8 @@ export const updateKnowledgeAction = actionClient
 export const deleteKnowledgeAction = actionClient
   .metadata({ name: "deleteKnowledge" })
   .inputSchema(deleteKnowledgeBody)
-  .action(async ({ ctx: { emailAccountId }, parsedInput: { id } }) => {
+  .action(async ({ ctx: { userId }, parsedInput: { id } }) => {
     await prisma.knowledge.delete({
-      where: { id, emailAccountId },
+      where: { id, userId },
     });
   });

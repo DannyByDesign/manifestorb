@@ -3,9 +3,21 @@ import { PrismaClient, ApprovalRequest, ApprovalDecision } from "@/generated/pri
 import { createHash } from "crypto";
 import { CreateApprovalParams, DecideApprovalParams } from "./types";
 import { createScopedLogger } from "@/server/lib/logger";
+import prisma from "@/server/db/client";
 
 const logger = createScopedLogger("ApprovalService");
 const DEFAULT_EXPIRY_SECONDS = 3600; // 1 hour
+
+/**
+ * Get the approval request expiry in seconds for a user (from UserAIConfig or default).
+ */
+export async function getApprovalExpiry(userId: string): Promise<number> {
+  const config = await prisma.userAIConfig.findUnique({
+    where: { userId },
+    select: { defaultApprovalExpirySeconds: true },
+  });
+  return config?.defaultApprovalExpirySeconds ?? DEFAULT_EXPIRY_SECONDS;
+}
 
 export class ApprovalService {
     constructor(private prisma: PrismaClient) { }
@@ -22,7 +34,9 @@ export class ApprovalService {
             requestPayload,
             idempotencyKey,
             expiresInSeconds,
-            correlationId
+            correlationId,
+            sourceType,
+            sourceId,
         } = params;
 
         // Check for existing request (Idempotency)
@@ -50,6 +64,8 @@ export class ApprovalService {
                 idempotencyKey,
                 correlationId,
                 expiresAt,
+                sourceType,
+                sourceId,
             }
         });
 

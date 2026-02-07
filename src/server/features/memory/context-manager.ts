@@ -15,11 +15,12 @@
  */
 import prisma from "@/server/db/client";
 import type { User, ConversationMessage, MemoryFact, Knowledge, EmailAccount } from "@/generated/prisma/client";
-import { searchMemoryFacts, searchKnowledge } from "@/features/memory/embeddings/search";
+import { searchMemoryFacts, searchKnowledge, searchConversationHistory } from "@/features/memory/embeddings/search";
 import { createScopedLogger } from "@/server/lib/logger";
 import { recordBulkAccess } from "@/features/memory/decay";
 import { posthogCaptureEvent } from "@/server/lib/posthog";
 import { getPendingScheduleProposal } from "@/features/calendar/schedule-proposal";
+import { scanForAttentionItems } from "@/features/ai/proactive/scanner";
 
 const logger = createScopedLogger("ContextManager");
 
@@ -92,6 +93,49 @@ export interface ContextPack {
 
     // Pending state (only set when user has pending proposals/approvals)
     pendingState?: PendingStateContext;
+
+    // Proactive attention items (unanswered emails, overdue tasks, expiring approvals, etc.)
+    attentionItems?: Array<{
+        id: string;
+        type: string;
+        urgency: string;
+        title: string;
+        description: string;
+        actionable: boolean;
+        suggestedAction?: string;
+    }>;
+
+    // Domain objects for holistic awareness
+    domain?: {
+        upcomingEvents: Array<{
+            id: string;
+            title: string;
+            start: Date;
+            end: Date;
+            attendees?: string[];
+            location?: string;
+        }>;
+        recentEmails: Array<{
+            threadId: string;
+            subject: string;
+            from: string;
+            snippet: string;
+            receivedAt: Date;
+            needsReply: boolean;
+        }>;
+        pendingTasks: Array<{
+            id: string;
+            title: string;
+            dueDate?: Date;
+            priority?: string;
+            status: string;
+        }>;
+        recentFilings: Array<{
+            filename: string;
+            folderPath: string;
+            filedAt: Date;
+        }>;
+    };
 }
 
 export class ContextManager {
@@ -123,7 +167,7 @@ export class ContextManager {
                         limit: 10 // Fetch more, filter by relevance
                     }),
                     searchKnowledge({
-                        emailAccountId: emailAccount.id,
+                        userId: user.id,
                         query: messageContent,
                         limit: 5
                     })
@@ -161,22 +205,97 @@ export class ContextManager {
             }
         }
 
-        // 2. Fetch UNIFIED History and Summary in parallel (across ALL platforms)
-        const [rawHistory, userSummary] = await Promise.all([
-            // Fetch messages from ALL user conversations (unified across platforms)
+        // 2. Fetch UNIFIED History (hybrid: recent + relevance), Summary, and domain objects in parallel
+        const recentTake = 10;
+        const relevantTake = 10;
+        const [recentHistory, relevantHistoryResults, userSummary, upcomingEvents, recentEmails, pendingTasks, recentFilings, attentionItems] = await Promise.all([
             prisma.conversationMessage.findMany({
                 where: { userId: user.id },
                 orderBy: { createdAt: 'desc' },
-                take: 30  // Slightly more since we're spanning conversations
+                take: recentTake,
             }),
-            // Fetch user-level summary (unified across all platforms)
+            messageContent.trim().length > 0
+                ? searchConversationHistory({
+                    userId: user.id,
+                    query: messageContent,
+                    limit: relevantTake,
+                }).then((results) => results.map((r) => r.item))
+                : Promise.resolve([] as ConversationMessage[]),
             prisma.userSummary.findUnique({
                 where: { userId: user.id }
-            })
+            }),
+            // Upcoming calendar events: not stored in DB; leave empty (provider could be called later)
+            Promise.resolve([] as Array<{ id: string; title: string; start: Date; end: Date; attendees?: string[]; location?: string }>),
+            // Recent emails (last 48h) from user's email accounts
+            prisma.emailMessage.findMany({
+                where: {
+                    emailAccount: { userId: user.id },
+                    inbox: true,
+                    date: { gte: new Date(Date.now() - 48 * 60 * 60 * 1000) },
+                },
+                orderBy: { date: "desc" },
+                take: 10,
+                select: {
+                    threadId: true,
+                    from: true,
+                    date: true,
+                    read: true,
+                },
+            }).then(rows =>
+                rows.map((r) => ({
+                    threadId: r.threadId,
+                    subject: "(No subject)",
+                    from: r.from,
+                    snippet: "",
+                    receivedAt: r.date,
+                    needsReply: !r.read,
+                }))
+            ).catch(() => []),
+            // Pending tasks
+            prisma.task.findMany({
+                where: {
+                    userId: user.id,
+                    status: { in: ["PENDING", "IN_PROGRESS"] },
+                },
+                orderBy: [{ dueDate: "asc" }, { priority: "desc" }],
+                take: 10,
+                select: {
+                    id: true,
+                    title: true,
+                    dueDate: true,
+                    priority: true,
+                    status: true,
+                },
+            }).catch(() => []),
+            // Recent drive filings (last 7 days)
+            prisma.documentFiling.findMany({
+                where: {
+                    emailAccount: { userId: user.id },
+                    createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+                },
+                orderBy: { createdAt: "desc" },
+                take: 5,
+                select: {
+                    filename: true,
+                    folderPath: true,
+                    createdAt: true,
+                },
+            }).catch(() => []),
+            scanForAttentionItems(user.id).catch(() => []),
         ]);
 
-        // Reverse to chronological order (Oldest -> Newest)
-        const history: ConversationMessage[] = rawHistory.reverse();
+        // Merge recent + relevant, dedupe by id, sort oldest first
+        const seenIds = new Set<string>();
+        const merged: ConversationMessage[] = [];
+        for (const msg of [...recentHistory, ...relevantHistoryResults]) {
+            if (!seenIds.has(msg.id)) {
+                seenIds.add(msg.id);
+                merged.push(msg);
+            }
+        }
+        const history: ConversationMessage[] = merged.sort(
+            (a, b) => a.createdAt.getTime() - b.createdAt.getTime()
+        );
 
         // 2b. Fetch pending state (only when present) for natural-language resolution
         const [pendingProposal, pendingApprovalRows] = await Promise.all([
@@ -296,6 +415,31 @@ export class ContextManager {
             history,
             documents: [], // Populated by Deep Mode later
             pendingState: pendingState ?? undefined,
+            attentionItems: attentionItems.map((a) => ({
+                id: a.id,
+                type: a.type,
+                urgency: a.urgency,
+                title: a.title,
+                description: a.description,
+                actionable: a.actionable,
+                suggestedAction: a.suggestedAction,
+            })),
+            domain: {
+                upcomingEvents,
+                recentEmails,
+                pendingTasks: pendingTasks.map((t) => ({
+                    id: t.id,
+                    title: t.title,
+                    dueDate: t.dueDate ?? undefined,
+                    priority: t.priority ?? undefined,
+                    status: t.status,
+                })),
+                recentFilings: recentFilings.map((f) => ({
+                    filename: f.filename,
+                    folderPath: f.folderPath,
+                    filedAt: f.createdAt,
+                })),
+            },
         });
 
         // 4. Track metrics (fire and forget)
@@ -419,7 +563,22 @@ export class ContextManager {
         for (const msg of contextPack.history) {
             size += msg.content.length;
         }
-        
+
+        if (contextPack.domain) {
+            for (const e of contextPack.domain.upcomingEvents) {
+                size += (e.title?.length ?? 0) + 50;
+            }
+            for (const e of contextPack.domain.recentEmails) {
+                size += (e.subject?.length ?? 0) + (e.snippet?.length ?? 0) + 30;
+            }
+            for (const t of contextPack.domain.pendingTasks) {
+                size += (t.title?.length ?? 0) + 20;
+            }
+            for (const f of contextPack.domain.recentFilings) {
+                size += (f.filename?.length ?? 0) + (f.folderPath?.length ?? 0) + 10;
+            }
+        }
+
         return size;
     }
 }

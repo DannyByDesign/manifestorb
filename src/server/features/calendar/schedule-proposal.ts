@@ -1,6 +1,7 @@
 import prisma from "@/server/db/client";
 import { createScopedLogger } from "@/server/lib/logger";
 import { createEmailProvider } from "@/features/email/provider";
+import { resolveEmailAccount } from "@/server/lib/user-utils";
 
 const logger = createScopedLogger("schedule-proposal");
 
@@ -54,7 +55,7 @@ export async function resolveScheduleProposalRequestById(params: {
     include: {
       user: {
         include: {
-          emailAccounts: { take: 1, include: { account: true } },
+          emailAccounts: { include: { account: true } },
         },
       },
     },
@@ -98,7 +99,10 @@ export async function resolveScheduleProposalRequestById(params: {
 
   args.data = data;
 
-  const emailAccountRow = requestRecord.user?.emailAccounts?.[0];
+  const preferredId = payload.emailAccountId ?? undefined;
+  const emailAccountRow = requestRecord.user
+    ? resolveEmailAccount(requestRecord.user, preferredId)
+    : null;
   if (!emailAccountRow) {
     return { ok: false, error: "No email account found" };
   }

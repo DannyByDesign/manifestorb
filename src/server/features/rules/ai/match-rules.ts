@@ -283,8 +283,12 @@ export function evaluateRuleConditions({
   // Determine result based on what we have
   if (operator === LogicalOperator.OR) {
     // OR logic
+    if (staticMatch && hasAiCondition) {
+      // Static matched, but still let AI confirm intent
+      return { matched: false, potentialAiMatch: true, matchReasons };
+    }
     if (staticMatch) {
-      // Found a match, no need for AI
+      // No AI condition defined -- static match is sufficient
       return { matched: true, potentialAiMatch: false, matchReasons };
     }
     if (hasAiCondition) {
@@ -387,11 +391,21 @@ async function findMatchingRulesWithReasons(
   });
 
   if (potentialAiMatches.length) {
+    const staticMatchHints = potentialAiMatches
+      .filter((rule) => {
+        const evalResult = evaluateRuleConditions({ rule, message, logger });
+        return evalResult.matchReasons.some(
+          (r) => r.type === ConditionType.STATIC,
+        );
+      })
+      .map((rule) => rule.name);
+
     const fullResult = await aiChooseRule({
       email: getEmailForLLM(message),
       rules: potentialAiMatches,
       emailAccount,
       modelType,
+      staticMatchHints,
     });
 
     const result = {

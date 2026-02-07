@@ -1,3 +1,11 @@
+/**
+ * AI Tool: create
+ *
+ * Wraps server actions / equivalents:
+ * - automation: createRule (provider), createGroupAction (when createGroup + ruleId)
+ * - knowledge: providers.automation.createKnowledge
+ * - email: draft creation; send via send tool
+ */
 
 import { z } from "zod";
 import { env } from "@/env";
@@ -18,6 +26,7 @@ import { addDays, isAmbiguousLocalTime, resolveTimeZoneOrUtc } from "@/features/
 import { CalendarServiceImpl } from "@/features/calendar/scheduling/CalendarServiceImpl";
 import { TimeSlotManagerImpl } from "@/features/calendar/scheduling/TimeSlotManager";
 import { ApprovalService } from "@/features/approvals/service";
+import { findCrossReferences } from "@/features/ai/cross-reference";
 import { createHash } from "crypto";
 
 const router = new ChannelRouter();
@@ -53,6 +62,7 @@ const createParameters = z.object({
         bcc: z.array(z.string()).optional(),
         subject: z.string().optional(),
         body: z.string().optional(),
+        sendOnApproval: z.boolean().optional().describe("If true, creates a draft and sends an approval notification. When user approves, the draft is sent. Use unless user says 'just save as draft'."),
 
         // Calendar
         title: z.string().optional().describe("Event or task title. Infer from the user's request."),
@@ -87,6 +97,8 @@ const createParameters = z.object({
         name: z.string().optional(),
         conditions: z.unknown().optional(),
         actions: z.array(z.unknown()).optional(),
+        ruleId: z.string().optional().describe("Rule ID when creating a group for learned patterns"),
+        createGroup: z.boolean().optional().describe("Set true to create a learned-patterns group for the given ruleId"),
 
         // Knowledge
         // title uses Calendar's definition
@@ -181,6 +193,52 @@ Automation: Create Rules & Knowledge supported.`,
                     body: data.body
                 });
 
+                const draftId = (draftResult as { draftId?: string; id?: string }).draftId ?? (draftResult as { id?: string }).id;
+                if (data.sendOnApproval && draftId) {
+                    const approvalService = new ApprovalService(prisma);
+                    const { createHash } = await import("crypto");
+                    const idempotencyKey = createHash("sha256")
+                        .update(`send-draft:${context.userId}:${draftId}:${Date.now()}`)
+                        .digest("hex");
+                    const approval = await approvalService.createRequest({
+                        userId: context.userId,
+                        provider: "system",
+                        externalContext: { source: "draft_and_send" },
+                        requestPayload: {
+                            actionType: "send_draft",
+                            description: `Send email to ${data.to?.join(", ") ?? "recipients"} re: ${data.subject ?? "(No subject)"}`,
+                            tool: "send",
+                            args: { draftId },
+                            draftId,
+                            emailAccountId: context.emailAccountId,
+                            recipients: data.to,
+                            subject: data.subject,
+                        },
+                        idempotencyKey,
+                        expiresInSeconds: 86_400,
+                    });
+                    const { createInAppNotification } = await import("@/features/notifications/create");
+                    await createInAppNotification({
+                        userId: context.userId,
+                        title: `Draft ready: ${data.subject || "(No subject)"}`,
+                        body: `To: ${data.to?.join(", ") ?? "—"}. Approve to send.`,
+                        type: "approval",
+                        metadata: {
+                            approvalId: approval.id,
+                            draftId,
+                            to: data.to,
+                            subject: data.subject,
+                            bodyPreview: (data.body ?? "").substring(0, 300),
+                        },
+                        dedupeKey: `draft-send-${approval.id}`,
+                    });
+                    return {
+                        success: true,
+                        data: { draftId, approvalId: approval.id, status: "draft_pending_approval" },
+                        message: "Draft created and ready for your approval. You'll see a notification to review and send.",
+                    };
+                }
+
                 // Build summary for interactive UI
                 const recipients = data.to?.join(", ") || "unknown";
                 const subjectLine = data.subject || "(no subject)";
@@ -189,7 +247,7 @@ Automation: Create Rules & Knowledge supported.`,
                     { label: "Send", style: "primary" as const, value: "send" },
                 ] as Array<{ label: string; style: "primary" | "danger"; value: string; url?: string }>;
                 if (isGoogleProvider(emailAccount.account.provider)) {
-                    const draftUrl = `https://mail.google.com/mail/u/0/#drafts/${draftResult.draftId}`;
+                    const draftUrl = `https://mail.google.com/mail/u/0/#drafts/${draftId}`;
                     actions.push({ label: "Edit in Gmail", style: "primary" as const, value: "edit", url: draftUrl });
                 }
                 actions.push({ label: "Discard", style: "danger" as const, value: "discard" });
@@ -202,7 +260,7 @@ Automation: Create Rules & Knowledge supported.`,
                     },
                     interactive: {
                         type: "draft_created" as const,
-                        draftId: draftResult.draftId,
+                        draftId,
                         emailAccountId: context.emailAccountId,
                         userId: context.userId,
                         summary: `Draft to ${recipients} - "${subjectLine}"`,
@@ -375,6 +433,20 @@ Automation: Create Rules & Knowledge supported.`,
                         return `${index + 1}) ${formatSlotLabel(start, end, option.timeZone)}`;
                     });
 
+                    let messageText = `Here are a few options:\n${lines.join("\n")}\nReply 1, 2, or 3.`;
+                    const attendees = (data as { attendees?: string[] }).attendees;
+                    if (attendees?.length) {
+                        const crossRef = await findCrossReferences({
+                            userId: context.userId,
+                            attendees,
+                            subject: data.title,
+                            logger,
+                        }).catch(() => null);
+                        if (crossRef?.relatedEmails?.length) {
+                            messageText += `\n\nYou have ${crossRef.relatedEmails.length} recent email(s) from attendees that might be relevant.`;
+                        }
+                    }
+
                     return {
                         success: true,
                         data: {
@@ -382,7 +454,7 @@ Automation: Create Rules & Knowledge supported.`,
                             scheduleProposalId: request.id,
                             options
                         },
-                        message: `Here are a few options:\n${lines.join("\n")}\nReply 1, 2, or 3.`
+                        message: messageText
                     };
                 }
 
@@ -634,6 +706,8 @@ Automation: Create Rules & Knowledge supported.`,
                         reschedulePolicy: data.reschedulePolicy ?? "FLEXIBLE",
                         scheduledStart: data.scheduledStart ? new Date(data.scheduledStart) : null,
                         scheduledEnd: data.scheduledEnd ? new Date(data.scheduledEnd) : null,
+                        sourceEmailMessageId: context.emailMessageId ?? undefined,
+                        sourceConversationId: context.conversationId ?? undefined,
                     }
                 });
 
@@ -643,7 +717,30 @@ Automation: Create Rules & Knowledge supported.`,
 
                 return { success: true, data: task };
 
+            case "category": {
+                const name = (data.name ?? data.categoryName) as string | undefined;
+                if (!name?.trim()) {
+                    return { success: false, error: "Category name is required" };
+                }
+                const { getOrCreateCategory } = await import("@/features/categories/resolve");
+                const categoryId = await getOrCreateCategory({
+                    userId: context.userId,
+                    name: name.trim(),
+                    description: (data.description as string) ?? undefined,
+                    isLearned: (data.isLearned as boolean) ?? false,
+                });
+                return { success: true, data: { categoryId } };
+            }
+
             case "automation":
+                // Create learned-patterns group for an existing rule
+                if (data.createGroup === true && data.ruleId) {
+                    const { createGroupAction } = await import("@/server/actions/group");
+                    const result = await createGroupAction(emailAccountId, {
+                        ruleId: data.ruleId,
+                    });
+                    return { success: true, data: result };
+                }
                 // Create Rule
                 return {
                     success: true,

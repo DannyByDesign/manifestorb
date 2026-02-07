@@ -1,3 +1,11 @@
+/**
+ * AI Tool: delete
+ *
+ * Wraps server actions where applicable:
+ * - automation: providers.automation.deleteRule
+ * - knowledge: deleteKnowledgeAction (per id)
+ * - email/calendar/drive/task: provider or prisma
+ */
 
 import { z } from "zod";
 import { type ToolDefinition } from "./types";
@@ -49,10 +57,15 @@ Drive: Deletes file or folder`,
                 await Promise.all(ids.map((id: string) => providers.automation.deleteRule(id)));
                 return { success: true, data: { count: ids.length } };
 
-            case "knowledge":
-                // Delete Knowledge
-                await Promise.all(ids.map((id: string) => providers.automation.deleteKnowledge(id)));
+            case "knowledge": {
+                const { deleteKnowledgeAction } = await import("@/server/actions/knowledge");
+                await Promise.all(
+                    ids.map((id: string) =>
+                        deleteKnowledgeAction(emailAccountId, { id })
+                    )
+                );
                 return { success: true, data: { count: ids.length } };
+            }
 
             case "task":
                 await prisma.task.deleteMany({ where: { id: { in: ids } } });

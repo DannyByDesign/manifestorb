@@ -134,7 +134,7 @@ async function generateDraftContent(
 
   // 1. Get knowledge base entries
   const knowledgeBase = await prisma.knowledge.findMany({
-    where: { emailAccountId: emailAccount.id },
+    where: { userId: emailAccount.userId },
     orderBy: { updatedAt: "desc" },
   });
 

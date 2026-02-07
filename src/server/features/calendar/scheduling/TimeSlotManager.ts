@@ -4,7 +4,24 @@ import type { CalendarService } from "./CalendarService";
 import { SlotScorer } from "./SlotScorer";
 import type { Conflict, SchedulingSettings, SchedulingTask, TimeSlot } from "./types";
 
-const DEFAULT_TASK_DURATION = 30;
+const FALLBACK_TASK_DURATION = 30;
+const FALLBACK_BUFFER_MINUTES = 15;
+
+async function getDefaultTaskDuration(userId: string): Promise<number> {
+  const insights = await prisma.schedulingInsights.findUnique({
+    where: { userId },
+    select: { medianMeetingDurationMin: true },
+  });
+  return insights?.medianMeetingDurationMin ?? FALLBACK_TASK_DURATION;
+}
+
+async function getMinimumBuffer(userId: string): Promise<number> {
+  const insights = await prisma.schedulingInsights.findUnique({
+    where: { userId },
+    select: { avgBufferMin: true },
+  });
+  return insights?.avgBufferMin ?? FALLBACK_BUFFER_MINUTES;
+}
 
 export interface TimeSlotManager {
   findAvailableSlots(
@@ -86,10 +103,14 @@ export class TimeSlotManagerImpl implements TimeSlotManager {
         ? task.startDate
         : startDate;
 
+    const duration =
+      task.durationMinutes ?? (await getDefaultTaskDuration(task.userId));
+    const bufferMin = await getMinimumBuffer(task.userId);
     const potentialSlots = this.generatePotentialSlots(
-      task.durationMinutes || DEFAULT_TASK_DURATION,
+      duration,
       effectiveStartDate,
       endDate,
+      bufferMin,
     );
 
     const workHourSlots = this.filterByWorkHours(potentialSlots);
@@ -176,7 +197,7 @@ export class TimeSlotManagerImpl implements TimeSlotManager {
     let localCurrentStart = localStartDate;
 
     if (localStartDate.toDateString() === localNow.toDateString()) {
-      localCurrentStart = addMinutes(localCurrentStart, MINIMUM_BUFFER_MINUTES);
+      localCurrentStart = addMinutes(localCurrentStart, minimumBufferMinutes);
 
       if (localCurrentStart.getHours() >= this.settings.workHourEnd) {
         localCurrentStart = addDays(

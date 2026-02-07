@@ -23,6 +23,10 @@ export interface Changes {
 export interface ToolContext {
     userId: string;
     emailAccountId: string;
+    /** Optional: link created tasks to the source email (cross-feature FK) */
+    emailMessageId?: string;
+    /** Optional: link created tasks to the conversation (cross-feature FK) */
+    conversationId?: string;
     logger: any;
     providers: {
         email: EmailProvider;

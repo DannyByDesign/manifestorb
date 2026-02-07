@@ -78,10 +78,11 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
             }
         });
 
-        if (request && request.user && request.user.emailAccounts[0]) {
+        const { resolveEmailAccount } = await import("@/server/lib/user-utils");
+        const emailAccount = request?.user ? resolveEmailAccount(request.user, null) : null;
+        if (request && request.user && emailAccount) {
             const { ChannelRouter } = await import("@/features/channels/router");
             const router = new ChannelRouter();
-            const emailAccount = request.user.emailAccounts[0];
             let userMessage = "I've cancelled that request.";
 
             try {

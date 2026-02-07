@@ -610,8 +610,14 @@ export const addToKnowledgeBaseTool = ({
       trackToolCall({ tool: "add_to_knowledge_base", email, logger });
 
       try {
+        const emailAccount = await prisma.emailAccount.findUnique({
+          where: { id: emailAccountId },
+          select: { userId: true },
+        });
+        if (!emailAccount) return { error: "Email account not found" };
         const knowledge = await prisma.knowledge.create({
           data: {
+            userId: emailAccount.userId,
             emailAccountId,
             title,
             content,
