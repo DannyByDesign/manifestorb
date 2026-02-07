@@ -76,7 +76,6 @@
     "react-dom": "19.2.3",
     "resend": "^6.9.1",
     "rrule": "^2.8.1",
-    "sanity": "^5.7.0",
     "serialize-error": "^13.0.1",
     "sonner": "^2.0.7",
     "string-similarity": "^4.0.4",

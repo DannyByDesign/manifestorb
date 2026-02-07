@@ -1,5 +1,7 @@
 import type { PortableTextBlock } from "@portabletext/react";
-import type { PortableTextSpan } from "sanity";
+
+/** Minimal type for a portable text span (text-bearing child). Avoids pulling in sanity. */
+type TextSpan = { _type: string; text: string };
 
 export const slugify = (text: string) => {
   return text
@@ -13,8 +15,11 @@ export const extractTextFromPortableTextBlock = (
 ): string => {
   return block.children
     .filter(
-      (child): child is PortableTextSpan =>
-        typeof child === "object" && "_type" in child && "text" in child,
+      (child): child is TextSpan =>
+        typeof child === "object" &&
+        child !== null &&
+        "_type" in child &&
+        "text" in child,
     )
     .map((child) => child.text)
     .join("");
