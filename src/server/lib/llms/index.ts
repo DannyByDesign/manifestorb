@@ -65,9 +65,16 @@ export function createGenerateText({
         prompt: options.prompt?.slice(0, MAX_LOG_LENGTH),
       });
 
+      // AI SDK defaults to stopWhen: stepCountIs(1); pass stopWhen so the agent can run multiple tool-call steps and produce a final reply.
+      const maxSteps = (options as { maxSteps?: number }).maxSteps ?? 20;
+      const agentOptions =
+        options.tools && maxSteps > 1
+          ? { ...options, stopWhen: stepCountIs(maxSteps) }
+          : options;
+
       const result = await generateText(
         {
-          ...options,
+          ...agentOptions,
           ...commonOptions,
           model,
         },

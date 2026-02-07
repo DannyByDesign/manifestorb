@@ -16,7 +16,7 @@ const logger = createScopedLogger("ai/choose-rule");
  * Can be overridden per-account via emailAccount.aiRuleTimeoutMs
  * or globally via AI_RULE_TIMEOUT_MS environment variable.
  */
-const DEFAULT_AI_RULE_TIMEOUT_MS = 10_000; // 10 seconds
+const DEFAULT_AI_RULE_TIMEOUT_MS = 60_000; // 60 seconds
 
 function getAiRuleTimeout(emailAccount: {
   aiRuleTimeoutMs?: number | null;

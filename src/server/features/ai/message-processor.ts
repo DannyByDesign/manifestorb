@@ -95,8 +95,11 @@ export async function processMessage(
   const maxSteps = userAiConfig?.maxSteps ?? 20;
 
   // ---- 2. Create tools + memory tools ------------------------------------
+  const resolvedProvider =
+    (emailAccount as Record<string, unknown>).provider as string | undefined ??
+    emailAccount.account?.provider;
   const baseTools = await createAgentTools({
-    emailAccount: emailAccount as unknown as Parameters<typeof createAgentTools>[0]["emailAccount"],
+    emailAccount: { ...emailAccount, provider: resolvedProvider ?? "" } as unknown as Parameters<typeof createAgentTools>[0]["emailAccount"],
     logger,
     userId: user.id,
   });
@@ -314,6 +317,17 @@ async function executeNonStreaming({
     },
   );
 
+  // Diagnostic: why is result.text empty?
+  const resultAny = result as { text?: string; finishReason?: string; steps?: unknown[]; toolCalls?: unknown[] };
+  logger.info("[executeNonStreaming] result diagnostic", {
+    textLength: resultAny.text?.length ?? 0,
+    textPreview: resultAny.text?.slice(0, 100) ?? "",
+    finishReason: resultAny.finishReason,
+    stepsCount: resultAny.steps?.length ?? 0,
+    toolCallsCount: resultAny.toolCalls?.length ?? 0,
+    maxSteps,
+  });
+
   // Extract interactive payloads & tool messages
   const interactivePayloads: unknown[] = [];
   let toolMessage: string | undefined;
@@ -344,15 +358,34 @@ async function executeNonStreaming({
     }
   };
   const toolResults =
-    (result as { toolResults?: Array<{ output?: unknown }> }).toolResults ?? [];
+    (result as { toolResults?: Array<{ output?: unknown; toolName?: string }> }).toolResults ?? [];
   for (const tr of toolResults) collectFromOutput(tr.output);
-  if (result.steps) {
-    for (const step of result.steps) {
+  const steps = (result as { steps?: Array<{ toolResults?: Array<{ output?: unknown; toolName?: string }> }> }).steps;
+  if (steps) {
+    for (const step of steps) {
       for (const tr of step.toolResults ?? [])
         collectFromOutput((tr as { output?: unknown }).output);
     }
   }
-  const responseText = (result.text?.trim() ?? "") || (toolMessage ?? "");
+
+  let responseText = (result.text?.trim() ?? "") || (toolMessage ?? "");
+
+  // Fallback when model and tools produced no user-facing text. Observed in E2E: Tier 1 Test 2
+  // ("Check if I'm free Thursday afternoon") and Tier 4 Test 16 ("Send it") sometimes had empty
+  // result.text (model ended with tool-calls and no final turn) and query/send did not return
+  // a top-level message; we now add message to those tools and this fallback for robustness.
+  if (!responseText) {
+    const lastTool = getLastToolResult(result);
+    responseText =
+      (lastTool?.toolName === "query" && "I checked that for you.")
+      || (lastTool?.toolName === "send" && "Email sent.")
+      || "Done.";
+  }
+
+  logger.info("[executeNonStreaming] responseText diagnostic", {
+    toolMessagePreview: toolMessage?.slice(0, 100) ?? "",
+    responseTextLength: responseText.length,
+  });
 
   // Persist assistant response
   await persistAssistantMessage(
@@ -368,6 +401,27 @@ async function executeNonStreaming({
   triggerMemoryRecording(userId, userEmail, logger);
 
   return { text: responseText, approvals: [], interactivePayloads };
+}
+
+/** Returns the last tool invocation (by step order) for fallback message when result.text is empty. */
+function getLastToolResult(result: {
+  steps?: Array<{ toolResults?: Array<{ toolName?: string }> }>;
+  toolResults?: Array<{ toolName?: string }>;
+}): { toolName: string } | null {
+  const steps = result.steps ?? [];
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const trs = steps[i]?.toolResults ?? [];
+    for (let j = trs.length - 1; j >= 0; j--) {
+      const name = trs[j]?.toolName;
+      if (typeof name === "string" && name.trim()) return { toolName: name.trim() };
+    }
+  }
+  const flat = result.toolResults ?? [];
+  for (let i = flat.length - 1; i >= 0; i--) {
+    const name = flat[i]?.toolName;
+    if (typeof name === "string" && name.trim()) return { toolName: name.trim() };
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------

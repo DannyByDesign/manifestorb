@@ -80,11 +80,17 @@ vi.mock("@workos-inc/authkit-nextjs/components", () => ({
   AuthKitProvider: ({ children }: { children: ReactNode }) => children,
 }));
 
-// Mock Prisma client for unit tests by default
-vi.mock("@/server/db/client", () => ({
-  default: prismaMock,
-}));
+// Mock Prisma client for unit tests by default; use real client for live E2E
+vi.mock("@/server/db/client", async (importOriginal) => {
+  if (process.env.RUN_LIVE_E2E === "true") {
+    const actual = await importOriginal<typeof import("@/server/db/client")>();
+    return { default: actual.default };
+  }
+  return { default: prismaMock };
+});
 
 beforeEach(() => {
-  resetPrismaMock();
+  if (process.env.RUN_LIVE_E2E !== "true") {
+    resetPrismaMock();
+  }
 });

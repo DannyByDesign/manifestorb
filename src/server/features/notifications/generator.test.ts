@@ -61,7 +61,7 @@ describe("generateNotification", () => {
     );
 
     const promise = generateNotification(context, { emailAccount });
-    await vi.advanceTimersByTimeAsync(10000);
+    await vi.advanceTimersByTimeAsync(60000);
     const result = await promise;
 
     expect(result).toContain("📧 Uber: Receipt - $45.23");

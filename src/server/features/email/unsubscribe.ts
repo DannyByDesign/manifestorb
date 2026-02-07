@@ -123,7 +123,7 @@ async function executeUnsubscribeLink(link: string): Promise<boolean> {
                 'User-Agent': 'Mozilla/5.0 (compatible; AModel/1.0; Unsubscribe)',
             },
             // Add timeout to prevent hanging on slow/malicious servers
-            signal: AbortSignal.timeout(10000), // 10 second timeout
+            signal: AbortSignal.timeout(60000), // 60 second timeout
         });
 
         if (response.ok) {

@@ -23,17 +23,33 @@ Resources:
             "email", "calendar", "drive", "automation", "knowledge", "report", "patterns", "contacts", "task",
             "notification", "draft", "conversation", "preferences"
         ]),
-        filter: z.object({
-            query: z.string().optional(),      // Search query
-            id: z.string().optional(),         // Specific ID (for patterns)
-            dateRange: z.object({
-                after: z.string().optional(),    // ISO date
-                before: z.string().optional(),
-            }).optional(),
-            limit: z.number().max(50).default(20),
-            status: z.enum(["PENDING", "APPROVED", "DENIED", "EXPIRED", "CANCELLED"]).optional(),
-            type: z.string().optional(),       // Notification type (info, warning, success, error)
-        }).optional(),
+        filter: z.preprocess(
+            (v) =>
+                typeof v === "string"
+                    ? (() => {
+                          try {
+                              return JSON.parse(v) as Record<string, unknown>;
+                          } catch {
+                              return undefined;
+                          }
+                      })()
+                    : v,
+            z
+                .object({
+                    query: z.string().optional(),
+                    id: z.string().optional(),
+                    dateRange: z
+                        .object({
+                            after: z.string().optional(),
+                            before: z.string().optional(),
+                        })
+                        .optional(),
+                    limit: z.number().max(50).default(20),
+                    status: z.enum(["PENDING", "APPROVED", "DENIED", "EXPIRED", "CANCELLED"]).optional(),
+                    type: z.string().optional(),
+                })
+                .optional(),
+        ),
     }),
 
     execute: async ({ resource, filter }, { emailAccountId, providers, userId }) => {
@@ -119,7 +135,8 @@ Resources:
                         snippet: `Time: ${e.startTime} - ${e.endTime}. Attendees: ${e.attendees?.map((a: any) => a.email).join(", ")}`,
                         date: e.startTime,
                         source: "calendar"
-                    }))
+                    })),
+                    message: events.length === 0 ? "No events in that range." : "Here are your calendar events.",
                 };
 
             case "task":

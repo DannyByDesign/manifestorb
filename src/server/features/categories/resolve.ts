@@ -26,7 +26,7 @@ export async function resolveSystemTypeToCategory(
   const name = SYSTEM_TYPE_TO_NAME[systemType];
   if (!name) return null;
 
-  const category = await prisma.category.findUnique({
+  const category = await prisma.userCategory.findUnique({
     where: { userId_name: { userId, name } },
     select: { id: true },
   });
@@ -47,12 +47,12 @@ export async function getOrCreateCategory({
   description?: string;
   isLearned?: boolean;
 }): Promise<string> {
-  const existing = await prisma.category.findUnique({
+  const existing = await prisma.userCategory.findUnique({
     where: { userId_name: { userId, name } },
   });
   if (existing) return existing.id;
 
-  const created = await prisma.category.create({
+  const created = await prisma.userCategory.create({
     data: { userId, name, description: description ?? null, isLearned },
   });
   return created.id;

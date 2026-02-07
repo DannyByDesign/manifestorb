@@ -1,15 +1,15 @@
 /**
  * Context Manager
- *
+ * 
  * Builds the context pack for AI interactions by assembling:
  * - User-level summary (unified across all platforms)
  * - Relevant memory facts (semantic search)
  * - Knowledge base entries
  * - Conversation history (unified across all platforms)
  * - Pending state (schedule proposals, approvals) when present
- *
+ * 
  * Applies token budgets to ensure context fits within model limits.
- *
+ * 
  * UNIFIED MEMORY: The assistant is "one person" across all platforms.
  * History and summaries are fetched by userId, not conversationId.
  */
@@ -158,51 +158,43 @@ export class ContextManager {
         let factScores: Map<string, number> = new Map();
 
         if (messageContent && messageContent.trim().length > 0) {
-            try {
-                // Parallel search for facts and knowledge
-                const [factResults, knowledgeResults] = await Promise.all([
-                    searchMemoryFacts({
-                        userId: user.id,
-                        query: messageContent,
-                        limit: 10 // Fetch more, filter by relevance
-                    }),
-                    searchKnowledge({
-                        userId: user.id,
-                        query: messageContent,
-                        limit: 5
-                    })
-                ]);
+            const [factResults, knowledgeResults] = await Promise.all([
+                searchMemoryFacts({
+                    userId: user.id,
+                    query: messageContent,
+                    limit: 10
+                }),
+                searchKnowledge({
+                    userId: user.id,
+                    query: messageContent,
+                    limit: 5
+                })
+            ]);
 
-                // Filter by relevance score and apply budget
-                facts = factResults
-                    .filter(r => r.score >= MIN_RELEVANCE_SCORE)
-                    .sort((a, b) => b.score - a.score)
-                    .slice(0, 10) // Max 10 facts
-                    .map(r => {
-                        factScores.set(r.item.id, r.score);
-                        return r.item;
-                    });
-
-                knowledge = knowledgeResults
-                    .filter(r => r.score >= MIN_RELEVANCE_SCORE)
-                    .sort((a, b) => b.score - a.score)
-                    .slice(0, 5) // Max 5 knowledge items
-                    .map(r => r.item);
-
-                // Record access for decay tracking (fire and forget)
-                if (facts.length > 0) {
-                    recordBulkAccess(facts.map(f => f.id)).catch(() => {});
-                }
-
-                logger.trace("Context search complete", {
-                    factCount: facts.length,
-                    knowledgeCount: knowledge.length,
-                    queryLength: messageContent.length
+            facts = factResults
+                .filter(r => r.score >= MIN_RELEVANCE_SCORE)
+                .sort((a, b) => b.score - a.score)
+                .slice(0, 10)
+                .map(r => {
+                    factScores.set(r.item.id, r.score);
+                    return r.item;
                 });
-            } catch (error) {
-                logger.error("Hybrid search failed, context will be limited", { error });
-                // Continue with empty facts/knowledge - better than failing
+
+            knowledge = knowledgeResults
+                .filter(r => r.score >= MIN_RELEVANCE_SCORE)
+                .sort((a, b) => b.score - a.score)
+                .slice(0, 5)
+                .map(r => r.item);
+
+            if (facts.length > 0) {
+                recordBulkAccess(facts.map(f => f.id)).catch(() => {});
             }
+
+            logger.trace("Context search complete", {
+                factCount: facts.length,
+                knowledgeCount: knowledge.length,
+                queryLength: messageContent.length
+            });
         }
 
         // 2. Fetch UNIFIED History (hybrid: recent + relevance), Summary, and domain objects in parallel
@@ -578,7 +570,7 @@ export class ContextManager {
                 size += (f.filename?.length ?? 0) + (f.folderPath?.length ?? 0) + 10;
             }
         }
-
+        
         return size;
     }
 }

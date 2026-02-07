@@ -17,7 +17,7 @@ export interface NotificationContext {
 
 /**
  * Generates a conversational "heads-up" notification using a fast LLM.
- * Falls back to a constructed string if the LLM fails or times out.
+ * Falls back to a constructed string if the LLM fails or times out (60s).
  */
 export async function generateNotification(
     context: NotificationContext,
@@ -61,9 +61,9 @@ Rules:
 6. No bullet lists or extra commentary.`;
 
         // 5. Execute with Timeout (Race)
-        // We give the LLM 10.0 seconds. If it's slower, we use the fallback.
+        // We give the LLM 60 seconds. If it's slower, we use the fallback.
         const timeoutPromise = new Promise<string>((resolve) => {
-            setTimeout(() => resolve(fallbackMessage), 10000);
+            setTimeout(() => resolve(fallbackMessage), 60000);
         });
 
         const generationPromise = generateText({

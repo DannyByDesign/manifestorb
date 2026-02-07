@@ -14,6 +14,7 @@ export const sendTool: ToolDefinition<any> = {
     return {
       success: true,
       data: result,
+      message: "Email sent.",
     };
   },
 };

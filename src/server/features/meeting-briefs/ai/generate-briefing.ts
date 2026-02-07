@@ -124,32 +124,13 @@ export async function aiGenerateMeetingBriefing({
     modelOptions,
   });
 
-  try {
-    const { object: briefing } = await generateObject({
-      ...modelOptions,
-      schema: briefingSchema,
-      system: BRIEFING_SYSTEM_PROMPT,
-      prompt: fullPrompt,
-    });
-    return briefing;
-  } catch (error) {
-    logger.warn("Meeting briefing generation failed, using fallback", {
-      error,
-    });
-    return generateFallbackBriefing(briefingData.externalGuests);
-  }
-}
-
-function generateFallbackBriefing(
-  guests: { email: string; name?: string }[],
-): BriefingContent {
-  return {
-    guests: guests.map((guest) => ({
-      name: guest.name || guest.email.split("@")[0],
-      email: guest.email,
-      bullets: ["Research incomplete - meeting guest"],
-    })),
-  };
+  const { object: briefing } = await generateObject({
+    ...modelOptions,
+    schema: briefingSchema,
+    system: BRIEFING_SYSTEM_PROMPT,
+    prompt: fullPrompt,
+  });
+  return briefing;
 }
 
 // Exported for testing

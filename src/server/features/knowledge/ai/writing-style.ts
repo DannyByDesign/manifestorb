@@ -82,108 +82,18 @@ ${getUserInfoPrompt({ emailAccount })}`;
     examples: z.array(z.string()),
   });
 
-  const fallback = analyzeWritingStyleFallback(emails);
-
-  try {
-    const result = await withTimeout(
-      generateObject({
-        ...modelOptions,
-        system,
-        prompt,
-        schema,
-      }),
-      6000,
-    );
-    logger.trace("Output", result.object);
-
-    return result.object;
-  } catch (error) {
-    logger.error("Error analyzing writing style; returning fallback", { error });
-    return fallback;
-  }
-}
-
-function analyzeWritingStyleFallback(
-  emails: EmailForLLM[],
-): z.infer<ReturnType<typeof getWritingStyleSchema>> {
-  const contents = emails
-    .map((email) => email.content ?? "")
-    .map((content) => removeExcessiveWhitespace(content).trim())
-    .filter((content) => content.length > 0);
-
-  const wordCounts = contents.map((content) =>
-    content.split(/\s+/).filter(Boolean).length,
+  const result = await withTimeout(
+    generateObject({
+      ...modelOptions,
+      system,
+      prompt,
+      schema,
+    }),
+    6000,
   );
-  const avgWords =
-    wordCounts.reduce((total, count) => total + count, 0) /
-    Math.max(1, wordCounts.length);
+  logger.trace("Output", result.object);
 
-  const typicalLength =
-    avgWords < 15
-      ? "Short (brief, single-paragraph emails)"
-      : avgWords < 45
-        ? "Medium (a few sentences, concise paragraphs)"
-        : "Long (multi-paragraph, detailed emails)";
-
-  const greetings = contents
-    .map((content) => content.split(/[\s,]+/)[0]?.toLowerCase() ?? "")
-    .filter((greeting) => ["hi", "hey", "hello"].includes(greeting));
-  const commonGreeting =
-    getMostFrequent(greetings) ??
-    "none (often starts directly with the message content)";
-
-  const hasContractions = contents.some((content) => /\b\w+'\w+\b/.test(content));
-  const hasExclamation = contents.some((content) => content.includes("!"));
-  const hasQuestions = contents.some((content) => content.includes("?"));
-  const hasThanks = contents.some((content) => /\bthanks\b/i.test(content));
-  const hasSignoff = contents.some((content) => /\b(best|regards|sincerely)\b/i.test(content));
-
-  const notableTraits = [
-    hasContractions ? "Uses contractions" : "Avoids contractions",
-    hasExclamation ? "Uses exclamation points for emphasis" : "Minimal exclamation points",
-    hasQuestions ? "Frequently asks questions" : "Primarily declarative statements",
-    hasThanks ? "Often includes a thanks/appreciation" : "Rarely includes explicit thanks",
-    hasSignoff ? "Includes brief sign-offs" : "Often skips a formal sign-off",
-  ];
-
-  const examples = contents
-    .flatMap((content) => extractExampleSentences(content, 2))
-    .slice(0, 3);
-
-  return {
-    typicalLength,
-    formality: hasContractions ? "Informal or mixed" : "Formal or neutral",
-    commonGreeting,
-    notableTraits,
-    examples: examples.length ? examples : contents.slice(0, 2),
-  };
-}
-
-function getWritingStyleSchema() {
-  return z.object({
-    typicalLength: z.string(),
-    formality: z.string(),
-    commonGreeting: z.string(),
-    notableTraits: z.array(z.string()),
-    examples: z.array(z.string()),
-  });
-}
-
-function extractExampleSentences(content: string, maxSentences: number): string[] {
-  const sentences = content
-    .split(/[.!?]\s+/)
-    .map((sentence) => sentence.trim())
-    .filter((sentence) => sentence.length > 0);
-  return sentences.slice(0, maxSentences);
-}
-
-function getMostFrequent(values: string[]): string | null {
-  if (!values.length) return null;
-  const counts = values.reduce<Record<string, number>>((acc, value) => {
-    acc[value] = (acc[value] ?? 0) + 1;
-    return acc;
-  }, {});
-  return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  return result.object;
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {

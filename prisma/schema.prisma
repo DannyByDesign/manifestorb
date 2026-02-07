@@ -118,7 +118,7 @@ model User {
   approvalPreferences  ApprovalPreference[]
   schedulingInsights   SchedulingInsights?
   userAIConfig         UserAIConfig?
-  categories           Category[]
+  categories           UserCategory[]
 }
 
 // Migrating over to the new settings model. Currently most settings are in the User model, but will be moved to this model in the future.
@@ -1435,7 +1435,8 @@ enum SystemType {
   NOTIFICATION
 }
 
-model Category {
+// User-scoped categories (distinct from email-account Category used by Newsletter/Rule).
+model UserCategory {
   id          String   @id @default(cuid())
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
