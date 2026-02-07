@@ -103,7 +103,6 @@ export async function POST(req: NextRequest) {
             emailHistoryContext: null,
             calendarAvailability: null,
             writingStyle: emailAccount.writingStyle,
-            mcpContext: null,
             meetingContext: null,
         });
 

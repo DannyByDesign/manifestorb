@@ -1,5 +1,6 @@
 import prisma from "@/server/db/client";
 import { createScopedLogger } from "@/server/lib/logger";
+import { createEmailProvider } from "@/features/email/provider";
 
 const logger = createScopedLogger("schedule-proposal");
 
@@ -13,29 +14,18 @@ export type ScheduleProposalPayload = {
   actionType: "schedule_proposal";
   description: string;
   tool: "create";
-  args: Record<string, any>;
+  args: Record<string, unknown>;
   originalIntent: "task" | "event";
   options: ScheduleProposalOption[];
   reason?: string;
+  /** Fields added by SCHEDULE_MEETING action */
+  draftId?: string;
+  draftContent?: string;
+  senderEmail?: string;
+  messageId?: string;
+  threadId?: string;
+  emailAccountId?: string;
 };
-
-export function parseScheduleProposalChoice(message: string, optionsCount: number) {
-  const normalized = message.trim().toLowerCase();
-  if (!normalized) return null;
-
-  const directMatch = normalized.match(/\b(1|2|3)\b/);
-  if (directMatch) {
-    const index = Number(directMatch[1]) - 1;
-    return index >= 0 && index < optionsCount ? index : null;
-  }
-
-  if (optionsCount >= 2) {
-    if (/\b(first|earlier|earliest)\b/.test(normalized)) return 0;
-    if (/\b(last|latest|later)\b/.test(normalized)) return optionsCount - 1;
-  }
-
-  return null;
-}
 
 export async function getPendingScheduleProposal(userId: string) {
   return prisma.approvalRequest.findFirst({
@@ -92,8 +82,9 @@ export async function resolveScheduleProposalRequestById(params: {
   }
 
   const option = payload.options[choiceIndex];
-  const args = payload.args ?? {};
-  const data = { ...(args.data || {}) };
+  const args: Record<string, unknown> = { ...(payload.args ?? {}) };
+  const existingData = typeof args.data === "object" && args.data !== null ? args.data : {};
+  const data: Record<string, unknown> = { ...(existingData as Record<string, unknown>) };
 
   if (payload.originalIntent === "task") {
     data.scheduledStart = option.start;
@@ -128,19 +119,74 @@ export async function resolveScheduleProposalRequestById(params: {
       logger,
       userId: requestRecord.userId,
     });
-    const toolInstance = (tools as any)[payload.tool];
+    const toolInstance = (tools as Record<string, { execute: (a: Record<string, unknown>) => Promise<unknown> }>)[payload.tool];
     if (!toolInstance) {
       return { ok: false, error: "Tool not found" };
     }
 
     const executionResult = await toolInstance.execute(args);
 
+    // If the proposal was created by SCHEDULE_MEETING with a draft, send it
+    let draftSent = false;
+    if (payload.draftId && payload.emailAccountId) {
+      try {
+        const emailProvider = await createEmailProvider({
+          emailAccountId: payload.emailAccountId,
+          provider,
+          logger,
+        });
+
+        // Update the draft with the confirmed time before sending
+        const chosenSlot = option;
+        const startDate = new Date(chosenSlot.start);
+        const dateStr = startDate.toLocaleDateString("en-US", {
+          weekday: "long",
+          month: "long",
+          day: "numeric",
+        });
+        const startTime = startDate.toLocaleTimeString("en-US", {
+          hour: "numeric",
+          minute: "2-digit",
+        });
+
+        try {
+          await emailProvider.updateDraft(payload.draftId, {
+            messageHtml: [
+              `Hi ${payload.senderEmail ?? ""},`,
+              "",
+              `I'd like to confirm our meeting for <strong>${dateStr} at ${startTime}</strong>.`,
+              "",
+              "A calendar invite is on its way. Looking forward to it!",
+              "",
+              "Best regards",
+            ]
+              .join("<br>"),
+          });
+        } catch (updateError) {
+          logger.warn("Failed to update draft before sending", { updateError });
+          // Continue to send the original draft even if update fails
+        }
+
+        await emailProvider.sendDraft(payload.draftId);
+        draftSent = true;
+        logger.info("SCHEDULE_MEETING: draft sent after slot approval", {
+          draftId: payload.draftId,
+        });
+      } catch (draftError) {
+        logger.warn("Failed to send draft after schedule approval", {
+          draftError,
+          draftId: payload.draftId,
+        });
+        // Don't fail the whole flow – calendar event was already created
+      }
+    }
+
     await prisma.approvalRequest.update({
       where: { id: requestId },
       data: { status: "APPROVED" },
     });
 
-    return { ok: true, data: executionResult };
+    return { ok: true, data: executionResult, draftSent };
   } catch (error) {
     logger.error("Failed to resolve schedule proposal", { error, requestId });
     return { ok: false, error: "Execution failed" };

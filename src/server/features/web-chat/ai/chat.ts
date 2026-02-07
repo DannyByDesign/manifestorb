@@ -153,7 +153,32 @@ export async function aiProcessAssistantChat({
     }
   }
 
-  // 5. Build context-enriched system prompt
+  // 5. Pending state block (schedule proposal / approvals) — same as executor
+  const hasPendingState =
+    contextPack.pendingState?.scheduleProposal ||
+    (contextPack.pendingState?.approvals?.length ?? 0) > 0;
+  const pendingStateBlock = hasPendingState
+    ? `
+
+---
+## Pending State (act on user intent)
+The user may be responding to a pending request. Interpret natural language accordingly.
+
+${contextPack.pendingState?.scheduleProposal ? `### Pending schedule proposal (requestId: ${contextPack.pendingState.scheduleProposal.requestId})
+Description: ${contextPack.pendingState.scheduleProposal.description}
+Intent: ${contextPack.pendingState.scheduleProposal.originalIntent}
+To resolve: use modify with resource "approval", ids: ["${contextPack.pendingState.scheduleProposal.requestId}"], changes: { choiceIndex: 0 } for the first slot, 1 for the second, 2 for the third.
+Slots:
+${contextPack.pendingState.scheduleProposal.options.map((o, i) => `  ${i + 1}. ${o.label ?? `${o.start} ${o.end ?? ""} (${o.timeZone})`}`).join("\n")}
+` : ""}
+${(contextPack.pendingState?.approvals?.length ?? 0) > 0 ? `### Pending approvals
+${contextPack.pendingState!.approvals!.map((a) => `- ${a.tool}: ${a.description} (id: ${a.id}). Use modify with resource "approval" and this request id to execute approval.`).join("\n")}
+` : ""}
+---
+`
+    : "";
+
+  // 6. Build context-enriched system prompt
   const systemWithContext = `${system}
 
 ---
@@ -174,7 +199,7 @@ ${contextPack.facts.length > 0
 ${contextPack.knowledge.length > 0
     ? contextPack.knowledge.map(k => `- ${k.title}: ${k.content.slice(0, 200)}${k.content.length > 200 ? '...' : ''}`).join("\n")
     : "None relevant to current message."}
----
+---${pendingStateBlock}
 `;
 
   // ========================================================================

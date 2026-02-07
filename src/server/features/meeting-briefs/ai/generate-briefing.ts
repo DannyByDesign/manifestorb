@@ -1,9 +1,8 @@
-import { stepCountIs, tool, type ToolSet } from "ai";
 import { z } from "zod";
 import { google } from "@ai-sdk/google";
-import { env } from "@/env";
+import { generateText } from "ai";
 import { getModel } from "@/server/lib/llms/model";
-import { createGenerateText } from "@/server/lib/llms";
+import { createGenerateObject } from "@/server/lib/llms";
 import type { EmailAccountWithAI } from "@/server/lib/llms/types";
 import { getUserInfoPrompt } from "@/features/ai/helpers";
 import type { CalendarEvent } from "@/features/calendar/event-types";
@@ -17,10 +16,7 @@ import {
   setCachedResearch,
 } from "@/server/lib/redis/research-cache";
 import type { Logger } from "@/server/lib/logger";
-import { Provider } from "@/server/lib/llms/config";
-import { createMcpToolsForAgent } from "@/features/mcp/ai/mcp-tools";
 
-const MAX_AGENT_STEPS = 15;
 const MAX_EMAILS_PER_GUEST = 10;
 const MAX_MEETINGS_PER_GUEST = 10;
 const MAX_DESCRIPTION_LENGTH = 500;
@@ -40,39 +36,18 @@ const briefingSchema = z.object({
 });
 export type BriefingContent = z.infer<typeof briefingSchema>;
 
-const AGENTIC_SYSTEM_PROMPT = `You are an AI assistant that prepares concise meeting briefings.
+const BRIEFING_SYSTEM_PROMPT = `You are an AI assistant that prepares concise meeting briefings.
 
-Your task is to prepare a briefing about the external guests the user is meeting with.
-
-WORKFLOW:
-1. Review the provided context (email history, past meetings) for each guest
-2. If search tools are available, use them to research each guest's professional background
-3. Once you have gathered all information, call finalizeBriefing
-
-SEARCH TIPS (if search tools are available):
-- Use the guest's email domain to identify their company (e.g., john@acme.com likely works at Acme)
-- Include company name in searches to disambiguate common names
-- Look for LinkedIn profiles, current role, and company info
-- If results seem uncertain (common name, conflicting info), note that in the briefing
-- You can try multiple search tools if one doesn't return good results
+Use the provided context (email history, past meetings, and any web research) to produce a structured briefing for each guest.
 
 BRIEFING GUIDELINES:
 - Keep it concise: <10 bullet points per guest, max 10 words per bullet
 - Focus on what's helpful before the meeting: role, company, recent discussions, pending items
 - Don't repeat meeting details (time, date, location) - the user already has those
 - Keep bullets short: short phrases, no wrap-up lines or long paragraphs
-- If a guest has no prior context and no search tools are available, note they are a new contact
+- If a guest has no prior context and no research, note they are a new contact
 - ONLY include information about the specific guests listed. Do NOT mention other attendees or colleagues.
-- Note any uncertainty about identity (common names, conflicting info)
-
-IMPORTANT: You MUST call finalizeBriefing when you are done to submit your briefing.
-Do not output any text outside finalizeBriefing.`;
-
-const searchInputSchema = z.object({
-  query: z.string().describe("The search query"),
-  email: z.string().describe("The guest's email address (used for caching)"),
-  name: z.string().optional().describe("The guest's name if known"),
-});
+- Note any uncertainty about identity (common names, conflicting info)`;
 
 export async function aiGenerateMeetingBriefing({
   briefingData,
@@ -87,86 +62,82 @@ export async function aiGenerateMeetingBriefing({
     return { guests: [] };
   }
 
-  // Build tools based on what's configured
-  const { tools: searchTools, cleanup } = await buildSearchTools({
-    emailAccount,
-    logger,
-  });
+  // 1. Optional web search per guest (direct, no agent)
+  const guestResearch = await Promise.all(
+    briefingData.externalGuests.map(async (guest) => {
+      const cached = await getCachedResearch(
+        emailAccount.userId,
+        "websearch",
+        guest.email,
+        guest.name,
+      );
+      if (cached) {
+        return { email: guest.email, name: guest.name, research: cached };
+      }
+      try {
+        const domain = guest.email.includes("@")
+          ? guest.email.split("@")[1]
+          : "";
+        const query = [guest.name, domain].filter(Boolean).join(" ");
+        const modelOptions = getModel("economy");
+        const searchTools = google.tools.googleSearch({});
+        const searchResult = await generateText({
+          model: modelOptions.model,
+          prompt: `Find professional background and current role for: ${query}. Keep it brief.`,
+          tools: { google_search: searchTools },
+        });
+        const text = searchResult.text ?? "";
+        await setCachedResearch(
+          emailAccount.userId,
+          "websearch",
+          guest.email,
+          guest.name,
+          text,
+        ).catch((err) => logger.warn("Failed to cache research", { error: err }));
+        return { email: guest.email, name: guest.name, research: text };
+      } catch (error) {
+        logger.warn("Web search failed for guest", {
+          email: guest.email,
+          error,
+        });
+        return {
+          email: guest.email,
+          name: guest.name,
+          research: "Search failed.",
+        };
+      }
+    }),
+  );
 
-  if (Object.keys(searchTools).length === 0) {
-    logger.info(
-      "No search tools configured - will use existing email/meeting context only",
-    );
-  }
+  // 2. Build prompt with context + research
+  const prompt = buildPrompt(briefingData, emailAccount, { includeToolInstructions: false });
+  const researchContext = guestResearch
+    .map((r) => `${r.name ?? r.email}: ${r.research}`)
+    .join("\n\n");
+  const fullPrompt = `${prompt}\n\n<web_research>\n${researchContext}\n</web_research>\n\nProduce the briefing for each guest using the context and web research above.`;
 
-  const prompt = buildPrompt(briefingData, emailAccount);
+  // 3. Single generateObject call (no agent loop)
   const modelOptions = getModel();
-
-  const generateText = createGenerateText({
+  const generateObject = createGenerateObject({
     emailAccount,
     label: "Meeting Briefing",
     modelOptions,
   });
 
-  let result: BriefingContent | null = null;
-
   try {
-    const response = await generateText({
+    const { object: briefing } = await generateObject({
       ...modelOptions,
-      system: AGENTIC_SYSTEM_PROMPT,
-      prompt,
-      stopWhen: (stepResult) =>
-        stepResult.steps.some((step) =>
-          step.toolCalls?.some((call) => call.toolName === "finalizeBriefing"),
-        ) || stepCountIs(MAX_AGENT_STEPS)(stepResult),
-      onStepFinish: async ({ toolCalls, text }) => {
-        if (toolCalls.length > 0) {
-          logger.info("Tool calls", {
-            tools: toolCalls.map((call) => call.toolName),
-          });
-        }
-        if (text) {
-          logger.trace("Tool step output", { text });
-        }
-      },
-      tools: {
-        ...searchTools,
-        finalizeBriefing: tool({
-          description:
-            "Submit the final meeting briefing. Call this when you have gathered all information about all guests.",
-          inputSchema: briefingSchema,
-          execute: async (briefing: BriefingContent) => {
-            logger.info("Finalizing briefing", {
-              guestCount: briefing.guests.length,
-            });
-            result = briefing;
-            return { success: true };
-          },
-        }),
-      },
+      schema: briefingSchema,
+      system: BRIEFING_SYSTEM_PROMPT,
+      prompt: fullPrompt,
     });
-
-    if (!result) {
-      const toolCall = response.steps
-        .flatMap((step) => step.toolCalls ?? [])
-        .find((call) => call.toolName === "finalizeBriefing");
-
-      if (toolCall?.input) {
-        result = toolCall.input as BriefingContent;
-      }
-    }
-  } finally {
-    await cleanup();
-  }
-
-  if (!result) {
-    logger.warn(
-      "Agent did not finalize briefing, generating fallback from guest list",
-    );
+    return briefing;
+  } catch (error) {
+    logger.warn("Meeting briefing generation failed, using fallback", {
+      error,
+    });
     return generateFallbackBriefing(briefingData.externalGuests);
   }
-
-  return result;
 }
 
 function generateFallbackBriefing(
@@ -181,140 +152,14 @@ function generateFallbackBriefing(
   };
 }
 
-type SearchToolsResult = {
-  tools: ToolSet;
-  cleanup: () => Promise<void>;
-};
-
-async function buildSearchTools({
-  emailAccount,
-  logger,
-}: {
-  emailAccount: EmailAccountWithAI;
-  logger: Logger;
-}): Promise<SearchToolsResult> {
-  const tools: ToolSet = {};
-  let mcpCleanup: (() => Promise<void>) | null = null;
-
-  // Web search (OpenAI or Google - if configured)
-  const webSearchConfig = getWebSearchConfig();
-  if (webSearchConfig) {
-    tools.webSearch = createWebSearchTool({
-      emailAccount,
-      logger,
-      providerName: webSearchConfig.providerName,
-      getSearchTools: webSearchConfig.getSearchTools,
-    });
-  }
-
-  // MCP tools (CRM, databases, etc.)
-  try {
-    const mcpResult = await createMcpToolsForAgent(emailAccount.id);
-    mcpCleanup = mcpResult.cleanup; // Always assign cleanup to avoid connection leaks
-    const mcpToolCount = Object.keys(mcpResult.tools).length;
-    if (mcpToolCount > 0) {
-      Object.assign(tools, mcpResult.tools);
-      logger.info("MCP tools added for meeting briefs", {
-        toolCount: mcpToolCount,
-      });
-    }
-  } catch (error) {
-    logger.warn("Failed to load MCP tools for meeting briefs", { error });
-  }
-
-  return {
-    tools,
-    cleanup: async () => {
-      if (mcpCleanup) await mcpCleanup();
-    },
-  };
-}
-
-type WebSearchConfig = {
-  providerName: string;
-  getSearchTools: () => ToolSet;
-};
-
-function getWebSearchConfig(): WebSearchConfig | null {
-  // All AI routing uses Google Gemini
-  return {
-    providerName: "Google",
-    getSearchTools: () => ({
-      google_search: google.tools.googleSearch({}),
-    }),
-  };
-}
-
-function createWebSearchTool({
-  emailAccount,
-  logger,
-  providerName,
-  getSearchTools,
-}: {
-  emailAccount: EmailAccountWithAI;
-  logger: Logger;
-  providerName: string;
-  getSearchTools: () => ToolSet;
-}) {
-  return tool({
-    description: "Search the web for information",
-    inputSchema: searchInputSchema,
-    execute: async ({ query, email, name }) => {
-      logger.info(`Web search (${providerName})`, { query, email, name });
-
-      const cached = await getCachedResearch(
-        emailAccount.userId,
-        "websearch",
-        email,
-        name,
-      );
-      if (cached) {
-        logger.info("Using cached web search result", { email });
-        return cached;
-      }
-
-      try {
-        const modelOptions = getModel("economy");
-
-        const webGenerateText = createGenerateText({
-          emailAccount,
-          label: "Web Search",
-          modelOptions,
-        });
-
-        const searchResult = await webGenerateText({
-          model: modelOptions.model,
-          prompt: query,
-          tools: getSearchTools(),
-        });
-
-        const text = searchResult.text;
-
-        setCachedResearch(
-          emailAccount.userId,
-          "websearch",
-          email,
-          name,
-          text,
-        ).catch((error) => {
-          logger.error("Failed to cache web search result", { error });
-        });
-
-        return text;
-      } catch (error) {
-        logger.error("Web search failed", { error, query });
-        return "Search failed. Try another search tool.";
-      }
-    },
-  });
-}
-
 // Exported for testing
 export function buildPrompt(
   briefingData: MeetingBriefingData,
   emailAccount: EmailAccountWithAI,
+  options?: { includeToolInstructions?: boolean },
 ): string {
   const { event, externalGuests, emailThreads, pastMeetings } = briefingData;
+  const includeToolInstructions = options?.includeToolInstructions ?? false;
 
   const allMessages = emailThreads.flatMap((t) => t.messages);
 
@@ -328,14 +173,17 @@ export function buildPrompt(
     }),
   );
 
-  // List available search tools for the prompt
-  // Google provider supports web search
-  const availableTools: string[] = ["webSearch"];
+  const toolsNote = includeToolInstructions
+    ? `\nAvailable search tools: webSearch`
+    : "";
+  const closingInstructions = includeToolInstructions
+    ? `
 
-  const toolsNote =
-    availableTools.length > 0
-      ? `\nAvailable search tools: ${availableTools.join(", ")}`
-      : "";
+For each guest listed above:
+1. Review their email and meeting history provided
+2. Use search tools to find their professional background
+3. Once you have all information, call finalizeBriefing with the complete briefing`
+    : "";
 
   const prompt = `Prepare a concise briefing for this upcoming meeting.
 
@@ -350,11 +198,7 @@ ${event.description ? `Description: ${event.description}` : ""}
 ${guestContexts.map((guest) => formatGuestContext(guest)).join("\n")}
 </guest_context>
 ${toolsNote}
-
-For each guest listed above:
-1. Review their email and meeting history provided
-2. Use search tools to find their professional background
-3. Once you have all information, call finalizeBriefing with the complete briefing`;
+${closingInstructions}`;
 
   return prompt;
 }

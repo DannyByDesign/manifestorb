@@ -13,14 +13,7 @@ import { getModel } from "@/server/lib/llms/model";
 import { createGenerateText } from "@/server/lib/llms";
 import { createScopedLogger } from "@/server/lib/logger";
 import { ApprovalService } from "@/features/approvals/service";
-import { executeApprovalRequest } from "@/features/approvals/execute";
 import type { EmailAccount, User } from "@/generated/prisma/client";
-import {
-    getPendingScheduleProposal,
-    parseScheduleProposalChoice,
-    resolveScheduleProposalRequestById,
-    type ScheduleProposalPayload
-} from "@/features/calendar/schedule-proposal";
 
 const logger = createScopedLogger("AgentExecutor");
 
@@ -68,115 +61,6 @@ export async function runOneShotAgent({
     });
 
     const approvalService = new ApprovalService(prisma);
-
-    const isSendApprovalMessage = (content: string) => {
-        const normalized = content.trim().toLowerCase();
-        if (!normalized) return false;
-        return (
-            normalized === "yes" ||
-            normalized === "approve" ||
-            normalized === "send" ||
-            normalized === "send it" ||
-            normalized === "ok" ||
-            normalized === "okay"
-        );
-    };
-
-    const formatSlotLabel = (start: Date, end: Date | null | undefined, timeZone: string) => {
-        const formatter = new Intl.DateTimeFormat("en-US", {
-            weekday: "short",
-            month: "short",
-            day: "numeric",
-            hour: "numeric",
-            minute: "2-digit",
-            hour12: true,
-            timeZone
-        });
-        const startLabel = formatter.format(start);
-        if (!end) return startLabel;
-        return `${startLabel} - ${formatter.format(end)}`;
-    };
-
-    const pendingProposal = await getPendingScheduleProposal(user.id);
-    if (pendingProposal) {
-        const payload = pendingProposal.requestPayload as ScheduleProposalPayload;
-        const choiceIndex = parseScheduleProposalChoice(message, payload.options.length);
-        if (choiceIndex !== null) {
-            const result = await resolveScheduleProposalRequestById({
-                requestId: pendingProposal.id,
-                choiceIndex,
-                userId: user.id
-            });
-
-            if (!result.ok) {
-                return {
-                    text: "I couldn't apply that choice. Try replying with 1, 2, or 3.",
-                    approvals: []
-                };
-            }
-
-            const chosen = payload.options[choiceIndex];
-            const start = new Date(chosen.start);
-            const end = chosen.end ? new Date(chosen.end) : undefined;
-            const label = formatSlotLabel(start, end, chosen.timeZone);
-            
-            // Extract Meet link from the resolved event
-            const execData = result.data as { data?: { videoConferenceLink?: string; id?: string } } | undefined;
-            const meetLink = execData?.data?.videoConferenceLink;
-            
-            const responseText =
-                payload.originalIntent === "event"
-                    ? `Scheduled the event for ${label}.${meetLink ? `\nJoin: ${meetLink}` : ""}`
-                    : `Scheduled the task for ${label}.`;
-
-            return {
-                text: responseText,
-                approvals: []
-            };
-        }
-    }
-
-    if (isSendApprovalMessage(message)) {
-        const pendingSendApproval = await prisma.approvalRequest.findFirst({
-            where: {
-                userId: user.id,
-                status: "PENDING",
-                expiresAt: { gt: new Date() },
-                requestPayload: {
-                    path: ["tool"],
-                    equals: "send"
-                } as any
-            },
-            orderBy: { createdAt: "desc" }
-        });
-
-        if (pendingSendApproval) {
-            try {
-                const execution = await executeApprovalRequest({
-                    approvalRequestId: pendingSendApproval.id,
-                    decidedByUserId: user.id
-                });
-
-                if (execution.decisionRecord?.decision !== "APPROVE") {
-                    return {
-                        text: "I couldn't approve that send request. Try again or open the app to approve.",
-                        approvals: []
-                    };
-                }
-
-                return {
-                    text: "✅ Sent. Let me know if you want any changes.",
-                    approvals: []
-                };
-            } catch (error) {
-                logger.error("Failed to execute send approval via verbal confirmation", { error });
-                return {
-                    text: "I couldn't send that yet. Try approving it in the app.",
-                    approvals: []
-                };
-            }
-        }
-    }
 
     // 5. Wrap Sensitive Tools (drafts don't need approval - user must manually send)
     const sensitiveTools = ["modify", "delete", "send"];
@@ -256,6 +140,36 @@ export async function runOneShotAgent({
         conversationId: context.conversationId
     });
 
+    // 6b. When the user is replying in the context of an email/thread (e.g. "schedule a meeting with them"),
+    //     inject the relevant notification so the model knows who "them" is and can call the calendar tool.
+    let threadContextBlock = "";
+    if (context.messageId || context.threadId) {
+        const recent = await prisma.inAppNotification.findMany({
+            where: {
+                userId: user.id,
+                dedupeKey: { startsWith: "email-rule-" },
+            },
+            orderBy: { createdAt: "desc" },
+            take: 5,
+            select: { title: true, body: true, metadata: true },
+        });
+        const meta = context.messageId
+            ? recent.find((r) => (r.metadata as { messageId?: string })?.messageId === context.messageId)
+            : context.threadId
+                ? recent.find((r) => (r.metadata as { threadId?: string })?.threadId === context.threadId)
+                : recent[0];
+        if (meta) {
+            threadContextBlock = `
+
+---
+## Current context (email/notification)
+The user is responding in the context of this notification: **${meta.title}**. ${meta.body || ""}
+When they say "them", "the sender", or "this person", they mean the sender of that email. Proceed to schedule a meeting with that person if they ask (e.g. use create with resource "calendar", data.autoSchedule true).
+---
+`;
+        }
+    }
+
     // 7. Execute
     const generate = createGenerateText({
         emailAccount: {
@@ -273,6 +187,28 @@ export async function runOneShotAgent({
         emailSendEnabled: false, // External channels don't support email sending
     });
 
+    const pendingStateBlock =
+        contextPack.pendingState?.scheduleProposal || (contextPack.pendingState?.approvals?.length ?? 0) > 0
+            ? `
+
+---
+## Pending State (act on user intent)
+The user may be responding to a pending request. Interpret natural language accordingly.
+
+${contextPack.pendingState?.scheduleProposal ? `### Pending schedule proposal (requestId: ${contextPack.pendingState.scheduleProposal.requestId})
+Description: ${contextPack.pendingState.scheduleProposal.description}
+Intent: ${contextPack.pendingState.scheduleProposal.originalIntent}
+To resolve: use modify with resource "approval", ids: ["${contextPack.pendingState.scheduleProposal.requestId}"], changes: { choiceIndex: 0 } for the first slot, 1 for the second, 2 for the third.
+Slots:
+${contextPack.pendingState.scheduleProposal.options.map((o, i) => `  ${i + 1}. ${o.label ?? `${o.start} ${o.end ?? ""} (${o.timeZone})`}`).join("\n")}
+` : ""}
+${(contextPack.pendingState?.approvals?.length ?? 0) > 0 ? `### Pending approvals
+${contextPack.pendingState!.approvals!.map((a) => `- ${a.tool}: ${a.description} (id: ${a.id}). Use modify with resource "approval" and this request id to execute approval.`).join("\n")}
+` : ""}
+---
+`
+            : "";
+
     const systemMessage = {
         role: "system",
         content: `${baseSystemPrompt}
@@ -289,7 +225,8 @@ ${contextPack.facts.length > 0 ? contextPack.facts.map(f => `- ${f.key}: ${f.val
 
 Known Information (Knowledge Base):
 ${contextPack.knowledge.length > 0 ? contextPack.knowledge.map(k => `- ${k.title}: ${k.content}`).join("\n") : "None relevant."}
-
+${pendingStateBlock}
+${threadContextBlock}
 Safety Guardrails:
 ${contextPack.system.safetyGuardrails.join("\n")}
 `

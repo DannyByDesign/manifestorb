@@ -158,6 +158,7 @@ export const actionInputs: Record<
   [ActionType.SET_TASK_PREFERENCES]: { fields: [] },
   [ActionType.CREATE_TASK]: { fields: [] },
   [ActionType.CREATE_CALENDAR_EVENT]: { fields: [] },
+  [ActionType.SCHEDULE_MEETING]: { fields: [] },
 };
 
 export function getActionFields(fields: Action | ExecutedAction | undefined) {
@@ -302,6 +303,9 @@ export function sanitizeActionFields(
         ...base,
         payload: payloadValue,
       };
+    }
+    case ActionType.SCHEDULE_MEETING: {
+      return base;
     }
     default:
       // biome-ignore lint/correctness/noSwitchDeclarations: intentional exhaustive check

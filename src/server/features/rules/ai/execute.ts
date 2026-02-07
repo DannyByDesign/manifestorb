@@ -6,6 +6,8 @@ import type { Logger } from "@/server/lib/logger";
 import type { ParsedMessage } from "@/server/types";
 import { updateExecutedActionWithDraftId } from "@/features/rules/ai/draft-management";
 import type { EmailProvider } from "@/features/email/types";
+import { sendNotification } from "@/features/notifications/create";
+import { getEmailAccountWithAi } from "@/server/lib/user/get";
 
 const MODULE = "ai-execute-act";
 
@@ -57,6 +59,40 @@ export async function executeAct({
           draftId: actionResult.draftId,
           logger,
         });
+      }
+
+      if (
+        action.type === ActionType.CREATE_CALENDAR_EVENT &&
+        actionResult &&
+        typeof actionResult === "object" &&
+        "id" in actionResult
+      ) {
+        const emailAccount = await getEmailAccountWithAi({ emailAccountId });
+        const rule = await prisma.rule.findUnique({
+          where: { id: executedRule.ruleId },
+          select: { name: true },
+        });
+        if (emailAccount) {
+          sendNotification({
+            context: {
+              type: "calendar",
+              source: rule?.name ?? "rule",
+              title: "Calendar Event Created",
+              detail: `Created a calendar event from email "${message.headers.subject ?? ""}"`,
+              importance: "medium",
+            },
+            emailAccount,
+            userId: emailAccount.userId,
+            dedupeKey: `calendar-${executedRule.threadId}-${(actionResult as { id: string }).id}`,
+            metadata: {
+              threadId: executedRule.threadId,
+              eventId: (actionResult as { id: string }).id,
+              ruleName: rule?.name,
+            },
+          }).catch((err) =>
+            log.warn("Failed to send notification", { error: err }),
+          );
+        }
       }
     } catch (error) {
       log.error("Error executing action", { error });

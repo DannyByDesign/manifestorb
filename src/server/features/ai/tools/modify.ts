@@ -17,14 +17,18 @@ const approvalService = new ApprovalService(prisma);
 export const modifyTool: ToolDefinition<any> = {
     name: "modify",
     description: `Modify existing items.
-    
+
+Approval (use when user confirms a pending request from Pending State):
+- resource: "approval", ids: [approval request id], changes: { decision: "APPROVE" | "DENY", reason?: string }
+- For a pending schedule proposal, use changes: { choiceIndex: 0 } for the first slot, 1 for the second, 2 for the third. That resolves the proposal and creates the event.
+- Use decision APPROVE when the user says yes, approve, send it, or similar for send/other approvals.
+
 Email changes:
 - archive: boolean (move to/from archive)
 - trash: boolean (move to/from trash) -- prefer delete tool for trashing
 - read: boolean (mark read/unread)
 - labels: { add?: string[], remove?: string[] }
 - bulk_archive_senders: boolean (archive all from these senders)
-- bulk_trash_senders: boolean (trash all from these senders)
 - bulk_trash_senders: boolean (trash all from these senders)
 - bulk_label_senders: string (label name to apply to all from these senders)
 - followUp: "enable" | "disable" (mark thread for follow-up detection)
@@ -241,14 +245,31 @@ Task changes:
 
             case "approval":
                 if (!ids || ids.length === 0) return { success: false, error: "No Approval Request ID provided" };
-                const decision = changes.decision as "APPROVE" | "DENY";
-                const reason = changes.reason as string;
+                const choiceIndex = typeof changes.choiceIndex === "number" ? changes.choiceIndex : undefined;
+                const decision = changes.decision as "APPROVE" | "DENY" | undefined;
+                const reason = changes.reason as string | undefined;
 
-                if (!decision) return { success: false, error: "Decision (APPROVE/DENY) required" };
-
-                // Get User ID from context (Approver)
                 const emailAccountApp = await getEmailAccountWithAi({ emailAccountId });
                 if (!emailAccountApp) return { success: false, error: "User not found" };
+
+                if (choiceIndex !== undefined) {
+                    const requestRecord = await prisma.approvalRequest.findUnique({
+                        where: { id: ids[0] },
+                    });
+                    const payload = requestRecord?.requestPayload as { actionType?: string } | null;
+                    if (payload?.actionType === "schedule_proposal") {
+                        const { resolveScheduleProposalRequestById } = await import("@/features/calendar/schedule-proposal");
+                        const result = await resolveScheduleProposalRequestById({
+                            requestId: ids[0],
+                            choiceIndex,
+                            userId: emailAccountApp.userId,
+                        });
+                        if (!result.ok) return { success: false, error: result.error };
+                        return { success: true, data: result.data };
+                    }
+                }
+
+                if (!decision) return { success: false, error: "Decision (APPROVE/DENY) or choiceIndex required" };
 
                 const approvalResults = await Promise.all(ids.map((id: string) =>
                     approvalService.decideRequest({

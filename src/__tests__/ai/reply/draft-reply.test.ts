@@ -29,7 +29,6 @@ describe.runIf(isAiTest)("aiDraftReply", () => {
         writingStyle: null,
         emailHistoryContext: null,
         calendarAvailability: null,
-        mcpContext: null,
         meetingContext: null,
       });
 
@@ -57,7 +56,6 @@ describe.runIf(isAiTest)("aiDraftReply", () => {
         writingStyle: null,
         emailHistoryContext: null,
         calendarAvailability: null,
-        mcpContext: null,
         meetingContext: null,
       });
 

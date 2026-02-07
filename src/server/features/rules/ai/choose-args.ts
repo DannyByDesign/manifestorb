@@ -9,6 +9,7 @@ import {
   type ParsedMessage,
 } from "@/server/types";
 import { fetchMessagesAndGenerateDraft } from "@/features/reply-tracker/generate-draft";
+import { sendNotification } from "@/features/notifications/create";
 import { getEmailForLLM } from "@/server/lib/get-email-from-message";
 import {
   type ActionArgResponse,
@@ -60,6 +61,28 @@ export async function getActionItemsWithAiArgs({
         isTest ? message : undefined,
         logger,
       );
+
+      if (draft) {
+        sendNotification({
+          context: {
+            type: "action",
+            source: selectedRule.name,
+            title: "Draft Created",
+            detail: `Drafted a reply to "${message.headers.subject ?? ""}"`,
+            importance: "medium",
+          },
+          emailAccount,
+          userId: emailAccount.userId,
+          dedupeKey: `draft-${message.threadId}`,
+          metadata: {
+            threadId: message.threadId,
+            messageId: message.id,
+            ruleName: selectedRule.name,
+          },
+        }).catch((err) =>
+          log.warn("Failed to send notification", { error: err }),
+        );
+      }
 
       log.info("Draft generated", {
         email: emailAccount.email,

@@ -7,7 +7,8 @@ import {
 } from "./fetch-upcoming-events";
 import { gatherContextForEvent } from "./gather-context";
 import { aiGenerateMeetingBriefing } from "@/features/meeting-briefs/ai/generate-briefing";
-import { sendBriefingEmail } from "./send-briefing";
+import { sendNotification } from "@/features/notifications/create";
+import { getEmailAccountWithAi } from "@/server/lib/user/get";
 import type { Logger } from "@/server/lib/logger";
 import type { CalendarEvent } from "@/features/calendar/event-types";
 import { extractDomainFromEmail } from "@/server/lib/email";
@@ -198,16 +199,30 @@ export async function runMeetingBrief({
       logger: eventLog,
     });
 
-    await sendBriefingEmail({
-      event,
-      briefingContent,
-      internalTeamMembers: briefingData.internalTeamMembers,
-      emailAccountId,
-      userEmail,
-      provider,
-      userTimezone: emailAccount.timezone,
-      logger: eventLog,
-    });
+    const briefingSummary = briefingContent.guests
+      .map((g) => `${g.name}: ${g.bullets.join("; ")}`)
+      .join(". ");
+    const accountForProactive = await getEmailAccountWithAi({ emailAccountId });
+    if (accountForProactive) {
+      await sendNotification({
+        context: {
+          type: "action",
+          source: "Meeting Brief",
+          title: `Upcoming meeting: ${event.title} with ${briefingContent.guests.map((g) => g.name).join(", ")}`,
+          detail: `Prepared a briefing: ${briefingSummary}`,
+          importance: "medium",
+        },
+        emailAccount: accountForProactive,
+        userId: accountForProactive.userId,
+        dedupeKey: `briefing-${event.id}`,
+        metadata: {
+          eventId: event.id,
+          eventTitle: event.title,
+          eventStartTime: event.startTime.toISOString(),
+          briefingContent,
+        },
+      });
+    }
 
     if (!isTestSend) {
       await upsertMeetingBriefingStatus({

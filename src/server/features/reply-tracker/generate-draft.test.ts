@@ -52,10 +52,6 @@ vi.mock("@/server/lib/user/get", () => ({
   getWritingStyle: vi.fn().mockResolvedValue(null),
 }));
 
-vi.mock("@/features/mcp/ai/mcp-agent", () => ({
-  mcpAgent: vi.fn().mockResolvedValue(null),
-}));
-
 vi.mock("@/features/meeting-briefs/recipient-context", () => ({
   getMeetingContext: vi.fn().mockResolvedValue([]),
   formatMeetingContextForPrompt: vi.fn().mockReturnValue(null),

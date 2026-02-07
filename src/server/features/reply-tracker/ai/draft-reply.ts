@@ -51,7 +51,6 @@ const getUserPrompt = ({
   emailHistoryContext,
   calendarAvailability,
   writingStyle,
-  mcpContext,
   meetingContext,
 }: {
   messages: (EmailForLLM & { to: string })[];
@@ -61,7 +60,6 @@ const getUserPrompt = ({
   emailHistoryContext: ReplyContextCollectorResult | null;
   calendarAvailability: CalendarAvailabilityContext | null;
   writingStyle: string | null;
-  mcpContext: string | null;
   meetingContext: string | null;
 }) => {
   const userAbout = emailAccount.about
@@ -151,15 +149,6 @@ Only include this link if the sender explicitly requested a call or meeting. Do 
 `
     : "";
 
-  const mcpToolsContext = mcpContext
-    ? `Additional context fetched from external tools (such as CRM systems, task managers, or other integrations) that may help draft a response:
-
-<external_tools_context>
-${mcpContext}
-</external_tools_context>
-`
-    : "";
-
   const upcomingMeetingsContext = meetingContext || "";
 
   return `${userAbout}
@@ -169,7 +158,6 @@ ${precedentHistoryContext}
 ${writingStylePrompt}
 ${calendarContext}
 ${bookingLinkContext}
-${mcpToolsContext}
 ${upcomingMeetingsContext}
 
 Here is the context of the email thread (from oldest to newest):
@@ -196,7 +184,6 @@ export async function aiDraftReply({
   emailHistoryContext,
   calendarAvailability,
   writingStyle,
-  mcpContext,
   meetingContext,
 }: {
   messages: (EmailForLLM & { to: string })[];
@@ -206,7 +193,6 @@ export async function aiDraftReply({
   emailHistoryContext: ReplyContextCollectorResult | null;
   calendarAvailability: CalendarAvailabilityContext | null;
   writingStyle: string | null;
-  mcpContext: string | null;
   meetingContext: string | null;
 }) {
   try {
@@ -231,7 +217,6 @@ export async function aiDraftReply({
       emailHistoryContext,
       calendarAvailability,
       writingStyle: writingStyle || defaultWritingStyle,
-      mcpContext,
       meetingContext,
     });
 

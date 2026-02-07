@@ -94,7 +94,6 @@ actions/
 |------|---------|
 | `calendar.ts` | Calendar operations |
 | `drive.ts` | Google Drive / OneDrive |
-| `mcp.ts` | MCP (Model Context Protocol) integrations |
 
 ### Organization
 | File | Purpose |

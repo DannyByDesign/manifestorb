@@ -122,24 +122,6 @@ export async function aiChooseRule<
     }
   }
 
-  const heuristic = pickRuleByHeuristics(email, emailAccount, rules);
-  if (heuristic) {
-    const existing = rulesWithMetadata.find(
-      (item) => item.rule.name.toLowerCase() === heuristic.rule.name.toLowerCase(),
-    );
-    if (existing) {
-      rulesWithMetadata.forEach((item) => {
-        item.isPrimary = item.rule.name === existing.rule.name;
-      });
-    } else {
-      rulesWithMetadata.unshift({ rule: heuristic.rule, isPrimary: true });
-      rulesWithMetadata.forEach((item, index) => {
-        item.isPrimary = index === 0;
-      });
-    }
-    reason = `${aiResponse.reasoning} ${heuristic.reason}`.trim();
-  }
-
   return {
     rules: rulesWithMetadata,
     reason,

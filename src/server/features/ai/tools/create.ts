@@ -112,15 +112,17 @@ const createParameters = z.object({
 export const createTool: ToolDefinition<typeof createParameters> = {
     name: "create",
     description: `Create new items.
-    
+
 Email: Creates a DRAFT only. User must manually send from UI.
 - type: "new" | "reply" | "forward"
 - For reply/forward: provide parentId (thread ID / message ID)
 - Returns: { draftId, previewUrl } for user to review and send
 
-Calendar: Creates events or finds available times.
-- To schedule a meeting/call/appointment: set resource="calendar", data.autoSchedule=true, data.title, and optionally data.durationMinutes (default 30). The tool checks the user's calendar and returns 3 available time slots for the user to pick from (1, 2, or 3). Do NOT ask the user for a specific day/time -- call this tool and let it find slots.
-- To create an event at a specific time: set data.start and data.end (ISO strings). The tool creates the event directly.
+Calendar (scheduling): When the user wants to schedule a meeting, call, or appointment (any intent to find time):
+- Set resource="calendar", data.autoSchedule=true. Use data.title from the message if given, otherwise use a generic title like "Meeting". data.durationMinutes defaults to 30; data.timeZone if known.
+- Do NOT ask who the meeting is with or for a specific day/time first — call this tool immediately. It returns 3 available slots; present them as options 1, 2, 3. If the user used a pronoun ("them", "this person"), use a generic title and still call the tool.
+- If the user has a pending schedule proposal (see Pending State), interpret their reply (e.g. "the first one", "Tuesday") and resolve via the approval flow.
+- For a specific time: set data.start and data.end (ISO strings) instead of autoSchedule.
 
 Task: Creates a task and optionally auto-schedules it. If flexibility is not specified by the user, choose a reschedulePolicy.
 

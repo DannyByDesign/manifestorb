@@ -17,6 +17,8 @@ import { ensureEmailSendingEnabled } from "@/server/lib/mail";
 import { getEmailAccountWithAi } from "@/server/lib/user/get";
 import { scheduleTasksForUser } from "@/features/calendar/scheduling/TaskSchedulingService";
 import { createCalendarProvider } from "@/features/ai/tools/providers/calendar";
+import { ApprovalService } from "@/features/approvals/service";
+import { createInAppNotification } from "@/features/notifications/create";
 
 const MODULE = "ai-actions";
 
@@ -93,6 +95,8 @@ export const runActionFunction = async (options: {
       return create_task(opts);
     case ActionType.CREATE_CALENDAR_EVENT:
       return create_calendar_event(opts);
+    case ActionType.SCHEDULE_MEETING:
+      return schedule_meeting(opts);
     default:
       throw new Error(`Unknown action: ${action}`);
   }
@@ -590,6 +594,174 @@ const create_calendar_event: ActionFunction<{ payload?: any }> = async ({
   }
 
   return event;
+};
+
+const SCHEDULE_MEETING_DURATION_MINUTES = 30;
+const SCHEDULE_MEETING_SLOT_COUNT = 3;
+const SCHEDULE_MEETING_EXPIRY_SECONDS = 86_400; // 24 hours
+
+/**
+ * Proactive SCHEDULE_MEETING action:
+ * 1. Finds available calendar slots
+ * 2. Drafts a reply to the sender proposing meeting times
+ * 3. Creates a single approval request with slots + draft
+ * 4. Sends a rich notification for one-tap approval
+ */
+const schedule_meeting: ActionFunction<Record<string, unknown>> = async ({
+  client,
+  email,
+  userId,
+  emailAccountId,
+  logger,
+}) => {
+  const senderEmail =
+    extractEmailAddress(email.headers.from) || email.headers.from;
+  const subject = email.headers.subject || "(No Subject)";
+
+  // 1. Find 3 available calendar slots
+  let slots: Array<{ start: Date; end: Date; score: number }> = [];
+  try {
+    const calendarProvider = await createCalendarProvider(
+      { id: emailAccountId },
+      userId,
+      logger,
+    );
+    const allSlots = await calendarProvider.findAvailableSlots({
+      durationMinutes: SCHEDULE_MEETING_DURATION_MINUTES,
+    });
+    slots = allSlots.slice(0, SCHEDULE_MEETING_SLOT_COUNT);
+  } catch (error) {
+    logger.warn("SCHEDULE_MEETING: calendar not connected or no slots", {
+      error,
+    });
+  }
+
+  if (slots.length === 0) {
+    // Graceful degradation: send a plain notification
+    await createInAppNotification({
+      userId,
+      title: `Meeting request from ${senderEmail}`,
+      body: `${senderEmail} wants to meet (re: "${subject}"), but no calendar availability was found. Please check your calendar settings.`,
+      type: "info",
+      dedupeKey: `schedule-meeting-${email.id}`,
+      metadata: {
+        messageId: email.id,
+        threadId: email.threadId,
+        emailAccountId,
+      },
+    });
+    logger.info("SCHEDULE_MEETING: no slots, sent fallback notification");
+    return;
+  }
+
+  // 2. Build slot descriptions for the draft
+  const slotDescriptions = slots.map((slot, i) => {
+    const start = new Date(slot.start);
+    const end = new Date(slot.end);
+    const dateStr = start.toLocaleDateString("en-US", {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+    });
+    const startTime = start.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    const endTime = end.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    return `Option ${i + 1}: ${dateStr}, ${startTime} – ${endTime}`;
+  });
+
+  // 3. Create a draft reply proposing the times
+  const draftContent = [
+    `Hi ${senderEmail},`,
+    "",
+    `Thanks for reaching out! I have a few times available for us to meet:`,
+    "",
+    ...slotDescriptions,
+    "",
+    "Let me know which works best for you, and I'll send over a calendar invite.",
+    "",
+    "Best regards",
+  ].join("\n");
+
+  let draftId: string | undefined;
+  try {
+    const draftResult = await client.createDraft({
+      to: senderEmail,
+      subject: `Re: ${subject}`,
+      messageHtml: draftContent.replace(/\n/g, "<br>"),
+      replyToMessageId: email.headers["message-id"],
+    });
+    draftId = draftResult.id;
+  } catch (error) {
+    logger.warn("SCHEDULE_MEETING: failed to create draft", { error });
+  }
+
+  // 4. Serializable slot options for the approval payload
+  const serializedOptions = slots.map((slot) => ({
+    start: slot.start.toISOString(),
+    end: slot.end.toISOString(),
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  }));
+
+  // 5. Create approval request
+  const approvalService = new ApprovalService(prisma);
+  const approvalRequest = await approvalService.createRequest({
+    userId,
+    provider: "in_app",
+    externalContext: {},
+    requestPayload: {
+      actionType: "schedule_proposal",
+      description: `Meeting with ${senderEmail} re: ${subject}`,
+      tool: "create",
+      args: {
+        resource: "calendar",
+        data: {
+          title: `Meeting with ${senderEmail}`,
+          autoSchedule: false,
+        },
+      },
+      originalIntent: "event" as const,
+      options: serializedOptions,
+      draftId,
+      draftContent,
+      senderEmail,
+      messageId: email.id,
+      threadId: email.threadId,
+      emailAccountId,
+    },
+    idempotencyKey: `schedule-meeting-${email.id}`,
+    expiresInSeconds: SCHEDULE_MEETING_EXPIRY_SECONDS,
+  });
+
+  // 6. Create rich notification
+  await createInAppNotification({
+    userId,
+    title: `Meeting request from ${senderEmail}`,
+    body: `${senderEmail} wants to meet about "${subject}". ${slots.length} time slots available. Draft reply ready for review.`,
+    type: "approval",
+    dedupeKey: `schedule-meeting-${email.id}`,
+    metadata: {
+      messageId: email.id,
+      threadId: email.threadId,
+      emailAccountId,
+      approvalRequestId: approvalRequest.id,
+      senderEmail,
+      subject,
+      slots: serializedOptions,
+      draftId,
+      draftPreview: draftContent.substring(0, 300),
+    },
+  });
+
+  logger.info("SCHEDULE_MEETING: approval + notification created", {
+    approvalRequestId: approvalRequest.id,
+    slotCount: slots.length,
+    hasDraft: Boolean(draftId),
+  });
 };
 
 async function lazyUpdateActionLabelId({

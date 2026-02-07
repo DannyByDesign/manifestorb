@@ -1,8 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import {
-  parseScheduleProposalChoice,
-  resolveScheduleProposalRequestById,
-} from "@/server/features/calendar/schedule-proposal";
+import { resolveScheduleProposalRequestById } from "@/server/features/calendar/schedule-proposal";
 import prisma from "@/server/lib/__mocks__/prisma";
 import type { Prisma } from "@/generated/prisma/client";
 
@@ -19,9 +16,6 @@ describe("E2E calendar scheduling", () => {
   });
 
   it("resolves schedule proposal and executes create", async () => {
-    const choice = parseScheduleProposalChoice("first", 2);
-    expect(choice).toBe(0);
-
     prisma.approvalRequest.findUnique.mockResolvedValue({
       id: "req-1",
       userId: "user-1",
@@ -45,16 +39,11 @@ describe("E2E calendar scheduling", () => {
 
     const res = await resolveScheduleProposalRequestById({
       requestId: "req-1",
-      choiceIndex: choice ?? 0,
+      choiceIndex: 0,
     });
 
     expect(res.ok).toBe(true);
     expect(execute).toHaveBeenCalled();
-  });
-
-  it("parses natural language schedule choices", async () => {
-    const choice = parseScheduleProposalChoice("later works for me", 3);
-    expect(choice).toBe(2);
   });
 
   it("resolves schedule proposal with multi-party constraints", async () => {

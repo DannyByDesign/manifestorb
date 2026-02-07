@@ -1,14 +1,15 @@
 /**
  * Context Manager
- * 
+ *
  * Builds the context pack for AI interactions by assembling:
  * - User-level summary (unified across all platforms)
  * - Relevant memory facts (semantic search)
  * - Knowledge base entries
  * - Conversation history (unified across all platforms)
- * 
+ * - Pending state (schedule proposals, approvals) when present
+ *
  * Applies token budgets to ensure context fits within model limits.
- * 
+ *
  * UNIFIED MEMORY: The assistant is "one person" across all platforms.
  * History and summaries are fetched by userId, not conversationId.
  */
@@ -18,6 +19,7 @@ import { searchMemoryFacts, searchKnowledge } from "@/features/memory/embeddings
 import { createScopedLogger } from "@/server/lib/logger";
 import { recordBulkAccess } from "@/features/memory/decay";
 import { posthogCaptureEvent } from "@/server/lib/posthog";
+import { getPendingScheduleProposal } from "@/features/calendar/schedule-proposal";
 
 const logger = createScopedLogger("ContextManager");
 
@@ -46,6 +48,28 @@ export interface DomainObjectRef {
     originalObject?: any;
 }
 
+/** Pending schedule proposal so the agent can interpret "the first one", "Tuesday", etc. */
+export interface PendingScheduleProposalState {
+    requestId: string;
+    description: string;
+    originalIntent: "task" | "event";
+    options: Array<{ start: string; end?: string; timeZone: string; label?: string }>;
+}
+
+/** Pending approval (e.g. send email) so the agent can interpret "yes", "approve", etc. */
+export interface PendingApprovalState {
+    id: string;
+    tool: string;
+    description: string;
+    argsSummary: string;
+}
+
+/** Injected only when present; enables natural-language resolution without interceptors. */
+export interface PendingStateContext {
+    scheduleProposal?: PendingScheduleProposalState;
+    approvals?: PendingApprovalState[];
+}
+
 export interface ContextPack {
     system: {
         basePrompt: string;
@@ -65,6 +89,9 @@ export interface ContextPack {
 
     // Active Working Set (Retrieved Documents)
     documents: DomainObjectRef[];
+
+    // Pending state (only set when user has pending proposals/approvals)
+    pendingState?: PendingStateContext;
 }
 
 export class ContextManager {
@@ -151,6 +178,108 @@ export class ContextManager {
         // Reverse to chronological order (Oldest -> Newest)
         const history: ConversationMessage[] = rawHistory.reverse();
 
+        // 2b. Fetch pending state (only when present) for natural-language resolution
+        const [pendingProposal, pendingApprovalRows] = await Promise.all([
+            getPendingScheduleProposal(user.id),
+            prisma.approvalRequest.findMany({
+                where: {
+                    userId: user.id,
+                    status: "PENDING",
+                    expiresAt: { gt: new Date() },
+                },
+                orderBy: { createdAt: "desc" },
+                take: 5,
+            }),
+        ]);
+
+        const formatSlotLabel = (start: string, end: string | undefined, timeZone: string) => {
+            const startDate = new Date(start);
+            const endDate = end ? new Date(end) : null;
+            const formatter = new Intl.DateTimeFormat("en-US", {
+                weekday: "short",
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+                timeZone,
+            });
+            const startLabel = formatter.format(startDate);
+            if (!endDate) return startLabel;
+            return `${startLabel} - ${formatter.format(endDate)}`;
+        };
+
+        let pendingState: PendingStateContext | undefined;
+        if (pendingProposal) {
+            const payload = pendingProposal.requestPayload as {
+                actionType?: string;
+                description?: string;
+                originalIntent?: "task" | "event";
+                options?: Array<{ start: string; end?: string; timeZone: string }>;
+            };
+            const options = payload?.options ?? [];
+            pendingState = {
+                ...pendingState,
+                scheduleProposal: {
+                    requestId: pendingProposal.id,
+                    description: payload?.description ?? "Schedule proposal",
+                    originalIntent: payload?.originalIntent === "task" ? "task" : "event",
+                    options: options.map((opt, i) => ({
+                        start: opt.start,
+                        end: opt.end,
+                        timeZone: opt.timeZone,
+                        label: formatSlotLabel(opt.start, opt.end, opt.timeZone),
+                    })),
+                },
+            };
+        }
+        const sendApprovals = pendingApprovalRows.filter((r) => {
+            const p = r.requestPayload as { tool?: string };
+            return p?.tool === "send";
+        });
+        if (sendApprovals.length > 0) {
+            const approvals: PendingApprovalState[] = sendApprovals.map((r) => {
+                const p = r.requestPayload as { tool?: string; description?: string; args?: Record<string, unknown> };
+                const argsSummary =
+                    typeof p?.args === "object" && p.args !== null
+                        ? JSON.stringify(p.args).slice(0, 120) + (JSON.stringify(p.args).length > 120 ? "…" : "")
+                        : "";
+                return {
+                    id: r.id,
+                    tool: p?.tool ?? "send",
+                    description: p?.description ?? "Send email",
+                    argsSummary,
+                };
+            });
+            pendingState = {
+                ...pendingState,
+                approvals: (pendingState?.approvals ?? []).concat(approvals),
+            };
+        }
+        const otherApprovals = pendingApprovalRows.filter((r) => {
+            const p = r.requestPayload as { tool?: string; actionType?: string };
+            return p?.tool !== "send" && p?.actionType !== "schedule_proposal";
+        });
+        if (otherApprovals.length > 0) {
+            const approvals: PendingApprovalState[] = otherApprovals.map((r) => {
+                const p = r.requestPayload as { tool?: string; description?: string; args?: Record<string, unknown> };
+                const argsSummary =
+                    typeof p?.args === "object" && p.args !== null
+                        ? JSON.stringify(p.args).slice(0, 120) + (JSON.stringify(p.args).length > 120 ? "…" : "")
+                        : "";
+                return {
+                    id: r.id,
+                    tool: p?.tool ?? "unknown",
+                    description: p?.description ?? "Approve action",
+                    argsSummary,
+                };
+            });
+            pendingState = {
+                ...pendingState,
+                approvals: (pendingState?.approvals ?? []).concat(approvals),
+            };
+        }
+
         // 3. Apply token budget
         const contextPack = this.applyTokenBudget({
             system: {
@@ -165,7 +294,8 @@ export class ContextManager {
             facts,
             knowledge,
             history,
-            documents: [] // Populated by Deep Mode later
+            documents: [], // Populated by Deep Mode later
+            pendingState: pendingState ?? undefined,
         });
 
         // 4. Track metrics (fire and forget)

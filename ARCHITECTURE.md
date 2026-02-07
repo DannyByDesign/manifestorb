@@ -55,7 +55,6 @@ src/
     │   ├── follow-up/        # Follow-up tracking & drafts
     │   ├── groups/           # Email grouping (+ ai/)
     │   ├── knowledge/        # Knowledge base (+ ai/)
-    │   ├── mcp/              # Model Context Protocol (+ ai/)
     │   ├── meeting-briefs/   # Meeting briefing (+ ai/)
     │   ├── memory/           # RLM memory, embeddings, summaries
     │   ├── notifications/    # In-app notifications (create, generator)
@@ -70,7 +69,7 @@ src/
     │   ├── snippets/         # Email snippets (+ ai/)
     │   ├── summaries/        # Conversation summarization (SummaryService)
     │   ├── tasks/            # Task triage, scheduling, context (triage/, audit)
-    │   ├── web-chat/         # Web UI chat (ai/ chat, process-user-request)
+    │   ├── web-chat/         # Web UI chat (ai/ chat)
     │   └── webhooks/         # Webhook processing (Gmail/Outlook push)
     │
     ├── integrations/        # External API clients ONLY (google, microsoft, qstash)
@@ -211,7 +210,6 @@ When adding a new feature:
 ### Integrations
 - `calendar/` - Google Calendar (events, watch, renewal, conflict resolution)
 - `drive/` - Drive (watch, renewal, delete file/folder; document filing)
-- `mcp/` - Model Context Protocol
 - `meeting-briefs/` - Meeting briefings
 
 ---
@@ -247,8 +245,10 @@ DANGEROUS tools are gated by the approval system; approval links use **secure si
 
 | Platform | Entry Point | Notes |
 |----------|-------------|-------|
-| Web Chat | `features/web-chat/ai/` (chat, process-user-request) | Full tools; rule management via `rules` tool |
+| Web Chat | `features/web-chat/ai/chat.ts` | Full tools; rule management via `rules` tool |
 | Slack / Discord / Telegram | `features/channels/executor.ts` | One-shot agent; same tools; interactive draft/triage payloads |
+
+There is **one agent** with two entry points (web chat and surfaces). Background pipelines (draft generation, calendar events, meeting briefs) run without an agent loop; when they complete, **notifications** (`features/notifications/create.ts` → `sendNotification`) generate a short message via the shared notification generator and deliver it via in-app notification and channel fallback (QStash). The user only ever talks to the single agent; the agent is the single voice of the product.
 
 The **surfaces** sidecar (`surfaces/` at repo root) runs the bot servers; they call into the Next app or use the shared executor.
 
@@ -290,3 +290,108 @@ Rendering:
 - **Slack**: Block Kit with header, fields, body, action buttons
 - **Discord**: Embed with button row
 - **Telegram**: Markdown message with inline keyboard
+
+---
+
+## AI Architecture: Agents, Tools, and Prompts
+
+This section is the source of truth for how the AI layer is structured: one main conversational agent, one specialized rule-editing agent, 13 CRUD tools plus 4 memory tools, and ~50 specialist LLM calls used by tool implementations and background pipelines.
+
+### Design Decision: No Agent-to-Agent (A2A) Protocol
+
+The app is **one assistant with many skills**, not independent collaborating agents. We explicitly do **not** use an agent-to-agent protocol where a router delegates to sub-agents. Reasons:
+
+- **Latency**: A2A would add 2–5 extra LLM hops per message (router → sub-agent → …).
+- **Context loss**: Each sub-agent would not see full conversation history unless we serialize and pass it.
+- **Cross-feature workflows**: Email + calendar + approval flows (e.g. “check my calendar and reply to John”) are natural for a single multi-step agent; splitting into sub-agents makes coordination and error handling harder.
+- **Tool design scales**: The 13 resource-based CRUD tools already cover many features; new capabilities are added as resources/actions on existing tools, not as new agents.
+
+**Chosen approach:** Single main agent + dynamic context injection + rich tool descriptions. Specialist LLM calls remain as one-shot helpers invoked *inside* tool implementations or background jobs, not as separate conversational agents.
+
+### Agent Entry Points
+
+| Agent | Location | Used By | Tools | Max Steps |
+|-------|----------|---------|-------|-----------|
+| **runOneShotAgent** | `features/channels/executor.ts` | Slack, Discord, Telegram, Email (processAssistantEmail) | 13 CRUD + webSearch + 4 memory | 10 |
+| **Web chat** | `features/web-chat/ai/chat.ts` | Web UI | Same tools as executor | 10 |
+
+Notifications: when a background pipeline completes (draft created, calendar event created, meeting briefing ready), `sendNotification()` (in `features/notifications/create.ts`) uses the shared notification generator and creates an in-app notification; channel delivery is handled by the QStash fallback.
+
+### Main Agent Tools (13 + 4)
+
+**From `createAgentTools()` (`features/ai/tools/index.ts`):**
+
+| Tool | Security | Description |
+|------|----------|-------------|
+| query | SAFE | Search across resources: email, calendar, drive, automation, knowledge, report, patterns, contacts, task |
+| get | SAFE | Get full details by ID (email, calendar, automation, approval, task) |
+| create | CAUTION | Create drafts, events, tasks, rules, notifications, knowledge, contacts, automation |
+| modify | CAUTION | Change state: email (archive, labels, tracking), calendar, task, drive, approval |
+| delete | CAUTION | Remove items: email (trash), calendar, automation, drive, task |
+| analyze | SAFE | AI analysis: summarize, extract actions, categorize, find conflicts, suggest times, etc. |
+| send | DANGEROUS | Send email draft; requires explicit approval |
+| triage | SAFE | Rank tasks and suggest next actions |
+| rules | CAUTION | Manage automation rules: list, create, update_conditions, update_actions, update_patterns, etc. |
+| webSearch | SAFE | Search the web for people, companies, or topics; use for meeting prep or research |
+
+**From `createMemoryTools()` (`features/ai/memory-tools.ts`):**
+
+| Tool | Security | Description |
+|------|----------|-------------|
+| rememberFact | SAFE | Store facts about the user |
+| recallFacts | SAFE | Search stored memories |
+| forgetFact | CAUTION | Remove a fact when requested |
+| listFacts | SAFE | List remembered facts |
+
+Sensitive tools (`modify`, `delete`, `send`) are wrapped in the executor with approval interception; the agent never executes them directly until the user approves.
+
+### Prompt Hierarchy
+
+1. **System prompt** (`features/ai/system-prompt.ts`): `buildAgentSystemPrompt()` — identity, safety, tool overview, behavior guidelines. Single source of truth for the main agent.
+2. **Dynamic context** (`features/memory/context-manager.ts`): `ContextManager.buildContextPack()` — conversation summary, user instructions (legacy about), relevant facts, knowledge base entries, recent history. Injected per request; token budgets apply (summary ~2K, facts ~1K, knowledge ~3K, history ~5K tokens).
+3. **Tool descriptions**: Each tool’s `description` field (in `features/ai/tools/*.ts` and `memory-tools.ts`) is sent with the tool schema. The model uses these when choosing and invoking tools; feature-specific guidance can live here to avoid bloating the system prompt.
+4. **Specialist prompts**: The ~50 one-shot LLM calls (see map below) have their own small system prompts in their feature modules. They are **not** composed into the main system prompt; they run inside tool implementations or background pipelines.
+
+### Context Manager and Token Budget
+
+`ContextManager.buildContextPack()` uses a total context budget of ~50K tokens (~200K chars). It allocates: system prompt ~3K, summary ~2K, facts ~1K, knowledge ~3K, history ~5K, with the rest reserved for response and tool use. Pending state (schedule proposals, approvals, drafts) is intended to be added here dynamically in a future phase so the agent can interpret “yes” or “the first one” without deterministic interceptors.
+
+### Map of Specialist LLM Invocations
+
+These are one-shot or small multi-step LLM calls used by tools or background jobs. They are **not** the main conversational agent.
+
+| Feature | File | Function | Purpose |
+|---------|------|----------|---------|
+| Rules | `rules/ai/ai-choose-rule.ts` | getAiResponseSingleRule / getAiResponseMultiRule | Match incoming email to user rules |
+| Rules | `rules/ai/ai-choose-args.ts` | aiChooseArgs | Extract arguments for rule actions |
+| Rules | `rules/ai/prompts/prompt-to-rules.ts` | aiPromptToRules | Convert natural language to structured rules |
+| Rules | `rules/ai/prompts/find-existing-rules.ts` | aiFindExistingRules | Match prompt rules to existing DB rules |
+| Rules | `rules/ai/prompts/diff-rules.ts` | aiDiffRules | Diff rule changes |
+| Rules | `rules/ai/prompts/generate-rules-prompt.ts` | aiGenerateRulesPrompt | Suggest rules from email behavior |
+| Rules | `rules/ai/ai-detect-recurring-pattern.ts` | aiDetectRecurringPattern | Detect recurring email patterns |
+| Reply tracker | `reply-tracker/ai/draft-reply.ts` | aiDraftReply | Draft email reply with knowledge |
+| Reply tracker | `reply-tracker/ai/draft-follow-up.ts` | aiDraftFollowUp | Draft follow-up email |
+| Reply tracker | `reply-tracker/ai/generate-nudge.ts` | aiGenerateNudge | Generate nudge text |
+| Reply tracker | `reply-tracker/ai/reply-context-collector.ts` | aiCollectReplyContext | Direct email search (subject, sender, key terms); no agent |
+| Reply tracker | `reply-tracker/ai/determine-thread-status.ts` | aiDetermineThreadStatus | Thread status (To Reply, FYI, etc.) |
+| Reply tracker | `reply-tracker/ai/check-if-needs-reply.ts` | aiCheckIfNeedsReply | Whether email needs reply |
+| Calendar | `calendar/ai/availability.ts` | aiGetCalendarAvailability | generateObject (preferences) + direct availability + slot computation |
+| Meeting briefs | `meeting-briefs/ai/generate-briefing.ts` | aiGenerateMeetingBriefing | Direct web search per guest + single generateObject (briefing) |
+| Knowledge | `knowledge/ai/writing-style.ts` | aiAnalyzeWritingStyle | Analyze writing style from emails |
+| Knowledge | `knowledge/ai/persona.ts` | aiAnalyzePersona | Analyze professional persona |
+| Knowledge | `knowledge/ai/extract-from-email-history.ts` | aiExtractFromEmailHistory | Extract context from history |
+| Knowledge | `knowledge/ai/extract.ts` | aiExtractRelevantKnowledge | Extract relevant knowledge entries |
+| Categorize | `categorize/ai/ai-categorize-senders.ts` | aiCategorizeSenders | Bulk categorize senders |
+| Categorize | `categorize/ai/ai-categorize-single-sender.ts` | aiCategorizeSingleSender | Categorize one sender |
+| Clean | `clean/ai/ai-clean.ts` | aiClean | Decide if email should be archived |
+| Clean | `clean/ai/ai-clean-select-labels.ts` | aiCleanSelectLabels | Extract labels from instructions |
+| Digest | `digest/ai/summarize-email-for-digest.ts` | aiSummarizeEmailForDigest | Summarize for digest |
+| Document filing | `document-filing/ai/analyze-document.ts` | analyzeDocument | Decide where to file document |
+| Document filing | `document-filing/ai/parse-filing-reply.ts` | aiParseFilingReply | Parse user filing reply |
+| Cold email | `cold-email/is-cold-email.ts` | aiIsColdEmail | Detect cold email |
+| Snippets | `snippets/ai/find-snippets.ts` | aiFindSnippets | Find common snippets |
+| Reports | `reports/ai/*.ts` | Various | Summarize emails, build persona, analyze behavior, labels, recommendations, executive summary, response patterns |
+| Tasks | `tasks/triage/TaskTriageService.ts` | triageTasks | Rank and prioritize tasks |
+| Notifications | `notifications/generator.ts` | generateNotification | Generate push notification text |
+
+The main conversational agent (`runOneShotAgent`) uses `createGenerateText` from `server/lib/llms` and receives the unified system prompt plus context pack; tool implementations may call the above specialists when needed (e.g. calendar availability, drafting, rule matching).

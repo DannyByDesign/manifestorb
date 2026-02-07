@@ -1,8 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import {
-  parseScheduleProposalChoice,
-  resolveScheduleProposalRequestById,
-} from "@/server/features/calendar/schedule-proposal";
+import { resolveScheduleProposalRequestById } from "@/server/features/calendar/schedule-proposal";
 import prisma from "@/server/lib/__mocks__/prisma";
 
 vi.mock("@/server/db/client");
@@ -15,13 +12,6 @@ import { createAgentTools } from "@/features/ai/tools";
 describe("schedule proposal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  it("parses schedule proposal choice", () => {
-    expect(parseScheduleProposalChoice("1", 3)).toBe(0);
-    expect(parseScheduleProposalChoice("first option", 3)).toBe(0);
-    expect(parseScheduleProposalChoice("latest", 3)).toBe(2);
-    expect(parseScheduleProposalChoice("none", 3)).toBeNull();
   });
 
   it("returns error when request not found", async () => {

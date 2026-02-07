@@ -7,7 +7,6 @@ import { convertToCoreMessages, streamText } from "ai";
 import { getModel } from "@/server/lib/llms/model";
 import { createHash } from "crypto";
 import { env } from "@/env";
-import { resolveAmbiguousTimeRequestById } from "@/features/calendar/ambiguous-time";
 import { createApprovalActionToken } from "@/features/approvals/action-token";
 
 const logger = createScopedLogger("ChannelRouter");
@@ -106,23 +105,6 @@ export class ChannelRouter {
             userId: message.context.userId
         });
 
-        // 0. Demo Bypass: Intercept "request approval" BEFORE auth check
-        if (message.content.toLowerCase().includes("request approval")) {
-            return [{
-                targetChannelId: message.context.channelId,
-                content: "I need your approval for this action.",
-                interactive: {
-                    type: "approval_request",
-                    approvalId: "demo-request-123", // In real world this comes from ApprovalService.create
-                    summary: "Demo Action: Deploy to Production",
-                    actions: [
-                        { label: "Approve", style: "primary", value: "approve" },
-                        { label: "Deny", style: "danger", value: "deny" }
-                    ]
-                }
-            }];
-        }
-
         // 1. Fetch User via Account Link
         // We must look up the user by their external provider ID (Account table)
         // rather than assuming message.context.userId is already a UUID.
@@ -185,43 +167,6 @@ export class ChannelRouter {
                 targetChannelId: message.context.channelId,
                 content: "Your account is linked, but you haven't connected a Gmail/Outlook account yet.\n\nPlease go to the Amodel Web App to connect your email."
             }];
-        }
-
-        const trimmed = message.content.trim().toLowerCase();
-        if (trimmed === "earlier" || trimmed === "later") {
-            const pendingRequests = await prisma.approvalRequest.findMany({
-                where: {
-                    userId: user.id,
-                    status: "PENDING",
-                    expiresAt: { gt: new Date() },
-                },
-                orderBy: { createdAt: "desc" },
-                take: 5,
-            });
-            const ambiguousRequest = pendingRequests.find((req) => {
-                const payload = req.requestPayload as any;
-                return payload?.actionType === "ambiguous_time";
-            });
-
-            if (ambiguousRequest) {
-                const result = await resolveAmbiguousTimeRequestById({
-                    requestId: ambiguousRequest.id,
-                    choice: trimmed as "earlier" | "later",
-                    userId: user.id,
-                });
-
-                if (result.ok) {
-                    return [{
-                        targetChannelId: message.context.channelId,
-                        content: `Got it — using the ${trimmed} time. ✅`
-                    }];
-                }
-
-                return [{
-                    targetChannelId: message.context.channelId,
-                    content: "Sorry, I couldn't resolve that time. Please try again."
-                }];
-            }
         }
 
         const threadId = (message.context as any).threadId || null;

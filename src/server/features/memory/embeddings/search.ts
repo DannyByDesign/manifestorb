@@ -4,12 +4,18 @@
  * 
  * Part of the context and memory management system.
  */
+import { Prisma } from "@/generated/prisma/client";
 import prisma from "@/server/db/client";
 import { EmbeddingService } from "./service";
 import { createScopedLogger } from "@/server/lib/logger";
 import type { MemoryFact, Knowledge } from "@/generated/prisma/client";
 
 const logger = createScopedLogger("SemanticSearch");
+
+/** Format embedding number[] as a pgvector literal for raw SQL (e.g. [0.1, -0.2, ...]). */
+function toPgVectorLiteral(embedding: number[]): string {
+  return "[" + embedding.join(",") + "]";
+}
 
 export interface SearchResult<T> {
   item: T;
@@ -60,17 +66,18 @@ async function hybridSearchMemoryFacts({
 }): Promise<SearchResult<MemoryFact>[]> {
   // Generate query embedding
   const queryEmbedding = await EmbeddingService.generateEmbedding(query);
+  const vectorLiteral = toPgVectorLiteral(queryEmbedding);
 
   // Semantic search using pgvector
   // Using cosine distance (<=>), lower is better
   // Only search active facts
   const semanticResults = await prisma.$queryRaw<(MemoryFact & { distance: number })[]>`
-    SELECT *, (embedding <=> ${queryEmbedding}::vector) AS distance
+    SELECT *, (embedding <=> ${Prisma.raw("'" + vectorLiteral + "'::vector")}) AS distance
     FROM "MemoryFact"
     WHERE "userId" = ${userId}
       AND embedding IS NOT NULL
       AND "isActive" = true
-    ORDER BY embedding <=> ${queryEmbedding}::vector
+    ORDER BY embedding <=> ${Prisma.raw("'" + vectorLiteral + "'::vector")}
     LIMIT ${limit}
   `;
 
@@ -203,13 +210,14 @@ async function hybridSearchKnowledge({
   limit: number;
 }): Promise<SearchResult<Knowledge>[]> {
   const queryEmbedding = await EmbeddingService.generateEmbedding(query);
+  const vectorLiteral = toPgVectorLiteral(queryEmbedding);
 
   const semanticResults = await prisma.$queryRaw<(Knowledge & { distance: number })[]>`
-    SELECT *, (embedding <=> ${queryEmbedding}::vector) AS distance
+    SELECT *, (embedding <=> ${Prisma.raw("'" + vectorLiteral + "'::vector")}) AS distance
     FROM "Knowledge"
     WHERE "emailAccountId" = ${emailAccountId}
       AND embedding IS NOT NULL
-    ORDER BY embedding <=> ${queryEmbedding}::vector
+    ORDER BY embedding <=> ${Prisma.raw("'" + vectorLiteral + "'::vector")}
     LIMIT ${limit}
   `;
 

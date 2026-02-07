@@ -189,7 +189,6 @@ model EmailAccount {
   invitations         Invitation[]
   ssoproviders        SsoProvider[]
   calendarConnections CalendarConnection[]
-  mcpConnections      McpConnection[]
   meetingBriefings    MeetingBriefing[]
   driveConnections    DriveConnection[]
   documentFilings     DocumentFiling[]
@@ -1236,65 +1235,6 @@ model Referral {
   @@index([status])
 }
 
-model McpIntegration {
-  id        String   @id @default(cuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  name String @unique // Lookup key to MCP_INTEGRATIONS config
-
-  // OAuth registration metadata (captured during dynamic registration)
-  // These represent what the credentials below were registered for
-  registeredServerUrl        String? // Server URL credentials are registered with
-  registeredAuthorizationUrl String? // OAuth authorization endpoint used
-  registeredTokenUrl         String? // OAuth token endpoint used
-
-  // OAuth client credentials (from dynamic registration - shared across all users)
-  oauthClientId     String?
-  oauthClientSecret String?
-
-  connections McpConnection[]
-}
-
-model McpConnection {
-  id        String   @id @default(cuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  name     String
-  isActive Boolean @default(true)
-
-  // Encrypted credentials
-  accessToken  String?
-  refreshToken String?
-  apiKey       String?
-  expiresAt    DateTime?
-
-  integrationId  String
-  integration    McpIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
-  emailAccountId String?
-  emailAccount   EmailAccount?  @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
-  tools          McpTool[]
-
-  @@unique([emailAccountId, integrationId])
-}
-
-model McpTool {
-  id        String   @id @default(cuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  name        String
-  description String?
-  schema      Json?
-  isEnabled   Boolean @default(true)
-
-  connectionId String
-  connection   McpConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
-
-  @@unique([connectionId, name])
-}
-
 enum ActionType {
   ARCHIVE
   LABEL
@@ -1313,6 +1253,7 @@ enum ActionType {
   SET_TASK_PREFERENCES
   CREATE_TASK
   CREATE_CALENDAR_EVENT
+  SCHEDULE_MEETING // Proactive: finds slots + drafts reply + single approval notification
   // SUMMARIZE
   // SNOOZE
   // ADD_TO_DO

@@ -119,12 +119,7 @@ describe("buildPrompt timezone handling", () => {
 
       </guest_context>
 
-      Available search tools: webSearch
-
-      For each guest listed above:
-      1. Review their email and meeting history provided
-      2. Use search tools to find their professional background
-      3. Once you have all information, call finalizeBriefing with the complete briefing"
+      "
     `);
   });
 
@@ -172,12 +167,7 @@ describe("buildPrompt timezone handling", () => {
 
       </guest_context>
 
-      Available search tools: webSearch
-
-      For each guest listed above:
-      1. Review their email and meeting history provided
-      2. Use search tools to find their professional background
-      3. Once you have all information, call finalizeBriefing with the complete briefing"
+      "
     `);
   });
 });

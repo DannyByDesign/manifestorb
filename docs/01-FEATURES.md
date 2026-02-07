@@ -59,9 +59,7 @@
 | 🕒 | **AI Label Optimization** | Suggest label cleanup/consolidation | `server/features/reports/ai/analyze-label-optimization.ts` | **UI-first** | Yes (`analyze`) |
 | 🕒 | **AI Response Patterns** | Analyze response patterns + template suggestions | `server/features/reports/ai/response-patterns.ts` | **UI-first** | Yes (`analyze`) |
 | 🕒 | **AI Document Filing** | Auto-file attachments to Drive folders | `server/features/document-filing/ai/*` | **UI-first** (preview/confirm) | Yes (`analyze`/`modify`) |
-| 🕒 | **AI Create Group** | Create email groups from NL prompts | `server/features/groups/ai/create-group.ts` | **Hybrid** | Yes (`create`) |
 | 🗑️ | **AI Compose Autocomplete** | Real-time compose autocomplete | `src/app/api/ai/compose-autocomplete/route.ts` | **UI-first** but high-latency risk | No |
-| 🕒 | **AI MCP Agent** | External tools via MCP (HubSpot/Notion/etc.) | `server/features/mcp/ai/*` | **UI-first** (integrations) + Chat | Partial |
 
 ### Backend-Only AI Features (8)
 
@@ -255,7 +253,6 @@
 | ✅ | **Cleanup Jobs** | Batch archive old mail | `CleanupJob*` | UI-first (wizard) + Chat | Yes (`modify`) |
 | ✅ | **Cold Email Detection** | Detect/filter cold/sales | `Newsletter` model | UI-first + Chat | Yes |
 | ✅ | **Webhook Integration** | Custom webhooks | `Action.url`, `CALL_WEBHOOK` | UI-first (advanced) | No |
-| 🕒 | **MCP Integrations** | External tool connections | `Mcp*` models | UI-first (integrations) + Chat | Yes |
 
 ---
 
@@ -343,7 +340,7 @@
 - Advanced rules (diff/history/testing/scheduling)
 - Analytics dashboards + exec reports
 - Stripe paywall + credits (if not needed day-1)
-- MCP tools + webhooks
+- webhooks
 
 ### 🗑️ Consider removal / hide deep in settings
 

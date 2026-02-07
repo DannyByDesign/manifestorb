@@ -100,8 +100,10 @@ In most cases, you should use the "aiInstructions" and sometimes you will use ot
 If a rule can be handled fully with static conditions, do so, but this is rarely possible.
 If the rule mentions urgency, escalation, priority, or severity, you MUST include aiInstructions capturing those terms even when static conditions are present (use conditionalOperator "AND").
 
-Supported actions include: ARCHIVE, LABEL, DRAFT_EMAIL, REPLY, FORWARD, SEND_EMAIL (if enabled), MARK_READ, MARK_SPAM, NOTIFY_USER, DIGEST, CALL_WEBHOOK, CREATE_TASK, CREATE_CALENDAR_EVENT, SET_TASK_PREFERENCES, and MOVE_FOLDER (Outlook).
+Supported actions include: ARCHIVE, LABEL, DRAFT_EMAIL, REPLY, FORWARD, SEND_EMAIL (if enabled), MARK_READ, MARK_SPAM, NOTIFY_USER, SCHEDULE_MEETING, DIGEST, CALL_WEBHOOK, CREATE_TASK, CREATE_CALENDAR_EVENT, SET_TASK_PREFERENCES, and MOVE_FOLDER (Outlook).
 Use only these action types. Prefer DRAFT_EMAIL for replies unless the user explicitly asks to send automatically.
+
+SCHEDULE_MEETING: Use this when the user wants the system to handle meeting/call requests by finding available times and drafting a reply for approval. Infer SCHEDULE_MEETING from natural phrasing such as: "when someone asks to meet / set up a call / find a time", "find slots and draft a reply", "propose times for meetings", "one-tap approve meeting requests", "automatically handle meeting requests", "when people want to schedule with me". Do NOT use NOTIFY_USER plus manual scheduling for that intent—use SCHEDULE_MEETING so the user gets one notification with slots and draft.
 
 IMPORTANT: You must return JSON only (no markdown or extra keys).
 
@@ -215,6 +217,48 @@ IMPORTANT: You must return JSON only (no markdown or extra keys).
               "fields": {
                 "content": "Hi {{name}},\nThank you for your message.\nI'll respond within 2 hours.\nBest,\nAlice"
               }
+            }
+          ]
+        }]
+      }
+    </output>
+  </example>
+
+  <example>
+    <input>
+      * When someone asks to set up a meeting, automatically find available times and draft a reply
+    </input>
+    <output>
+      {
+        "rules": [{
+          "name": "Meeting",
+          "condition": {
+            "aiInstructions": "Apply this rule to emails requesting a meeting, call, coffee chat, or scheduling a time to connect"
+          },
+          "actions": [
+            {
+              "type": "SCHEDULE_MEETING"
+            }
+          ]
+        }]
+      }
+    </output>
+  </example>
+
+  <example>
+    <input>
+      * When a potential client, founder, or investor asks to schedule a call or meeting, find a few times and send me a draft reply to approve
+    </input>
+    <output>
+      {
+        "rules": [{
+          "name": "Meeting",
+          "condition": {
+            "aiInstructions": "Apply this rule when a potential client, founder, or investor asks to schedule a meeting or call"
+          },
+          "actions": [
+            {
+              "type": "SCHEDULE_MEETING"
             }
           ]
         }]

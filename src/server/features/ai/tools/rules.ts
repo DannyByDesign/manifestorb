@@ -108,8 +108,8 @@ const rulesToolParameters = z.object({
 
 export const rulesTool: ToolDefinition<typeof rulesToolParameters> = {
   name: "rules",
-  description:
-    "Manage email rules (list, create, update conditions/actions/patterns) and user about/knowledge.",
+  description: `Manage email rules. Actions: list, create, update_conditions, update_actions, update_patterns, get_patterns, update_about, add_knowledge.
+Rule structure: condition (aiInstructions and/or static from/to/subject) + actions (archive, label, draft, reply, send, mark read, etc.). Static conditions use AND; top-level conditions can use AND/OR (conditionalOperator). Use {{variables}} in action fields for AI-generated content. Prefer short rule names (e.g. Newsletters, Urgent). Check if a rule already exists before creating.`,
   parameters: rulesToolParameters,
   securityLevel: "CAUTION",
   execute: async ({ action, payload }, context) => {

@@ -1,9 +1,11 @@
 import { z } from "zod";
-import { tool } from "ai";
+import { TZDate } from "@date-fns/tz";
+import { addMinutes, format, parseISO } from "date-fns";
 import type { Logger } from "@/server/lib/logger";
-import { createGenerateText } from "@/server/lib/llms";
+import { createGenerateObject } from "@/server/lib/llms";
 import { getModel } from "@/server/lib/llms/model";
 import { getUnifiedCalendarAvailability } from "@/features/calendar/unified-availability";
+import type { BusyPeriod } from "@/features/calendar/availability-types";
 import type { EmailAccountWithAI } from "@/server/lib/llms/types";
 import type { EmailForLLM } from "@/server/types";
 import prisma from "@/server/db/client";
@@ -26,6 +28,20 @@ const schema = z.object({
     .describe(
       "Set to true if the user has no availability in the requested timeframe",
     ),
+});
+
+const preferencesSchema = z.object({
+  durationMinutes: z
+    .number()
+    .describe("Inferred meeting duration in minutes (e.g. 30 for quick call, 60 for meeting)"),
+  preferredDays: z
+    .array(z.string())
+    .optional()
+    .describe("Preferred weekdays if mentioned, e.g. ['monday', 'tuesday']"),
+  preferredTimeOfDay: z
+    .enum(["morning", "afternoon", "evening", "any"])
+    .optional()
+    .describe("Preferred time of day if mentioned"),
 });
 
 export type CalendarAvailabilityContext = z.infer<typeof schema>;
@@ -127,128 +143,145 @@ export async function aiGetCalendarAvailability({
     }
   }
 
-  const system = `You are an AI assistant that analyzes email threads to determine if they contain meeting or scheduling requests, and returns available meeting time slots.
-
-TIMEZONE: All times (busy periods, suggested times) are in ${userTimezone}.
-
-Your task is to:
-1. Analyze if the email is scheduling-related (meeting, call, appointment)
-2. Extract any date/time preferences from the email
-3. If calendars are connected, use checkCalendarAvailability to get busy periods (already in ${userTimezone})
-4. Suggest ONLY times that DO NOT overlap with busy periods
-5. Return time slots with start AND end times (infer duration from context: "quick call" = 30min, "meeting" = 60min)
-6. If there are NO available times (user is busy all day), set noAvailability=true and return empty suggestedTimes array
-7. If calendars are not connected, do NOT call checkCalendarAvailability; suggest times based on email context only
-
-CRITICAL: Do NOT suggest times overlapping with busy periods.
-Example: If busy 2025-11-17 09:00 to 2025-11-17 17:00, suggest times AFTER 17:00 or BEFORE 09:00.
-Example: If busy all day (00:00 to 23:59), return empty array and set noAvailability=true.
-
-Format: "YYYY-MM-DD HH:MM"
-If email mentions timezone (e.g., "5pm PST"), convert to ${userTimezone}.
-Call "returnSuggestedTimes" only once.`;
-
-  const prompt = `${getUserInfoPrompt({ emailAccount })}
-  
-<current_time>
-${new Date().toISOString()}
-</current_time>
-
-<thread>
-${threadContent}
-</thread>`.trim();
-
   const modelOptions = getModel();
-
-  const generateText = createGenerateText({
+  const generateObject = createGenerateObject({
     emailAccount,
-    label: "Calendar availability analysis",
+    label: "Calendar availability preferences",
     modelOptions,
   });
 
-  let result: CalendarAvailabilityContext | null = null;
-
-  const response = await generateText({
+  const { object: preferences } = await generateObject({
     ...modelOptions,
-    system,
-    prompt,
-    stopWhen: (result) =>
-      result.steps.some((step) =>
-        step.toolCalls?.some(
-          (call) => call?.toolName === "returnSuggestedTimes",
-        ),
-      ) || result.steps.length > 5,
-    tools: {
-      ...(hasCalendarConnections
-        ? {
-            checkCalendarAvailability: tool({
-              description:
-                "Check calendar availability across all connected calendars (Google and Microsoft) for meeting requests",
-              inputSchema: z.object({
-                timeMin: z
-                  .string()
-                  .describe("The minimum time to check availability for"),
-                timeMax: z
-                  .string()
-                  .describe("The maximum time to check availability for"),
-              }),
-              execute: async ({ timeMin, timeMax }) => {
-                const startDate = new Date(timeMin);
-                const endDate = new Date(timeMax);
+    schema: preferencesSchema,
+    prompt: `Extract scheduling preferences from this email thread. Infer meeting duration (e.g. "quick call" = 30, "meeting" or "call" = 60). Timezone for the user: ${userTimezone}.
 
-                try {
-                  const busyPeriods = await getUnifiedCalendarAvailability({
-                    emailAccountId: emailAccount.id,
-                    startDate,
-                    endDate,
-                    timezone: userTimezone,
-                    logger,
-                  });
-
-                  logger.trace("Unified calendar availability data", {
-                    busyPeriods,
-                  });
-
-                  return { busyPeriods };
-                } catch (error) {
-                  logger.error("Error checking calendar availability", { error });
-                  return { busyPeriods: [] };
-                }
-              },
-            }),
-          }
-        : {}),
-      returnSuggestedTimes: tool({
-        description: "Return suggested times for a meeting",
-        inputSchema: schema,
-        execute: async (data) => {
-          result = data;
-        },
-      }),
-    },
+<thread>
+${threadContent}
+</thread>`,
   });
 
-  if (!result) {
-    const toolCall = response.steps
-      .flatMap((step) => step.toolCalls ?? [])
-      .find((call) => call?.toolName === "returnSuggestedTimes");
+  const durationMinutes = preferences.durationMinutes ?? 30;
 
-    if (toolCall?.input) {
-      const parsed = schema.safeParse(toolCall.input);
-      if (parsed.success) {
-        result = parsed.data;
-      }
-    }
-  }
-
-  if (result && result.suggestedTimes.length === 0 && !result.noAvailability) {
-    result = {
-      ...result,
+  if (!hasCalendarConnections) {
+    return {
       suggestedTimes: buildFallbackSuggestedTimes(),
+      noAvailability: false,
     };
   }
 
-  return result;
+  const startDate = new Date();
+  const endDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  let busyPeriods: BusyPeriod[];
+  try {
+    busyPeriods = await getUnifiedCalendarAvailability({
+      emailAccountId: emailAccount.id,
+      startDate,
+      endDate,
+      timezone: userTimezone,
+      logger,
+    });
+  } catch (error) {
+    logger.error("Error fetching calendar availability", { error });
+    return {
+      suggestedTimes: buildFallbackSuggestedTimes(),
+      noAvailability: false,
+    };
+  }
+
+  const slots = findAvailableSlots(
+    busyPeriods,
+    durationMinutes,
+    userTimezone,
+    startDate,
+    endDate,
+  );
+
+  if (slots.length === 0) {
+    return {
+      suggestedTimes: [],
+      noAvailability: true,
+    };
+  }
+
+  return {
+    suggestedTimes: slots.slice(0, 3),
+    noAvailability: false,
+  };
+}
+
+/**
+ * Find free slots of at least durationMinutes within the window, excluding busy periods.
+ * Busy periods are in ISO strings; we parse and merge overlaps, then compute gaps.
+ */
+function findAvailableSlots(
+  busyPeriods: BusyPeriod[],
+  durationMinutes: number,
+  timezone: string,
+  windowStart: Date,
+  windowEnd: Date,
+): Array<{ start: string; end: string }> {
+  const slots: Array<{ start: string; end: string }> = [];
+  const merged = mergeBusyPeriods(
+    busyPeriods.map((p) => ({ start: parseISO(p.start), end: parseISO(p.end) })),
+  );
+  const durationMs = durationMinutes * 60 * 1000;
+  let cursor = windowStart.getTime();
+
+  for (const busy of merged) {
+    const busyStart = busy.start.getTime();
+    const busyEnd = busy.end.getTime();
+    if (busyEnd <= cursor) continue;
+    if (busyStart > windowEnd.getTime()) break;
+    const gapStart = Math.max(cursor, windowStart.getTime());
+    const gapEnd = Math.min(busyStart, windowEnd.getTime());
+    if (gapEnd - gapStart >= durationMs) {
+      const startDate = new Date(gapStart);
+      const endDate = new Date(gapStart + durationMs);
+      slots.push({
+        start: formatInTimezone(startDate, timezone),
+        end: formatInTimezone(endDate, timezone),
+      });
+      if (slots.length >= 5) break;
+    }
+    cursor = Math.max(cursor, busyEnd);
+  }
+
+  if (slots.length < 5 && cursor < windowEnd.getTime()) {
+    const gapEnd = windowEnd.getTime();
+    if (gapEnd - cursor >= durationMs) {
+      const startDate = new Date(cursor);
+      const endDate = new Date(cursor + durationMs);
+      slots.push({
+        start: formatInTimezone(startDate, timezone),
+        end: formatInTimezone(endDate, timezone),
+      });
+    }
+  }
+
+  return slots;
+}
+
+function mergeBusyPeriods(
+  periods: Array<{ start: Date; end: Date }>,
+): Array<{ start: Date; end: Date }> {
+  if (periods.length === 0) return [];
+  const sorted = [...periods].sort((a, b) => a.start.getTime() - b.start.getTime());
+  const merged: Array<{ start: Date; end: Date }> = [sorted[0]!];
+  for (let i = 1; i < sorted.length; i++) {
+    const curr = sorted[i]!;
+    const last = merged[merged.length - 1]!;
+    if (curr.start.getTime() <= last.end.getTime()) {
+      last.end = new Date(Math.max(last.end.getTime(), curr.end.getTime()));
+    } else {
+      merged.push(curr);
+    }
+  }
+  return merged;
+}
+
+function formatInTimezone(date: Date, timezone: string): string {
+  const tzDate = new TZDate(date, timezone);
+  return format(tzDate, "yyyy-MM-dd HH:mm");
 }
 
 function isSchedulingThread(threadContent: string): boolean {

@@ -64,6 +64,7 @@ export function getAvailableActions(provider: string) {
       : []),
     ActionType.MARK_SPAM,
     ActionType.NOTIFY_USER,
+    ActionType.SCHEDULE_MEETING,
   ].filter(isDefined);
   return availableActions as [ActionType, ...ActionType[]];
 }

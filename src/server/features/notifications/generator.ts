@@ -5,7 +5,7 @@ import { createScopedLogger } from "@/server/lib/logger";
 
 const logger = createScopedLogger("services/notification/generator");
 
-export type NotificationType = "email" | "calendar" | "system" | "task";
+export type NotificationType = "email" | "calendar" | "system" | "task" | "action";
 
 export interface NotificationContext {
     type: NotificationType;
@@ -106,6 +106,7 @@ function getIconForType(type: NotificationType): string {
         case "calendar": return "📅";
         case "system": return "🔔";
         case "task": return "✅";
+        case "action": return "🤖";
         default: return "🔔";
     }
 }

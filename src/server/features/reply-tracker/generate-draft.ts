@@ -18,7 +18,6 @@ import { getOrCreateReferralCode } from "@/features/referrals/referral-code";
 import { generateReferralLink } from "@/features/referrals/referral-link";
 import { aiGetCalendarAvailability } from "@/features/calendar/ai/availability";
 import { env } from "@/env";
-import { mcpAgent } from "@/features/mcp/ai/mcp-agent";
 import {
   getMeetingContext,
   formatMeetingContextForPrompt,
@@ -150,7 +149,6 @@ async function generateDraftContent(
     emailHistoryContext,
     calendarAvailability,
     writingStyle,
-    mcpResult,
     upcomingMeetings,
   ] = await Promise.all([
     aiExtractRelevantKnowledge({
@@ -166,7 +164,6 @@ async function generateDraftContent(
     }),
     aiGetCalendarAvailability({ emailAccount, messages, logger }),
     getWritingStyle({ emailAccountId: emailAccount.id }),
-    mcpAgent({ emailAccount, messages }),
     getMeetingContext({
       emailAccountId: emailAccount.id,
       recipientEmail: extractEmailAddress(lastMessage.headers.from),
@@ -216,7 +213,6 @@ async function generateDraftContent(
     emailHistoryContext,
     calendarAvailability,
     writingStyle,
-    mcpContext: mcpResult?.response || null,
     meetingContext: formatMeetingContextForPrompt(
       upcomingMeetings,
       emailAccount.timezone,

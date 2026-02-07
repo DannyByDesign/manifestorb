@@ -14,7 +14,6 @@
   },
   "dependencies": {
     "@ai-sdk/google": "2.0.44",
-    "@ai-sdk/mcp": "^1.0.15",
     "@ai-sdk/openai": "2.0.77",
     "@clack/prompts": "^1.0.0",
     "@date-fns/tz": "^1.4.1",
@@ -24,7 +23,6 @@
     "@googleapis/people": "^7.0.1",
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "@microsoft/microsoft-graph-types": "^2.43.1",
-    "@modelcontextprotocol/sdk": "^1.25.3",
     "@next/third-parties": "^16.1.6",
     "@portabletext/react": "^6.0.2",
     "@prisma/adapter-pg": "^7.3.0",

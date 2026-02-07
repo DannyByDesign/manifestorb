@@ -1,5 +1,6 @@
-import { tool, zodSchema, type Schema } from "ai";
-import { type z } from "zod";
+import { tool, zodSchema } from "ai";
+import { z } from "zod";
+import { google } from "@ai-sdk/google";
 import { type Logger } from "@/server/lib/logger";
 import { type EmailAccount } from "@/features/ai/tools/providers/email";
 import { createEmailProvider } from "./providers/email";
@@ -8,6 +9,8 @@ import { createAutomationProvider } from "./providers/automation";
 import { createToolDriveProvider } from "./providers/drive";
 import { type ToolContext, type ToolDefinition } from "./types";
 import { executeTool } from "./executor";
+import { createGenerateText } from "@/server/lib/llms";
+import { getModel } from "@/server/lib/llms/model";
 
 import { queryTool } from "./query";
 import { getTool } from "./get";
@@ -63,17 +66,40 @@ export async function createAgentTools({
     // Our `executeTool` takes the definition and params.
     // We should return implementations that call `executeTool`.
 
-    const wrap = (def: ToolDefinition<any>) => {
+    const wrap = (def: ToolDefinition<unknown>) => {
         const schema = zodSchema(def.parameters);
         return tool({
             description: def.description,
             parameters: schema,
             // @ts-expect-error Zod v4 vs v3 mismatch causes overload resolution failure
-            execute: async (params: any) => {
+            execute: async (params: unknown) => {
                 return await executeTool(def, params, context);
             }
         });
     };
+
+    const modelOptions = getModel("economy");
+    const webSearchGenerateText = createGenerateText({
+        emailAccount,
+        label: "Web Search",
+        modelOptions,
+    });
+    const webSearchTool = tool({
+        description:
+            "Search the web for information about a person, company, or topic. Use for meeting prep, research, or when the user asks about external information.",
+        parameters: zodSchema(z.object({
+            query: z.string().describe("The search query"),
+        })),
+        execute: async ({ query }: { query: string }) => {
+            const searchTools = google.tools.googleSearch({});
+            const result = await webSearchGenerateText({
+                ...modelOptions,
+                prompt: query,
+                tools: { google_search: searchTools },
+            });
+            return { success: true, data: result.text };
+        },
+    });
 
     return {
         query: wrap(queryTool),
@@ -85,5 +111,6 @@ export async function createAgentTools({
         triage: wrap(triageTool),
         rules: wrap(rulesTool),
         send: wrap(sendTool),
+        webSearch: webSearchTool,
     };
 }
