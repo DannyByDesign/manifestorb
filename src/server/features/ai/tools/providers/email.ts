@@ -59,11 +59,14 @@ export interface DraftParams {
 // Tool-Specific Interface (Adapter)
 export interface EmailProvider {
     // Core (Original)
-    search(
-        query: string,
-        limit?: number,
-        fetchAll?: boolean
-    ): Promise<{
+    search(options: {
+        query: string;
+        limit?: number;
+        fetchAll?: boolean;
+        pageToken?: string;
+        before?: Date;
+        after?: Date;
+    }): Promise<{
         messages: ParsedMessage[];
         nextPageToken?: string;
         totalEstimate?: number;
@@ -73,6 +76,16 @@ export interface EmailProvider {
     createDraft(params: DraftParams): Promise<{ draftId: string; preview: any }>;
     trash(ids: string[]): Promise<{ success: boolean; count: number }>;
     sendDraft(draftId: string): Promise<{ messageId: string; threadId: string }>;
+    getDrafts(options?: { maxResults?: number }): Promise<ParsedMessage[]>;
+    getDraft(draftId: string): Promise<ParsedMessage | null>;
+    updateDraft(
+        draftId: string,
+        params: {
+            messageHtml?: string;
+            subject?: string;
+        },
+    ): Promise<void>;
+    deleteDraft(draftId: string): Promise<void>;
 
     // Extended (Found missing during audit)
     getThread(threadId: string): Promise<EmailThread>;
@@ -93,11 +106,14 @@ export async function createEmailProvider(
     });
 
     return {
-        search: async (query: string, limit?: number, fetchAll?: boolean) => {
+        search: async ({ query, limit, fetchAll, pageToken, before, after }) => {
             try {
                 const res = await service.getMessagesWithPagination({
                     query,
                     maxResults: limit,
+                    pageToken,
+                    before,
+                    after,
                     fetchAll,
                 });
                 return res;
@@ -265,6 +281,56 @@ export async function createEmailProvider(
         sendDraft: async (draftId: string) => {
             try {
                 return await service.sendDraft(draftId);
+            } catch (err: unknown) {
+                if (isGmailAuthError(err)) {
+                    throw new Error(GMAIL_RECONNECT_MESSAGE);
+                }
+                throw err;
+            }
+        },
+
+        getDrafts: async (options?: { maxResults?: number }) => {
+            try {
+                return await service.getDrafts(options);
+            } catch (err: unknown) {
+                if (isGmailAuthError(err)) {
+                    throw new Error(GMAIL_RECONNECT_MESSAGE);
+                }
+                throw err;
+            }
+        },
+
+        getDraft: async (draftId: string) => {
+            try {
+                return await service.getDraft(draftId);
+            } catch (err: unknown) {
+                if (isGmailAuthError(err)) {
+                    throw new Error(GMAIL_RECONNECT_MESSAGE);
+                }
+                throw err;
+            }
+        },
+
+        updateDraft: async (
+            draftId: string,
+            params: {
+                messageHtml?: string;
+                subject?: string;
+            },
+        ) => {
+            try {
+                await service.updateDraft(draftId, params);
+            } catch (err: unknown) {
+                if (isGmailAuthError(err)) {
+                    throw new Error(GMAIL_RECONNECT_MESSAGE);
+                }
+                throw err;
+            }
+        },
+
+        deleteDraft: async (draftId: string) => {
+            try {
+                await service.deleteDraft(draftId);
             } catch (err: unknown) {
                 if (isGmailAuthError(err)) {
                     throw new Error(GMAIL_RECONNECT_MESSAGE);

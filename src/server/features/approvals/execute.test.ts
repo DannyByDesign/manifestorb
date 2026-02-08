@@ -21,6 +21,7 @@ describe("executeApprovalRequest", () => {
     prisma.approvalRequest.findUnique
       .mockResolvedValueOnce({
       id: "req-1",
+      userId: "user-1",
       status: "PENDING",
       expiresAt: new Date(Date.now() + 60_000),
       } as any)
@@ -58,7 +59,13 @@ describe("executeApprovalRequest", () => {
         userId: "user-1",
       }),
     );
-    expect(mockTool.execute).toHaveBeenCalledWith({ messageId: "msg-1" });
+    expect(mockTool.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: "msg-1",
+        preApproved: true,
+        approvalId: "req-1",
+      }),
+    );
     expect(result.executionResult).toEqual({ ok: true });
   });
 
@@ -69,6 +76,7 @@ describe("executeApprovalRequest", () => {
     prisma.approvalRequest.findUnique
       .mockResolvedValueOnce({
       id: "req-2",
+      userId: "user-1",
       status: "PENDING",
       expiresAt: new Date(Date.now() + 60_000),
       } as any)
@@ -109,6 +117,7 @@ describe("executeApprovalRequest", () => {
     prisma.approvalRequest.findUnique
       .mockResolvedValueOnce({
       id: "req-3",
+      userId: "user-1",
       status: "PENDING",
       expiresAt: new Date(Date.now() + 60_000),
       } as any)

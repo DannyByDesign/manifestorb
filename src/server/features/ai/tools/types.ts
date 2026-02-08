@@ -88,6 +88,8 @@ export interface ToolResult {
     data?: any;
     error?: string;
     meta?: {
+        resource?: string;
+        requestedIds?: string[];
         itemCount?: number;
         durationMs?: number;
     };

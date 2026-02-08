@@ -1,0 +1,4244 @@
+[
+  {
+    "id": "ER-001",
+    "category": "email_reading",
+    "request": "Show me unread emails from John.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-002",
+    "category": "email_reading",
+    "request": "Find messages from sarah@acme.io about budget review.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-003",
+    "category": "email_reading",
+    "request": "What landed in my inbox since Wednesday?",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-004",
+    "category": "email_reading",
+    "request": "List emails with attachments from Maya.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-005",
+    "category": "email_reading",
+    "request": "Search for \"travel logistics\" in my inbox.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-006",
+    "category": "email_reading",
+    "request": "Show me unread emails from Priya.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-007",
+    "category": "email_reading",
+    "request": "Find messages from emma@contoso.com about investor follow-up.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-008",
+    "category": "email_reading",
+    "request": "What landed in my inbox since Wednesday?",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-009",
+    "category": "email_reading",
+    "request": "List emails with attachments from Olivia.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-010",
+    "category": "email_reading",
+    "request": "Search for \"budget review\" in my inbox.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-011",
+    "category": "email_reading",
+    "request": "Show me unread emails from John.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-012",
+    "category": "email_reading",
+    "request": "Find messages from sarah@startup.dev about contract renewal.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-013",
+    "category": "email_reading",
+    "request": "What landed in my inbox since Wednesday?",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-014",
+    "category": "email_reading",
+    "request": "List emails with attachments from Maya.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-015",
+    "category": "email_reading",
+    "request": "Search for \"investor follow-up\" in my inbox.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-016",
+    "category": "email_reading",
+    "request": "Show me unread emails from Priya.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-017",
+    "category": "email_reading",
+    "request": "Find messages from emma@example.com about Q1 planning.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-018",
+    "category": "email_reading",
+    "request": "What landed in my inbox since Wednesday?",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-019",
+    "category": "email_reading",
+    "request": "List emails with attachments from Olivia.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-020",
+    "category": "email_reading",
+    "request": "Search for \"contract renewal\" in my inbox.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-021",
+    "category": "email_reading",
+    "request": "Show me unread emails from John.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-022",
+    "category": "email_reading",
+    "request": "Find messages from sarah@acme.io about board prep.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-023",
+    "category": "email_reading",
+    "request": "What landed in my inbox since Wednesday?",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-024",
+    "category": "email_reading",
+    "request": "List emails with attachments from Maya.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-025",
+    "category": "email_reading",
+    "request": "Search for \"Q1 planning\" in my inbox.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-026",
+    "category": "email_reading",
+    "request": "Show me unread emails from Priya.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-027",
+    "category": "email_reading",
+    "request": "Find messages from emma@contoso.com about roadmap update.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-028",
+    "category": "email_reading",
+    "request": "What landed in my inbox since Wednesday?",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-029",
+    "category": "email_reading",
+    "request": "List emails with attachments from Olivia.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-030",
+    "category": "email_reading",
+    "request": "Search for \"board prep\" in my inbox.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-031",
+    "category": "email_reading",
+    "request": "Show me unread emails from John.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-032",
+    "category": "email_reading",
+    "request": "Find messages from sarah@startup.dev about customer escalation.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-033",
+    "category": "email_reading",
+    "request": "What landed in my inbox since Wednesday?",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-034",
+    "category": "email_reading",
+    "request": "List emails with attachments from Maya.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-035",
+    "category": "email_reading",
+    "request": "Search for \"roadmap update\" in my inbox.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-036",
+    "category": "email_reading",
+    "request": "Show me unread emails from Priya.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-037",
+    "category": "email_reading",
+    "request": "Find messages from emma@example.com about travel logistics.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-038",
+    "category": "email_reading",
+    "request": "What landed in my inbox since Wednesday?",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-039",
+    "category": "email_reading",
+    "request": "List emails with attachments from Olivia.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-040",
+    "category": "email_reading",
+    "request": "Search for \"customer escalation\" in my inbox.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-041",
+    "category": "email_reading",
+    "request": "Show me unread emails from John.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-042",
+    "category": "email_reading",
+    "request": "Find messages from sarah@acme.io about budget review.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-043",
+    "category": "email_reading",
+    "request": "What landed in my inbox since Wednesday?",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-044",
+    "category": "email_reading",
+    "request": "List emails with attachments from Maya.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "ER-045",
+    "category": "email_reading",
+    "request": "Search for \"travel logistics\" in my inbox.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Query emails with sender/subject/date filter"
+      }
+    ],
+    "requirements": [
+      "email_query"
+    ]
+  },
+  {
+    "id": "EC-001",
+    "category": "email_composing",
+    "request": "Draft an email to john@example.com about Q1 planning and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-002",
+    "category": "email_composing",
+    "request": "Draft an email to sarah@acme.io about budget review and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-003",
+    "category": "email_composing",
+    "request": "Draft an email to alex@contoso.com about roadmap update and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-004",
+    "category": "email_composing",
+    "request": "Draft an email to maya@startup.dev about contract renewal and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-005",
+    "category": "email_composing",
+    "request": "Draft an email to daniel@example.com about travel logistics and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-006",
+    "category": "email_composing",
+    "request": "Draft an email to priya@acme.io about board prep and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-007",
+    "category": "email_composing",
+    "request": "Draft an email to emma@contoso.com about investor follow-up and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-008",
+    "category": "email_composing",
+    "request": "Draft an email to liam@startup.dev about customer escalation and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-009",
+    "category": "email_composing",
+    "request": "Draft an email to olivia@example.com about Q1 planning and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-010",
+    "category": "email_composing",
+    "request": "Draft an email to noah@acme.io about budget review and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-011",
+    "category": "email_composing",
+    "request": "Draft an email to john@contoso.com about roadmap update and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-012",
+    "category": "email_composing",
+    "request": "Draft an email to sarah@startup.dev about contract renewal and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-013",
+    "category": "email_composing",
+    "request": "Draft an email to alex@example.com about travel logistics and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-014",
+    "category": "email_composing",
+    "request": "Draft an email to maya@acme.io about board prep and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-015",
+    "category": "email_composing",
+    "request": "Draft an email to daniel@contoso.com about investor follow-up and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-016",
+    "category": "email_composing",
+    "request": "Draft an email to priya@startup.dev about customer escalation and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-017",
+    "category": "email_composing",
+    "request": "Draft an email to emma@example.com about Q1 planning and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-018",
+    "category": "email_composing",
+    "request": "Draft an email to liam@acme.io about budget review and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-019",
+    "category": "email_composing",
+    "request": "Draft an email to olivia@contoso.com about roadmap update and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-020",
+    "category": "email_composing",
+    "request": "Draft an email to noah@startup.dev about contract renewal and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-021",
+    "category": "email_composing",
+    "request": "Draft an email to john@example.com about travel logistics and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-022",
+    "category": "email_composing",
+    "request": "Draft an email to sarah@acme.io about board prep and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-023",
+    "category": "email_composing",
+    "request": "Draft an email to alex@contoso.com about investor follow-up and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-024",
+    "category": "email_composing",
+    "request": "Draft an email to maya@startup.dev about customer escalation and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-025",
+    "category": "email_composing",
+    "request": "Draft an email to daniel@example.com about Q1 planning and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-026",
+    "category": "email_composing",
+    "request": "Draft an email to priya@acme.io about budget review and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-027",
+    "category": "email_composing",
+    "request": "Draft an email to emma@contoso.com about roadmap update and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-028",
+    "category": "email_composing",
+    "request": "Draft an email to liam@startup.dev about contract renewal and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-029",
+    "category": "email_composing",
+    "request": "Draft an email to olivia@example.com about travel logistics and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-030",
+    "category": "email_composing",
+    "request": "Draft an email to noah@acme.io about board prep and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-031",
+    "category": "email_composing",
+    "request": "Draft an email to john@contoso.com about investor follow-up and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-032",
+    "category": "email_composing",
+    "request": "Draft an email to sarah@startup.dev about customer escalation and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-033",
+    "category": "email_composing",
+    "request": "Draft an email to alex@example.com about Q1 planning and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-034",
+    "category": "email_composing",
+    "request": "Draft an email to maya@acme.io about budget review and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-035",
+    "category": "email_composing",
+    "request": "Draft an email to daniel@contoso.com about roadmap update and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-036",
+    "category": "email_composing",
+    "request": "Draft an email to priya@startup.dev about contract renewal and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-037",
+    "category": "email_composing",
+    "request": "Draft an email to emma@example.com about travel logistics and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-038",
+    "category": "email_composing",
+    "request": "Draft an email to liam@acme.io about board prep and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-039",
+    "category": "email_composing",
+    "request": "Draft an email to olivia@contoso.com about investor follow-up and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-040",
+    "category": "email_composing",
+    "request": "Draft an email to noah@startup.dev about customer escalation and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-041",
+    "category": "email_composing",
+    "request": "Draft an email to john@example.com about Q1 planning and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-042",
+    "category": "email_composing",
+    "request": "Draft an email to sarah@acme.io about budget review and send when approved.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create draft email with sendOnApproval"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "email_send_on_approval"
+    ]
+  },
+  {
+    "id": "EC-043",
+    "category": "email_composing",
+    "request": "Tell them I can do 9am tomorrow.",
+    "ambiguity": "implicit",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create a contextual reply draft"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "implicit_intent_resolution"
+    ]
+  },
+  {
+    "id": "EC-044",
+    "category": "email_composing",
+    "request": "Tell them I can do 10am tomorrow.",
+    "ambiguity": "implicit",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create a contextual reply draft"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "implicit_intent_resolution"
+    ]
+  },
+  {
+    "id": "EC-045",
+    "category": "email_composing",
+    "request": "Tell them I can do 11am tomorrow.",
+    "ambiguity": "implicit",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "email",
+        "description": "Create a contextual reply draft"
+      }
+    ],
+    "requirements": [
+      "email_compose_draft",
+      "implicit_intent_resolution"
+    ]
+  },
+  {
+    "id": "EM-001",
+    "category": "email_managing",
+    "request": "Archive all emails from john@example.com.",
+    "ambiguity": "clear",
+    "complexity": "multi_step",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Find sender emails with fetchAll"
+      },
+      {
+        "tool": "modify",
+        "resource": "email",
+        "description": "Bulk archive by sender"
+      }
+    ],
+    "requirements": [
+      "email_query",
+      "email_manage_state",
+      "email_bulk_actions"
+    ]
+  },
+  {
+    "id": "EM-002",
+    "category": "email_managing",
+    "request": "Archive all emails from sarah@acme.io.",
+    "ambiguity": "clear",
+    "complexity": "multi_step",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Find sender emails with fetchAll"
+      },
+      {
+        "tool": "modify",
+        "resource": "email",
+        "description": "Bulk archive by sender"
+      }
+    ],
+    "requirements": [
+      "email_query",
+      "email_manage_state",
+      "email_bulk_actions"
+    ]
+  },
+  {
+    "id": "EM-003",
+    "category": "email_managing",
+    "request": "Archive all emails from alex@contoso.com.",
+    "ambiguity": "clear",
+    "complexity": "multi_step",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Find sender emails with fetchAll"
+      },
+      {
+        "tool": "modify",
+        "resource": "email",
+        "description": "Bulk archive by sender"
+      }
+    ],
+    "requirements": [
+      "email_query",
+      "email_manage_state",
+      "email_bulk_actions"
+    ]
+  },
+  {
+    "id": "EM-004",
+    "category": "email_managing",
+    "request": "Archive all emails from maya@startup.dev.",
+    "ambiguity": "clear",
+    "complexity": "multi_step",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Find sender emails with fetchAll"
+      },
+      {
+        "tool": "modify",
+        "resource": "email",
+        "description": "Bulk archive by sender"
+      }
+    ],
+    "requirements": [
+      "email_query",
+      "email_manage_state",
+      "email_bulk_actions"
+    ]
+  },
+  {
+    "id": "EM-005",
+    "category": "email_managing",
+    "request": "Archive all emails from daniel@example.com.",
+    "ambiguity": "clear",
+    "complexity": "multi_step",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Find sender emails with fetchAll"
+      },
+      {
+        "tool": "modify",
+        "resource": "email",
+        "description": "Bulk archive by sender"
+      }
+    ],
+    "requirements": [
+      "email_query",
+      "email_manage_state",
+      "email_bulk_actions"
+    ]
+  },
+  {
+    "id": "EM-006",
+    "category": "email_managing",
+    "request": "Archive all emails from priya@acme.io.",
+    "ambiguity": "clear",
+    "complexity": "multi_step",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Find sender emails with fetchAll"
+      },
+      {
+        "tool": "modify",
+        "resource": "email",
+        "description": "Bulk archive by sender"
+      }
+    ],
+    "requirements": [
+      "email_query",
+      "email_manage_state",
+      "email_bulk_actions"
+    ]
+  },
+  {
+    "id": "EM-007",
+    "category": "email_managing",
+    "request": "Archive all emails from emma@contoso.com.",
+    "ambiguity": "clear",
+    "complexity": "multi_step",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Find sender emails with fetchAll"
+      },
+      {
+        "tool": "modify",
+        "resource": "email",
+        "description": "Bulk archive by sender"
+      }
+    ],
+    "requirements": [
+      "email_query",
+      "email_manage_state",
+      "email_bulk_actions"
+    ]
+  },
+  {
+    "id": "EM-008",
+    "category": "email_managing",
+    "request": "Archive all emails from liam@startup.dev.",
+    "ambiguity": "clear",
+    "complexity": "multi_step",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Find sender emails with fetchAll"
+      },
+      {
+        "tool": "modify",
+        "resource": "email",
+        "description": "Bulk archive by sender"
+      }
+    ],
+    "requirements": [
+      "email_query",
+      "email_manage_state",
+      "email_bulk_actions"
+    ]
+  },
+  {
+    "id": "EM-009",
+    "category": "email_managing",
+    "request": "Archive all emails from olivia@example.com.",
+    "ambiguity": "clear",
+    "complexity": "multi_step",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Find sender emails with fetchAll"
+      },
+      {
+        "tool": "modify",
+        "resource": "email",
+        "description": "Bulk archive by sender"
+      }
+    ],
+    "requirements": [
+      "email_query",
+      "email_manage_state",
+      "email_bulk_actions"
+    ]
+  },
+  {
+    "id": "EM-010",
+    "category": "email_managing",
+    "request": "Archive all emails from noah@acme.io.",
+    "ambiguity": "clear",
+    "complexity": "multi_step",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Find sender emails with fetchAll"
+      },
+      {
+        "tool": "modify",
+        "resource": "email",
+        "description": "Bulk archive by sender"
+      }
+    ],
+    "requirements": [
+      "email_query",
+      "email_manage_state",
+      "email_bulk_actions"
+    ]
+  },
+  {
+    "id": "EM-011",
+    "category": "email_managing",
+    "request": "Archive all emails from john@contoso.com.",
+    "ambiguity": "clear",
+    "complexity": "multi_step",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Find sender emails with fetchAll"
+      },
+      {
+        "tool": "modify",
+        "resource": "email",
+        "description": "Bulk archive by sender"
+      }
+    ],
+    "requirements": [
+      "email_query",
+      "email_manage_state",
+      "email_bulk_actions"
+    ]
+  },
+  {
+    "id": "EM-012",
+    "category": "email_managing",
+    "request": "Archive all emails from sarah@startup.dev.",
+    "ambiguity": "clear",
+    "complexity": "multi_step",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Find sender emails with fetchAll"
+      },
+      {
+        "tool": "modify",
+        "resource": "email",
+        "description": "Bulk archive by sender"
+      }
+    ],
+    "requirements": [
+      "email_query",
+      "email_manage_state",
+      "email_bulk_actions"
+    ]
+  },
+  {
+    "id": "EM-013",
+    "category": "email_managing",
+    "request": "Archive all emails from alex@example.com.",
+    "ambiguity": "clear",
+    "complexity": "multi_step",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Find sender emails with fetchAll"
+      },
+      {
+        "tool": "modify",
+        "resource": "email",
+        "description": "Bulk archive by sender"
+      }
+    ],
+    "requirements": [
+      "email_query",
+      "email_manage_state",
+      "email_bulk_actions"
+    ]
+  },
+  {
+    "id": "EM-014",
+    "category": "email_managing",
+    "request": "Archive all emails from maya@acme.io.",
+    "ambiguity": "clear",
+    "complexity": "multi_step",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Find sender emails with fetchAll"
+      },
+      {
+        "tool": "modify",
+        "resource": "email",
+        "description": "Bulk archive by sender"
+      }
+    ],
+    "requirements": [
+      "email_query",
+      "email_manage_state",
+      "email_bulk_actions"
+    ]
+  },
+  {
+    "id": "EM-015",
+    "category": "email_managing",
+    "request": "Archive all emails from daniel@contoso.com.",
+    "ambiguity": "clear",
+    "complexity": "multi_step",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Find sender emails with fetchAll"
+      },
+      {
+        "tool": "modify",
+        "resource": "email",
+        "description": "Bulk archive by sender"
+      }
+    ],
+    "requirements": [
+      "email_query",
+      "email_manage_state",
+      "email_bulk_actions"
+    ]
+  },
+  {
+    "id": "EM-016",
+    "category": "email_managing",
+    "request": "Archive all emails from priya@startup.dev.",
+    "ambiguity": "clear",
+    "complexity": "multi_step",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Find sender emails with fetchAll"
+      },
+      {
+        "tool": "modify",
+        "resource": "email",
+        "description": "Bulk archive by sender"
+      }
+    ],
+    "requirements": [
+      "email_query",
+      "email_manage_state",
+      "email_bulk_actions"
+    ]
+  },
+  {
+    "id": "EM-017",
+    "category": "email_managing",
+    "request": "Archive all emails from emma@example.com.",
+    "ambiguity": "clear",
+    "complexity": "multi_step",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Find sender emails with fetchAll"
+      },
+      {
+        "tool": "modify",
+        "resource": "email",
+        "description": "Bulk archive by sender"
+      }
+    ],
+    "requirements": [
+      "email_query",
+      "email_manage_state",
+      "email_bulk_actions"
+    ]
+  },
+  {
+    "id": "EM-018",
+    "category": "email_managing",
+    "request": "Archive all emails from liam@acme.io.",
+    "ambiguity": "clear",
+    "complexity": "multi_step",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Find sender emails with fetchAll"
+      },
+      {
+        "tool": "modify",
+        "resource": "email",
+        "description": "Bulk archive by sender"
+      }
+    ],
+    "requirements": [
+      "email_query",
+      "email_manage_state",
+      "email_bulk_actions"
+    ]
+  },
+  {
+    "id": "EM-019",
+    "category": "email_managing",
+    "request": "Archive all emails from olivia@contoso.com.",
+    "ambiguity": "clear",
+    "complexity": "multi_step",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Find sender emails with fetchAll"
+      },
+      {
+        "tool": "modify",
+        "resource": "email",
+        "description": "Bulk archive by sender"
+      }
+    ],
+    "requirements": [
+      "email_query",
+      "email_manage_state",
+      "email_bulk_actions"
+    ]
+  },
+  {
+    "id": "EM-020",
+    "category": "email_managing",
+    "request": "Archive all emails from noah@startup.dev.",
+    "ambiguity": "clear",
+    "complexity": "multi_step",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "query",
+        "resource": "email",
+        "description": "Find sender emails with fetchAll"
+      },
+      {
+        "tool": "modify",
+        "resource": "email",
+        "description": "Bulk archive by sender"
+      }
+    ],
+    "requirements": [
+      "email_query",
+      "email_manage_state",
+      "email_bulk_actions"
+    ]
+  },
+  {
+    "id": "EM-021",
+    "category": "email_managing",
+    "request": "Mark that last thread as read and set follow-up mode off.",
+    "ambiguity": "contextual",
+    "complexity": "dependent",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "modify",
+        "resource": "email",
+        "description": "Update read/followUp state by thread id"
+      }
+    ],
+    "requirements": [
+      "email_manage_state",
+      "context_reference_resolution"
+    ]
+  },
+  {
+    "id": "EM-022",
+    "category": "email_managing",
+    "request": "Mark that last thread as read and set follow-up mode off.",
+    "ambiguity": "contextual",
+    "complexity": "dependent",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "modify",
+        "resource": "email",
+        "description": "Update read/followUp state by thread id"
+      }
+    ],
+    "requirements": [
+      "email_manage_state",
+      "context_reference_resolution"
+    ]
+  },
+  {
+    "id": "EM-023",
+    "category": "email_managing",
+    "request": "Mark that last thread as read and set follow-up mode off.",
+    "ambiguity": "contextual",
+    "complexity": "dependent",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "modify",
+        "resource": "email",
+        "description": "Update read/followUp state by thread id"
+      }
+    ],
+    "requirements": [
+      "email_manage_state",
+      "context_reference_resolution"
+    ]
+  },
+  {
+    "id": "EM-024",
+    "category": "email_managing",
+    "request": "Mark that last thread as read and set follow-up mode off.",
+    "ambiguity": "contextual",
+    "complexity": "dependent",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "modify",
+        "resource": "email",
+        "description": "Update read/followUp state by thread id"
+      }
+    ],
+    "requirements": [
+      "email_manage_state",
+      "context_reference_resolution"
+    ]
+  },
+  {
+    "id": "EM-025",
+    "category": "email_managing",
+    "request": "Mark that last thread as read and set follow-up mode off.",
+    "ambiguity": "contextual",
+    "complexity": "dependent",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "modify",
+        "resource": "email",
+        "description": "Update read/followUp state by thread id"
+      }
+    ],
+    "requirements": [
+      "email_manage_state",
+      "context_reference_resolution"
+    ]
+  },
+  {
+    "id": "CS-001",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with John next Monday at 9am.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-002",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with Sarah next Tuesday at 10am.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-003",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with Alex next Wednesday at 11am.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-004",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with Maya next Thursday at 1pm.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-005",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with Daniel next Friday at 2pm.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-006",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with Priya next Monday at 3pm.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-007",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with Emma next Tuesday at 4pm.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-008",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with Liam next Wednesday at 9am.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-009",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with Olivia next Thursday at 10am.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-010",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with Noah next Friday at 11am.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-011",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with John next Monday at 1pm.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-012",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with Sarah next Tuesday at 2pm.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-013",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with Alex next Wednesday at 3pm.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-014",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with Maya next Thursday at 4pm.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-015",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with Daniel next Friday at 9am.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-016",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with Priya next Monday at 10am.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-017",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with Emma next Tuesday at 11am.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-018",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with Liam next Wednesday at 1pm.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-019",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with Olivia next Thursday at 2pm.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-020",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with Noah next Friday at 3pm.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-021",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with John next Monday at 4pm.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-022",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with Sarah next Tuesday at 9am.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-023",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with Alex next Wednesday at 10am.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-024",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with Maya next Thursday at 11am.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-025",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with Daniel next Friday at 1pm.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-026",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with Priya next Monday at 2pm.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-027",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with Emma next Tuesday at 3pm.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-028",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with Liam next Wednesday at 4pm.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-029",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with Olivia next Thursday at 9am.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-030",
+    "category": "calendar_scheduling",
+    "request": "Schedule a 30-minute meeting with Noah next Friday at 10am.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Create timed event"
+      }
+    ],
+    "requirements": [
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "CS-031",
+    "category": "calendar_scheduling",
+    "request": "Find me time for investor follow-up next week.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Auto-schedule with suggested slots"
+      }
+    ],
+    "requirements": [
+      "calendar_create",
+      "calendar_auto_schedule"
+    ]
+  },
+  {
+    "id": "CS-032",
+    "category": "calendar_scheduling",
+    "request": "Find me time for customer escalation next week.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Auto-schedule with suggested slots"
+      }
+    ],
+    "requirements": [
+      "calendar_create",
+      "calendar_auto_schedule"
+    ]
+  },
+  {
+    "id": "CS-033",
+    "category": "calendar_scheduling",
+    "request": "Find me time for Q1 planning next week.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Auto-schedule with suggested slots"
+      }
+    ],
+    "requirements": [
+      "calendar_create",
+      "calendar_auto_schedule"
+    ]
+  },
+  {
+    "id": "CS-034",
+    "category": "calendar_scheduling",
+    "request": "Find me time for budget review next week.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Auto-schedule with suggested slots"
+      }
+    ],
+    "requirements": [
+      "calendar_create",
+      "calendar_auto_schedule"
+    ]
+  },
+  {
+    "id": "CS-035",
+    "category": "calendar_scheduling",
+    "request": "Find me time for roadmap update next week.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Auto-schedule with suggested slots"
+      }
+    ],
+    "requirements": [
+      "calendar_create",
+      "calendar_auto_schedule"
+    ]
+  },
+  {
+    "id": "CS-036",
+    "category": "calendar_scheduling",
+    "request": "Find me time for contract renewal next week.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Auto-schedule with suggested slots"
+      }
+    ],
+    "requirements": [
+      "calendar_create",
+      "calendar_auto_schedule"
+    ]
+  },
+  {
+    "id": "CS-037",
+    "category": "calendar_scheduling",
+    "request": "Find me time for travel logistics next week.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Auto-schedule with suggested slots"
+      }
+    ],
+    "requirements": [
+      "calendar_create",
+      "calendar_auto_schedule"
+    ]
+  },
+  {
+    "id": "CS-038",
+    "category": "calendar_scheduling",
+    "request": "Find me time for board prep next week.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Auto-schedule with suggested slots"
+      }
+    ],
+    "requirements": [
+      "calendar_create",
+      "calendar_auto_schedule"
+    ]
+  },
+  {
+    "id": "CS-039",
+    "category": "calendar_scheduling",
+    "request": "Find me time for investor follow-up next week.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Auto-schedule with suggested slots"
+      }
+    ],
+    "requirements": [
+      "calendar_create",
+      "calendar_auto_schedule"
+    ]
+  },
+  {
+    "id": "CS-040",
+    "category": "calendar_scheduling",
+    "request": "Find me time for customer escalation next week.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Auto-schedule with suggested slots"
+      }
+    ],
+    "requirements": [
+      "calendar_create",
+      "calendar_auto_schedule"
+    ]
+  },
+  {
+    "id": "CS-041",
+    "category": "calendar_scheduling",
+    "request": "Find me time for Q1 planning next week.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Auto-schedule with suggested slots"
+      }
+    ],
+    "requirements": [
+      "calendar_create",
+      "calendar_auto_schedule"
+    ]
+  },
+  {
+    "id": "CS-042",
+    "category": "calendar_scheduling",
+    "request": "Find me time for budget review next week.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Auto-schedule with suggested slots"
+      }
+    ],
+    "requirements": [
+      "calendar_create",
+      "calendar_auto_schedule"
+    ]
+  },
+  {
+    "id": "CS-043",
+    "category": "calendar_scheduling",
+    "request": "Find me time for roadmap update next week.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Auto-schedule with suggested slots"
+      }
+    ],
+    "requirements": [
+      "calendar_create",
+      "calendar_auto_schedule"
+    ]
+  },
+  {
+    "id": "CS-044",
+    "category": "calendar_scheduling",
+    "request": "Find me time for contract renewal next week.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Auto-schedule with suggested slots"
+      }
+    ],
+    "requirements": [
+      "calendar_create",
+      "calendar_auto_schedule"
+    ]
+  },
+  {
+    "id": "CS-045",
+    "category": "calendar_scheduling",
+    "request": "Find me time for travel logistics next week.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Auto-schedule with suggested slots"
+      }
+    ],
+    "requirements": [
+      "calendar_create",
+      "calendar_auto_schedule"
+    ]
+  },
+  {
+    "id": "CS-046",
+    "category": "calendar_scheduling",
+    "request": "Find me time for board prep next week.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Auto-schedule with suggested slots"
+      }
+    ],
+    "requirements": [
+      "calendar_create",
+      "calendar_auto_schedule"
+    ]
+  },
+  {
+    "id": "CS-047",
+    "category": "calendar_scheduling",
+    "request": "Find me time for investor follow-up next week.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Auto-schedule with suggested slots"
+      }
+    ],
+    "requirements": [
+      "calendar_create",
+      "calendar_auto_schedule"
+    ]
+  },
+  {
+    "id": "CS-048",
+    "category": "calendar_scheduling",
+    "request": "Find me time for customer escalation next week.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Auto-schedule with suggested slots"
+      }
+    ],
+    "requirements": [
+      "calendar_create",
+      "calendar_auto_schedule"
+    ]
+  },
+  {
+    "id": "CS-049",
+    "category": "calendar_scheduling",
+    "request": "Find me time for Q1 planning next week.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "create",
+        "resource": "calendar",
+        "description": "Auto-schedule with suggested slots"
+      }
+    ],
+    "requirements": [
+      "calendar_create",
+      "calendar_auto_schedule"
+    ]
+  },
+  {
+    "id": "CS-050",
+    "category": "calendar_scheduling",
+    "request": "If Friday afternoon is open, book my focus block; otherwise move it to Monday morning.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "conditional",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "workflow",
+        "resource": "calendar",
+        "description": "Conditional availability + scheduling flow"
+      }
+    ],
+    "requirements": [
+      "calendar_query",
+      "calendar_create",
+      "conditional_execution"
+    ]
+  },
+  {
+    "id": "CS-051",
+    "category": "calendar_scheduling",
+    "request": "If Friday afternoon is open, book my focus block; otherwise move it to Monday morning.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "conditional",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "workflow",
+        "resource": "calendar",
+        "description": "Conditional availability + scheduling flow"
+      }
+    ],
+    "requirements": [
+      "calendar_query",
+      "calendar_create",
+      "conditional_execution"
+    ]
+  },
+  {
+    "id": "CS-052",
+    "category": "calendar_scheduling",
+    "request": "If Friday afternoon is open, book my focus block; otherwise move it to Monday morning.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "conditional",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "workflow",
+        "resource": "calendar",
+        "description": "Conditional availability + scheduling flow"
+      }
+    ],
+    "requirements": [
+      "calendar_query",
+      "calendar_create",
+      "conditional_execution"
+    ]
+  },
+  {
+    "id": "CS-053",
+    "category": "calendar_scheduling",
+    "request": "If Friday afternoon is open, book my focus block; otherwise move it to Monday morning.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "conditional",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "workflow",
+        "resource": "calendar",
+        "description": "Conditional availability + scheduling flow"
+      }
+    ],
+    "requirements": [
+      "calendar_query",
+      "calendar_create",
+      "conditional_execution"
+    ]
+  },
+  {
+    "id": "CS-054",
+    "category": "calendar_scheduling",
+    "request": "If Friday afternoon is open, book my focus block; otherwise move it to Monday morning.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "conditional",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "workflow",
+        "resource": "calendar",
+        "description": "Conditional availability + scheduling flow"
+      }
+    ],
+    "requirements": [
+      "calendar_query",
+      "calendar_create",
+      "conditional_execution"
+    ]
+  },
+  {
+    "id": "CS-055",
+    "category": "calendar_scheduling",
+    "request": "If Friday afternoon is open, book my focus block; otherwise move it to Monday morning.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "conditional",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "workflow",
+        "resource": "calendar",
+        "description": "Conditional availability + scheduling flow"
+      }
+    ],
+    "requirements": [
+      "calendar_query",
+      "calendar_create",
+      "conditional_execution"
+    ]
+  },
+  {
+    "id": "CM-001",
+    "category": "calendar_management",
+    "request": "Move my 9am meeting to one hour later.",
+    "ambiguity": "contextual",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "modify",
+        "resource": "calendar",
+        "description": "Modify event time"
+      }
+    ],
+    "requirements": [
+      "calendar_modify",
+      "context_reference_resolution"
+    ]
+  },
+  {
+    "id": "CM-002",
+    "category": "calendar_management",
+    "request": "Move my 10am meeting to one hour later.",
+    "ambiguity": "contextual",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "modify",
+        "resource": "calendar",
+        "description": "Modify event time"
+      }
+    ],
+    "requirements": [
+      "calendar_modify",
+      "context_reference_resolution"
+    ]
+  },
+  {
+    "id": "CM-003",
+    "category": "calendar_management",
+    "request": "Move my 11am meeting to one hour later.",
+    "ambiguity": "contextual",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "modify",
+        "resource": "calendar",
+        "description": "Modify event time"
+      }
+    ],
+    "requirements": [
+      "calendar_modify",
+      "context_reference_resolution"
+    ]
+  },
+  {
+    "id": "CM-004",
+    "category": "calendar_management",
+    "request": "Move my 1pm meeting to one hour later.",
+    "ambiguity": "contextual",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "modify",
+        "resource": "calendar",
+        "description": "Modify event time"
+      }
+    ],
+    "requirements": [
+      "calendar_modify",
+      "context_reference_resolution"
+    ]
+  },
+  {
+    "id": "CM-005",
+    "category": "calendar_management",
+    "request": "Move my 2pm meeting to one hour later.",
+    "ambiguity": "contextual",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "modify",
+        "resource": "calendar",
+        "description": "Modify event time"
+      }
+    ],
+    "requirements": [
+      "calendar_modify",
+      "context_reference_resolution"
+    ]
+  },
+  {
+    "id": "CM-006",
+    "category": "calendar_management",
+    "request": "Move my 3pm meeting to one hour later.",
+    "ambiguity": "contextual",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "modify",
+        "resource": "calendar",
+        "description": "Modify event time"
+      }
+    ],
+    "requirements": [
+      "calendar_modify",
+      "context_reference_resolution"
+    ]
+  },
+  {
+    "id": "CM-007",
+    "category": "calendar_management",
+    "request": "Move my 4pm meeting to one hour later.",
+    "ambiguity": "contextual",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "modify",
+        "resource": "calendar",
+        "description": "Modify event time"
+      }
+    ],
+    "requirements": [
+      "calendar_modify",
+      "context_reference_resolution"
+    ]
+  },
+  {
+    "id": "CM-008",
+    "category": "calendar_management",
+    "request": "Move my 9am meeting to one hour later.",
+    "ambiguity": "contextual",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "modify",
+        "resource": "calendar",
+        "description": "Modify event time"
+      }
+    ],
+    "requirements": [
+      "calendar_modify",
+      "context_reference_resolution"
+    ]
+  },
+  {
+    "id": "CM-009",
+    "category": "calendar_management",
+    "request": "Move my 10am meeting to one hour later.",
+    "ambiguity": "contextual",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "modify",
+        "resource": "calendar",
+        "description": "Modify event time"
+      }
+    ],
+    "requirements": [
+      "calendar_modify",
+      "context_reference_resolution"
+    ]
+  },
+  {
+    "id": "CM-010",
+    "category": "calendar_management",
+    "request": "Move my 11am meeting to one hour later.",
+    "ambiguity": "contextual",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "modify",
+        "resource": "calendar",
+        "description": "Modify event time"
+      }
+    ],
+    "requirements": [
+      "calendar_modify",
+      "context_reference_resolution"
+    ]
+  },
+  {
+    "id": "CM-011",
+    "category": "calendar_management",
+    "request": "Move my 1pm meeting to one hour later.",
+    "ambiguity": "contextual",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "modify",
+        "resource": "calendar",
+        "description": "Modify event time"
+      }
+    ],
+    "requirements": [
+      "calendar_modify",
+      "context_reference_resolution"
+    ]
+  },
+  {
+    "id": "CM-012",
+    "category": "calendar_management",
+    "request": "Move my 2pm meeting to one hour later.",
+    "ambiguity": "contextual",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "modify",
+        "resource": "calendar",
+        "description": "Modify event time"
+      }
+    ],
+    "requirements": [
+      "calendar_modify",
+      "context_reference_resolution"
+    ]
+  },
+  {
+    "id": "CM-013",
+    "category": "calendar_management",
+    "request": "Move my 3pm meeting to one hour later.",
+    "ambiguity": "contextual",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "modify",
+        "resource": "calendar",
+        "description": "Modify event time"
+      }
+    ],
+    "requirements": [
+      "calendar_modify",
+      "context_reference_resolution"
+    ]
+  },
+  {
+    "id": "CM-014",
+    "category": "calendar_management",
+    "request": "Move my 4pm meeting to one hour later.",
+    "ambiguity": "contextual",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "modify",
+        "resource": "calendar",
+        "description": "Modify event time"
+      }
+    ],
+    "requirements": [
+      "calendar_modify",
+      "context_reference_resolution"
+    ]
+  },
+  {
+    "id": "CM-015",
+    "category": "calendar_management",
+    "request": "Move my 9am meeting to one hour later.",
+    "ambiguity": "contextual",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "modify",
+        "resource": "calendar",
+        "description": "Modify event time"
+      }
+    ],
+    "requirements": [
+      "calendar_modify",
+      "context_reference_resolution"
+    ]
+  },
+  {
+    "id": "CM-016",
+    "category": "calendar_management",
+    "request": "Move my 10am meeting to one hour later.",
+    "ambiguity": "contextual",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "modify",
+        "resource": "calendar",
+        "description": "Modify event time"
+      }
+    ],
+    "requirements": [
+      "calendar_modify",
+      "context_reference_resolution"
+    ]
+  },
+  {
+    "id": "CM-017",
+    "category": "calendar_management",
+    "request": "Move my 11am meeting to one hour later.",
+    "ambiguity": "contextual",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "modify",
+        "resource": "calendar",
+        "description": "Modify event time"
+      }
+    ],
+    "requirements": [
+      "calendar_modify",
+      "context_reference_resolution"
+    ]
+  },
+  {
+    "id": "CM-018",
+    "category": "calendar_management",
+    "request": "Move my 1pm meeting to one hour later.",
+    "ambiguity": "contextual",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "modify",
+        "resource": "calendar",
+        "description": "Modify event time"
+      }
+    ],
+    "requirements": [
+      "calendar_modify",
+      "context_reference_resolution"
+    ]
+  },
+  {
+    "id": "CM-019",
+    "category": "calendar_management",
+    "request": "Cancel my meeting on Thursday and free that slot.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "delete",
+        "resource": "calendar",
+        "description": "Cancel event"
+      }
+    ],
+    "requirements": [
+      "calendar_delete"
+    ]
+  },
+  {
+    "id": "CM-020",
+    "category": "calendar_management",
+    "request": "Cancel my meeting on Friday and free that slot.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "delete",
+        "resource": "calendar",
+        "description": "Cancel event"
+      }
+    ],
+    "requirements": [
+      "calendar_delete"
+    ]
+  },
+  {
+    "id": "CM-021",
+    "category": "calendar_management",
+    "request": "Cancel my meeting on Monday and free that slot.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "delete",
+        "resource": "calendar",
+        "description": "Cancel event"
+      }
+    ],
+    "requirements": [
+      "calendar_delete"
+    ]
+  },
+  {
+    "id": "CM-022",
+    "category": "calendar_management",
+    "request": "Cancel my meeting on Tuesday and free that slot.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "delete",
+        "resource": "calendar",
+        "description": "Cancel event"
+      }
+    ],
+    "requirements": [
+      "calendar_delete"
+    ]
+  },
+  {
+    "id": "CM-023",
+    "category": "calendar_management",
+    "request": "Cancel my meeting on Wednesday and free that slot.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "delete",
+        "resource": "calendar",
+        "description": "Cancel event"
+      }
+    ],
+    "requirements": [
+      "calendar_delete"
+    ]
+  },
+  {
+    "id": "CM-024",
+    "category": "calendar_management",
+    "request": "Cancel my meeting on Thursday and free that slot.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "delete",
+        "resource": "calendar",
+        "description": "Cancel event"
+      }
+    ],
+    "requirements": [
+      "calendar_delete"
+    ]
+  },
+  {
+    "id": "CM-025",
+    "category": "calendar_management",
+    "request": "Cancel my meeting on Friday and free that slot.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "delete",
+        "resource": "calendar",
+        "description": "Cancel event"
+      }
+    ],
+    "requirements": [
+      "calendar_delete"
+    ]
+  },
+  {
+    "id": "CM-026",
+    "category": "calendar_management",
+    "request": "Cancel my meeting on Monday and free that slot.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "delete",
+        "resource": "calendar",
+        "description": "Cancel event"
+      }
+    ],
+    "requirements": [
+      "calendar_delete"
+    ]
+  },
+  {
+    "id": "CM-027",
+    "category": "calendar_management",
+    "request": "Cancel my meeting on Tuesday and free that slot.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "delete",
+        "resource": "calendar",
+        "description": "Cancel event"
+      }
+    ],
+    "requirements": [
+      "calendar_delete"
+    ]
+  },
+  {
+    "id": "CM-028",
+    "category": "calendar_management",
+    "request": "Cancel my meeting on Wednesday and free that slot.",
+    "ambiguity": "clear",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "delete",
+        "resource": "calendar",
+        "description": "Cancel event"
+      }
+    ],
+    "requirements": [
+      "calendar_delete"
+    ]
+  },
+  {
+    "id": "CM-029",
+    "category": "calendar_management",
+    "request": "I can't make it tomorrow.",
+    "ambiguity": "implicit",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "modify",
+        "resource": "calendar",
+        "description": "Interpret implicit conflict and reschedule/cancel"
+      }
+    ],
+    "requirements": [
+      "calendar_modify",
+      "implicit_intent_resolution"
+    ]
+  },
+  {
+    "id": "CM-030",
+    "category": "calendar_management",
+    "request": "I can't make it tomorrow.",
+    "ambiguity": "implicit",
+    "complexity": "single_action",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "modify",
+        "resource": "calendar",
+        "description": "Interpret implicit conflict and reschedule/cancel"
+      }
+    ],
+    "requirements": [
+      "calendar_modify",
+      "implicit_intent_resolution"
+    ]
+  },
+  {
+    "id": "WF-001",
+    "category": "combined_workflows",
+    "request": "Reply to john@example.com confirming the time and create a calendar event.",
+    "ambiguity": "clear",
+    "complexity": "multi_step",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "workflow",
+        "description": "Create email draft + create calendar event in one chain"
+      }
+    ],
+    "requirements": [
+      "workflow_depends_on",
+      "workflow_output_normalization",
+      "workflow_step_approval",
+      "workflow_compensation",
+      "email_compose_draft",
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "WF-002",
+    "category": "combined_workflows",
+    "request": "Reply to sarah@acme.io confirming the time and create a calendar event.",
+    "ambiguity": "clear",
+    "complexity": "multi_step",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "workflow",
+        "description": "Create email draft + create calendar event in one chain"
+      }
+    ],
+    "requirements": [
+      "workflow_depends_on",
+      "workflow_output_normalization",
+      "workflow_step_approval",
+      "workflow_compensation",
+      "email_compose_draft",
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "WF-003",
+    "category": "combined_workflows",
+    "request": "Reply to alex@contoso.com confirming the time and create a calendar event.",
+    "ambiguity": "clear",
+    "complexity": "multi_step",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "workflow",
+        "description": "Create email draft + create calendar event in one chain"
+      }
+    ],
+    "requirements": [
+      "workflow_depends_on",
+      "workflow_output_normalization",
+      "workflow_step_approval",
+      "workflow_compensation",
+      "email_compose_draft",
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "WF-004",
+    "category": "combined_workflows",
+    "request": "Reply to maya@startup.dev confirming the time and create a calendar event.",
+    "ambiguity": "clear",
+    "complexity": "multi_step",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "workflow",
+        "description": "Create email draft + create calendar event in one chain"
+      }
+    ],
+    "requirements": [
+      "workflow_depends_on",
+      "workflow_output_normalization",
+      "workflow_step_approval",
+      "workflow_compensation",
+      "email_compose_draft",
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "WF-005",
+    "category": "combined_workflows",
+    "request": "Reply to daniel@example.com confirming the time and create a calendar event.",
+    "ambiguity": "clear",
+    "complexity": "multi_step",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "workflow",
+        "description": "Create email draft + create calendar event in one chain"
+      }
+    ],
+    "requirements": [
+      "workflow_depends_on",
+      "workflow_output_normalization",
+      "workflow_step_approval",
+      "workflow_compensation",
+      "email_compose_draft",
+      "calendar_create"
+    ]
+  },
+  {
+    "id": "WF-006",
+    "category": "combined_workflows",
+    "request": "If I'm free Monday afternoon, accept and schedule; otherwise suggest another slot.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "conditional",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "workflow",
+        "description": "Conditional email/calendar workflow"
+      }
+    ],
+    "requirements": [
+      "workflow_depends_on",
+      "workflow_output_normalization",
+      "workflow_step_approval",
+      "calendar_query",
+      "conditional_execution"
+    ]
+  },
+  {
+    "id": "WF-007",
+    "category": "combined_workflows",
+    "request": "If I'm free Tuesday afternoon, accept and schedule; otherwise suggest another slot.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "conditional",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "workflow",
+        "description": "Conditional email/calendar workflow"
+      }
+    ],
+    "requirements": [
+      "workflow_depends_on",
+      "workflow_output_normalization",
+      "workflow_step_approval",
+      "calendar_query",
+      "conditional_execution"
+    ]
+  },
+  {
+    "id": "WF-008",
+    "category": "combined_workflows",
+    "request": "If I'm free Wednesday afternoon, accept and schedule; otherwise suggest another slot.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "conditional",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "workflow",
+        "description": "Conditional email/calendar workflow"
+      }
+    ],
+    "requirements": [
+      "workflow_depends_on",
+      "workflow_output_normalization",
+      "workflow_step_approval",
+      "calendar_query",
+      "conditional_execution"
+    ]
+  },
+  {
+    "id": "WF-009",
+    "category": "combined_workflows",
+    "request": "If I'm free Thursday afternoon, accept and schedule; otherwise suggest another slot.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "conditional",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "workflow",
+        "description": "Conditional email/calendar workflow"
+      }
+    ],
+    "requirements": [
+      "workflow_depends_on",
+      "workflow_output_normalization",
+      "workflow_step_approval",
+      "calendar_query",
+      "conditional_execution"
+    ]
+  },
+  {
+    "id": "WF-010",
+    "category": "combined_workflows",
+    "request": "If I'm free Friday afternoon, accept and schedule; otherwise suggest another slot.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "conditional",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "workflow",
+        "description": "Conditional email/calendar workflow"
+      }
+    ],
+    "requirements": [
+      "workflow_depends_on",
+      "workflow_output_normalization",
+      "workflow_step_approval",
+      "calendar_query",
+      "conditional_execution"
+    ]
+  },
+  {
+    "id": "WF-011",
+    "category": "combined_workflows",
+    "request": "If I'm free Monday afternoon, accept and schedule; otherwise suggest another slot.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "conditional",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "workflow",
+        "description": "Conditional email/calendar workflow"
+      }
+    ],
+    "requirements": [
+      "workflow_depends_on",
+      "workflow_output_normalization",
+      "workflow_step_approval",
+      "calendar_query",
+      "conditional_execution"
+    ]
+  },
+  {
+    "id": "WF-012",
+    "category": "combined_workflows",
+    "request": "If I'm free Tuesday afternoon, accept and schedule; otherwise suggest another slot.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "conditional",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "workflow",
+        "description": "Conditional email/calendar workflow"
+      }
+    ],
+    "requirements": [
+      "workflow_depends_on",
+      "workflow_output_normalization",
+      "workflow_step_approval",
+      "calendar_query",
+      "conditional_execution"
+    ]
+  },
+  {
+    "id": "WF-013",
+    "category": "combined_workflows",
+    "request": "If I'm free Wednesday afternoon, accept and schedule; otherwise suggest another slot.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "conditional",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "workflow",
+        "description": "Conditional email/calendar workflow"
+      }
+    ],
+    "requirements": [
+      "workflow_depends_on",
+      "workflow_output_normalization",
+      "workflow_step_approval",
+      "calendar_query",
+      "conditional_execution"
+    ]
+  },
+  {
+    "id": "WF-014",
+    "category": "combined_workflows",
+    "request": "If I'm free Thursday afternoon, accept and schedule; otherwise suggest another slot.",
+    "ambiguity": "somewhat_vague",
+    "complexity": "conditional",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "workflow",
+        "description": "Conditional email/calendar workflow"
+      }
+    ],
+    "requirements": [
+      "workflow_depends_on",
+      "workflow_output_normalization",
+      "workflow_step_approval",
+      "calendar_query",
+      "conditional_execution"
+    ]
+  },
+  {
+    "id": "WF-015",
+    "category": "combined_workflows",
+    "request": "Handle it for me.",
+    "ambiguity": "very_vague",
+    "complexity": "dependent",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "workflow",
+        "description": "Underspecified autonomous action request"
+      }
+    ],
+    "requirements": [
+      "very_vague_clarification"
+    ]
+  },
+  {
+    "id": "WF-016",
+    "category": "combined_workflows",
+    "request": "Handle it for me.",
+    "ambiguity": "very_vague",
+    "complexity": "dependent",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "workflow",
+        "description": "Underspecified autonomous action request"
+      }
+    ],
+    "requirements": [
+      "very_vague_clarification"
+    ]
+  },
+  {
+    "id": "WF-017",
+    "category": "combined_workflows",
+    "request": "Handle it for me.",
+    "ambiguity": "very_vague",
+    "complexity": "dependent",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "workflow",
+        "description": "Underspecified autonomous action request"
+      }
+    ],
+    "requirements": [
+      "very_vague_clarification"
+    ]
+  },
+  {
+    "id": "WF-018",
+    "category": "combined_workflows",
+    "request": "Handle it for me.",
+    "ambiguity": "very_vague",
+    "complexity": "dependent",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "workflow",
+        "description": "Underspecified autonomous action request"
+      }
+    ],
+    "requirements": [
+      "very_vague_clarification"
+    ]
+  },
+  {
+    "id": "WF-019",
+    "category": "combined_workflows",
+    "request": "Handle it for me.",
+    "ambiguity": "very_vague",
+    "complexity": "dependent",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "workflow",
+        "description": "Underspecified autonomous action request"
+      }
+    ],
+    "requirements": [
+      "very_vague_clarification"
+    ]
+  },
+  {
+    "id": "WF-020",
+    "category": "combined_workflows",
+    "request": "Handle it for me.",
+    "ambiguity": "very_vague",
+    "complexity": "dependent",
+    "scope": "individual",
+    "operations": [
+      {
+        "tool": "workflow",
+        "description": "Underspecified autonomous action request"
+      }
+    ],
+    "requirements": [
+      "very_vague_clarification"
+    ]
+  }
+]

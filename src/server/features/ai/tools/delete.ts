@@ -11,17 +11,49 @@ import { z } from "zod";
 import { type ToolDefinition } from "./types";
 import prisma from "@/server/db/client";
 
-const deleteParameters = z.object({
-    resource: z.enum(["email", "calendar", "automation", "knowledge", "task", "drive"]),
-    ids: z.array(z.string()).max(200),
-    calendarId: z.string().optional(),
-    mode: z.enum(["single", "series"]).optional(),
-    driveItemType: z.enum(["file", "folder"]).optional(),
-});
+const deleteIdsSchema = z.array(z.string()).max(200);
+
+const deleteParameters = z.discriminatedUnion("resource", [
+    z.object({
+        resource: z.literal("email"),
+        ids: deleteIdsSchema,
+    }).strict(),
+    z.object({
+        resource: z.literal("calendar"),
+        ids: deleteIdsSchema,
+        calendarId: z.string().optional(),
+        mode: z.enum(["single", "series"]).optional(),
+    }).strict(),
+    z.object({
+        resource: z.literal("automation"),
+        ids: deleteIdsSchema,
+    }).strict(),
+    z.object({
+        resource: z.literal("knowledge"),
+        ids: deleteIdsSchema,
+    }).strict(),
+    z.object({
+        resource: z.literal("draft"),
+        ids: deleteIdsSchema,
+    }).strict(),
+    z.object({
+        resource: z.literal("task"),
+        ids: deleteIdsSchema,
+    }).strict(),
+    z.object({
+        resource: z.literal("drive"),
+        ids: deleteIdsSchema,
+        driveItemType: z.enum(["file", "folder"]),
+    }).strict(),
+]);
 
 export const deleteTool: ToolDefinition<typeof deleteParameters> = {
     name: "delete",
     description: `Delete items. Supports up to 200 IDs. For bulk email deletion, use the query tool with fetchAll: true first to retrieve all matching IDs.
+
+When to use:
+- Use delete for explicit remove/cancel intents.
+- Use modify for non-destructive state changes (read/archive/update).
     
 Email: Moves to trash (recoverable 30 days)
 Calendar: Cancels event
@@ -30,7 +62,7 @@ Drive: Deletes file or folder`,
 
     parameters: deleteParameters,
 
-    execute: async ({ resource, ids, calendarId, mode, driveItemType }, { providers }) => {
+    execute: async ({ resource, ids, calendarId, mode, driveItemType }, { providers, userId, emailAccountId }) => {
         switch (resource) {
             case "email":
                 return {
@@ -43,11 +75,12 @@ Drive: Deletes file or folder`,
                     return { success: false, error: "Calendar provider not available" };
                 }
 
+                const deleteMode = mode ?? "single";
                 await Promise.all(ids.map((id: string) =>
                     providers.calendar.deleteEvent({
                         calendarId,
                         eventId: id,
-                        deleteOptions: { mode }
+                        deleteOptions: { mode: deleteMode }
                     })
                 ));
                 return { success: true, data: { count: ids.length } };
@@ -58,6 +91,9 @@ Drive: Deletes file or folder`,
                 return { success: true, data: { count: ids.length } };
 
             case "knowledge": {
+                if (!emailAccountId) {
+                    return { success: false, error: "Email account ID is required for knowledge deletes" };
+                }
                 const { deleteKnowledgeAction } = await import("@/server/actions/knowledge");
                 await Promise.all(
                     ids.map((id: string) =>
@@ -67,9 +103,15 @@ Drive: Deletes file or folder`,
                 return { success: true, data: { count: ids.length } };
             }
 
-            case "task":
-                await prisma.task.deleteMany({ where: { id: { in: ids } } });
+            case "draft":
+                await Promise.all(ids.map((id: string) => providers.email.deleteDraft(id)));
                 return { success: true, data: { count: ids.length } };
+
+            case "task":
+                const deleted = await prisma.task.deleteMany({
+                    where: { id: { in: ids }, userId }
+                });
+                return { success: true, data: { count: deleted.count } };
 
             case "drive":
                 if (!providers.drive) {

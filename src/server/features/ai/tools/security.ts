@@ -5,9 +5,9 @@ import { redis } from "@/server/lib/redis";
 export type SecurityLevel = "SAFE" | "CAUTION" | "DANGEROUS";
 
 export const PERMISSIONS = {
-    SAFE: ["query", "get", "analyze"],
-    CAUTION: ["modify", "delete", "create"],
-    DANGEROUS: ["sendEmail", "sendCalendarInvite", "permanentDelete", "exportData", "shareExternally"],
+    SAFE: ["query", "get", "analyze", "triage"],
+    CAUTION: ["modify", "delete", "create", "rules", "workflow"],
+    DANGEROUS: ["send"],
 };
 
 export const LIMITS = {
@@ -23,18 +23,23 @@ const RATE_LIMITS = {
     modificationsPerMinute: 20,
     deletesPerMinute: 10,
     createsPerMinute: 10,
+    dangerousPerMinute: 5,
 };
 
 // Fallback in-memory rate limiter (dev/test only)
 const rateLimitCache: Record<string, { count: number; windowStart: number }> = {};
 
 export async function checkPermissions(userId: string, toolName: string, params: any): Promise<void> {
-    // In a real app, we would check user roles/permissions from DB
-    // For now, we assume authenticated users have access to SAFE and CAUTION tools
-    // DANGEROUS actions are blocked at the tool level (tools don't implement them)
-
-    if (PERMISSIONS.DANGEROUS.includes(toolName)) {
-        throw new Error(`Tool '${toolName}' is classified as DANGEROUS and cannot be executed directly.`);
+    // In a real app, we would check user roles/permissions from DB.
+    // Here we enforce tool-name sanity and rely on approvals/policy layers for
+    // context-aware gating of dangerous actions.
+    const knownToolNames = new Set([
+        ...PERMISSIONS.SAFE,
+        ...PERMISSIONS.CAUTION,
+        ...PERMISSIONS.DANGEROUS,
+    ]);
+    if (!knownToolNames.has(toolName)) {
+        throw new Error(`Unknown tool '${toolName}' is not allowed.`);
     }
 }
 
@@ -46,6 +51,7 @@ export async function checkRateLimit(userId: string, toolName: string): Promise<
     let limit = 100; // Default fallback
     if (PERMISSIONS.SAFE.includes(toolName)) limit = RATE_LIMITS.queriesPerMinute;
     if (PERMISSIONS.CAUTION.includes(toolName)) limit = RATE_LIMITS.modificationsPerMinute;
+    if (PERMISSIONS.DANGEROUS.includes(toolName)) limit = RATE_LIMITS.dangerousPerMinute;
 
     if (env.UPSTASH_REDIS_URL && env.UPSTASH_REDIS_TOKEN) {
         const redisKey = `ratelimit:${key}`;

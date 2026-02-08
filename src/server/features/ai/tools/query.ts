@@ -4,54 +4,205 @@ import { type ToolDefinition } from "./types";
 import prisma from "@/server/db/client";
 import { getEmailAccountWithAi } from "@/server/lib/user/get";
 
+const parseFilterObject = <T extends z.ZodTypeAny>(schema: T) =>
+    z.preprocess(
+        (v) =>
+            typeof v === "string"
+                ? (() => {
+                      try {
+                          return JSON.parse(v) as Record<string, unknown>;
+                      } catch {
+                          return undefined;
+                      }
+                  })()
+                : v,
+        schema,
+    );
+
+const dateRangeSchema = z.object({
+    after: z.string().optional(),
+    before: z.string().optional(),
+}).strict();
+
+const limitSchema = z.number().int().min(1).max(100).optional();
+
+const queryParameters = z.discriminatedUnion("resource", [
+    z.object({
+        resource: z.literal("email"),
+        filter: parseFilterObject(
+            z
+                .object({
+                    query: z.string().optional(),
+                    dateRange: dateRangeSchema.optional(),
+                    limit: limitSchema,
+                    pageToken: z.string().optional(),
+                    fetchAll: z.boolean().default(false),
+                })
+                .strict()
+                .optional(),
+        ),
+    }),
+    z.object({
+        resource: z.literal("calendar"),
+        filter: parseFilterObject(
+            z
+                .object({
+                    query: z.string().optional(),
+                    attendeeEmail: z.string().email().optional(),
+                    dateRange: dateRangeSchema.optional(),
+                    limit: limitSchema,
+                })
+                .strict()
+                .optional(),
+        ),
+    }),
+    z.object({
+        resource: z.literal("drive"),
+        filter: parseFilterObject(
+            z
+                .object({
+                    query: z.string().optional(),
+                    id: z.string().optional(),
+                    limit: limitSchema,
+                })
+                .strict()
+                .optional(),
+        ),
+    }),
+    z.object({
+        resource: z.literal("automation"),
+        filter: parseFilterObject(
+            z
+                .object({
+                    limit: limitSchema,
+                })
+                .strict()
+                .optional(),
+        ),
+    }),
+    z.object({
+        resource: z.literal("knowledge"),
+        filter: parseFilterObject(
+            z
+                .object({
+                    limit: limitSchema,
+                })
+                .strict()
+                .optional(),
+        ),
+    }),
+    z.object({
+        resource: z.literal("report"),
+        filter: parseFilterObject(z.object({}).strict().optional()),
+    }),
+    z.object({
+        resource: z.literal("patterns"),
+        filter: parseFilterObject(
+            z.object({
+                id: z.string(),
+            }).strict(),
+        ),
+    }),
+    z.object({
+        resource: z.literal("contacts"),
+        filter: parseFilterObject(
+            z
+                .object({
+                    query: z.string().optional(),
+                    limit: limitSchema,
+                })
+                .strict()
+                .optional(),
+        ),
+    }),
+    z.object({
+        resource: z.literal("task"),
+        filter: parseFilterObject(
+            z
+                .object({
+                    query: z.string().optional(),
+                    limit: limitSchema,
+                })
+                .strict()
+                .optional(),
+        ),
+    }),
+    z.object({
+        resource: z.literal("approval"),
+        filter: parseFilterObject(
+            z
+                .object({
+                    status: z.enum(["PENDING", "APPROVED", "DENIED", "EXPIRED", "CANCELLED"]).optional(),
+                    limit: limitSchema,
+                })
+                .strict()
+                .optional(),
+        ),
+    }),
+    z.object({
+        resource: z.literal("notification"),
+        filter: parseFilterObject(
+            z
+                .object({
+                    query: z.string().optional(),
+                    type: z.string().optional(),
+                    limit: limitSchema,
+                })
+                .strict()
+                .optional(),
+        ),
+    }),
+    z.object({
+        resource: z.literal("draft"),
+        filter: parseFilterObject(
+            z
+                .object({
+                    query: z.string().optional(),
+                    limit: limitSchema,
+                })
+                .strict()
+                .optional(),
+        ),
+    }),
+    z.object({
+        resource: z.literal("conversation"),
+        filter: parseFilterObject(
+            z
+                .object({
+                    query: z.string().optional(),
+                    limit: limitSchema,
+                })
+                .strict()
+                .optional(),
+        ),
+    }),
+    z.object({
+        resource: z.literal("preferences"),
+        filter: parseFilterObject(z.object({}).strict().optional()),
+    }),
+]);
+
 export const queryTool: ToolDefinition<any> = {
     name: "query",
     description: `Search and retrieve items from any resource.
 
+When to use:
+- Use query to discover candidates and IDs (lists/search results).
+- Use get when you already have IDs and need full details.
+- Use analyze for reasoning/summaries over selected items.
+
 Resources:
-- email: Search emails (supports Gmail/Outlook query syntax). Use fetchAll: true when the user wants ALL matching results: counts ("how many total"), bulk actions ("delete all", "clean up all", "remove all", "trash all"), or finding every match ("find every", "every email matching"). Without fetchAll, returns up to limit (default 100). If truncated, the response indicates more are available.
+- email: Search emails (supports Gmail/Outlook query syntax). Supports dateRange.after/before and pageToken for pagination windows. Use fetchAll: true when the user wants ALL matching results: counts ("how many total"), bulk actions ("delete all", "clean up all", "remove all", "trash all"), or finding every match ("find every", "every email matching"). Without fetchAll, returns up to limit (default 100). If truncated, the response indicates more are available.
 - calendar: Search events by date range, attendees, title
 - task: Search tasks by title/description
 - automation: List rules and their configurations
+- approval: List approval requests, optionally filtered by status
 - notification: Search notifications by title/body, filter by type
 - draft: List email drafts, optionally filter by query
 - conversation: Search conversation history across all platforms
 - preferences: Read current email and scheduling preferences`,
 
-    parameters: z.object({
-        resource: z.enum([
-            "email", "calendar", "drive", "automation", "knowledge", "report", "patterns", "contacts", "task",
-            "notification", "draft", "conversation", "preferences"
-        ]),
-        filter: z.preprocess(
-            (v) =>
-                typeof v === "string"
-                    ? (() => {
-                          try {
-                              return JSON.parse(v) as Record<string, unknown>;
-                          } catch {
-                              return undefined;
-                          }
-                      })()
-                    : v,
-            z
-                .object({
-                    query: z.string().optional(),
-                    id: z.string().optional(),
-                    dateRange: z
-                        .object({
-                            after: z.string().optional(),
-                            before: z.string().optional(),
-                        })
-                        .optional(),
-                    limit: z.number().max(100).optional(),
-                    fetchAll: z.boolean().default(false),
-                    status: z.enum(["PENDING", "APPROVED", "DENIED", "EXPIRED", "CANCELLED"]).optional(),
-                    type: z.string().optional(),
-                })
-                .optional(),
-        ),
-    }),
+    parameters: queryParameters,
 
     execute: async ({ resource, filter }, { emailAccountId, providers, userId }) => {
         const limit = filter?.limit ?? 100;
@@ -59,11 +210,14 @@ Resources:
         switch (resource) {
             case "email":
                 try {
-                    const result = await providers.email.search(
-                        filter?.query || "",
-                        filter?.fetchAll ? undefined : limit,
-                        filter?.fetchAll,
-                    );
+                    const result = await providers.email.search({
+                        query: filter?.query || "",
+                        limit: filter?.fetchAll ? undefined : limit,
+                        fetchAll: filter?.fetchAll,
+                        pageToken: filter?.pageToken,
+                        before: filter?.dateRange?.before ? new Date(filter.dateRange.before) : undefined,
+                        after: filter?.dateRange?.after ? new Date(filter.dateRange.after) : undefined,
+                    });
                     return {
                         success: true,
                         data: result.messages.map((e: { id: string; subject?: string; snippet?: string; body?: string; date?: Date; from?: string }) => ({
@@ -80,6 +234,10 @@ Resources:
                                 message: `Showing ${result.messages.length} of ~${result.totalEstimate ?? "many"} results. More are available.`,
                             }
                             : {}),
+                        paging: {
+                            nextPageToken: result.nextPageToken ?? null,
+                            totalEstimate: result.totalEstimate ?? null,
+                        },
                     };
                 } catch (emailErr: unknown) {
                     const msg = emailErr instanceof Error ? emailErr.message : String(emailErr);
@@ -174,21 +332,34 @@ Resources:
                     start: calStart,
                     end: calEnd,
                 });
+                const attendeeFilter = typeof filter?.attendeeEmail === "string"
+                    ? filter.attendeeEmail.toLowerCase()
+                    : null;
+                const filteredEvents = attendeeFilter
+                    ? events.filter((event: any) =>
+                          event.attendees?.some(
+                              (attendee: any) =>
+                                  typeof attendee.email === "string" &&
+                                  attendee.email.toLowerCase() === attendeeFilter,
+                          ),
+                      )
+                    : events;
+                const limitedEvents = filteredEvents.slice(0, limit);
                 return {
                     success: true,
-                    data: events.map((e: any) => ({
+                    data: limitedEvents.map((e: any) => ({
                         id: e.id,
                         title: e.title || "(No Title)",
                         snippet: `Time: ${e.startTime} - ${e.endTime}. Attendees: ${e.attendees?.map((a: any) => a.email).join(", ")}`,
                         date: e.startTime,
                         source: "calendar"
                     })),
-                    message: events.length === 0 ? "No events in that range." : "Here are your calendar events.",
+                    message: limitedEvents.length === 0 ? "No events in that range." : "Here are your calendar events.",
                 };
             }
 
             case "task":
-                const taskWhere: any = {};
+                const taskWhere: any = { userId };
                 if (filter?.query) {
                     taskWhere.OR = [
                         { title: { contains: filter.query, mode: "insensitive" } },
@@ -342,18 +513,31 @@ Resources:
                     const drafts = await providers.email.getDrafts({
                         maxResults: limit,
                     });
+                    const normalizedDraftQuery = filter?.query?.toLowerCase().trim();
+                    const filteredDrafts = normalizedDraftQuery
+                        ? drafts.filter((d: any) => {
+                              const subject = d.headers?.subject?.toLowerCase() ?? "";
+                              const body = d.textPlain?.toLowerCase() ?? "";
+                              const from = d.headers?.from?.toLowerCase() ?? "";
+                              return (
+                                  subject.includes(normalizedDraftQuery) ||
+                                  body.includes(normalizedDraftQuery) ||
+                                  from.includes(normalizedDraftQuery)
+                              );
+                          })
+                        : drafts;
                     return {
                         success: true,
-                        data: drafts.map((d: any) => ({
+                        data: filteredDrafts.map((d: any) => ({
                             id: d.id,
                             subject: d.headers?.subject || "(No subject)",
                             snippet: d.textPlain?.substring(0, 200) || "",
                             from: d.headers?.from,
                             date: d.date,
                         })),
-                        message: drafts.length === 0
+                        message: filteredDrafts.length === 0
                             ? "No drafts found."
-                            : `Found ${drafts.length} draft(s).`,
+                            : `Found ${filteredDrafts.length} draft(s).`,
                     };
                 } catch (draftErr: unknown) {
                     const msg = draftErr instanceof Error ? draftErr.message : String(draftErr);

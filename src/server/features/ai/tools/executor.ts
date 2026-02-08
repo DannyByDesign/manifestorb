@@ -4,6 +4,15 @@ import { type ToolDefinition, type ToolContext, type ToolResult } from "./types"
 import { checkPermissions, checkRateLimit, applyScopeLimits } from "./security";
 import { auditLog } from "./audit";
 
+function inferItemCount(data: unknown): number | undefined {
+    if (Array.isArray(data)) return data.length;
+    if (data && typeof data === "object" && "count" in data) {
+        const count = (data as { count?: unknown }).count;
+        if (typeof count === "number") return count;
+    }
+    return undefined;
+}
+
 export async function executeTool<T extends z.ZodType>(
     tool: ToolDefinition<T>,
     params: unknown,
@@ -28,6 +37,24 @@ export async function executeTool<T extends z.ZodType>(
 
         // 5. Execute tool
         const result = await tool.execute(limited, context);
+        const durationMs = Date.now() - startTime;
+        const resource = typeof (limited as { resource?: unknown }).resource === "string"
+            ? String((limited as { resource?: unknown }).resource)
+            : undefined;
+        const requestedIds = Array.isArray((limited as { ids?: unknown }).ids)
+            ? ((limited as { ids?: unknown }).ids as unknown[]).filter((v): v is string => typeof v === "string")
+            : undefined;
+        const itemCount = result.meta?.itemCount ?? inferItemCount(result.data);
+        const enrichedResult: ToolResult = {
+            ...result,
+            meta: {
+                ...result.meta,
+                ...(resource ? { resource } : {}),
+                ...(requestedIds ? { requestedIds } : {}),
+                ...(itemCount !== undefined ? { itemCount } : {}),
+                durationMs,
+            },
+        };
 
         // 6. Audit log
         await auditLog(
@@ -38,12 +65,12 @@ export async function executeTool<T extends z.ZodType>(
                 tool: toolName,
                 params: limited, // Log the limited/sanitized params
                 success: true,
-                durationMs: Date.now() - startTime,
+                durationMs,
             },
             context
         );
 
-        return result;
+        return enrichedResult;
 
     } catch (error: unknown) {
         const message = (getErrorMessage(error) ?? String(error)) || "Unknown error";

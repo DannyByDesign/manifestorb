@@ -76,6 +76,7 @@ describe("ApprovalService", () => {
     const now = new Date(Date.now() + 60_000);
     prismaMock.approvalRequest.findUnique.mockResolvedValue({
       id: "req-4",
+      userId: "user-1",
       status: "PENDING",
       expiresAt: now,
     } as any);
@@ -116,6 +117,7 @@ describe("ApprovalService", () => {
   it("throws when request is expired", async () => {
     prismaMock.approvalRequest.findUnique.mockResolvedValue({
       id: "req-5",
+      userId: "user-1",
       status: "PENDING",
       expiresAt: new Date(Date.now() - 1000),
     } as any);
@@ -139,5 +141,31 @@ describe("ApprovalService", () => {
       where: { id: "req-5" },
       data: { status: "EXPIRED" },
     });
+  });
+
+  it("rejects decisions from non-owners", async () => {
+    prismaMock.approvalRequest.findUnique.mockResolvedValue({
+      id: "req-6",
+      userId: "owner-user",
+      status: "PENDING",
+      expiresAt: new Date(Date.now() + 60_000),
+    } as any);
+    prismaMock.$transaction.mockImplementation(
+      async (callback: (tx: PrismaClient) => unknown) =>
+        callback(prismaMock as unknown as PrismaClient),
+    );
+
+    const service = new ApprovalService(prismaMock);
+
+    await expect(
+      service.decideRequest({
+        approvalRequestId: "req-6",
+        decidedByUserId: "different-user",
+        decision: "APPROVE",
+      }),
+    ).rejects.toThrow("Forbidden: approval request does not belong to user");
+
+    expect(prismaMock.approvalRequest.update).not.toHaveBeenCalled();
+    expect(prismaMock.approvalDecision.create).not.toHaveBeenCalled();
   });
 });

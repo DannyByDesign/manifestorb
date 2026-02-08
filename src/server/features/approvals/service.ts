@@ -100,6 +100,10 @@ export class ApprovalService {
                 throw new Error("Approval request not found");
             }
 
+            if (request.userId !== decidedByUserId) {
+                throw new Error("Forbidden: approval request does not belong to user");
+            }
+
             if (request.status !== "PENDING") {
                 throw new Error(`Cannot decide on request in status: ${request.status}`);
             }

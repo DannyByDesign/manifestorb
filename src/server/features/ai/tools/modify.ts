@@ -23,9 +23,60 @@ import { createHash } from "crypto";
 
 const approvalService = new ApprovalService(prisma);
 
+const modifyIdsSchema = z.array(z.string()).max(50);
+const modifyChangesSchema = z.record(z.string(), z.any());
+
+const modifyParameters = z.discriminatedUnion("resource", [
+    z.object({
+        resource: z.literal("email"),
+        ids: modifyIdsSchema,
+        changes: modifyChangesSchema,
+    }).strict(),
+    z.object({
+        resource: z.literal("calendar"),
+        ids: modifyIdsSchema,
+        changes: modifyChangesSchema,
+    }).strict(),
+    z.object({
+        resource: z.literal("automation"),
+        ids: modifyIdsSchema,
+        changes: modifyChangesSchema,
+    }).strict(),
+    z.object({
+        resource: z.literal("preferences"),
+        ids: modifyIdsSchema.optional(),
+        changes: modifyChangesSchema,
+    }).strict(),
+    z.object({
+        resource: z.literal("approval"),
+        ids: modifyIdsSchema,
+        changes: modifyChangesSchema,
+    }).strict(),
+    z.object({
+        resource: z.literal("drive"),
+        ids: modifyIdsSchema,
+        changes: modifyChangesSchema,
+    }).strict(),
+    z.object({
+        resource: z.literal("draft"),
+        ids: modifyIdsSchema,
+        changes: modifyChangesSchema,
+    }).strict(),
+    z.object({
+        resource: z.literal("task"),
+        ids: modifyIdsSchema.optional(),
+        changes: modifyChangesSchema,
+    }).strict(),
+]);
+
 export const modifyTool: ToolDefinition<any> = {
     name: "modify",
     description: `Modify existing items.
+
+When to use:
+- Use modify to update existing items by ID.
+- Use create to make new items.
+- Use delete to remove/cancel items.
 
 Approval (use when user confirms a pending request from Pending State):
 - resource: "approval", ids: [approval request id], changes: { decision: "APPROVE" | "DENY", reason?: string }
@@ -60,13 +111,7 @@ Preferences changes:
 - statsEmailFrequency: "WEEKLY" | "NEVER"
 - summaryEmailFrequency: "WEEKLY" | "NEVER"`,
 
-    parameters: z.object({
-        resource: z.enum([
-            "email", "calendar", "automation", "preferences", "approval", "drive", "task"
-        ]),
-        ids: z.array(z.string()).max(50).optional(),
-        changes: z.record(z.string(), z.any()),
-    }),
+    parameters: modifyParameters,
 
     execute: async ({ resource, ids, changes }, { emailAccountId, logger, providers, userId }) => {
         switch (resource) {
@@ -259,6 +304,23 @@ Preferences changes:
                     data: await providers.email.modify(ids, changes),
                 };
 
+            case "draft":
+                if (!ids || ids.length === 0) return { success: false, error: "No Draft IDs provided" };
+                await Promise.all(
+                    ids.map((id: string) =>
+                        providers.email.updateDraft(id, {
+                            subject: typeof changes.subject === "string" ? changes.subject : undefined,
+                            messageHtml:
+                                typeof changes.messageHtml === "string"
+                                    ? changes.messageHtml
+                                    : typeof changes.body === "string"
+                                        ? changes.body
+                                        : undefined,
+                        }),
+                    ),
+                );
+                return { success: true, data: { count: ids.length } };
+
             case "approval":
                 if (!ids || ids.length === 0) return { success: false, error: "No Approval Request ID provided" };
                 const choiceIndex = typeof changes.choiceIndex === "number" ? changes.choiceIndex : undefined;
@@ -348,12 +410,19 @@ Preferences changes:
                     scheduledEnd: typeof changes.scheduledEnd === "string" ? new Date(changes.scheduledEnd) : undefined,
                 };
 
-                const updated = await Promise.all(ids.map((id: string) =>
-                    prisma.task.update({
-                        where: { id },
-                        data: updateData
-                    })
-                ));
+                const updateResult = await prisma.task.updateMany({
+                    where: { id: { in: ids }, userId },
+                    data: updateData
+                });
+
+                if (updateResult.count === 0) {
+                    return { success: false, error: "No matching tasks found for this user" };
+                }
+
+                const updated = await prisma.task.findMany({
+                    where: { id: { in: ids }, userId },
+                    orderBy: { updatedAt: "desc" }
+                });
 
                 return { success: true, data: updated };
             }
@@ -371,6 +440,10 @@ Preferences changes:
                 const timeZoneInput = typeof changes.timeZone === "string" ? changes.timeZone : undefined;
                 const timeZoneResult = resolveTimeZoneOrUtc(timeZoneInput);
                 const ambiguityResolved = changes.ambiguityResolved === true;
+
+                if (changes.isRecurring === true && typeof changes.recurrenceRule !== "string") {
+                    return { success: false, error: "recurrenceRule is required when isRecurring is true" };
+                }
 
                 if (timeZoneInput && timeZoneResult.isFallback) {
                     logger.warn("Invalid time zone for calendar update; falling back to UTC", {
@@ -653,11 +726,6 @@ Preferences changes:
                         "Unknown preference key. Supported: digestEnabled, digestSchedule, statsEmailFrequency, summaryEmailFrequency, approvalPolicy, aiConfig.",
                 };
             }
-
-            case "marketing":
-            case "notification":
-            case "knowledge":
-                return { success: false, error: "Modifying this resource not supported yet" };
 
             default:
                 return { success: false, error: `Resource ${resource} not supported` };

@@ -51,79 +51,140 @@ const formatSlotLabel = (start: Date, end: Date | null | undefined, timeZone: st
     return `${startLabel} - ${endLabel}`;
 };
 
-const createParameters = z.object({
-    resource: z.enum(["email", "calendar", "automation", "knowledge", "drive", "notification", "contacts", "task"]),
-    type: z.enum(["new", "reply", "forward"]).optional(),
-    parentId: z.string().optional(),
-    data: z.object({
-        // Email
-        to: z.array(z.string()).optional(),
-        cc: z.array(z.string()).optional(),
-        bcc: z.array(z.string()).optional(),
-        subject: z.string().optional(),
-        body: z.string().optional(),
-        sendOnApproval: z.boolean().optional().describe("If true, creates a draft and sends an approval notification. When user approves, the draft is sent. Use unless user says 'just save as draft'."),
+const emailCreateDataSchema = z.object({
+    to: z.array(z.string()).optional(),
+    cc: z.array(z.string()).optional(),
+    bcc: z.array(z.string()).optional(),
+    subject: z.string().optional(),
+    body: z.string().optional(),
+    sendOnApproval: z.boolean().optional().describe("If true, creates a draft and sends an approval notification. When user approves, the draft is sent. Use unless user says 'just save as draft'."),
+}).strict();
 
-        // Calendar
-        title: z.string().optional().describe("Event or task title. Infer from the user's request."),
-        description: z.string().optional(),
-        start: z.string().optional().describe("ISO 8601 start time. Omit when using autoSchedule."),
-        end: z.string().optional().describe("ISO 8601 end time. Omit when using autoSchedule."),
-        durationMinutes: z.number().min(5).max(480).optional().describe("Meeting duration in minutes. Defaults to 30 if omitted."),
-        autoSchedule: z.boolean().optional().describe("Set true to find 3 available calendar slots automatically. Use this when the user wants to schedule but hasn't specified an exact time."),
-        calendarId: z.string().optional(),
-        allDay: z.boolean().optional(),
-        isRecurring: z.boolean().optional(),
-        recurrenceRule: z.string().optional(),
-        timeZone: z.string().optional(),
-        attendees: z.array(z.string()).optional(),
-        location: z.string().optional(),
-        ambiguityResolved: z.boolean().optional(),
+const calendarCreateDataSchema = z.object({
+    title: z.string().optional().describe("Event title inferred from user request."),
+    description: z.string().optional(),
+    start: z.string().optional().describe("ISO 8601 start time. Omit when using autoSchedule."),
+    end: z.string().optional().describe("ISO 8601 end time. Omit when using autoSchedule."),
+    durationMinutes: z.number().min(5).max(480).optional().describe("Meeting duration in minutes. Defaults to 30 if omitted."),
+    autoSchedule: z.boolean().optional().describe("Set true to find 3 available calendar slots automatically."),
+    calendarId: z.string().optional(),
+    allDay: z.boolean().optional(),
+    isRecurring: z.boolean().optional(),
+    recurrenceRule: z.string().optional(),
+    timeZone: z.string().optional(),
+    attendees: z.array(z.string()).optional(),
+    location: z.string().optional(),
+    ambiguityResolved: z.boolean().optional(),
+}).strict();
 
-        // Task
-        reschedulePolicy: z.enum(["FIXED", "FLEXIBLE", "APPROVAL_REQUIRED"]).optional(),
-        status: z.enum(["PENDING", "IN_PROGRESS", "COMPLETED", "CANCELLED"]).optional(),
-        priority: z.enum(["NONE", "LOW", "MEDIUM", "HIGH"]).optional(),
-        energyLevel: z.enum(["LOW", "MEDIUM", "HIGH"]).optional(),
-        preferredTime: z.enum(["MORNING", "AFTERNOON", "EVENING"]).optional(),
-        dueDate: z.string().optional(),
-        startDate: z.string().optional(),
-        isAutoScheduled: z.boolean().optional(),
-        scheduleLocked: z.boolean().optional(),
-        scheduledStart: z.string().optional(),
-        scheduledEnd: z.string().optional(),
+const taskCreateDataSchema = z.object({
+    title: z.string().optional().describe("Task title."),
+    description: z.string().optional(),
+    durationMinutes: z.number().min(5).max(480).optional(),
+    reschedulePolicy: z.enum(["FIXED", "FLEXIBLE", "APPROVAL_REQUIRED"]).optional(),
+    status: z.enum(["PENDING", "IN_PROGRESS", "COMPLETED", "CANCELLED"]).optional(),
+    priority: z.enum(["NONE", "LOW", "MEDIUM", "HIGH"]).optional(),
+    energyLevel: z.enum(["LOW", "MEDIUM", "HIGH"]).optional(),
+    preferredTime: z.enum(["MORNING", "AFTERNOON", "EVENING"]).optional(),
+    dueDate: z.string().optional(),
+    startDate: z.string().optional(),
+    isAutoScheduled: z.boolean().optional(),
+    scheduleLocked: z.boolean().optional(),
+    scheduledStart: z.string().optional(),
+    scheduledEnd: z.string().optional(),
+}).strict();
 
-        // Automation
-        name: z.string().optional(),
-        conditions: z.unknown().optional(),
-        actions: z.array(z.unknown()).optional(),
-        ruleId: z.string().optional().describe("Rule ID when creating a group for learned patterns"),
-        createGroup: z.boolean().optional().describe("Set true to create a learned-patterns group for the given ruleId"),
+const automationCreateDataSchema = z.object({
+    name: z.string().optional(),
+    conditions: z.unknown().optional(),
+    actions: z.array(z.unknown()).optional(),
+    ruleId: z.string().optional().describe("Rule ID when creating a group for learned patterns"),
+    createGroup: z.boolean().optional().describe("Set true to create a learned-patterns group for the given ruleId"),
+}).strict();
 
-        // Knowledge
-        // title uses Calendar's definition
-        content: z.string().optional(),
+const knowledgeCreateDataSchema = z.object({
+    title: z.string().optional(),
+    content: z.string().optional(),
+}).strict();
 
-        // Drive (Filing)
-        messageId: z.string().optional(),
-        attachmentId: z.string().optional(),
+const driveCreateDataSchema = z.object({
+    name: z.string().optional(),
+    messageId: z.string().optional(),
+    attachmentId: z.string().optional(),
+}).strict();
 
-        // Notification (Push)
-        type: z.enum(["email", "calendar", "system", "task"]).optional(),
-        source: z.string().optional(),
-        detail: z.string().optional(),
-        // Title also used for notification
+const notificationCreateDataSchema = z.object({
+    title: z.string().optional(),
+    type: z.enum(["email", "calendar", "system", "task"]).optional(),
+    source: z.string().optional(),
+    detail: z.string().optional(),
+}).strict();
 
-        // Contacts
-        phone: z.string().optional(),
-        company: z.string().optional(),
-        jobTitle: z.string().optional(),
-    }),
-});
+const contactsCreateDataSchema = z.object({
+    name: z.string().optional(),
+    to: z.array(z.string()).optional(),
+    phone: z.string().optional(),
+    company: z.string().optional(),
+    jobTitle: z.string().optional(),
+}).strict();
+
+const categoryCreateDataSchema = z.object({
+    name: z.string().optional(),
+    categoryName: z.string().optional(),
+    description: z.string().optional(),
+    isLearned: z.boolean().optional(),
+}).strict();
+
+const createParameters = z.discriminatedUnion("resource", [
+    z.object({
+        resource: z.literal("email"),
+        type: z.enum(["new", "reply", "forward"]).optional(),
+        parentId: z.string().optional(),
+        data: emailCreateDataSchema,
+    }).strict(),
+    z.object({
+        resource: z.literal("calendar"),
+        data: calendarCreateDataSchema,
+    }).strict(),
+    z.object({
+        resource: z.literal("task"),
+        data: taskCreateDataSchema,
+    }).strict(),
+    z.object({
+        resource: z.literal("automation"),
+        data: automationCreateDataSchema,
+    }).strict(),
+    z.object({
+        resource: z.literal("knowledge"),
+        data: knowledgeCreateDataSchema,
+    }).strict(),
+    z.object({
+        resource: z.literal("drive"),
+        parentId: z.string().optional(),
+        data: driveCreateDataSchema,
+    }).strict(),
+    z.object({
+        resource: z.literal("notification"),
+        data: notificationCreateDataSchema,
+    }).strict(),
+    z.object({
+        resource: z.literal("contacts"),
+        data: contactsCreateDataSchema,
+    }).strict(),
+    z.object({
+        resource: z.literal("category"),
+        data: categoryCreateDataSchema,
+    }).strict(),
+]);
 
 export const createTool: ToolDefinition<typeof createParameters> = {
     name: "create",
     description: `Create new items.
+
+When to use:
+- Use create for new drafts/events/tasks/rules/records.
+- Use modify to change existing records.
+- Use delete to remove/cancel existing records.
 
 Email: Creates a DRAFT only. User must manually send from UI.
 - type: "new" | "reply" | "forward"
@@ -138,7 +199,8 @@ Calendar (scheduling): When the user wants to schedule a meeting, call, or appoi
 
 Task: Creates a task and optionally auto-schedules it. If flexibility is not specified by the user, choose a reschedulePolicy.
 
-Automation: Create Rules & Knowledge supported.`,
+	Automation: Create Rules & Knowledge supported.
+	Category: Creates or resolves a category by name.`,
 
     parameters: createParameters,
 
@@ -396,6 +458,10 @@ Automation: Create Rules & Knowledge supported.`,
 
                 if (!data.title) {
                     return { success: false, error: "Calendar title is required" };
+                }
+
+                if (data.isRecurring === true && !data.recurrenceRule) {
+                    return { success: false, error: "recurrenceRule is required when isRecurring is true" };
                 }
 
                 if (data.autoSchedule || !data.start || !data.end) {

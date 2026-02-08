@@ -6,6 +6,7 @@ import { type EmailAccount } from "@/features/ai/tools/providers/email";
 import { createEmailProvider } from "./providers/email";
 import { createCalendarProvider } from "./providers/calendar";
 import { createAutomationProvider } from "./providers/automation";
+import { type AutomationProvider } from "./providers/automation";
 import { createToolDriveProvider } from "./providers/drive";
 import { type ToolContext, type ToolDefinition } from "./types";
 import { executeTool } from "./executor";
@@ -23,6 +24,25 @@ import { rulesTool } from "./rules";
 import { sendTool } from "./send";
 import { workflowTool } from "./workflow";
 
+function createUnavailableAutomationProvider(reason: string): AutomationProvider {
+    const fail = async () => {
+        throw new Error(reason);
+    };
+    return {
+        listRules: async () => [],
+        createRule: fail,
+        updateRule: fail,
+        deleteRule: fail,
+        deleteTemporaryRulesByName: fail,
+        listKnowledge: async () => [],
+        createKnowledge: fail,
+        deleteKnowledge: fail,
+        generateReport: fail,
+        unsubscribe: async () => ({ success: false, error: reason }),
+        matchRules: async () => ({ matches: [], reasoning: reason }),
+    };
+}
+
 export async function createAgentTools({
     emailAccount,
     logger,
@@ -39,15 +59,33 @@ export async function createAgentTools({
         userId,
         logger,
     );
-    const automationProvider = await createAutomationProvider(userId, logger);
+    let automationProvider: AutomationProvider;
+    let automationAvailable = true;
+    try {
+        automationProvider = await createAutomationProvider(userId, logger);
+    } catch (e) {
+        automationAvailable = false;
+        const message = e instanceof Error ? e.message : "Automation provider unavailable";
+        logger.warn("Automation provider failed to initialize; using degraded fallback", { error: e });
+        automationProvider = createUnavailableAutomationProvider(message);
+    }
 
     // Drive might fail if not connected
     let driveProvider;
+    let driveAvailable = true;
     try {
         driveProvider = await createToolDriveProvider(emailAccount.id, logger);
     } catch (e) {
+        driveAvailable = false;
         logger.warn("Drive not connected or failed to initialize", { error: e });
     }
+
+    logger.info("AI tool provider capabilities", {
+        email: true,
+        calendar: true,
+        automation: automationAvailable,
+        drive: driveAvailable,
+    });
 
     const context: ToolContext = {
         userId,

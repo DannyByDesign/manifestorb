@@ -11,7 +11,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test-ai": "vitest"
+    "test-ai": "vitest",
+    "eval:taxonomy": "bun run scripts/taxonomy-eval.ts --write-report",
+    "eval:taxonomy:ci": "bun run scripts/taxonomy-eval.ts --ci --min-full=190 --write-report",
+    "ci:taxonomy-gate": "bun run scripts/taxonomy-eval.ts --ci --min-full=190 --write-report && bun test-ai src/server/features/ai/tools/task-ownership.test.ts src/server/features/ai/tools/workflow.test.ts src/server/features/ai/tools/security.test.ts src/server/features/approvals/service.test.ts src/server/features/approvals/execute.test.ts src/server/features/ai/tools/taxonomy-eval.test.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "2.0.44",

@@ -122,7 +122,12 @@ export async function executeApprovalRequest(params: {
     throw new Error(`Tool ${toolName} not found in agent tools`);
   }
 
-  const executionResult = await toolInstance.execute(args);
+  const executionArgs = {
+    ...args,
+    preApproved: true,
+    approvalId: approvalRequestId,
+  };
+  const executionResult = await toolInstance.execute(executionArgs);
 
   return {
     decisionRecord,

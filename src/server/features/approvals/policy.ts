@@ -7,7 +7,7 @@ interface ApprovalConditions {
   domains?: string[];
 }
 
-const DEFAULT_SENSITIVE_TOOLS = ["modify", "delete", "send"];
+const DEFAULT_SENSITIVE_TOOLS = ["modify", "delete", "create", "send", "workflow"];
 
 /**
  * Check whether a tool call requires approval for a given user.
