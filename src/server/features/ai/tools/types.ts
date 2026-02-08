@@ -87,6 +87,9 @@ export interface ToolResult {
     success: boolean;
     data?: any;
     error?: string;
+    message?: string;
+    truncated?: boolean;
+    paging?: Record<string, unknown>;
     meta?: {
         resource?: string;
         requestedIds?: string[];

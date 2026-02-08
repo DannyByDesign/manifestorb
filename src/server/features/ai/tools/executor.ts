@@ -27,7 +27,9 @@ export async function executeTool<T extends z.ZodType>(
         const validated = tool.parameters.parse(params);
 
         // 2. Check permissions first (invalid requests should not consume rate-limit budget)
-        await checkPermissions(context.userId, toolName, validated);
+        await checkPermissions(context.userId, toolName, validated, {
+            emailAccountId: context.emailAccountId,
+        });
 
         // 3. Apply scope limits
         const limited = applyScopeLimits(toolName, validated);

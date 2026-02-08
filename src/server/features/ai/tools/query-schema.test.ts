@@ -9,7 +9,7 @@ vi.mock("@/server/lib/user/get", () => ({
 import { queryTool } from "./query";
 
 describe("queryTool discriminated schema", () => {
-  it("requires filter.id for patterns queries", () => {
+  it("rejects quarantined/unsupported resources", () => {
     const parsed = queryTool.parameters.safeParse({
       resource: "patterns",
       filter: {},

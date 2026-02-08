@@ -23,6 +23,7 @@ import { createInAppNotification } from "@/features/notifications/create";
 import { createApprovalActionToken } from "@/features/approvals/action-token";
 import { env } from "@/env";
 import type { Logger } from "@/server/lib/logger";
+import { createDeterministicIdempotencyKey, stableSerialize } from "@/server/lib/idempotency";
 
 // ---------------------------------------------------------------------------
 // Public interface
@@ -555,16 +556,16 @@ function createApprovalWrappedTool({
         args,
       };
 
-      const stableArgs = JSON.stringify(args, Object.keys(args).sort());
+      const stableArgs = stableSerialize(args);
       const idempotencyAnchor =
         context.messageId ??
         context.conversationId ??
         `${context.provider}:${context.channelId ?? "web"}`;
-      const idempotencyKey = createHash("sha256")
-        .update(
-          `${idempotencyAnchor}:${name}:${stableArgs}`,
-        )
-        .digest("hex");
+      const idempotencyKey = createDeterministicIdempotencyKey(
+        idempotencyAnchor,
+        name,
+        stableArgs,
+      );
 
       const approval = await approvalService.createRequest({
         userId,

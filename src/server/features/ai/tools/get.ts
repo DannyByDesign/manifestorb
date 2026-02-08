@@ -104,7 +104,7 @@ When to use:
 
             case "approval":
                 const approvals = await prisma.approvalRequest.findMany({
-                    where: { id: { in: ids } },
+                    where: { id: { in: ids }, userId },
                     include: { decisions: true }
                 });
                 return {

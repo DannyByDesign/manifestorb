@@ -1,10 +1,6 @@
+import { LogicalOperator, ActionType } from "@/generated/prisma/enums";
+import type { Action } from "@/generated/prisma/client";
 import { isAIRule, type RuleConditions } from "@/server/lib/condition";
-export type RuleWithConditions = any;
-export const checkRuleConditions = async (...args: any[]) => true;
-
-// Dummy type until API routes are ported
-type RulesResponse = any;
-import { ActionType } from "@/generated/prisma/enums";
 import { TEMPLATE_VARIABLE_PATTERN } from "@/server/lib/template";
 
 export const RISK_LEVELS = {
@@ -16,14 +12,71 @@ export const RISK_LEVELS = {
 
 export type RiskLevel = (typeof RISK_LEVELS)[keyof typeof RISK_LEVELS];
 
-export type RiskAction = {
-  type: ActionType;
-  subject: string | null;
-  content: string | null;
-  to: string | null;
-  cc: string | null;
-  bcc: string | null;
+export type RiskAction = Pick<
+  Action,
+  "type" | "subject" | "content" | "to" | "cc" | "bcc"
+>;
+
+export type RuleWithConditions = RuleConditions & {
+  actions: RiskAction[];
 };
+
+export type RuleConditionInput = {
+  from?: string | null;
+  to?: string | null;
+  subject?: string | null;
+  body?: string | null;
+};
+
+function matchesPattern(
+  value: string | null | undefined,
+  pattern: string | null | undefined,
+): boolean {
+  if (!pattern) return true;
+  if (!value) return false;
+
+  const normalizedValue = value.toLowerCase();
+  const normalizedPattern = pattern.trim().toLowerCase();
+  if (!normalizedPattern) return true;
+
+  if (normalizedPattern.startsWith("/") && normalizedPattern.endsWith("/") && normalizedPattern.length > 2) {
+    try {
+      const regex = new RegExp(normalizedPattern.slice(1, -1), "i");
+      return regex.test(value);
+    } catch {
+      return normalizedValue.includes(normalizedPattern);
+    }
+  }
+
+  return normalizedValue.includes(normalizedPattern);
+}
+
+/**
+ * Evaluate non-AI/static portions of rule conditions against a message-like input.
+ * AI-instruction conditions are intentionally treated as non-blocking here because
+ * they require model evaluation in rule matching pipelines.
+ */
+export async function checkRuleConditions(
+  rule: RuleConditions,
+  input: RuleConditionInput,
+): Promise<boolean> {
+  const checks: boolean[] = [];
+
+  if (rule.from) checks.push(matchesPattern(input.from, rule.from));
+  if (rule.to) checks.push(matchesPattern(input.to, rule.to));
+  if (rule.subject) checks.push(matchesPattern(input.subject, rule.subject));
+  if (rule.body) checks.push(matchesPattern(input.body, rule.body));
+
+  if (checks.length === 0) {
+    // Pure AI rules (instructions only) are evaluated elsewhere.
+    return true;
+  }
+
+  const operator = rule.conditionalOperator ?? LogicalOperator.AND;
+  return operator === LogicalOperator.OR
+    ? checks.some(Boolean)
+    : checks.every(Boolean);
+}
 
 export function getActionRiskLevel(
   action: RiskAction,
@@ -107,7 +160,7 @@ export function getActionRiskLevel(
 }
 
 function hasAnyFieldWithStatus(
-  fields: (string | null)[],
+  fields: Array<FieldDynamicStatus>,
   status: "fully-dynamic" | "partially-dynamic",
 ) {
   return fields.some((field) => field === status);
@@ -123,23 +176,17 @@ function compareRiskLevels(a: RiskLevel, b: RiskLevel): RiskLevel {
   return riskOrder[a] >= riskOrder[b] ? a : b;
 }
 
-export function getRiskLevel(
-  rule: Pick<RulesResponse[number], "actions"> & RuleConditions,
-): {
+export function getRiskLevel(rule: RuleWithConditions): {
   level: RiskLevel;
   message: string;
 } {
-  // Get risk level for each action and return the highest risk
-  return (rule.actions as any[]).reduce<{ level: RiskLevel; message: string }>(
-    (highestRisk: any, action: any) => {
+  return rule.actions.reduce<{ level: RiskLevel; message: string }>(
+    (highestRisk, action) => {
       const actionRisk = getActionRiskLevel(action, rule);
-      if (
-        compareRiskLevels(actionRisk.level, highestRisk.level) ===
+      return compareRiskLevels(actionRisk.level, highestRisk.level) ===
         actionRisk.level
-      ) {
-        return actionRisk;
-      }
-      return highestRisk;
+        ? actionRisk
+        : highestRisk;
     },
     {
       level: RISK_LEVELS.LOW,
@@ -148,8 +195,14 @@ export function getRiskLevel(
   );
 }
 
+type FieldDynamicStatus =
+  | "fully-dynamic"
+  | "partially-dynamic"
+  | "static"
+  | null;
+
 function getFieldsDynamicStatus(action: RiskAction) {
-  const checkFieldStatus = (field: string | null) => {
+  const checkFieldStatus = (field: string | null): FieldDynamicStatus => {
     if (!field) return null;
     if (isFullyDynamicField(field)) return "fully-dynamic";
     if (isPartiallyDynamicField(field)) return "partially-dynamic";
@@ -165,7 +218,6 @@ function getFieldsDynamicStatus(action: RiskAction) {
   };
 }
 
-// Helper functions
 export function isFullyDynamicField(field: string) {
   const trimmed = field.trim();
   return trimmed.startsWith("{{") && trimmed.endsWith("}}");

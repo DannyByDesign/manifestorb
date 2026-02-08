@@ -14,22 +14,17 @@ import { isGoogleProvider } from "@/features/email/provider-types";
 import prisma from "@/server/db/client";
 import { getEmailAccountWithAi } from "@/server/lib/user/get";
 import { processAttachment } from "@/features/drive/filing-engine";
-import { parseMessage } from "@/server/integrations/google/message";
-import { ChannelRouter } from "@/features/channels/router";
 import { generateNotification, type NotificationType } from "@/features/notifications/generator";
 import { aiCollectReplyContext } from "@/features/reply-tracker/ai/reply-context-collector";
 import { createScopedLogger } from "@/server/lib/logger";
-import { isDefined } from "@/server/types";
-import { type EmailForLLM, type MessageWithPayload } from "@/server/types";
 import { scheduleTasksForUser, resolveSchedulingEmailAccountId } from "@/features/calendar/scheduling/TaskSchedulingService";
 import { addDays, isAmbiguousLocalTime, resolveTimeZoneOrUtc } from "@/features/calendar/scheduling/date-utils";
 import { CalendarServiceImpl } from "@/features/calendar/scheduling/CalendarServiceImpl";
 import { TimeSlotManagerImpl } from "@/features/calendar/scheduling/TimeSlotManager";
 import { ApprovalService } from "@/features/approvals/service";
 import { findCrossReferences } from "@/features/ai/cross-reference";
-import { createHash } from "crypto";
+import { createDeterministicIdempotencyKey } from "@/server/lib/idempotency";
 
-const router = new ChannelRouter();
 const logger = createScopedLogger("tools/create");
 const approvalService = new ApprovalService(prisma);
 
@@ -266,10 +261,11 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                 const draftId = (draftResult as { draftId?: string; id?: string }).draftId ?? (draftResult as { id?: string }).id;
                 if (data.sendOnApproval && draftId) {
                     const approvalService = new ApprovalService(prisma);
-                    const { createHash } = await import("crypto");
-                    const idempotencyKey = createHash("sha256")
-                        .update(`send-draft:${context.userId}:${draftId}`)
-                        .digest("hex");
+                    const idempotencyKey = createDeterministicIdempotencyKey(
+                        "send-draft",
+                        context.userId,
+                        draftId,
+                    );
                     const approval = await approvalService.createRequest({
                         userId: context.userId,
                         provider: "system",
@@ -481,9 +477,13 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                         return { success: false, error: "No available slots found" };
                     }
 
-                    const idempotencyKey = createHash("sha256")
-                        .update(`schedule-proposal:event:${context.userId}:${JSON.stringify(data)}:${durationMinutes}`)
-                        .digest("hex");
+                    const idempotencyKey = createDeterministicIdempotencyKey(
+                        "schedule-proposal",
+                        "event",
+                        context.userId,
+                        { resource, type, parentId, data },
+                        durationMinutes,
+                    );
 
                     const request = await approvalService.createRequest({
                         userId: context.userId,
@@ -499,7 +499,7 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                         },
                         idempotencyKey,
                         expiresInSeconds: 3600
-                    } as any);
+                    } as Parameters<ApprovalService["createRequest"]>[0]);
 
                     const lines = options.map((option, index) => {
                         const start = new Date(option.start);
@@ -539,7 +539,7 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                     });
                 }
 
-                const ambiguityResolved = (data as any).ambiguityResolved === true;
+                const ambiguityResolved = data.ambiguityResolved === true;
                 if (!ambiguityResolved && data.timeZone && data.start && isAmbiguousLocalTime(new Date(data.start), timeZoneResult.timeZone)) {
                     const start = new Date(data.start);
                     const end = data.end ? new Date(data.end) : undefined;
@@ -550,9 +550,15 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                     const earlierEndUtc = durationMs ? new Date(earlierStartUtc.getTime() + durationMs) : undefined;
                     const laterEndUtc = durationMs ? new Date(laterStartUtc.getTime() + durationMs) : undefined;
 
-                    const idempotencyKey = createHash("sha256")
-                        .update(`ambiguous-create:${context.userId}:${data.start}:${data.end}:${timeZoneResult.timeZone}`)
-                        .digest("hex");
+                    const idempotencyKey = createDeterministicIdempotencyKey(
+                        "ambiguous-create",
+                        context.userId,
+                        {
+                            start: data.start,
+                            end: data.end,
+                            timeZone: timeZoneResult.timeZone,
+                        },
+                    );
 
                     const request = await approvalService.createRequest({
                         userId: context.userId,
@@ -577,7 +583,7 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                         },
                         idempotencyKey,
                         expiresInSeconds: 3600
-                    } as any);
+                    } as Parameters<ApprovalService["createRequest"]>[0]);
 
                     return {
                         success: true,
@@ -602,9 +608,15 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                     const earlierStartUtc = start ? new Date(start) : undefined;
                     const laterStartUtc = start ? new Date(start) : undefined;
 
-                    const idempotencyKey = createHash("sha256")
-                        .update(`ambiguous-create-end:${context.userId}:${data.start}:${data.end}:${timeZoneResult.timeZone}`)
-                        .digest("hex");
+                    const idempotencyKey = createDeterministicIdempotencyKey(
+                        "ambiguous-create-end",
+                        context.userId,
+                        {
+                            start: data.start,
+                            end: data.end,
+                            timeZone: timeZoneResult.timeZone,
+                        },
+                    );
 
                     const request = await approvalService.createRequest({
                         userId: context.userId,
@@ -629,7 +641,7 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                         },
                         idempotencyKey,
                         expiresInSeconds: 3600
-                    } as any);
+                    } as Parameters<ApprovalService["createRequest"]>[0]);
 
                     return {
                         success: true,
@@ -731,9 +743,12 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                         return { success: false, error: "No available slots found" };
                     }
 
-                    const idempotencyKey = createHash("sha256")
-                        .update(`schedule-proposal:task:${context.userId}:${JSON.stringify(data)}`)
-                        .digest("hex");
+                    const idempotencyKey = createDeterministicIdempotencyKey(
+                        "schedule-proposal",
+                        "task",
+                        context.userId,
+                        { resource, type, parentId, data },
+                    );
 
                     const request = await approvalService.createRequest({
                         userId: context.userId,
@@ -749,7 +764,7 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                         },
                         idempotencyKey,
                         expiresInSeconds: 3600
-                    } as any);
+                    } as Parameters<ApprovalService["createRequest"]>[0]);
 
                     const lines = options.map((option, index) => {
                         const start = new Date(option.start);

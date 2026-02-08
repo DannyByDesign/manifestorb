@@ -3,7 +3,7 @@ import { createScopedLogger } from "@/server/lib/logger";
 import { SchedulingService } from "./SchedulingService";
 import type { SchedulingSettings, SchedulingTask } from "./types";
 import { ApprovalService } from "@/features/approvals/service";
-import { createHash } from "crypto";
+import { createDeterministicIdempotencyKey } from "@/server/lib/idempotency";
 import type { Logger } from "@/server/lib/logger";
 import { resolveTimeZoneOrUtc } from "./date-utils";
 import { env } from "@/env";
@@ -331,9 +331,11 @@ async function createRescheduleApprovals({
     newEnd: task.newEnd?.toISOString() ?? null,
   }));
 
-  const batchKey = createHash("sha256")
-    .update(`reschedule-batch:${userId}:${JSON.stringify(taskSummaries)}`)
-    .digest("hex");
+  const batchKey = createDeterministicIdempotencyKey(
+    "reschedule-batch",
+    userId,
+    taskSummaries,
+  );
 
   const approval = await approvalService.createRequest({
     userId,
