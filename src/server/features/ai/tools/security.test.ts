@@ -19,15 +19,40 @@ vi.mock("@/server/lib/redis", () => ({
 }));
 
 describe("checkPermissions", () => {
-  it("allows known tools, including dangerous tools gated elsewhere", async () => {
+  it("allows known tools with valid resource payloads", async () => {
     await expect(checkPermissions("user-1", "send", {})).resolves.toBeUndefined();
-    await expect(checkPermissions("user-1", "workflow", {})).resolves.toBeUndefined();
-    await expect(checkPermissions("user-1", "query", {})).resolves.toBeUndefined();
+    await expect(
+      checkPermissions("user-1", "query", { resource: "email" }),
+    ).resolves.toBeUndefined();
+    await expect(
+      checkPermissions("user-1", "workflow", {
+        steps: [
+          { action: "query", resource: "email" },
+          { action: "modify", resource: "calendar" },
+        ],
+      }),
+    ).resolves.toBeUndefined();
   });
 
   it("rejects unknown tools", async () => {
     await expect(checkPermissions("user-1", "totallyUnknownTool", {})).rejects.toThrow(
       "Unknown tool 'totallyUnknownTool' is not allowed.",
     );
+  });
+
+  it("rejects invalid resources for a tool", async () => {
+    await expect(
+      checkPermissions("user-1", "query", { resource: "approval" }),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      checkPermissions("user-1", "query", { resource: "drive" }),
+    ).rejects.toThrow("Resource 'drive' is not allowed for tool 'query'.");
+  });
+
+  it("rejects quarantined resources by default", async () => {
+    await expect(
+      checkPermissions("user-1", "create", { resource: "drive" }),
+    ).rejects.toThrow("Resource 'drive' is currently quarantined");
   });
 });

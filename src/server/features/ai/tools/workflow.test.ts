@@ -193,4 +193,36 @@ describe("workflowTool dependsOn chaining", () => {
     });
     expect(executeToolMock).toHaveBeenCalledTimes(1);
   });
+
+  it("supports conditional runIf gates", async () => {
+    requiresApprovalMock.mockResolvedValue(false);
+    executeToolMock
+      .mockResolvedValueOnce({
+        success: true,
+        data: [],
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: [{ id: "task-1" }],
+      });
+
+    const result = await workflowTool.execute(
+      {
+        steps: [
+          { action: "query", resource: "calendar", filter: { query: "Friday afternoon" } },
+          {
+            action: "create",
+            resource: "calendar",
+            data: { title: "Focus block Monday" },
+            runIf: { dependsOn: 0, operator: "no_results" },
+          },
+        ],
+        preApproved: true,
+      },
+      {} as any,
+    );
+
+    expect(result.success).toBe(true);
+    expect(executeToolMock).toHaveBeenCalledTimes(2);
+  });
 });

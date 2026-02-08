@@ -26,14 +26,14 @@ export async function executeTool<T extends z.ZodType>(
         // Zod parse will throw if invalid
         const validated = tool.parameters.parse(params);
 
-        // 2. Check rate limits
-        await checkRateLimit(context.userId, toolName);
-
-        // 3. Check permissions
+        // 2. Check permissions first (invalid requests should not consume rate-limit budget)
         await checkPermissions(context.userId, toolName, validated);
 
-        // 4. Apply scope limits
-        const limited = applyScopeLimits(validated);
+        // 3. Apply scope limits
+        const limited = applyScopeLimits(toolName, validated);
+
+        // 4. Check rate limits after validation and guardrails
+        await checkRateLimit(context.userId, toolName);
 
         // 5. Execute tool
         const result = await tool.execute(limited, context);

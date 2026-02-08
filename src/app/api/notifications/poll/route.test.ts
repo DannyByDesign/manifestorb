@@ -47,7 +47,11 @@ describe("GET /api/notifications/poll", () => {
     expect(res.status).toBe(200);
     expect(json.notifications).toHaveLength(2);
     expect(prisma.inAppNotification.updateMany).toHaveBeenCalledWith({
-      where: { id: { in: ["n1", "n2"] } },
+      where: {
+        id: { in: ["n1", "n2"] },
+        claimedAt: null,
+        pushedToSurface: false,
+      },
       data: { claimedAt: expect.any(Date) },
     });
   });

@@ -268,7 +268,7 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                     const approvalService = new ApprovalService(prisma);
                     const { createHash } = await import("crypto");
                     const idempotencyKey = createHash("sha256")
-                        .update(`send-draft:${context.userId}:${draftId}:${Date.now()}`)
+                        .update(`send-draft:${context.userId}:${draftId}`)
                         .digest("hex");
                     const approval = await approvalService.createRequest({
                         userId: context.userId,

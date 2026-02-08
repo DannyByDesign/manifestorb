@@ -1,6 +1,28 @@
+import { NextResponse, type NextRequest } from "next/server";
 import { authkitMiddleware } from "@/server/auth";
+import { matchQuarantinedPath } from "@/lib/quarantine";
 
-export default authkitMiddleware();
+const authMiddleware = authkitMiddleware();
+
+export default function proxy(req: NextRequest) {
+  const match = matchQuarantinedPath(req.nextUrl.pathname);
+  if (match) {
+    if (req.nextUrl.pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        {
+          error: "Endpoint is quarantined",
+          reason: match.reason,
+          path: req.nextUrl.pathname,
+        },
+        { status: 410 },
+      );
+    }
+
+    return new NextResponse("This route is quarantined.", { status: 410 });
+  }
+
+  return authMiddleware(req);
+}
 
 export const config = {
   matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],

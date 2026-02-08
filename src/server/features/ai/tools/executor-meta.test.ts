@@ -8,7 +8,7 @@ vi.mock("server-only", () => ({}));
 vi.mock("./security", () => ({
   checkPermissions: vi.fn().mockResolvedValue(undefined),
   checkRateLimit: vi.fn().mockResolvedValue(undefined),
-  applyScopeLimits: vi.fn((params: unknown) => params),
+  applyScopeLimits: vi.fn((_: string, params: unknown) => params),
 }));
 
 vi.mock("./audit", () => ({

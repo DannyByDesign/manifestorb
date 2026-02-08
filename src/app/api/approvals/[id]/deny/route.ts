@@ -78,39 +78,12 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
             }
         });
 
-        const { resolveEmailAccount } = await import("@/server/lib/user-utils");
-        const emailAccount = request?.user ? resolveEmailAccount(request.user, null) : null;
-        if (request && request.user && emailAccount) {
+        if (request && request.user) {
             const { ChannelRouter } = await import("@/features/channels/router");
             const router = new ChannelRouter();
-            let userMessage = "I've cancelled that request.";
 
-            try {
-                const { createGenerateText } = await import("@/server/lib/llms");
-                const { getModel } = await import("@/server/lib/llms/model");
-
-                const modelOptions = getModel("chat");
-
-                const generator = createGenerateText({
-                    emailAccount: emailAccount as any,
-                    label: "approval_denial",
-                    modelOptions
-                });
-
-                const { text } = await generator({
-                    model: modelOptions.model,
-                    prompt: `You are a helpful assistant. The user just denied a request.
-Write a brief, friendly confirmation acknowledging the cancellation.
-Do not mention tools or internal details. No emojis. Max 1 short sentence.`,
-                });
-
-                userMessage = text;
-            } catch (llmError) {
-                console.error("Failed to generate LLM denial msg", llmError);
-            }
-
-            await router.pushMessage(request.userId, `🚫 ${userMessage}`).catch(err => {
-                console.error("Failed to send denial notification", err);
+            await router.pushMessage(request.userId, "Denied. I cancelled that request.").catch(err => {
+                logger.error("Failed to send denial notification", { error: err });
             });
         }
 

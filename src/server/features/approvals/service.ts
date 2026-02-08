@@ -1,5 +1,5 @@
 
-import { PrismaClient, ApprovalRequest, ApprovalDecision } from "@/generated/prisma/client";
+import { PrismaClient, ApprovalRequest, ApprovalDecision, Prisma } from "@/generated/prisma/client";
 import { createHash } from "crypto";
 import { CreateApprovalParams, DecideApprovalParams } from "./types";
 import { createScopedLogger } from "@/server/lib/logger";
@@ -57,8 +57,8 @@ export class ApprovalService {
             data: {
                 userId,
                 provider,
-                externalContext: externalContext as any, // Prisma Json type
-                requestPayload: requestPayload as any,
+                externalContext: externalContext as Prisma.InputJsonValue,
+                requestPayload: requestPayload as Prisma.InputJsonValue,
                 status: "PENDING",
                 payloadHash,
                 idempotencyKey,
@@ -89,10 +89,8 @@ export class ApprovalService {
     async decideRequest(params: DecideApprovalParams): Promise<ApprovalDecision> {
         const { approvalRequestId, decidedByUserId, decision, reason } = params;
 
-        return await this.prisma.$transaction(async (tx: any) => { // Type as any for now to avoid generation issues
-            const prismaTx = tx as PrismaClient;
-
-            const request = await prismaTx.approvalRequest.findUnique({
+        return await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            const request = await tx.approvalRequest.findUnique({
                 where: { id: approvalRequestId },
             });
 
@@ -110,7 +108,7 @@ export class ApprovalService {
 
             if (new Date() > request.expiresAt) {
                 // Auto-expire if we catch it late
-                await prismaTx.approvalRequest.update({
+                await tx.approvalRequest.update({
                     where: { id: approvalRequestId },
                     data: { status: "EXPIRED" }
                 });
@@ -119,13 +117,13 @@ export class ApprovalService {
 
             // Update Request Status
             const newStatus = decision === "APPROVE" ? "APPROVED" : "DENIED";
-            await prismaTx.approvalRequest.update({
+            await tx.approvalRequest.update({
                 where: { id: approvalRequestId },
                 data: { status: newStatus }
             });
 
             // Create Decision Record
-            const decisionRecord = await prismaTx.approvalDecision.create({
+            const decisionRecord = await tx.approvalDecision.create({
                 data: {
                     approvalRequestId,
                     decidedByUserId,

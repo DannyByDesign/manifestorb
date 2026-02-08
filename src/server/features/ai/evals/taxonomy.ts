@@ -59,8 +59,8 @@ const CAPABILITY_STATUS: Record<string, PatternStatus> = {
   workflow_compensation: "full",
   context_reference_resolution: "full",
   implicit_intent_resolution: "partial",
-  conditional_execution: "partial",
-  very_vague_clarification: "unsupported",
+  conditional_execution: "full",
+  very_vague_clarification: "full",
 };
 
 const firstNames = [

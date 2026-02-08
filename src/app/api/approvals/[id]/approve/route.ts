@@ -62,7 +62,10 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
                 reason: body.reason
             });
 
-            const { decisionRecord, request, toolName, executionResult } = execution as any;
+            const decisionRecord = execution.decisionRecord;
+            const request = "request" in execution ? execution.request : undefined;
+            const toolName = "toolName" in execution ? execution.toolName : undefined;
+            const executionResult = "executionResult" in execution ? execution.executionResult : undefined;
 
             if (decisionRecord?.decision !== "APPROVE") {
                 return NextResponse.json(decisionRecord);
@@ -72,46 +75,24 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
                 return NextResponse.json(decisionRecord);
             }
 
-                // Notify ChannelRouter of success (Push Notification)
-                const { ChannelRouter } = await import("@/features/channels/router");
-                const router = new ChannelRouter();
+            // Notify ChannelRouter of success (Push Notification)
+            const { ChannelRouter } = await import("@/features/channels/router");
+            const router = new ChannelRouter();
 
-                let userMessage = "I've completed the request.";
+            const userMessage =
+                toolName === "send"
+                    ? "Approved. Your message has been sent."
+                    : toolName === "create"
+                        ? "Approved. I created that for you."
+                        : toolName === "modify"
+                            ? "Approved. I applied the update."
+                            : toolName === "delete"
+                                ? "Approved. I removed it."
+                                : "Approved. I completed the request.";
 
-                try {
-                    const { createGenerateText } = await import("@/server/lib/llms");
-                    const { getModel } = await import("@/server/lib/llms/model");
-
-                    const modelOptions = getModel("chat");
-
-                    const { resolveEmailAccount } = await import("@/server/lib/user-utils");
-                    const emailAccountForLlm = resolveEmailAccount(request.user, null);
-                    if (emailAccountForLlm) {
-                        const generator = createGenerateText({
-                            emailAccount: emailAccountForLlm as any,
-                            label: "approval_confirmation",
-                            modelOptions
-                        });
-
-                        const { text } = await generator({
-                            model: modelOptions.model,
-                            prompt: `You are a helpful assistant. You just completed a user request. 
-Details: ${JSON.stringify(executionResult).slice(0, 500)}...
-Write a brief, friendly confirmation message saying it's done.
-Do not mention tools or internal details. No emojis. Max 1 short sentence.`
-                        });
-                        userMessage = text;
-                    }
-                } catch (llmError) {
-                    logger.error("Failed to generate LLM confirmation msg, falling back to static", { error: llmError });
-                    // Fallback logic
-                    if (toolName === "reply") userMessage = "I've sent that email.";
-                    else if (toolName?.includes("rule")) userMessage = "I've updated your rules.";
-                }
-
-                await router.pushMessage(request.userId, `✅ ${userMessage}`).catch(err => {
-                    logger.error("Failed to send approval notification", { error: err });
-                });
+            await router.pushMessage(request.userId, userMessage).catch(err => {
+                logger.error("Failed to send approval notification", { error: err });
+            });
 
             return NextResponse.json({ ...decisionRecord, execution: executionResult });
         } catch (execError) {

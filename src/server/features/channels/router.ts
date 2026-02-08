@@ -340,7 +340,7 @@ export class ChannelRouter {
             const conversation = await prisma.conversation.findFirst({
                 where: {
                     userId: userId,
-                    provider: { in: ["slack", "discord"] }
+                    provider: { in: ["slack", "discord", "telegram"] }
                 },
                 orderBy: { updatedAt: "desc" }
             });

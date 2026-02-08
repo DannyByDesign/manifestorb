@@ -67,6 +67,7 @@ describe("POST /api/approvals/[id]/deny", () => {
       .mockResolvedValueOnce({ userId: "user-1" } as any)
       .mockResolvedValueOnce({
         id: "req-1",
+        userId: "user-1",
         status: "PENDING",
         expiresAt: new Date(Date.now() + 60_000),
       } as any)

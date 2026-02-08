@@ -15,6 +15,16 @@ const workflowStep = z.object({
     changes: z.record(z.string(), z.unknown()).optional(),
     filter: z.record(z.string(), z.unknown()).optional(),
     dependsOn: z.number().optional().describe("0-based index of a previous step whose output should be available as context"),
+    runIf: z
+        .object({
+            dependsOn: z.number().describe("0-based index of a previous step to inspect."),
+            operator: z
+                .enum(["success", "failure", "has_results", "no_results"])
+                .default("success")
+                .describe("Condition used to decide whether this step should run."),
+        })
+        .optional()
+        .describe("Optional conditional gate for this step."),
 });
 
 const workflowParameters = z.object({
@@ -40,6 +50,7 @@ export const workflowTool: ToolDefinition<z.infer<typeof workflowParameters>> = 
 Examples:
 - Create a task and block calendar time: [{ action: "create", resource: "task", data: { title: "..." } }, { action: "create", resource: "calendar", data: { title: "Work on: ...", autoSchedule: true } }]
 - Reply to email and create follow-up task: [{ action: "create", resource: "email", data: { ... } }, { action: "create", resource: "task", data: { ... } }]
+- Conditional branch: query availability, then run fallback step only when no slots are found using runIf: { dependsOn: 0, operator: "no_results" }
 
 Steps run sequentially. If a step fails, later steps are skipped.`,
 
@@ -47,12 +58,13 @@ Steps run sequentially. If a step fails, later steps are skipped.`,
 
     execute: async ({ steps, onFailure, preApproved }, context) => {
         type WorkflowAction = "create" | "modify" | "query" | "delete";
-        type WorkflowStepResult = {
+type WorkflowStepResult = {
             step: number;
             action: WorkflowAction;
             resource: string;
             dependsOn?: number;
             success: boolean;
+            skipped?: boolean;
             outputIds: string[];
             itemCount: number;
             data?: unknown;
@@ -131,6 +143,64 @@ Steps run sequentially. If a step fails, later steps are skipped.`,
                 break;
             }
             try {
+                if (step.runIf) {
+                    const conditionStep = step.runIf.dependsOn;
+                    if (conditionStep < 0 || conditionStep >= i) {
+                        results.push({
+                            step: i,
+                            action: step.action,
+                            resource: step.resource,
+                            dependsOn: step.dependsOn,
+                            success: false,
+                            outputIds: [],
+                            itemCount: 0,
+                            error: `Invalid runIf.dependsOn index ${conditionStep}; must reference an earlier step.`,
+                        });
+                        break;
+                    }
+
+                    const parent = results.find((r) => r.step === conditionStep);
+                    if (!parent) {
+                        results.push({
+                            step: i,
+                            action: step.action,
+                            resource: step.resource,
+                            dependsOn: step.dependsOn,
+                            success: false,
+                            outputIds: [],
+                            itemCount: 0,
+                            error: `runIf dependency step ${conditionStep} not found.`,
+                        });
+                        break;
+                    }
+
+                    const operator = step.runIf.operator ?? "success";
+                    const hasResults = parent.itemCount > 0 || parent.outputIds.length > 0;
+                    const shouldRun =
+                        operator === "success"
+                            ? parent.success
+                            : operator === "failure"
+                                ? !parent.success
+                                : operator === "has_results"
+                                    ? hasResults
+                                    : !hasResults;
+
+                    if (!shouldRun) {
+                        results.push({
+                            step: i,
+                            action: step.action,
+                            resource: step.resource,
+                            dependsOn: step.dependsOn,
+                            success: true,
+                            skipped: true,
+                            outputIds: [],
+                            itemCount: 0,
+                            data: { skippedBecause: { step: conditionStep, operator } },
+                        });
+                        continue;
+                    }
+                }
+
                 let dependencyResult: unknown;
                 if (typeof step.dependsOn === "number") {
                     if (step.dependsOn < 0 || step.dependsOn >= i) {

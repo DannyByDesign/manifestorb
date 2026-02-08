@@ -1,4 +1,3 @@
-import { type ToolContext } from "./types";
 import { env } from "@/env";
 import { redis } from "@/server/lib/redis";
 
@@ -18,6 +17,25 @@ export const LIMITS = {
     maxBodyLength: 10000,
 };
 
+const TOOL_ALLOWED_RESOURCES: Record<string, string[]> = {
+    query: ["email", "calendar", "task", "approval", "notification", "draft", "conversation", "preferences", "contacts"],
+    get: ["email", "calendar", "draft", "approval", "task", "automation"],
+    create: ["email", "calendar", "task", "notification", "contacts", "category", "automation", "knowledge", "drive"],
+    modify: ["email", "calendar", "preferences", "approval", "draft", "task", "automation", "drive"],
+    delete: ["email", "calendar", "draft", "task", "automation", "knowledge", "drive"],
+    analyze: ["email", "calendar", "patterns", "automation"],
+};
+
+const QUARANTINED_TOOL_RESOURCES = new Set([
+    "drive",
+    "automation",
+    "knowledge",
+    "patterns",
+    "report",
+]);
+
+const RESOURCE_QUARANTINE_ENV = "AMODEL_ENABLE_QUARANTINED_RESOURCES";
+
 const RATE_LIMITS = {
     queriesPerMinute: 30,
     modificationsPerMinute: 20,
@@ -29,7 +47,7 @@ const RATE_LIMITS = {
 // Fallback in-memory rate limiter (dev/test only)
 const rateLimitCache: Record<string, { count: number; windowStart: number }> = {};
 
-export async function checkPermissions(userId: string, toolName: string, params: any): Promise<void> {
+export async function checkPermissions(userId: string, toolName: string, params: unknown): Promise<void> {
     // In a real app, we would check user roles/permissions from DB.
     // Here we enforce tool-name sanity and rely on approvals/policy layers for
     // context-aware gating of dangerous actions.
@@ -41,6 +59,43 @@ export async function checkPermissions(userId: string, toolName: string, params:
     if (!knownToolNames.has(toolName)) {
         throw new Error(`Unknown tool '${toolName}' is not allowed.`);
     }
+
+    const allowQuarantinedResources = process.env[RESOURCE_QUARANTINE_ENV] === "true";
+    const allowedResources = TOOL_ALLOWED_RESOURCES[toolName];
+    const input = params && typeof params === "object" ? (params as Record<string, unknown>) : {};
+
+    const validateResource = (resource: unknown, context: string) => {
+        if (typeof resource !== "string" || resource.length === 0) {
+            throw new Error(`Missing resource for ${context}.`);
+        }
+        if (Array.isArray(allowedResources) && !allowedResources.includes(resource)) {
+            throw new Error(`Resource '${resource}' is not allowed for tool '${toolName}'.`);
+        }
+        if (!allowQuarantinedResources && QUARANTINED_TOOL_RESOURCES.has(resource)) {
+            throw new Error(
+                `Resource '${resource}' is currently quarantined for reliability hardening. ` +
+                `Set ${RESOURCE_QUARANTINE_ENV}=true to re-enable.`,
+            );
+        }
+    };
+
+    if (toolName === "workflow") {
+        const steps = Array.isArray(input.steps) ? input.steps : [];
+        if (steps.length === 0) {
+            throw new Error("Workflow requires at least one step.");
+        }
+        for (let i = 0; i < steps.length; i++) {
+            validateResource(steps[i]?.resource, `workflow step ${i}`);
+        }
+        return;
+    }
+
+    if (toolName === "rules" || toolName === "triage" || toolName === "send") {
+        // These tools don't use a resource discriminant in their public schema.
+        return;
+    }
+
+    validateResource(input.resource, toolName);
 }
 
 export async function checkRateLimit(userId: string, toolName: string): Promise<void> {
@@ -79,17 +134,32 @@ export async function checkRateLimit(userId: string, toolName: string): Promise<
     }
 }
 
-export function applyScopeLimits(params: any): any {
-    const limited = { ...params };
+export function applyScopeLimits<T extends Record<string, unknown>>(toolName: string, params: T): T {
+    const limited = { ...params } as T & {
+        filter?: { limit?: number };
+        ids?: unknown[];
+        data?: { body?: unknown };
+    };
 
-    if (limited.filter && limited.filter.limit) {
+    if (toolName === "query" && limited.filter && limited.filter.limit) {
         limited.filter.limit = Math.min(limited.filter.limit, LIMITS.maxItemsPerQuery);
     }
 
-    if (limited.ids && limited.ids.length > LIMITS.maxItemsPerModify) {
-        // Could throw or slice, throwing is safer to avoid partial operations unexpectedly
+    if ((toolName === "modify" || toolName === "create") && limited.ids && limited.ids.length > LIMITS.maxItemsPerModify) {
         throw new Error(`Too many items. Max limit is ${LIMITS.maxItemsPerModify}.`);
     }
 
-    return limited;
+    if (toolName === "delete" && limited.ids && limited.ids.length > LIMITS.maxItemsPerDelete) {
+        throw new Error(`Too many items. Max limit is ${LIMITS.maxItemsPerDelete}.`);
+    }
+
+    if (toolName === "get" && limited.ids && limited.ids.length > LIMITS.maxIdsPerGet) {
+        throw new Error(`Too many IDs. Max limit is ${LIMITS.maxIdsPerGet}.`);
+    }
+
+    if (toolName === "create" && typeof limited?.data?.body === "string" && limited.data.body.length > LIMITS.maxBodyLength) {
+        throw new Error(`Body exceeds max length (${LIMITS.maxBodyLength}).`);
+    }
+
+    return limited as T;
 }

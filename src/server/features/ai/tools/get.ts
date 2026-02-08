@@ -34,7 +34,7 @@ const getParameters = z.discriminatedUnion("resource", [
     }).strict(),
 ]);
 
-export const getTool: ToolDefinition<any> = {
+export const getTool: ToolDefinition<typeof getParameters> = {
     name: "get",
     description: `Get full details of specific item(s) by ID.
 
@@ -77,11 +77,29 @@ When to use:
                 };
 
             case "automation":
-                // Stub
+                if (!providers.automation) {
+                    return { success: false, error: "Automation provider not available" };
+                }
+
+                const [rules, knowledge] = await Promise.all([
+                    providers.automation.listRules(),
+                    providers.automation.listKnowledge(),
+                ]);
+                const byId = new Map<string, unknown>();
+                for (const rule of rules) byId.set(rule.id, { type: "rule", ...rule });
+                for (const item of knowledge) byId.set(item.id, { type: "knowledge", ...item });
+
+                const found = ids
+                    .map((id: string) => byId.get(id))
+                    .filter((item): item is Record<string, unknown> => Boolean(item));
+                const missingIds = ids.filter((id: string) => !byId.has(id));
+
                 return {
-                    success: true,
-                    data: [],
-                    error: "Automation get not implemented yet"
+                    success: missingIds.length === 0,
+                    data: found,
+                    ...(missingIds.length > 0
+                        ? { error: `Automation items not found: ${missingIds.join(", ")}` }
+                        : {}),
                 };
 
             case "approval":

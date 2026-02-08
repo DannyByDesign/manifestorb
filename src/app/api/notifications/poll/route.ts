@@ -38,18 +38,33 @@ export async function GET(req: NextRequest) {
 
         const ids = claimable.map(n => n.id);
 
-        // 2. Atomic Claim
-        await prisma.inAppNotification.updateMany({
-            where: { id: { in: ids } },
-            data: { claimedAt: new Date() }
+        // 2. Atomic Claim (still unclaimed and not pushed)
+        const claimTime = new Date();
+        const claimResult = await prisma.inAppNotification.updateMany({
+            where: {
+                id: { in: ids },
+                claimedAt: null,
+                pushedToSurface: false
+            },
+            data: { claimedAt: claimTime }
         });
+
+        if (claimResult.count === 0) {
+            return NextResponse.json({ notifications: [] });
+        }
 
         // 3. Fetch Full Data to return
         // We fetch *all* that we just claimed.
         // Technically strict atomicity could race here (claimed but pushed?), 
         // but our fallback worker respects 'claimedAt', so it won't push.
         const notifications = await prisma.inAppNotification.findMany({
-            where: { id: { in: ids } },
+            where: {
+                id: { in: ids },
+                claimedAt: {
+                    gte: claimTime,
+                    lt: new Date(claimTime.getTime() + 1)
+                }
+            },
             orderBy: { createdAt: 'desc' }
         });
 

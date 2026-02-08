@@ -332,7 +332,7 @@ async function createRescheduleApprovals({
   }));
 
   const batchKey = createHash("sha256")
-    .update(`reschedule-batch:${userId}:${tasks.map((t) => t.id).sort().join(",")}:${Date.now()}`)
+    .update(`reschedule-batch:${userId}:${JSON.stringify(taskSummaries)}`)
     .digest("hex");
 
   const approval = await approvalService.createRequest({

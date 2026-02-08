@@ -147,6 +147,27 @@ export async function processMessage(
     await persistUserMessage(user.id, conversationId, messageContent, logger);
   }
 
+  // ---- 7.5 Clarify very-vague requests before calling tools --------------
+  if (!streaming) {
+    const clarification = maybeBuildVeryVagueClarification({
+      messageContent,
+      contextPack,
+    });
+    if (clarification) {
+      await persistAssistantMessage(
+        user.id,
+        conversationId,
+        clarification,
+        context.provider,
+        logger,
+        context.channelId,
+        context.threadId,
+        context.messageId ?? messageContent,
+      );
+      return { text: clarification, approvals: [], interactivePayloads: [] };
+    }
+  }
+
   // ---- 8. Thread context (surfaces only) ---------------------------------
   const threadContextBlock =
     context.provider !== "web"
@@ -535,9 +556,13 @@ function createApprovalWrappedTool({
       };
 
       const stableArgs = JSON.stringify(args, Object.keys(args).sort());
+      const idempotencyAnchor =
+        context.messageId ??
+        context.conversationId ??
+        `${context.provider}:${context.channelId ?? "web"}`;
       const idempotencyKey = createHash("sha256")
         .update(
-          `${context.provider}:${context.channelId ?? "web"}:${context.messageId ?? Date.now()}:${name}:${stableArgs}`,
+          `${idempotencyAnchor}:${name}:${stableArgs}`,
         )
         .digest("hex");
 
@@ -694,6 +719,38 @@ ${contextPack.pendingState!.approvals!.map((a) => `- ${a.tool}: ${a.description}
   }
 ---
 `;
+}
+
+function maybeBuildVeryVagueClarification({
+  messageContent,
+  contextPack,
+}: {
+  messageContent: string;
+  contextPack: ContextPack;
+}): string | null {
+  const text = messageContent.trim().toLowerCase();
+  if (!text) return null;
+
+  const hasPendingState =
+    Boolean(contextPack.pendingState?.scheduleProposal) ||
+    (contextPack.pendingState?.approvals?.length ?? 0) > 0;
+  if (hasPendingState) return null;
+
+  const vaguePhrases = [
+    "handle it",
+    "do it",
+    "do the thing",
+    "handle this",
+    "take care of it",
+    "take care of this",
+    "you know what to do",
+    "just do it",
+  ];
+  const tokenCount = text.split(/\s+/).filter(Boolean).length;
+  const isVeryVague = tokenCount <= 8 && vaguePhrases.some((phrase) => text.includes(phrase));
+  if (!isVeryVague) return null;
+
+  return "I can do that. Tell me which action you want: reply, schedule, reschedule, cancel, or clean up email.";
 }
 
 // ---------------------------------------------------------------------------
