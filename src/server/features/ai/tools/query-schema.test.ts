@@ -28,7 +28,26 @@ describe("queryTool discriminated schema", () => {
   it("accepts resource-specific email filters", () => {
     const parsed = queryTool.parameters.safeParse({
       resource: "email",
-      filter: { query: "from:john@example.com", fetchAll: true, limit: 100 },
+      filter: {
+        query: "from:john@example.com",
+        subjectContains: "E2E",
+        text: "cleanup",
+        fetchAll: true,
+        limit: 100,
+      },
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("accepts resource-specific calendar semantic filters", () => {
+    const parsed = queryTool.parameters.safeParse({
+      resource: "calendar",
+      filter: {
+        titleContains: "1:1",
+        locationContains: "Zoom",
+        attendeeEmail: "john@example.com",
+        limit: 20,
+      },
     });
     expect(parsed.success).toBe(true);
   });

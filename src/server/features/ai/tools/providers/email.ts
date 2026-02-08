@@ -34,6 +34,12 @@ export interface EmailProvider {
         pageToken?: string;
         before?: Date;
         after?: Date;
+        subjectContains?: string;
+        bodyContains?: string;
+        text?: string;
+        from?: string;
+        to?: string;
+        hasAttachment?: boolean;
     }): Promise<{
         messages: ParsedMessage[];
         nextPageToken?: string;
@@ -73,18 +79,122 @@ export async function createEmailProvider(
         logger
     });
 
+    const normalizeText = (value: string | undefined): string => value?.trim().toLowerCase() ?? "";
+
+    const includesTerm = (value: string | undefined, term: string | undefined): boolean => {
+        const normalizedTerm = normalizeText(term);
+        if (!normalizedTerm) return true;
+        return normalizeText(value).includes(normalizedTerm);
+    };
+
+    const applyLocalSearchFilters = (
+        messages: ParsedMessage[],
+        options: {
+            subjectContains?: string;
+            bodyContains?: string;
+            text?: string;
+            from?: string;
+            to?: string;
+            hasAttachment?: boolean;
+        },
+    ): ParsedMessage[] => {
+        const shouldCheckText = normalizeText(options.text).length > 0;
+
+        return messages.filter((message) => {
+            const subject = message.subject || message.headers?.subject || "";
+            const body = message.textPlain || message.snippet || "";
+            const from = message.headers?.from || "";
+            const to = message.headers?.to || "";
+
+            if (!includesTerm(subject, options.subjectContains)) return false;
+            if (!includesTerm(body, options.bodyContains)) return false;
+            if (!includesTerm(from, options.from)) return false;
+            if (!includesTerm(to, options.to)) return false;
+
+            if (options.hasAttachment !== undefined) {
+                const hasAttachment = Array.isArray(message.attachments) && message.attachments.length > 0;
+                if (options.hasAttachment !== hasAttachment) return false;
+            }
+
+            if (shouldCheckText) {
+                const combined = `${subject} ${body} ${from} ${to}`.trim();
+                if (!includesTerm(combined, options.text)) return false;
+            }
+
+            return true;
+        });
+    };
+
+    const hasLocalFilter = (options: {
+        subjectContains?: string;
+        bodyContains?: string;
+        text?: string;
+        from?: string;
+        to?: string;
+        hasAttachment?: boolean;
+    }): boolean =>
+        Boolean(
+            normalizeText(options.subjectContains) ||
+            normalizeText(options.bodyContains) ||
+            normalizeText(options.text) ||
+            normalizeText(options.from) ||
+            normalizeText(options.to) ||
+            options.hasAttachment !== undefined,
+        );
+
     return {
-        search: async ({ query, limit, fetchAll, pageToken, before, after }) => {
+        search: async ({ query, limit, fetchAll, pageToken, before, after, subjectContains, bodyContains, text, from, to, hasAttachment }) => {
             try {
-                const res = await service.getMessagesWithPagination({
-                    query,
-                    maxResults: limit,
-                    pageToken,
-                    before,
-                    after,
-                    fetchAll,
-                });
-                return res;
+                const localFilterOptions = {
+                    subjectContains,
+                    bodyContains,
+                    text,
+                    from,
+                    to,
+                    hasAttachment,
+                };
+
+                if (!hasLocalFilter(localFilterOptions)) {
+                    return await service.getMessagesWithPagination({
+                        query,
+                        maxResults: limit,
+                        pageToken,
+                        before,
+                        after,
+                        fetchAll,
+                    });
+                }
+
+                const targetCount = fetchAll ? (limit ?? 500) : (limit ?? 100);
+                const pageSize = Math.min(Math.max(targetCount, 20), 100);
+                const filtered: ParsedMessage[] = [];
+                let nextPageToken: string | undefined = pageToken;
+                let totalEstimate: number | undefined;
+
+                do {
+                    const res = await service.getMessagesWithPagination({
+                        query,
+                        maxResults: pageSize,
+                        pageToken: nextPageToken,
+                        before,
+                        after,
+                        fetchAll: false,
+                    });
+
+                    if (totalEstimate === undefined) {
+                        totalEstimate = res.totalEstimate;
+                    }
+
+                    const batch = applyLocalSearchFilters(res.messages, localFilterOptions);
+                    filtered.push(...batch);
+                    nextPageToken = res.nextPageToken;
+                } while (nextPageToken && filtered.length < targetCount);
+
+                return {
+                    messages: filtered.slice(0, targetCount),
+                    nextPageToken,
+                    totalEstimate,
+                };
             } catch (err: unknown) {
                 if (isGmailAuthError(err)) {
                     throw new Error(GMAIL_RECONNECT_MESSAGE);

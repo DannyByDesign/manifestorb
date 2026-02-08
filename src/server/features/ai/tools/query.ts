@@ -4,6 +4,7 @@ import prisma from "@/server/db/client";
 import type { Contact } from "@/features/email/types";
 import type { CalendarEvent } from "@/features/calendar/event-types";
 import type { ParsedMessage } from "@/server/lib/types";
+import { EmbeddingService } from "@/features/memory/embeddings/service";
 
 const parseFilterObject = <T extends z.ZodTypeAny>(schema: T) =>
     z.preprocess(
@@ -34,6 +35,14 @@ const queryParameters = z.discriminatedUnion("resource", [
             z
                 .object({
                     query: z.string().optional(),
+                    subjectContains: z.string().optional(),
+                    bodyContains: z.string().optional(),
+                    text: z.string().optional(),
+                    from: z.string().optional(),
+                    to: z.string().optional(),
+                    hasAttachment: z.boolean().optional(),
+                    sentByMe: z.boolean().optional(),
+                    receivedByMe: z.boolean().optional(),
                     dateRange: dateRangeSchema.optional(),
                     limit: limitSchema,
                     pageToken: z.string().optional(),
@@ -49,6 +58,10 @@ const queryParameters = z.discriminatedUnion("resource", [
             z
                 .object({
                     query: z.string().optional(),
+                    text: z.string().optional(),
+                    titleContains: z.string().optional(),
+                    descriptionContains: z.string().optional(),
+                    locationContains: z.string().optional(),
                     attendeeEmail: z.string().email().optional(),
                     dateRange: dateRangeSchema.optional(),
                     limit: limitSchema,
@@ -152,6 +165,259 @@ type QueryListItem = {
     data?: unknown;
 };
 
+function normalizeText(value: string | undefined): string {
+    return value?.trim().toLowerCase() ?? "";
+}
+
+function tokenizeQuery(value: string): string[] {
+    return normalizeText(value)
+        .split(/[^a-z0-9@._-]+/u)
+        .filter((token) => token.length > 1);
+}
+
+function includesNormalized(haystack: string | undefined, needle: string | undefined): boolean {
+    const expected = normalizeText(needle);
+    if (!expected) return true;
+    return normalizeText(haystack).includes(expected);
+}
+
+function lexicalScore(query: string, text: string): number {
+    const normalizedQuery = normalizeText(query);
+    const normalizedText = normalizeText(text);
+    if (!normalizedQuery || !normalizedText) return 0;
+
+    const tokens = tokenizeQuery(normalizedQuery);
+    const matchedTokens =
+        tokens.length === 0
+            ? 0
+            : tokens.filter((token) => normalizedText.includes(token)).length / tokens.length;
+    const phraseMatchBoost = normalizedText.includes(normalizedQuery) ? 0.35 : 0;
+    const score = matchedTokens * 0.65 + phraseMatchBoost;
+    return Math.max(0, Math.min(1, score));
+}
+
+type RankedItem<T> = {
+    item: T;
+    score: number;
+    matchType: "semantic" | "keyword" | "both";
+};
+
+async function hybridRank<T>(options: {
+    items: T[];
+    query: string;
+    textForItem: (item: T) => string;
+    limit: number;
+    timestampForItem?: (item: T) => Date | string | undefined;
+    halfLifeHours?: number;
+    logger?: { warn?: (message: string, data?: unknown) => void };
+}): Promise<RankedItem<T>[]> {
+    const { items, query, textForItem, limit, logger, timestampForItem, halfLifeHours = 24 * 7 } = options;
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery) {
+        return items.slice(0, limit).map((item) => ({
+            item,
+            score: 0,
+            matchType: "keyword",
+        }));
+    }
+
+    const lexicalScores = items.map((item) => lexicalScore(trimmedQuery, textForItem(item)));
+    const recencyScores = items.map((item) => {
+        if (!timestampForItem) return 0;
+        const raw = timestampForItem(item);
+        if (!raw) return 0;
+        const date = typeof raw === "string" ? new Date(raw) : raw;
+        if (Number.isNaN(date.getTime())) return 0;
+        const ageHours = Math.max(0, (Date.now() - date.getTime()) / (1000 * 60 * 60));
+        return Math.exp(-ageHours / halfLifeHours);
+    });
+    let semanticScores: number[] = new Array(items.length).fill(0);
+
+    if (EmbeddingService.isAvailable() && items.length > 0) {
+        try {
+            const payloadTexts = [
+                trimmedQuery,
+                ...items.map((item) => {
+                    const text = textForItem(item).trim();
+                    return text.length > 0 ? text : "(empty)";
+                }),
+            ];
+            const embeddings = await EmbeddingService.generateEmbeddings(payloadTexts);
+            if (embeddings.length === payloadTexts.length) {
+                const queryEmbedding = embeddings[0];
+                semanticScores = embeddings.slice(1).map((embedding) => {
+                    const cosine = EmbeddingService.cosineSimilarity(queryEmbedding, embedding);
+                    return Math.max(0, Math.min(1, (cosine + 1) / 2));
+                });
+            }
+        } catch (error) {
+            logger?.warn?.("Hybrid semantic ranking failed, continuing with lexical ranking", {
+                error: error instanceof Error ? error.message : String(error),
+            });
+        }
+    }
+
+    const ranked = items.map((item, index) => {
+        const keyword = lexicalScores[index] ?? 0;
+        const recency = recencyScores[index] ?? 0;
+        const semantic = semanticScores[index] ?? 0;
+        const score =
+            semantic > 0
+                ? semantic * 0.65 + keyword * 0.2 + recency * 0.15
+                : keyword * 0.85 + recency * 0.15;
+        let matchType: RankedItem<T>["matchType"] = "keyword";
+        if (semantic > 0 && keyword > 0) matchType = "both";
+        else if (semantic > 0) matchType = "semantic";
+
+        return { item, score, matchType };
+    });
+
+    ranked.sort((a, b) => b.score - a.score);
+    return ranked.slice(0, limit);
+}
+
+function quoteQueryToken(value: string): string {
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    if (/[\s"]/u.test(trimmed)) {
+        return `"${trimmed.replace(/"/g, '\\"')}"`;
+    }
+    return trimmed;
+}
+
+function buildEmailProviderQuery(filter: FilterFor<"email">): string {
+    const terms: string[] = [];
+    const push = (value: string | undefined) => {
+        const trimmed = value?.trim();
+        if (trimmed) terms.push(trimmed);
+    };
+
+    push(filter?.query);
+    if (filter?.subjectContains) {
+        terms.push(`subject:${quoteQueryToken(filter.subjectContains)}`);
+    }
+    if (filter?.from) {
+        terms.push(`from:${quoteQueryToken(filter.from)}`);
+    }
+    if (filter?.to) {
+        terms.push(`to:${quoteQueryToken(filter.to)}`);
+    }
+    if (filter?.hasAttachment) {
+        terms.push("has:attachment");
+    }
+    if (filter?.sentByMe) {
+        terms.push("from:me");
+    }
+    if (filter?.receivedByMe) {
+        terms.push("to:me");
+    }
+    if (filter?.text) {
+        terms.push(quoteQueryToken(filter.text));
+    }
+    if (filter?.bodyContains) {
+        terms.push(quoteQueryToken(filter.bodyContains));
+    }
+
+    return terms.join(" ").trim();
+}
+
+function isLikelyStructuredEmailQuery(query: string): boolean {
+    if (!query) return false;
+    return /\b(from|to|subject|label|in|has|before|after|is):/iu.test(query);
+}
+
+function shouldUseEmailSemanticRerank(filter: FilterFor<"email">): boolean {
+    const explicitSemanticFields = Boolean(
+        filter?.text || filter?.bodyContains || filter?.subjectContains,
+    );
+    if (explicitSemanticFields) return true;
+    const query = filter?.query?.trim() ?? "";
+    if (!query) return false;
+    if (isLikelyStructuredEmailQuery(query)) return false;
+    return query.length >= 6;
+}
+
+function resolveEmailSemanticQuery(filter: FilterFor<"email">): string {
+    if (!shouldUseEmailSemanticRerank(filter)) return "";
+    return (
+        filter?.text ||
+        filter?.bodyContains ||
+        filter?.subjectContains ||
+        filter?.query ||
+        ""
+    );
+}
+
+function summarizeEmailForRanking(message: ParsedMessage): string {
+    return [
+        message.subject,
+        message.headers?.subject,
+        message.snippet,
+        message.textPlain,
+        message.headers?.from,
+        message.headers?.to,
+    ]
+        .filter(Boolean)
+        .join(" ");
+}
+
+function buildCalendarProviderQuery(filter: FilterFor<"calendar">): string {
+    const terms = [
+        filter?.query,
+        filter?.text,
+        filter?.titleContains,
+        filter?.descriptionContains,
+        filter?.locationContains,
+        filter?.attendeeEmail,
+    ]
+        .map((value) => value?.trim())
+        .filter((value): value is string => Boolean(value));
+
+    return terms.join(" ").trim();
+}
+
+function resolveCalendarSemanticQuery(filter: FilterFor<"calendar">): string {
+    return (
+        filter?.text ||
+        filter?.titleContains ||
+        filter?.descriptionContains ||
+        filter?.locationContains ||
+        filter?.query ||
+        ""
+    );
+}
+
+function summarizeCalendarEventForRanking(event: CalendarEvent): string {
+    const attendees = event.attendees.map((attendee) => attendee.email).join(" ");
+    return [event.title, event.description, event.location, attendees].filter(Boolean).join(" ");
+}
+
+function matchesCalendarStructuredFilters(
+    event: CalendarEvent,
+    filter: FilterFor<"calendar">,
+): boolean {
+    if (!includesNormalized(event.title, filter?.titleContains)) return false;
+    if (!includesNormalized(event.description, filter?.descriptionContains)) return false;
+    if (!includesNormalized(event.location, filter?.locationContains)) return false;
+
+    const text = filter?.text;
+    if (text) {
+        const attendees = event.attendees.map((attendee) => attendee.email).join(" ");
+        const haystack = [event.title, event.description, event.location, attendees].join(" ");
+        if (!includesNormalized(haystack, text)) return false;
+    }
+
+    const attendeeFilter = normalizeText(filter?.attendeeEmail);
+    if (attendeeFilter) {
+        const hasAttendee = event.attendees.some((attendee) =>
+            normalizeText(attendee.email) === attendeeFilter,
+        );
+        if (!hasAttendee) return false;
+    }
+
+    return true;
+}
+
 function parseDateBound(value: string | undefined): Date | null {
     if (!value) return null;
     const parsed = new Date(value);
@@ -181,16 +447,54 @@ async function handleEmailQuery(
     }
 
     try {
+        const providerQuery = buildEmailProviderQuery(filter);
+        const semanticQuery = resolveEmailSemanticQuery(filter);
+        const shouldRerank = semanticQuery.trim().length > 0 && !filter?.fetchAll;
+        const candidateLimit = shouldRerank
+            ? Math.min(Math.max(limit * 4, 60), 250)
+            : filter?.fetchAll
+              ? undefined
+              : limit;
         const result = await context.providers.email.search({
-            query: filter?.query ?? "",
-            limit: filter?.fetchAll ? undefined : limit,
+            query: providerQuery,
+            limit: candidateLimit,
             fetchAll: filter?.fetchAll,
             pageToken: filter?.pageToken,
             before: parseDateBound(filter?.dateRange?.before) ?? undefined,
             after: parseDateBound(filter?.dateRange?.after) ?? undefined,
+            subjectContains: filter?.subjectContains,
+            bodyContains: filter?.bodyContains,
+            text: filter?.text,
+            from: filter?.from,
+            to: filter?.to,
+            hasAttachment: filter?.hasAttachment,
         });
 
-        const data: QueryListItem[] = result.messages.map((message: ParsedMessage) => ({
+        let rankedMessages = result.messages;
+        let relevanceById = new Map<string, { score: number; matchType: "semantic" | "keyword" | "both" }>();
+
+        if (shouldRerank && rankedMessages.length > 1) {
+            const ranked = await hybridRank({
+                items: rankedMessages,
+                query: semanticQuery,
+                textForItem: summarizeEmailForRanking,
+                limit,
+                timestampForItem: (item) => item.date,
+                halfLifeHours: 24 * 5,
+                logger: context.logger,
+            });
+            rankedMessages = ranked.map((entry) => entry.item);
+            relevanceById = new Map(
+                ranked.map((entry) => [
+                    entry.item.id,
+                    { score: Number(entry.score.toFixed(4)), matchType: entry.matchType },
+                ]),
+            );
+        } else if (!filter?.fetchAll) {
+            rankedMessages = rankedMessages.slice(0, limit);
+        }
+
+        const data: QueryListItem[] = rankedMessages.map((message: ParsedMessage) => ({
             id: message.id,
             title: message.subject || "(No Subject)",
             snippet: message.snippet || message.textPlain?.substring(0, 150) || "",
@@ -199,6 +503,7 @@ async function handleEmailQuery(
             data: {
                 from: message.headers?.from,
                 threadId: message.threadId,
+                relevance: relevanceById.get(message.id),
             },
         }));
 
@@ -208,7 +513,7 @@ async function handleEmailQuery(
             ...(result.nextPageToken
                 ? {
                       truncated: true,
-                      message: `Showing ${result.messages.length} of ~${result.totalEstimate ?? "many"} results. More are available.`,
+                      message: `Showing ${data.length} of ~${result.totalEstimate ?? "many"} results. More are available.`,
                   }
                 : {}),
             paging: {
@@ -269,16 +574,30 @@ async function handleCalendarQuery(
         return { success: false, error: range.error };
     }
 
-    const events = await context.providers.calendar.searchEvents(filter?.query ?? "", range);
-    const attendeeFilter = filter?.attendeeEmail?.toLowerCase();
+    const providerQuery = buildCalendarProviderQuery(filter);
+    const events = await context.providers.calendar.searchEvents(providerQuery, range);
+    const filtered = events.filter((event: CalendarEvent) =>
+        matchesCalendarStructuredFilters(event, filter),
+    );
 
-    const filtered = attendeeFilter
-        ? events.filter((event: CalendarEvent) =>
-              event.attendees.some((attendee) => attendee.email.toLowerCase() === attendeeFilter),
-          )
-        : events;
+    const semanticQuery = resolveCalendarSemanticQuery(filter);
+    let ordered = filtered;
+    if (semanticQuery.trim().length > 0 && filtered.length > 1) {
+        const ranked = await hybridRank({
+            items: filtered,
+            query: semanticQuery,
+            textForItem: summarizeCalendarEventForRanking,
+            limit,
+            timestampForItem: (item) => item.startTime,
+            halfLifeHours: 24 * 14,
+            logger: context.logger,
+        });
+        ordered = ranked.map((entry) => entry.item);
+    } else {
+        ordered = filtered.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+    }
 
-    const data: QueryListItem[] = filtered.slice(0, limit).map((event: CalendarEvent) => ({
+    const data: QueryListItem[] = ordered.slice(0, limit).map((event: CalendarEvent) => ({
         id: event.id,
         title: event.title || "(No Title)",
         snippet: `Time: ${event.startTime.toISOString()} - ${event.endTime.toISOString()}. Attendees: ${event.attendees
@@ -593,15 +912,20 @@ When to use:
 - Use analyze for reasoning/summaries over selected items.
 
 Resources:
-- email: Search emails (supports Gmail/Outlook query syntax) with pagination/date windows.
-- calendar: Search events by date range, attendees, title.
+- email: Search emails by semantic fields (subject/body/from/to/text/date) or Gmail/Outlook query syntax.
+- calendar: Search events by title/description/location/attendee/date.
 - task: Search tasks by title/description.
 - approval: List approval requests, optionally filtered by status.
 - notification: Search notifications by title/body, filter by type.
 - draft: List email drafts, optionally filter by query.
 - conversation: Search conversation history.
 - preferences: Read current email and scheduling preferences.
-- contacts: Search known contacts.`,
+- contacts: Search known contacts.
+
+Examples:
+- Email by semantic title window: { resource: "email", filter: { subjectContains: "E2E", dateRange: { after: "...", before: "..." }, fetchAll: true } }
+- Email broad semantic query: { resource: "email", filter: { text: "renewal contract from legal last week", limit: 20 } }
+- Calendar by attendee/title: { resource: "calendar", filter: { attendeeEmail: "john@example.com", titleContains: "1:1", dateRange: { after: "...", before: "..." } } }`,
     parameters: queryParameters,
     execute: async ({ resource, filter }, context) => {
         switch (resource) {
