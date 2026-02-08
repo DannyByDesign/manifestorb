@@ -151,7 +151,15 @@ Automation: Create Rules & Knowledge supported.`,
                 let replyContext = null;
                 const emailAccount = await getEmailAccountWithAi({ emailAccountId: context.emailAccountId });
                 if (!emailAccount || !emailAccount.account?.provider) {
-                    return { success: false, error: "Email account not found" };
+                    return { success: false, error: "Email account not found or provider not linked. The user needs to connect Gmail/Outlook." };
+                }
+                // Validate recipients for new emails
+                const draftType = (type as "new" | "reply" | "forward") || "new";
+                if (draftType === "new" && (!data.to || data.to.length === 0)) {
+                    return {
+                        success: false,
+                        error: "Cannot create a new email draft without recipients. Provide at least one email address in data.to. If the user mentioned a name, search for their email with query(resource: 'contacts', filter: { query: 'name' }) first."
+                    };
                 }
                 const isReply = type === "reply";
 
@@ -587,7 +595,12 @@ Automation: Create Rules & Knowledge supported.`,
                         addGoogleMeet: true
                     }
                 });
-                await scheduleTasksForUser({ userId: context.userId, emailAccountId, source: "ai" });
+                // Post-create task scheduling – best-effort; don't lose the event if this fails
+                try {
+                    await scheduleTasksForUser({ userId: context.userId, emailAccountId, source: "ai" });
+                } catch (taskErr) {
+                    logger.warn("Post-event scheduleTasksForUser failed (event was still created)", { error: taskErr });
+                }
                 return { success: true, data: event };
 
             case "task":

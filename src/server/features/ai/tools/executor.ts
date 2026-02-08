@@ -1,4 +1,5 @@
 import { type z } from "zod";
+import { getErrorMessage } from "@/server/lib/error";
 import { type ToolDefinition, type ToolContext, type ToolResult } from "./types";
 import { checkPermissions, checkRateLimit, applyScopeLimits } from "./security";
 import { auditLog } from "./audit";
@@ -44,7 +45,15 @@ export async function executeTool<T extends z.ZodType>(
 
         return result;
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+        const message = (getErrorMessage(error) ?? String(error)) || "Unknown error";
+        // Log full error for debugging (stack, cause, etc.) so we can find root cause
+        context.logger?.error?.("Tool execution failed", {
+            tool: toolName,
+            errorMessage: message,
+            error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack, cause: error.cause } : error,
+        });
+
         // 6. Audit log (failure)
         await auditLog(
             {
@@ -54,21 +63,15 @@ export async function executeTool<T extends z.ZodType>(
                 tool: toolName,
                 params: params, // Log original params if validation/limiting failed
                 success: false,
-                error: error.message || String(error),
+                error: message,
                 durationMs: Date.now() - startTime,
             },
             context
         );
 
-        // Re-throw or return error result?
-        // The plan implies throwing, but returning a ToolResult with error is often easier for the Agent to handle.
-        // However, the `executeTool` signature returns `Promise<ToolResult>`.
-        // If we throw, the generic tool calling loop needs to catch it.
-        // Let's return a clean error result so the Agent sees it as a tool output.
-
         return {
             success: false,
-            error: error.message || "Unknown error occurred",
+            error: message,
             meta: {
                 durationMs: Date.now() - startTime,
             }

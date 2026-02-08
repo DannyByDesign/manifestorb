@@ -4,7 +4,6 @@ import { createContact as createResendContact } from "@amodel/resend";
 import prisma from "@/server/db/client";
 import { createScopedLogger } from "@/server/lib/logger";
 import { captureException } from "@/server/lib/error";
-import { encryptToken } from "@/server/lib/encryption";
 import {
   clearSpecificErrorMessages,
   ErrorType,
@@ -228,13 +227,6 @@ export async function saveTokens({
   };
 
   if (emailAccountId) {
-    if (data.access_token) {
-      data.access_token = encryptToken(data.access_token) || undefined;
-    }
-    if (data.refresh_token) {
-      data.refresh_token = encryptToken(data.refresh_token) || "";
-    }
-
     const emailAccount = await prisma.emailAccount.findUnique({
       where: { id: emailAccountId },
       select: { accountId: true, userId: true },

@@ -54,7 +54,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
         }
 
         // 1. Mark as Approved in DB
-        // 1. Decide + execute
+        // 2. Decide + execute
         try {
             const execution = await executeApprovalRequest({
                 approvalRequestId: id,
@@ -115,8 +115,16 @@ Do not mention tools or internal details. No emojis. Max 1 short sentence.`
 
             return NextResponse.json({ ...decisionRecord, execution: executionResult });
         } catch (execError) {
+            const msg = execError instanceof Error ? execError.message : String(execError);
+            if (msg.includes("Cannot decide on request in status: APPROVED") || msg.includes("Cannot decide on request in status: DENIED")) {
+                return NextResponse.json({
+                    message: "This approval was already processed.",
+                    decision: msg.includes("APPROVED") ? "APPROVED" : "DENIED",
+                    alreadyProcessed: true,
+                });
+            }
             logger.error(`[Approval] Tool execution failed`, { error: execError });
-            return NextResponse.json({ execution: "failed_exception", error: String(execError) }, { status: 500 });
+            return NextResponse.json({ execution: "failed_exception", error: msg }, { status: 500 });
         }
     } catch (err) {
         return NextResponse.json(

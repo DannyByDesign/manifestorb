@@ -4,6 +4,7 @@
  *
  * Requires RUN_LIVE_E2E=true and LIVE_* env vars from .env.test.local.
  */
+import { saveTokens } from "@/server/auth";
 import { getGmailClientWithRefresh } from "@/server/integrations/google/client";
 import { GmailProvider } from "@/server/features/email/providers/google";
 import { createScopedLogger } from "@/server/lib/logger";
@@ -69,6 +70,17 @@ export async function loadLiveContext(): Promise<LiveContext> {
     logger,
   });
   const emailProvider = new GmailProvider(gmail, emailAccountId, logger);
+
+  // Sync Gmail tokens to DB so the main app (e.g. when handling Slack inbound) uses the same credentials
+  await saveTokens({
+    emailAccountId,
+    tokens: {
+      access_token: accessToken || undefined,
+      refresh_token: refreshToken || undefined,
+    },
+    accountRefreshToken: refreshToken,
+    provider: "google",
+  });
 
   let calendarConnection = await prisma.calendarConnection.findFirst({
     where: {

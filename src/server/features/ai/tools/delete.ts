@@ -13,7 +13,7 @@ import prisma from "@/server/db/client";
 
 const deleteParameters = z.object({
     resource: z.enum(["email", "calendar", "automation", "knowledge", "task", "drive"]),
-    ids: z.array(z.string()).max(50),
+    ids: z.array(z.string()).max(200),
     calendarId: z.string().optional(),
     mode: z.enum(["single", "series"]).optional(),
     driveItemType: z.enum(["file", "folder"]).optional(),
@@ -21,9 +21,9 @@ const deleteParameters = z.object({
 
 export const deleteTool: ToolDefinition<typeof deleteParameters> = {
     name: "delete",
-    description: `Delete items.
+    description: `Delete items. Supports up to 200 IDs. For bulk email deletion, use the query tool with fetchAll: true first to retrieve all matching IDs.
     
-Email: Moves to trash (recoverable for 30 days)
+Email: Moves to trash (recoverable 30 days)
 Calendar: Cancels event
 Automation: Deletes rule
 Drive: Deletes file or folder`,

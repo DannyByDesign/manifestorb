@@ -33,7 +33,14 @@ export default defineConfig({
   test: {
     environment: "node",
     setupFiles: ["src/__tests__/e2e-setup.ts"],
-    include: ["src/__tests__/e2e/critical-e2e-*.test.ts"],
+    include: [
+      "src/__tests__/e2e/critical-e2e-*.test.ts",
+      "src/__tests__/e2e/critical-e2e-slack-google-*.test.ts",
+    ],
     passWithNoTests: true,
+    // Run E2E test files one after another so Slack tests don't flood the same channel
+    fileParallelism: false,
+    // beforeEach waits 15s between Slack tests; hook must not time out first
+    hookTimeout: 20_000,
   },
 });

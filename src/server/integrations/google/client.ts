@@ -1,6 +1,7 @@
 import { auth, gmail, type gmail_v1 } from "@googleapis/gmail";
 import { people } from "@googleapis/people";
 import { saveTokens } from "@/server/auth";
+import { cleanupInvalidTokens } from "@/server/auth/cleanup-invalid-tokens";
 import { env } from "@/env";
 import type { Logger } from "@/server/lib/logger";
 import { SCOPES } from "@/server/integrations/google/scopes";
@@ -97,8 +98,18 @@ export const getGmailClientWithRefresh = async ({
       logger.warn("Error refreshing Gmail access token", {
         emailAccountId,
         error: error.message,
-        errorDescription: (error as any).response?.data?.error_description,
+        errorDescription: (error as { response?: { data?: { error_description?: string } } })?.response?.data?.error_description,
       });
+
+      await cleanupInvalidTokens({
+        emailAccountId,
+        reason: "invalid_grant",
+        logger,
+      });
+
+      throw new SafeError(
+        "Your Gmail connection has expired. Please reconnect your account in the Amodel web app.",
+      );
     }
 
     throw error;
@@ -171,6 +182,16 @@ export const getContactsClientWithRefresh = async ({
         emailAccountId,
         error: error.message,
       });
+
+      await cleanupInvalidTokens({
+        emailAccountId,
+        reason: "invalid_grant",
+        logger,
+      });
+
+      throw new SafeError(
+        "Your Gmail connection has expired. Please reconnect your account in the Amodel web app.",
+      );
     }
 
     throw error;

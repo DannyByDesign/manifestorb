@@ -9,7 +9,7 @@ export const queryTool: ToolDefinition<any> = {
     description: `Search and retrieve items from any resource.
 
 Resources:
-- email: Search emails (supports Gmail/Outlook query syntax)
+- email: Search emails (supports Gmail/Outlook query syntax). Use fetchAll: true when the user wants ALL matching results: counts ("how many total"), bulk actions ("delete all", "clean up all", "remove all", "trash all"), or finding every match ("find every", "every email matching"). Without fetchAll, returns up to limit (default 100). If truncated, the response indicates more are available.
 - calendar: Search events by date range, attendees, title
 - task: Search tasks by title/description
 - automation: List rules and their configurations
@@ -44,7 +44,8 @@ Resources:
                             before: z.string().optional(),
                         })
                         .optional(),
-                    limit: z.number().max(50).default(20),
+                    limit: z.number().max(100).optional(),
+                    fetchAll: z.boolean().default(false),
                     status: z.enum(["PENDING", "APPROVED", "DENIED", "EXPIRED", "CANCELLED"]).optional(),
                     type: z.string().optional(),
                 })
@@ -53,23 +54,40 @@ Resources:
     }),
 
     execute: async ({ resource, filter }, { emailAccountId, providers, userId }) => {
-        const limit = filter?.limit || 20;
+        const limit = filter?.limit ?? 100;
 
         switch (resource) {
             case "email":
-                const emails = await providers.email.search(filter?.query || "", limit);
-                // Map to DomainObjectRef (Summary)
-                return {
-                    success: true,
-                    data: emails.map((e: any) => ({
-                        id: e.id,
-                        title: e.subject || "(No Subject)",
-                        snippet: e.snippet || e.body?.substring(0, 150) || "",
-                        date: e.date,
-                        source: "email",
-                        from: e.from
-                    })),
-                };
+                try {
+                    const result = await providers.email.search(
+                        filter?.query || "",
+                        filter?.fetchAll ? undefined : limit,
+                        filter?.fetchAll,
+                    );
+                    return {
+                        success: true,
+                        data: result.messages.map((e: { id: string; subject?: string; snippet?: string; body?: string; date?: Date; from?: string }) => ({
+                            id: e.id,
+                            title: e.subject || "(No Subject)",
+                            snippet: e.snippet || e.body?.substring(0, 150) || "",
+                            date: e.date,
+                            source: "email",
+                            from: e.from
+                        })),
+                        ...(result.nextPageToken
+                            ? {
+                                truncated: true,
+                                message: `Showing ${result.messages.length} of ~${result.totalEstimate ?? "many"} results. More are available.`,
+                            }
+                            : {}),
+                    };
+                } catch (emailErr: unknown) {
+                    const msg = emailErr instanceof Error ? emailErr.message : String(emailErr);
+                    return {
+                        success: false,
+                        error: `Email search failed: ${msg}`,
+                    };
+                }
 
             case "drive":
                 if (!providers.drive) {
@@ -122,10 +140,39 @@ Resources:
                     }))
                 };
 
-            case "calendar":
+            case "calendar": {
+                const calPrefs = await prisma.taskPreference.findUnique({
+                    where: { userId },
+                    select: { timeZone: true },
+                });
+                const calTz = calPrefs?.timeZone ?? "UTC";
+
+                let calStart: Date;
+                let calEnd: Date;
+
+                if (filter?.dateRange?.after) {
+                    calStart = new Date(filter.dateRange.after);
+                } else {
+                    const { toZonedTime, fromZonedTime } = await import("date-fns-tz");
+                    const localNow = toZonedTime(new Date(), calTz);
+                    const startOfDay = new Date(localNow);
+                    startOfDay.setHours(0, 0, 0, 0);
+                    calStart = fromZonedTime(startOfDay, calTz);
+                }
+
+                if (filter?.dateRange?.before) {
+                    calEnd = new Date(filter.dateRange.before);
+                } else {
+                    const { toZonedTime, fromZonedTime } = await import("date-fns-tz");
+                    const localNow = toZonedTime(new Date(), calTz);
+                    const endOfDay = new Date(localNow);
+                    endOfDay.setHours(23, 59, 59, 999);
+                    calEnd = fromZonedTime(endOfDay, calTz);
+                }
+
                 const events = await providers.calendar.searchEvents(filter?.query || "", {
-                    start: filter?.dateRange?.after ? new Date(filter.dateRange.after) : new Date(),
-                    end: filter?.dateRange?.before ? new Date(filter.dateRange.before) : new Date(Date.now() + 86400000)
+                    start: calStart,
+                    end: calEnd,
                 });
                 return {
                     success: true,
@@ -138,6 +185,7 @@ Resources:
                     })),
                     message: events.length === 0 ? "No events in that range." : "Here are your calendar events.",
                 };
+            }
 
             case "task":
                 const taskWhere: any = {};
@@ -232,17 +280,22 @@ Resources:
                 };
 
             case "contacts":
-                const contacts = await providers.email.searchContacts(filter?.query || "");
-                return {
-                    success: true,
-                    data: contacts.map((c: any) => ({
-                        id: c.id,
-                        title: c.name,
-                        snippet: `Email: ${c.email || "N/A"}. Phone: ${c.phone || "N/A"}. Company: ${c.company || "N/A"}`,
-                        source: "contacts",
-                        data: c
-                    }))
-                };
+                try {
+                    const contacts = await providers.email.searchContacts(filter?.query || "");
+                    return {
+                        success: true,
+                        data: contacts.map((c: any) => ({
+                            id: c.id,
+                            title: c.name,
+                            snippet: `Email: ${c.email || "N/A"}. Phone: ${c.phone || "N/A"}. Company: ${c.company || "N/A"}`,
+                            source: "contacts",
+                            data: c
+                        }))
+                    };
+                } catch (contactErr: unknown) {
+                    const msg = contactErr instanceof Error ? contactErr.message : String(contactErr);
+                    return { success: false, error: `Contacts search failed: ${msg}` };
+                }
 
             case "notification": {
                 const notifType = filter?.type?.toLowerCase();
@@ -285,22 +338,27 @@ Resources:
                 if (!providers.email) {
                     return { success: false, error: "Email provider not available" };
                 }
-                const drafts = await providers.email.getDrafts({
-                    maxResults: limit,
-                });
-                return {
-                    success: true,
-                    data: drafts.map((d: any) => ({
-                        id: d.id,
-                        subject: d.headers?.subject || "(No subject)",
-                        snippet: d.textPlain?.substring(0, 200) || "",
-                        from: d.headers?.from,
-                        date: d.date,
-                    })),
-                    message: drafts.length === 0
-                        ? "No drafts found."
-                        : `Found ${drafts.length} draft(s).`,
-                };
+                try {
+                    const drafts = await providers.email.getDrafts({
+                        maxResults: limit,
+                    });
+                    return {
+                        success: true,
+                        data: drafts.map((d: any) => ({
+                            id: d.id,
+                            subject: d.headers?.subject || "(No subject)",
+                            snippet: d.textPlain?.substring(0, 200) || "",
+                            from: d.headers?.from,
+                            date: d.date,
+                        })),
+                        message: drafts.length === 0
+                            ? "No drafts found."
+                            : `Found ${drafts.length} draft(s).`,
+                    };
+                } catch (draftErr: unknown) {
+                    const msg = draftErr instanceof Error ? draftErr.message : String(draftErr);
+                    return { success: false, error: `Draft listing failed: ${msg}` };
+                }
             }
 
             case "conversation": {

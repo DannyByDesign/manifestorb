@@ -3,21 +3,13 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   reactCompiler: true,
 
-  // Turbopack config (Next.js 16)
+  // Turbopack: used only when running `next dev` without --webpack. Default dev
+  // script uses webpack because Turbopack currently hangs on this project.
   turbopack: {
     rules: {
-      '*.glsl': {
-        loaders: ['raw-loader'],
-        as: '*.js',
-      },
-      '*.vert': {
-        loaders: ['raw-loader'],
-        as: '*.js',
-      },
-      '*.frag': {
-        loaders: ['raw-loader'],
-        as: '*.js',
-      },
+      "src/shaders/*.glsl": { loaders: ["raw-loader"], as: "*.js" },
+      "src/shaders/*.vert": { loaders: ["raw-loader"], as: "*.js" },
+      "src/shaders/*.frag": { loaders: ["raw-loader"], as: "*.js" },
     },
     resolveAlias: {
       "zod/v3": "zod",
@@ -25,15 +17,12 @@ const nextConfig: NextConfig = {
     },
   },
 
-
-
   // Webpack fallback (for production builds)
   webpack: (config) => {
     config.module.rules.push({
       test: /\.(glsl|vert|frag)$/,
-      type: 'asset/source',
+      type: "asset/source",
     });
-    // Fix for ai-sdk zod version resolution
     config.resolve.alias = {
       ...config.resolve.alias,
       "zod/v3": "zod",

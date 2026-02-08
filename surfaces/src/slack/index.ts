@@ -1,9 +1,12 @@
 
 import { App } from "@slack/bolt";
-import { forwardToBrain, type InteractiveAction, type InteractivePayload } from "../utils";
+import { forwardToBrain, fetchOnboardingLinkUrl, type InteractiveAction, type InteractivePayload } from "../utils";
 
 const CORE_BASE_URL = process.env.CORE_BASE_URL || "http://localhost:3000";
 const SHARED_SECRET = process.env.SURFACES_SHARED_SECRET || "dev-secret";
+
+const WELCOME_MESSAGE =
+    "Hi! I'm your AI assistant. To use me here, link your Slack account to your Amodel profile (one-time setup).";
 
 export async function startSlack() {
     const token = process.env.SLACK_BOT_TOKEN;
@@ -135,6 +138,56 @@ export async function startSlack() {
                 await say?.("Failed to discard draft.");
             }
         }
+    });
+
+    // Proactive onboarding: when a user opens a DM with the bot
+    app.event("im_open", async ({ event, client }) => {
+        const channel = event.channel;
+        const userId = event.user;
+        console.log(`[Surfaces] im_open: user ${userId} opened DM (channel ${channel})`);
+        const linkUrl = await fetchOnboardingLinkUrl("slack", userId);
+        if (!linkUrl) {
+            await client.chat.postMessage({
+                channel,
+                text: `${WELCOME_MESSAGE} Something went wrong generating your link — please try messaging me again in a moment.`,
+            });
+            return;
+        }
+        await client.chat.postMessage({
+            channel,
+            text: `${WELCOME_MESSAGE}\n\n<${linkUrl}|Link your account> → then you can ask me about your calendar, email, and more.`,
+            blocks: [
+                {
+                    type: "section",
+                    text: { type: "mrkdwn", text: WELCOME_MESSAGE },
+                },
+                {
+                    type: "section",
+                    text: {
+                        type: "mrkdwn",
+                        text: `To get started, <${linkUrl}|link your Slack account to Amodel> (one-time). Then you can ask me about your calendar, email, and more.`,
+                    },
+                },
+                {
+                    type: "section",
+                    text: {
+                        type: "mrkdwn",
+                        text: `If the button doesn't open (e.g. localhost), copy this link and open it in your browser:\n\`${linkUrl}\``,
+                    },
+                },
+                {
+                    type: "actions",
+                    elements: [
+                        {
+                            type: "button",
+                            text: { type: "plain_text", text: "Link your account" },
+                            url: linkUrl,
+                            action_id: "onboarding_link",
+                        },
+                    ],
+                },
+            ],
+        });
     });
 
     // Listen for messages
@@ -313,12 +366,6 @@ export async function startSlack() {
 }
 
 export async function sendSlackMessage(channelId: string, text: string, blocks?: any[]) {
-    // We need access to the app instance. 
-    // Since startSlack initializes it, we should lift 'app' to module scope or re-architect slightly.
-    // For now, let's assume single instance and use a singleton pattern if needed, 
-    // but the cleanest way is to export the sender from the closure if we can, or just expose `app`.
-    // Actually, let's just use the `app` if it was exported, but it's not.
-    // Let's modify startSlack to assign to a module-level variable.
     if (!slackApp) {
         console.error("Slack app not initialized");
         return;
@@ -331,6 +378,63 @@ export async function sendSlackMessage(channelId: string, text: string, blocks?:
         });
     } catch (error) {
         console.error("Failed to send Slack message", error);
+    }
+}
+
+/**
+ * Send the onboarding welcome message to a Slack user (opens DM if needed).
+ * Used by POST /send-welcome so you can trigger the welcome to your account.
+ */
+export async function sendWelcomeToSlackUser(slackUserId: string): Promise<{ ok: boolean; error?: string }> {
+    if (!slackApp) {
+        return { ok: false, error: "Slack app not initialized" };
+    }
+    try {
+        const open = await slackApp.client.conversations.open({ users: slackUserId });
+        const channel = open.channel?.id;
+        if (!channel) {
+            return { ok: false, error: "Could not open DM channel" };
+        }
+        const linkUrl = await fetchOnboardingLinkUrl("slack", slackUserId);
+        if (!linkUrl) {
+            await slackApp.client.chat.postMessage({
+                channel,
+                text: `${WELCOME_MESSAGE} Something went wrong generating your link — please try again in a moment.`,
+            });
+            return { ok: true };
+        }
+        await slackApp.client.chat.postMessage({
+            channel,
+            text: `${WELCOME_MESSAGE}\n\n<${linkUrl}|Link your account> → then you can ask me about your calendar, email, and more.`,
+            blocks: [
+                { type: "section", text: { type: "mrkdwn", text: WELCOME_MESSAGE } },
+                {
+                    type: "section",
+                    text: {
+                        type: "mrkdwn",
+                        text: `To get started, <${linkUrl}|link your Slack account to Amodel> (one-time). Then you can ask me about your calendar, email, and more.`,
+                    },
+                },
+                {
+                    type: "section",
+                    text: {
+                        type: "mrkdwn",
+                        text: `If the button doesn't open (e.g. localhost), copy this link and open it in your browser:\n\`${linkUrl}\``,
+                    },
+                },
+                {
+                    type: "actions",
+                    elements: [
+                        { type: "button", text: { type: "plain_text", text: "Link your account" }, url: linkUrl, action_id: "onboarding_link" },
+                    ],
+                },
+            ],
+        });
+        return { ok: true };
+    } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error("[Surfaces] sendWelcomeToSlackUser failed", error);
+        return { ok: false, error: msg };
     }
 }
 

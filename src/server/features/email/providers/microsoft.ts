@@ -974,9 +974,11 @@ export class OutlookProvider implements EmailProvider {
     pageToken?: string;
     before?: Date;
     after?: Date;
+    fetchAll?: boolean;
   }): Promise<{
     messages: ParsedMessage[];
     nextPageToken?: string;
+    totalEstimate?: number;
   }> {
     this.logger.info("getMessagesWithPagination called", {
       maxResults: options.maxResults,
@@ -1047,6 +1049,7 @@ export class OutlookProvider implements EmailProvider {
     return {
       messages: response.messages || [],
       nextPageToken: response.nextPageToken,
+      totalEstimate: undefined,
     };
   }
 

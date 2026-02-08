@@ -1076,12 +1076,22 @@ export class GmailProvider implements EmailProvider {
     pageToken?: string;
     before?: Date;
     after?: Date;
+    fetchAll?: boolean;
   }): Promise<{
     messages: ParsedMessage[];
     nextPageToken?: string;
+    totalEstimate?: number;
   }> {
+    // Default to Primary inbox if query doesn't scope by category/inbox
+    const hasCategoryOrInboxScope = /\b(category:|in:inbox|in:sent|in:draft|in:trash|in:spam)\b/i.test(
+      options.query || "",
+    );
+    const baseQuery = hasCategoryOrInboxScope
+      ? (options.query || "")
+      : `in:inbox category:primary ${options.query || ""}`.trim();
+
     // Build query string for date filtering
-    let query = options.query || "";
+    let query = baseQuery;
 
     if (options.before) {
       query += ` before:${Math.floor(options.before.getTime() / 1000) + 1}`;
@@ -1093,20 +1103,36 @@ export class GmailProvider implements EmailProvider {
 
     query += ` -label:${GmailLabel.DRAFT}`;
 
-    const response = await getMessages(this.client, {
-      query: query.trim() || undefined,
-      maxResults: options.maxResults || 20,
-      pageToken: options.pageToken || undefined,
-    });
+    const targetCount = options.fetchAll ? 500 : (options.maxResults || 20);
+    const allMessages: ParsedMessage[] = [];
+    let pageToken: string | undefined = options.pageToken;
+    let totalEstimate: number | undefined;
 
-    const messages = response.messages || [];
-    const messagePromises = messages.map((message) =>
-      this.getMessage(message.id!),
-    );
+    do {
+      const response = await getMessages(this.client, {
+        query: query.trim() || undefined,
+        maxResults: Math.min(targetCount - allMessages.length, 100),
+        pageToken,
+      });
+
+      if (totalEstimate === undefined && response.resultSizeEstimate !== undefined) {
+        totalEstimate = response.resultSizeEstimate;
+      }
+
+      const ids = (response.messages || []).map((m) => m.id);
+      if (ids.length > 0) {
+        const accessToken = getAccessTokenFromClient(this.client);
+        const parsed = await getMessagesBatch({ messageIds: ids, accessToken });
+        allMessages.push(...parsed);
+      }
+
+      pageToken = response.nextPageToken || undefined;
+    } while (pageToken && allMessages.length < targetCount);
 
     return {
-      messages: await Promise.all(messagePromises),
-      nextPageToken: response.nextPageToken || undefined,
+      messages: allMessages,
+      nextPageToken: pageToken,
+      totalEstimate,
     };
   }
 

@@ -9,6 +9,7 @@ import prisma from "@/server/db/client";
 import { createAgentTools } from "@/features/ai/tools";
 import { createMemoryTools } from "@/features/ai/memory-tools";
 import { buildAgentSystemPrompt, type Platform } from "@/features/ai/system-prompt";
+import { getTodayForLLM } from "@/features/ai/helpers";
 import { getThreadContext } from "@/features/ai/thread-context";
 import { getModel } from "@/server/lib/llms/model";
 import { createGenerateText, chatCompletionStream } from "@/server/lib/llms";
@@ -19,6 +20,8 @@ import { ConversationService } from "@/features/conversations/service";
 import { PrivacyService } from "@/features/privacy/service";
 import { MemoryRecordingService } from "@/features/memory/service";
 import { createInAppNotification } from "@/features/notifications/create";
+import { createApprovalActionToken } from "@/features/approvals/action-token";
+import { env } from "@/env";
 import type { Logger } from "@/server/lib/logger";
 
 // ---------------------------------------------------------------------------
@@ -162,10 +165,17 @@ export async function processMessage(
     userConfig: userAiConfig ?? undefined,
   });
 
+  const userPrefs = await prisma.taskPreference.findUnique({
+    where: { userId: user.id },
+    select: { timeZone: true },
+  });
+  const userTimeZone = userPrefs?.timeZone ?? undefined;
+
   const systemPromptWithContext = assembleSystemPrompt({
     baseSystemPrompt,
     contextPack,
     threadContextBlock,
+    userTimeZone,
   });
 
   // ---- 10. Build final messages array ------------------------------------
@@ -549,10 +559,36 @@ function createApprovalWrappedTool({
         dedupeKey: `approval-${approval.id}`,
       });
 
+      let approveUrl = `${env.NEXT_PUBLIC_BASE_URL}/approvals/${approval.id}`;
+      let denyUrl = `${env.NEXT_PUBLIC_BASE_URL}/approvals/${approval.id}/deny`;
+      try {
+        const approveToken = createApprovalActionToken({
+          approvalId: approval.id,
+          action: "approve",
+        });
+        const denyToken = createApprovalActionToken({
+          approvalId: approval.id,
+          action: "deny",
+        });
+        approveUrl = `${approveUrl}?token=${approveToken}`;
+        denyUrl = `${denyUrl}?token=${denyToken}`;
+      } catch (tokenErr) {
+        logger.warn("Failed to create approval action tokens", { error: tokenErr });
+      }
+
       return {
         status: "approval_pending",
         approvalId: approval.id,
         message: "This action requires approval. A request has been sent.",
+        interactive: {
+          type: "approval_request",
+          approvalId: approval.id,
+          summary: `Approve ${name}?`,
+          actions: [
+            { label: "Approve", style: "primary" as const, value: "approve", url: approveUrl },
+            { label: "Deny", style: "danger" as const, value: "deny", url: denyUrl },
+          ],
+        },
       };
     },
   };
@@ -567,10 +603,12 @@ function assembleSystemPrompt({
   baseSystemPrompt,
   contextPack,
   threadContextBlock,
+  userTimeZone,
 }: {
   baseSystemPrompt: string;
   contextPack: ContextPack;
   threadContextBlock: string;
+  userTimeZone?: string;
 }): string {
   const pendingStateBlock = buildPendingStateBlock(contextPack);
 
@@ -578,6 +616,10 @@ function assembleSystemPrompt({
 
 ---
 ## Dynamic Context (Auto-Retrieved)
+
+### Current Date and Time
+${getTodayForLLM(new Date(), userTimeZone)}
+This is the authoritative current date. Ignore any conflicting dates in conversation history or summaries.
 
 ### User Personal Instructions
 ${contextPack.system.legacyAbout || "No personal instructions set."}

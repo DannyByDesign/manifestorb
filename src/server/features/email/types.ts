@@ -209,9 +209,11 @@ export interface EmailProvider {
     pageToken?: string;
     before?: Date;
     after?: Date;
+    fetchAll?: boolean;
   }): Promise<{
     messages: ParsedMessage[];
     nextPageToken?: string;
+    totalEstimate?: number;
   }>;
   getMessagesWithAttachments(options: {
     maxResults?: number;

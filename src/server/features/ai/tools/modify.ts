@@ -287,11 +287,30 @@ Preferences changes:
 
                 if (!decision) return { success: false, error: "Decision (APPROVE/DENY) or choiceIndex required" };
 
+                if (decision === "APPROVE") {
+                    const { executeApprovalRequest } = await import("@/features/approvals/execute");
+                    const results = await Promise.all(
+                        ids.map(async (id: string) => {
+                            const execution = await executeApprovalRequest({
+                                approvalRequestId: id,
+                                decidedByUserId: emailAccountApp.userId,
+                                reason,
+                            });
+                            return {
+                                decision: "APPROVE" as const,
+                                approvalRequestId: id,
+                                execution,
+                            };
+                        }),
+                    );
+                    return { success: true, data: results };
+                }
+
                 const approvalResults = await Promise.all(ids.map((id: string) =>
                     approvalService.decideRequest({
                         approvalRequestId: id,
                         decidedByUserId: emailAccountApp.userId,
-                        decision,
+                        decision: "DENY",
                         reason
                     })
                 ));

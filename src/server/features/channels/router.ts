@@ -8,6 +8,7 @@ import { getModel } from "@/server/lib/llms/model";
 import { createHash } from "crypto";
 import { env } from "@/env";
 import { createApprovalActionToken } from "@/features/approvals/action-token";
+import { getErrorMessage } from "@/server/lib/error";
 
 const logger = createScopedLogger("ChannelRouter");
 
@@ -170,6 +171,13 @@ export class ChannelRouter {
             }];
         }
 
+        if (emailAccount.account?.disconnectedAt) {
+            return [{
+                targetChannelId: message.context.channelId,
+                content: `Your email account (${emailAccount.email}) has been disconnected (e.g. due to a password change or revoked access).\n\nPlease reconnect it in the Amodel web app: ${env.NEXT_PUBLIC_BASE_URL}/connect`,
+            }];
+        }
+
         const threadId = (message.context as any).threadId || null;
         const channelId = message.context.channelId;
         const providerMessageId = (message.context as any).messageId;
@@ -305,9 +313,19 @@ export class ChannelRouter {
 
         } catch (error) {
             logger.error("Error running agent", { error });
+            const baseContent = "I encountered an error processing your request.";
+            const verbose =
+                env.NODE_ENV !== "production" ||
+                process.env.E2E_VERBOSE_ERRORS === "true";
+            const detail = verbose
+                ? (getErrorMessage(error) ?? (error instanceof Error ? error.message : String(error)))
+                : "";
+            const content = detail
+                ? `${baseContent} ${detail}`
+                : baseContent;
             return [{
                 targetChannelId: message.context.channelId,
-                content: "I encountered an error processing your request."
+                content,
             }];
         }
     }

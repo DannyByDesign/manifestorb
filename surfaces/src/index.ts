@@ -60,6 +60,41 @@ export async function handleRequest(req: Request) {
         }
     }
 
+    // Send onboarding welcome to a user (e.g. Slack DM)
+    if (req.method === "POST" && url.pathname === "/send-welcome") {
+        try {
+            if (!isAuthorized(env.SURFACES_SHARED_SECRET)) {
+                return new Response("Unauthorized", { status: 401 });
+            }
+            const body = (await req.json()) as { platform?: string; slackUserId?: string };
+            const { platform, slackUserId } = body;
+            if (platform !== "slack" || !slackUserId) {
+                return new Response(
+                    JSON.stringify({ ok: false, error: "Requires platform: 'slack' and slackUserId" }),
+                    { status: 400, headers: { "Content-Type": "application/json" } }
+                );
+            }
+            const { sendWelcomeToSlackUser } = await import("./slack");
+            const result = await sendWelcomeToSlackUser(slackUserId);
+            if (!result.ok) {
+                return new Response(JSON.stringify(result), {
+                    status: 500,
+                    headers: { "Content-Type": "application/json" },
+                });
+            }
+            return new Response(JSON.stringify({ ok: true }), {
+                status: 200,
+                headers: { "Content-Type": "application/json" },
+            });
+        } catch (err) {
+            console.error("Failed to send welcome", err);
+            return new Response(
+                JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }),
+                { status: 500, headers: { "Content-Type": "application/json" } }
+            );
+        }
+    }
+
             // Internal pub/sub forwarder for clean updates
             if (req.method === "POST" && url.pathname === "/pubsub/clean") {
                 try {
@@ -243,6 +278,7 @@ export async function startSidecar() {
 
     console.log("🔔 HTTP Server listening on port 3001");
     console.log("   - POST /notify - Send notifications to platforms");
+    console.log("   - POST /send-welcome - Send onboarding welcome to a user (e.g. Slack)");
     console.log("   - GET  /jobs/status - Get job queue status");
     console.log("   - POST /jobs/embeddings - Trigger embedding processing");
     console.log("   - POST /jobs/decay - Trigger memory decay");

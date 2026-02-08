@@ -197,7 +197,7 @@ export class TimeSlotManagerImpl implements TimeSlotManager {
     let localCurrentStart = localStartDate;
 
     if (localStartDate.toDateString() === localNow.toDateString()) {
-      localCurrentStart = addMinutes(localCurrentStart, minimumBufferMinutes);
+      localCurrentStart = addMinutes(localCurrentStart, MINIMUM_BUFFER_MINUTES);
 
       if (localCurrentStart.getHours() >= this.settings.workHourEnd) {
         localCurrentStart = addDays(

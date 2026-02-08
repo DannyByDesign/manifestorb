@@ -3,6 +3,21 @@ import { type Logger } from "@/server/lib/logger";
 import { type ParsedMessage } from "@/server/types";
 import { createEmailProvider as createServiceEmailProvider } from "@/features/email/provider";
 import { type EmailProvider as ServiceEmailProvider, type EmailThread, type Contact } from "@/features/email/types";
+import { SafeError } from "@/server/lib/error";
+
+const GMAIL_RECONNECT_MESSAGE =
+    "Your Gmail connection is not active. Please reconnect your email in the Amodel web app (Settings -> Accounts) to use email features from Slack.";
+
+function isGmailAuthError(err: unknown): boolean {
+    if (err instanceof SafeError) {
+        const msg = err.message ?? "";
+        return msg === "No refresh token" || msg.includes("Gmail connection has expired");
+    }
+    if (err instanceof Error) {
+        return err.message.includes("invalid_grant") || err.message.includes("No refresh token") || err.message.includes("Gmail connection has expired");
+    }
+    return false;
+}
 
 // Basic Types (kept for compatibility with index.ts)
 export interface EmailAccount {
@@ -44,7 +59,15 @@ export interface DraftParams {
 // Tool-Specific Interface (Adapter)
 export interface EmailProvider {
     // Core (Original)
-    search(query: string, limit: number): Promise<ParsedMessage[]>;
+    search(
+        query: string,
+        limit?: number,
+        fetchAll?: boolean
+    ): Promise<{
+        messages: ParsedMessage[];
+        nextPageToken?: string;
+        totalEstimate?: number;
+    }>;
     get(ids: string[]): Promise<ParsedMessage[]>;
     modify(ids: string[], changes: EmailChanges): Promise<{ success: boolean; count: number; data?: any }>;
     createDraft(params: DraftParams): Promise<{ draftId: string; preview: any }>;
@@ -70,24 +93,46 @@ export async function createEmailProvider(
     });
 
     return {
-        search: async (query: string, limit: number) => {
-            const res = await service.getMessagesWithPagination({
-                query,
-                maxResults: limit
-            });
-            return res.messages;
+        search: async (query: string, limit?: number, fetchAll?: boolean) => {
+            try {
+                const res = await service.getMessagesWithPagination({
+                    query,
+                    maxResults: limit,
+                    fetchAll,
+                });
+                return res;
+            } catch (err: unknown) {
+                if (isGmailAuthError(err)) {
+                    throw new Error(GMAIL_RECONNECT_MESSAGE);
+                }
+                const detail = err instanceof Error ? err.message : JSON.stringify(err);
+                throw new Error(`Gmail search failed (query="${query}"): ${detail}`);
+            }
         },
 
         get: async (ids: string[]) => {
-            return await service.getMessagesBatch(ids);
+            try {
+                return await service.getMessagesBatch(ids);
+            } catch (err: unknown) {
+                if (isGmailAuthError(err)) {
+                    throw new Error(GMAIL_RECONNECT_MESSAGE);
+                }
+                throw err;
+            }
         },
 
         modify: async (ids: string[], changes: EmailChanges) => {
             let count = 0;
 
-            // Fetch messages upfront to get thread IDs for thread-level operations
-            // (archiveThread, trashThread, markReadThread all require thread IDs, not message IDs)
-            const messages = await service.getMessagesBatch(ids);
+            let messages: ParsedMessage[];
+            try {
+                messages = await service.getMessagesBatch(ids);
+            } catch (err: unknown) {
+                if (isGmailAuthError(err)) {
+                    throw new Error(GMAIL_RECONNECT_MESSAGE);
+                }
+                throw err;
+            }
             const messageToThread = new Map(messages.map(m => [m.id, m.threadId]));
 
             // Track which threads we've already processed to avoid duplicate operations
@@ -144,8 +189,16 @@ export async function createEmailProvider(
         },
 
         createDraft: async (params: DraftParams) => {
-            let draftId = "";
+            // Validate: reply/forward need a parentId (thread/message to reply to)
+            if ((params.type === "reply" || params.type === "forward") && !params.parentId) {
+                throw new Error(
+                    `Cannot create ${params.type} draft without parentId. ` +
+                    `Search for the email first using the query tool (resource: "email") to get the thread ID, then pass it as parentId.`
+                );
+            }
 
+            let draftId = "";
+            try {
             if (params.type === "new") {
                 const res = await service.createDraft({
                     to: params.to?.join(", ") || "",
@@ -170,6 +223,10 @@ export async function createEmailProvider(
                 draftId = res.id;
             }
 
+            if (!draftId) {
+                throw new Error(`Draft creation returned no ID. type=${params.type}, parentId=${params.parentId ?? "none"}`);
+            }
+
             return {
                 draftId,
                 preview: {
@@ -178,9 +235,16 @@ export async function createEmailProvider(
                     bodySnippet: params.body?.slice(0, 100)
                 }
             };
+            } catch (err: unknown) {
+                if (isGmailAuthError(err)) {
+                    throw new Error(GMAIL_RECONNECT_MESSAGE);
+                }
+                throw err;
+            }
         },
 
         trash: async (ids: string[]) => {
+            try {
             const messages = await service.getMessagesBatch(ids);
             const threadIds = [...new Set(messages.map(m => m.threadId))];
 
@@ -190,23 +254,57 @@ export async function createEmailProvider(
                 count++;
             }));
             return { success: true, count };
+            } catch (err: unknown) {
+                if (isGmailAuthError(err)) {
+                    throw new Error(GMAIL_RECONNECT_MESSAGE);
+                }
+                throw err;
+            }
         },
 
         sendDraft: async (draftId: string) => {
-            return await service.sendDraft(draftId);
+            try {
+                return await service.sendDraft(draftId);
+            } catch (err: unknown) {
+                if (isGmailAuthError(err)) {
+                    throw new Error(GMAIL_RECONNECT_MESSAGE);
+                }
+                throw err;
+            }
         },
 
         // Extended
         getThread: async (threadId: string) => {
-            return await service.getThread(threadId);
+            try {
+                return await service.getThread(threadId);
+            } catch (err: unknown) {
+                if (isGmailAuthError(err)) {
+                    throw new Error(GMAIL_RECONNECT_MESSAGE);
+                }
+                throw err;
+            }
         },
 
         searchContacts: async (query: string) => {
-            return await service.searchContacts(query);
+            try {
+                return await service.searchContacts(query);
+            } catch (err: unknown) {
+                if (isGmailAuthError(err)) {
+                    throw new Error(GMAIL_RECONNECT_MESSAGE);
+                }
+                throw err;
+            }
         },
 
         createContact: async (contact: Partial<Contact>) => {
-            return await service.createContact(contact);
+            try {
+                return await service.createContact(contact);
+            } catch (err: unknown) {
+                if (isGmailAuthError(err)) {
+                    throw new Error(GMAIL_RECONNECT_MESSAGE);
+                }
+                throw err;
+            }
         }
     };
 }

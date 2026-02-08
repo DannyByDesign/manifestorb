@@ -15,6 +15,11 @@ import {
   clearOAuthCode,
 } from "@/server/lib/redis/oauth-code";
 import { isDuplicateError } from "@/server/db/client-helpers";
+import {
+  clearSpecificErrorMessages,
+  ErrorType,
+} from "@/server/lib/error-messages";
+import type { Logger } from "@/server/lib/logger";
 import { setupIntegrationsAfterOAuth } from "@/server/features/integrations/post-oauth";
 
 export const GET = withError("google/linking/callback", async (request) => {
@@ -193,7 +198,7 @@ export const GET = withError("google/linking/callback", async (request) => {
               },
             );
 
-            await updateGoogleAccountTokens(accountNow.id, tokens);
+            await updateGoogleAccountTokens(accountNow.id, tokens, logger);
           } else {
             throw createError;
           }
@@ -224,7 +229,11 @@ export const GET = withError("google/linking/callback", async (request) => {
         accountId: linkingResult.existingAccountId,
       });
 
-      await updateGoogleAccountTokens(linkingResult.existingAccountId, tokens);
+      await updateGoogleAccountTokens(
+        linkingResult.existingAccountId,
+        tokens,
+        logger,
+      );
 
       logger.info("Successfully updated tokens for Google account", {
         email: providerEmail,
@@ -263,6 +272,12 @@ export const GET = withError("google/linking/callback", async (request) => {
       name: existingAccount?.user.name || null,
       logger,
     });
+
+    await updateGoogleAccountTokens(
+      linkingResult.sourceAccountId,
+      tokens,
+      logger,
+    );
 
     const successMessage =
       mergeType === "full_merge"
@@ -314,8 +329,9 @@ interface GoogleTokens {
 async function updateGoogleAccountTokens(
   accountId: string,
   tokens: GoogleTokens,
+  logger: Logger,
 ) {
-  await prisma.account.update({
+  const account = await prisma.account.update({
     where: { id: accountId },
     data: {
       access_token: tokens.access_token,
@@ -327,6 +343,14 @@ async function updateGoogleAccountTokens(
       scope: tokens.scope,
       token_type: tokens.token_type,
       id_token: tokens.id_token,
+      disconnectedAt: null,
     },
+    select: { userId: true },
+  });
+
+  await clearSpecificErrorMessages({
+    userId: account.userId,
+    errorTypes: [ErrorType.ACCOUNT_DISCONNECTED],
+    logger,
   });
 }

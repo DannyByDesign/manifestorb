@@ -273,6 +273,20 @@ export function getErrorMessage(
   const directMessage = getStringProp(outer, "message");
   if (directMessage) return directMessage;
 
+  // Common API shapes: response.data.error.message, errors[0].message (e.g. Gmail/Google)
+  const response = asRecord(outer.response);
+  const data = response ? asRecord(response.data) : null;
+  const apiError = data ? asRecord(data.error) : null;
+  const apiMessage = apiError ? getStringProp(apiError, "message") : null;
+  if (apiMessage) return apiMessage;
+  const errorsArray = Array.isArray(outer.errors) ? outer.errors : (data && Array.isArray(data.errors)) ? (data.errors as unknown[]) : null;
+  const firstError = errorsArray?.[0];
+  const firstMsg =
+    firstError && typeof firstError === "object" && firstError !== null && "message" in firstError
+      ? String((firstError as Record<string, unknown>).message)
+      : null;
+  if (firstMsg) return firstMsg;
+
   const nested = asRecord(outer.error);
   if (!nested) return undefined;
 

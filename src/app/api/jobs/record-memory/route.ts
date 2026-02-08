@@ -231,6 +231,7 @@ Extract facts in these categories:
 5. Extract as many genuinely useful facts as you find (up to 20)
 6. Use specific, descriptive keys that won't conflict with other facts
 7. Use lowercase, underscore keys only (no spaces or special characters)
+8. NEVER include absolute dates like "today is Feb 5" or "as of January 2026" in the compressed summary. Summaries must be date-agnostic because they are cached and reused across sessions. Use relative time only if necessary (e.g., "user has an upcoming deadline" not "user has a deadline on Feb 10").
 
 Respond ONLY with valid JSON. No markdown code fences, no explanation.`;
 }

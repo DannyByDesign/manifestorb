@@ -41,6 +41,39 @@ export interface InteractivePayload {
     context?: ActionRequestContext; // For action_request - calendar/task context
 }
 
+const CORE_BASE_URL = process.env.CORE_BASE_URL || "http://localhost:3000";
+
+/** Fetch a one-time link URL for onboarding (Slack/Discord/Telegram). Sidecar-only. */
+export async function fetchOnboardingLinkUrl(
+    provider: "slack" | "discord" | "telegram",
+    providerAccountId: string,
+    providerTeamId?: string,
+): Promise<string | null> {
+    try {
+        const response = await fetch(`${CORE_BASE_URL}/api/surfaces/link-token`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${SHARED_SECRET}`,
+            },
+            body: JSON.stringify({
+                provider,
+                providerAccountId,
+                providerTeamId,
+            }),
+        });
+        if (!response.ok) {
+            console.error(`[Surfaces] link-token API error: ${response.status}`);
+            return null;
+        }
+        const data = (await response.json()) as { linkUrl?: string };
+        return data.linkUrl ?? null;
+    } catch (error) {
+        console.error("[Surfaces] Failed to fetch onboarding link URL", error);
+        return null;
+    }
+}
+
 export async function forwardToBrain(params: {
     provider: "slack" | "discord" | "telegram";
     content: string;

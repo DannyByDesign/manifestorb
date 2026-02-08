@@ -18,6 +18,19 @@ if (process.env.RUN_LIVE_E2E === "true") {
     }
   }
 }
+`if (process.env.RUN_LIVE_SLACK_GOOGLE_E2E === "true") {
+  // Load surfaces/.env.local first so TEST_SLACK_USER_TOKEN (and other Slack vars) are available
+  const surfacesEnv = path.resolve(process.cwd(), "surfaces", ".env.local");
+  if (fs.existsSync(surfacesEnv)) {
+    loadEnv({ path: surfacesEnv, override: false });
+  }
+  for (const envFile of envFileCandidates) {
+    const envPath = path.resolve(process.cwd(), envFile);
+    if (fs.existsSync(envPath)) {
+      loadEnv({ path: envPath, override: false });
+    }
+  }
+}
 
 const setDefaultEnv = (key: string, value: string) => {
   if (!process.env[key]) {

@@ -2,7 +2,20 @@ import type { EmailAccountWithAI } from "@/server/lib/llms/types";
 import { stringifyEmail } from "@/server/lib/stringify-email";
 import type { EmailForLLM } from "@/server/types";
 
-export function getTodayForLLM(date: Date = new Date()) {
+export function getTodayForLLM(date: Date = new Date(), timeZone?: string) {
+  if (timeZone) {
+    const formatted = new Intl.DateTimeFormat("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZoneName: "short",
+      timeZone,
+    }).format(date);
+    return `Today's date and time is: ${formatted} (${timeZone}).`;
+  }
   return `Today's date and time is: ${date.toISOString()}.`;
 }
 
