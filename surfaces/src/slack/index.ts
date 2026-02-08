@@ -1,9 +1,40 @@
 
 import { App } from "@slack/bolt";
+import type { Block, KnownBlock } from "@slack/types";
 import { forwardToBrain, fetchOnboardingLinkUrl, type InteractiveAction, type InteractivePayload } from "../utils";
+import {
+    setPlatformEnabled,
+    setPlatformError,
+    setPlatformStarted,
+    touchPlatformEvent
+} from "../platform-status";
 
 const CORE_BASE_URL = process.env.CORE_BASE_URL || "http://localhost:3000";
 const SHARED_SECRET = process.env.SURFACES_SHARED_SECRET || "dev-secret";
+type SlackBlock = Record<string, unknown>;
+type SlackButtonElement = Record<string, unknown>;
+
+type MessageMeta = {
+    channel?: string;
+    user?: string;
+    ts?: string;
+    subtype?: string;
+    channelType?: string;
+    text?: string;
+};
+
+function toMessageMeta(message: unknown): MessageMeta {
+    if (!message || typeof message !== "object") return {};
+    const record = message as Record<string, unknown>;
+    return {
+        channel: typeof record.channel === "string" ? record.channel : undefined,
+        user: typeof record.user === "string" ? record.user : undefined,
+        ts: typeof record.ts === "string" ? record.ts : undefined,
+        subtype: typeof record.subtype === "string" ? record.subtype : undefined,
+        channelType: typeof record.channel_type === "string" ? record.channel_type : undefined,
+        text: typeof record.text === "string" ? record.text : undefined,
+    };
+}
 
 const WELCOME_MESSAGE =
     "Hi! I'm your AI assistant. To use me here, link your Slack account to your Amodel profile (one-time setup).";
@@ -11,9 +42,11 @@ const WELCOME_MESSAGE =
 export async function startSlack() {
     const token = process.env.SLACK_BOT_TOKEN;
     if (!token) {
+        setPlatformEnabled("slack", false);
         console.log("⚠️ Surfaces: Skipping Slack (SLACK_BOT_TOKEN missing)");
         return;
     }
+    setPlatformEnabled("slack", true);
 
     // Initialize Slack App in Socket Mode
     const app = new App({
@@ -22,6 +55,11 @@ export async function startSlack() {
         socketMode: true,
     });
     slackApp = app;
+    app.error(async (error) => {
+        const msg = error instanceof Error ? error.message : String(error);
+        setPlatformError("slack", msg);
+        console.error("[Surfaces][Slack] Bolt app error", { error: msg });
+    });
 
 
     // Handle Approvals
@@ -62,7 +100,7 @@ export async function startSlack() {
     });
 
     // Handle Ambiguous Time Choices
-    app.action(/ambiguous_earlier|ambiguous_later/, async ({ body, action, ack, say }) => {
+    app.action(/ambiguous_earlier|ambiguous_later/, async ({ action, ack, say }) => {
         await ack();
 
         if (action.type !== 'button') return;
@@ -88,7 +126,7 @@ export async function startSlack() {
     });
 
     // Handle Draft Send/Discard
-    app.action(/draft_send|draft_discard/, async ({ body, action, ack, say }) => {
+    app.action(/draft_send|draft_discard/, async ({ action, ack, say }) => {
         await ack();
 
         if (action.type !== 'button') return;
@@ -192,180 +230,261 @@ export async function startSlack() {
 
     // Listen for messages
     app.message(async ({ message, say }) => {
-        // Filter out subtype messages (like 'channel_join') if needed, for now getting basic text
-        if (message.subtype && message.subtype !== "file_share") return;
-        if (!("text" in message) || !message.text) return; // Skip messages without text
-
-        console.log(`[Surfaces] Received Slack message: ${message.text}`);
-
-        // Fetch History
-        let history: { role: "user" | "assistant"; content: string }[] = [];
+        const meta = toMessageMeta(message);
         try {
-            const threadTs = (message as any).thread_ts;
-            // If in a thread, get thread replies. If in channel/DM, get history.
-            // For simplicity, we just look at conversations.history (which gets channel stream) or replies if threaded.
-            // But getting context for "just this channel" is usually safest.
-
-            const result = await app.client.conversations.history({
-                channel: message.channel,
-                limit: 30,
-                latest: message.ts, // Get messages BEFORE this one
-                inclusive: false
+            touchPlatformEvent("slack");
+            console.log("[Surfaces][Slack] Incoming message event", {
+                channel: meta.channel,
+                user: meta.user,
+                ts: meta.ts,
+                subtype: meta.subtype ?? null,
+                channelType: meta.channelType,
+                hasText: Boolean(meta.text),
+                textLength: meta.text?.length ?? 0,
             });
 
-            if (result.messages) {
-                // Reverse to default chronological order
-                history = result.messages.reverse().map(msg => ({
-                    role: (msg.bot_id ? "assistant" : "user") as "user" | "assistant",
-                    content: msg.text || ""
-                })).filter(msg => msg.content !== "");
+            if (meta.subtype && meta.subtype !== "file_share") {
+                console.log("[Surfaces][Slack] Skipping message due to subtype filter", {
+                    subtype: meta.subtype,
+                    channel: meta.channel,
+                    user: meta.user,
+                    ts: meta.ts,
+                });
+                return;
             }
-        } catch (err) {
-            console.error("[Surfaces] Failed to fetch Slack history", err);
-        }
 
-        const brainResponse = await forwardToBrain({
-            provider: "slack",
-            content: message.text,
-            context: {
-                channelId: message.channel,
-                userId: message.user,
-                messageId: message.ts,
-                isDirectMessage: message.channel_type === "im",
-            },
-            history
-        });
+            if (!meta.channel || !meta.user || !meta.ts || !meta.text) {
+                console.log("[Surfaces][Slack] Skipping message missing required fields", {
+                    channel: meta.channel ?? null,
+                    user: meta.user ?? null,
+                    ts: meta.ts ?? null,
+                    hasText: Boolean(meta.text),
+                });
+                return;
+            }
 
-        if (brainResponse && brainResponse.responses) {
-            for (const resp of brainResponse.responses) {
-                if (resp.interactive) {
-                    const interactive = resp.interactive as InteractivePayload;
-                    
-                    // Build button elements based on interactive type
-                    let buttonElements: any[];
-                    
-                    const isDraft = interactive.type === "draft_created";
-                    const isApprovalLike = interactive.type === "approval_request" || interactive.type === "action_request" || interactive.type === "ambiguous_time";
+            let history: { role: "user" | "assistant"; content: string }[] = [];
+            try {
+                const result = await app.client.conversations.history({
+                    channel: meta.channel,
+                    limit: 30,
+                    latest: meta.ts,
+                    inclusive: false,
+                });
 
-                    if (isDraft) {
-                        // Draft buttons - value includes all IDs needed
-                        const buttonValue = `${interactive.draftId}:${interactive.emailAccountId}:${interactive.userId}`;
-                        buttonElements = interactive.actions.map((action: InteractiveAction) => {
-                            // Skip edit button if it has a URL (handled separately)
-                            if (action.url) {
-                                return {
-                                    type: "button",
-                                    text: { type: "plain_text", text: action.label },
-                                    url: action.url
-                                };
-                            }
-                            return {
-                                type: "button",
-                                text: { type: "plain_text", text: action.label },
-                                style: action.style === "danger" ? "danger" : "primary",
-                                value: buttonValue,
-                                action_id: `draft_${action.value}` // draft_send / draft_discard
-                            };
-                        });
-                    } else if (isApprovalLike) {
-                        // Approval/action request buttons
-                        buttonElements = interactive.actions.map((action: InteractiveAction) => {
-                            if (interactive.type === "ambiguous_time") {
-                                return {
-                                    type: "button",
-                                    text: { type: "plain_text", text: action.label },
-                                    style: "primary",
-                                    value: interactive.ambiguousRequestId,
-                                    action_id: `ambiguous_${action.value}` // ambiguous_earlier / ambiguous_later
-                                };
-                            }
-                            return {
-                                type: "button",
-                                text: { type: "plain_text", text: action.label },
-                                style: action.style === "danger" ? "danger" : "primary",
-                                value: interactive.approvalId,
-                                action_id: `${action.value}_request` // approve_request / deny_request
-                            };
-                        });
-                    } else {
-                        buttonElements = [];
-                    }
+                if (result.messages) {
+                    history = result.messages
+                        .reverse()
+                        .map((msg) => ({
+                            role: (msg.bot_id ? "assistant" : "user") as "user" | "assistant",
+                            content: msg.text || "",
+                        }))
+                        .filter((msg) => msg.content !== "");
+                }
+            } catch (err) {
+                console.error("[Surfaces][Slack] Failed to fetch history", {
+                    channel: meta.channel,
+                    user: meta.user,
+                    ts: meta.ts,
+                    error: err instanceof Error ? err.message : String(err),
+                });
+            }
 
-                    // Build blocks based on interactive type
-                    let blocks: any[];
-                    
-                    if (isDraft && interactive.preview) {
-                        // Rich draft preview with Block Kit
-                        const preview = interactive.preview;
-                        const bodySnippet = preview.body.length > 500 
-                            ? preview.body.slice(0, 500) + "..." 
-                            : preview.body;
-                        
-                        blocks = [
-                            {
-                                type: "header",
-                                text: { type: "plain_text", text: "Draft Email", emoji: true }
-                            },
-                            {
-                                type: "section",
-                                fields: [
-                                    { type: "mrkdwn", text: `*To:*\n${preview.to.join(", ")}` },
-                                    { type: "mrkdwn", text: `*Subject:*\n${preview.subject || "(no subject)"}` }
-                                ]
-                            }
-                        ];
-                        
-                        // Add CC if present
-                        if (preview.cc && preview.cc.length > 0) {
-                            blocks.push({
-                                type: "section",
-                                text: { type: "mrkdwn", text: `*CC:* ${preview.cc.join(", ")}` }
-                            });
-                        }
-                        
-                        // Add body preview
-                        blocks.push(
-                            { type: "divider" },
-                            {
-                                type: "section",
-                                text: { type: "mrkdwn", text: bodySnippet }
-                            },
-                            { type: "divider" },
-                            {
-                                type: "actions",
-                                elements: buttonElements
-                            }
-                        );
-                    } else {
-                        // Default layout for approvals/action requests or drafts without preview
-                        blocks = [
-                            {
-                                type: "section",
-                                text: {
-                                    type: "mrkdwn",
-                                    text: `*${interactive.summary}*\n${resp.content}`
+            const brainResponse = await forwardToBrain({
+                provider: "slack",
+                content: meta.text,
+                context: {
+                    channelId: meta.channel,
+                    userId: meta.user,
+                    messageId: meta.ts,
+                    isDirectMessage: meta.channelType === "im",
+                },
+                history,
+            });
+
+            if (!brainResponse || !Array.isArray(brainResponse.responses)) {
+                console.error("[Surfaces][Slack] Brain response missing/invalid", {
+                    channel: meta.channel,
+                    user: meta.user,
+                    ts: meta.ts,
+                    hasResponse: Boolean(brainResponse),
+                });
+                return;
+            }
+
+            console.log("[Surfaces][Slack] Brain responses ready", {
+                channel: meta.channel,
+                user: meta.user,
+                ts: meta.ts,
+                responseCount: brainResponse.responses.length,
+            });
+
+            for (const [index, resp] of brainResponse.responses.entries()) {
+                try {
+                    if (resp.interactive) {
+                        const interactive = resp.interactive as InteractivePayload;
+                        let buttonElements: SlackButtonElement[];
+
+                        const isDraft = interactive.type === "draft_created";
+                        const isApprovalLike =
+                            interactive.type === "approval_request" ||
+                            interactive.type === "action_request" ||
+                            interactive.type === "ambiguous_time";
+
+                        if (isDraft) {
+                            const buttonValue = `${interactive.draftId}:${interactive.emailAccountId}:${interactive.userId}`;
+                            buttonElements = interactive.actions.map((action: InteractiveAction) => {
+                                if (action.url) {
+                                    return {
+                                        type: "button",
+                                        text: { type: "plain_text", text: action.label },
+                                        url: action.url,
+                                    };
                                 }
-                            },
-                            {
-                                type: "actions",
-                                elements: buttonElements
-                            }
-                        ];
-                    }
+                                return {
+                                    type: "button",
+                                    text: { type: "plain_text", text: action.label },
+                                    style: action.style === "danger" ? "danger" : "primary",
+                                    value: buttonValue,
+                                    action_id: `draft_${action.value}`,
+                                };
+                            });
+                        } else if (isApprovalLike) {
+                            buttonElements = interactive.actions.map((action: InteractiveAction) => {
+                                if (interactive.type === "ambiguous_time") {
+                                    return {
+                                        type: "button",
+                                        text: { type: "plain_text", text: action.label },
+                                        style: "primary",
+                                        value: interactive.ambiguousRequestId,
+                                        action_id: `ambiguous_${action.value}`,
+                                    };
+                                }
+                                return {
+                                    type: "button",
+                                    text: { type: "plain_text", text: action.label },
+                                    style: action.style === "danger" ? "danger" : "primary",
+                                    value: interactive.approvalId,
+                                    action_id: `${action.value}_request`,
+                                };
+                            });
+                        } else {
+                            buttonElements = [];
+                        }
 
-                    await say({ blocks, text: resp.content });
-                } else if (resp.content) {
-                    await say(resp.content);
+                        let blocks: SlackBlock[];
+                        if (isDraft && interactive.preview) {
+                            const preview = interactive.preview;
+                            const bodySnippet =
+                                preview.body.length > 500 ? `${preview.body.slice(0, 500)}...` : preview.body;
+
+                            blocks = [
+                                {
+                                    type: "header",
+                                    text: { type: "plain_text", text: "Draft Email", emoji: true },
+                                },
+                                {
+                                    type: "section",
+                                    fields: [
+                                        { type: "mrkdwn", text: `*To:*\n${preview.to.join(", ")}` },
+                                        { type: "mrkdwn", text: `*Subject:*\n${preview.subject || "(no subject)"}` },
+                                    ],
+                                },
+                            ];
+
+                            if (preview.cc && preview.cc.length > 0) {
+                                blocks.push({
+                                    type: "section",
+                                    text: { type: "mrkdwn", text: `*CC:* ${preview.cc.join(", ")}` },
+                                });
+                            }
+
+                            blocks.push(
+                                { type: "divider" },
+                                {
+                                    type: "section",
+                                    text: { type: "mrkdwn", text: bodySnippet },
+                                },
+                                { type: "divider" },
+                                {
+                                    type: "actions",
+                                    elements: buttonElements,
+                                }
+                            );
+                        } else {
+                            blocks = [
+                                {
+                                    type: "section",
+                                    text: {
+                                        type: "mrkdwn",
+                                        text: `*${interactive.summary}*\n${resp.content}`,
+                                    },
+                                },
+                                {
+                                    type: "actions",
+                                    elements: buttonElements,
+                                },
+                            ];
+                        }
+
+                        await say({
+                            blocks: blocks as unknown as (Block | KnownBlock)[],
+                            text: resp.content,
+                        });
+                        console.log("[Surfaces][Slack] Sent interactive response", {
+                            channel: meta.channel,
+                            user: meta.user,
+                            ts: meta.ts,
+                            responseIndex: index,
+                            interactiveType: interactive.type,
+                            actionsCount: interactive.actions.length,
+                        });
+                    } else if (resp.content) {
+                        await say(resp.content);
+                        console.log("[Surfaces][Slack] Sent text response", {
+                            channel: meta.channel,
+                            user: meta.user,
+                            ts: meta.ts,
+                            responseIndex: index,
+                            contentLength: resp.content.length,
+                        });
+                    } else {
+                        console.log("[Surfaces][Slack] Skipped empty outbound response", {
+                            channel: meta.channel,
+                            user: meta.user,
+                            ts: meta.ts,
+                            responseIndex: index,
+                        });
+                    }
+                } catch (err) {
+                    console.error("[Surfaces][Slack] Failed to send response via Slack API", {
+                        channel: meta.channel,
+                        user: meta.user,
+                        ts: meta.ts,
+                        responseIndex: index,
+                        hasInteractive: Boolean(resp?.interactive),
+                        contentPreview: typeof resp?.content === "string" ? resp.content.slice(0, 120) : null,
+                        error: err instanceof Error ? err.message : String(err),
+                    });
                 }
             }
+        } catch (err) {
+            console.error("[Surfaces][Slack] Unhandled error in message pipeline", {
+                channel: meta.channel,
+                user: meta.user,
+                ts: meta.ts,
+                subtype: meta.subtype ?? null,
+                error: err instanceof Error ? err.message : String(err),
+            });
         }
     });
 
     await app.start();
+    setPlatformStarted("slack");
     console.log("⚡️ Surfaces: Slack Socket Mode running");
 }
 
-export async function sendSlackMessage(channelId: string, text: string, blocks?: any[]) {
+export async function sendSlackMessage(channelId: string, text: string, blocks?: (Block | KnownBlock)[]) {
     if (!slackApp) {
         console.error("Slack app not initialized");
         return;

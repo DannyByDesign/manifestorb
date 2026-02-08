@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/server/db/client";
 import { createScopedLogger } from "@/server/lib/logger";
 import { auth } from "@/server/auth";
-import { createEmailProvider } from "@/features/email/provider";
+import { sendUserDraftById } from "@/features/drafts/service";
 
 const logger = createScopedLogger("api/drafts/send");
 
@@ -12,7 +11,7 @@ const SURFACES_SECRET = process.env.SURFACES_SHARED_SECRET;
 /**
  * POST /api/drafts/:id/send
  * 
- * Sends a draft email. This is the ONLY way to send emails - AI cannot call this directly.
+ * Sends a draft email.
  * Authentication: User session OR surfaces shared secret (with userId in body)
  */
 export async function POST(req: NextRequest, context: { params: Promise<{ id: string }> }) {
@@ -64,45 +63,18 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     }
 
     try {
-        // Find user's email account
-        let emailAccount;
-        
-        if (emailAccountId) {
-            emailAccount = await prisma.emailAccount.findFirst({
-                where: { 
-                    id: emailAccountId,
-                    userId // Ensure user owns this account
-                },
-                include: { account: true }
-            });
-        } else {
-            // Find primary email account for user
-            emailAccount = await prisma.emailAccount.findFirst({
-                where: { userId },
-                include: { account: true }
-            });
-        }
-
-        if (!emailAccount) {
+        const result = await sendUserDraftById({
+            userId,
+            draftId,
+            logger,
+            emailAccountId,
+        });
+        if (!result.success) {
             return NextResponse.json({ error: "Email account not found" }, { status: 404 });
         }
 
-        // Create email provider
-        const provider = await createEmailProvider({
-            emailAccountId: emailAccount.id,
-            provider: emailAccount.account.provider,
-            logger
-        });
-
-        // Verify draft exists and belongs to user (optional - sendDraft will fail if not found)
-        const draft = await provider.getDraft(draftId);
-        if (!draft) {
-            return NextResponse.json({ error: "Draft not found" }, { status: 404 });
-        }
-
         // Send the draft
-        logger.info("Sending draft", { draftId, userId, emailAccountId: emailAccount.id });
-        const result = await provider.sendDraft(draftId);
+        logger.info("Sending draft", { draftId, userId, emailAccountId: result.emailAccountId });
 
         logger.info("Draft sent successfully", { 
             draftId, 
@@ -117,6 +89,9 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
         });
 
     } catch (err) {
+        if (err instanceof Error && err.message === "Draft not found") {
+            return NextResponse.json({ error: "Draft not found" }, { status: 404 });
+        }
         logger.error("Failed to send draft", { error: err, draftId, userId });
         return NextResponse.json(
             { error: err instanceof Error ? err.message : "Failed to send draft" },

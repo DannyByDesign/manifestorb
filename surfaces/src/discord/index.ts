@@ -1,16 +1,37 @@
 
-import { Client, GatewayIntentBits, Partials, ChannelType } from "discord.js";
+import {
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    ChannelType,
+    Client,
+    EmbedBuilder,
+    GatewayIntentBits,
+    Partials
+} from "discord.js";
 import { forwardToBrain, type InteractiveAction, type InteractivePayload } from "../utils";
+import {
+    setPlatformEnabled,
+    setPlatformError,
+    setPlatformStarted,
+    touchPlatformEvent
+} from "../platform-status";
 
 const CORE_BASE_URL = process.env.CORE_BASE_URL || "http://localhost:3000";
 const SHARED_SECRET = process.env.SURFACES_SHARED_SECRET || "dev-secret";
 
 export function startDiscord() {
-    const token = process.env.DISCORD_BOT_TOKEN;
-    if (!token) {
-        console.log("[Surfaces] Skipping Discord (DISCORD_BOT_TOKEN not set)");
+    const token = process.env.DISCORD_BOT_TOKEN?.trim();
+    const tokenLooksPlaceholder =
+        !token ||
+        token.toLowerCase().includes("replace") ||
+        token.toLowerCase().includes("changeme");
+    if (tokenLooksPlaceholder) {
+        setPlatformEnabled("discord", false);
+        console.log("[Surfaces] Skipping Discord (DISCORD_BOT_TOKEN missing/placeholder)");
         return;
     }
+    setPlatformEnabled("discord", true);
 
     const client = new Client({
         intents: [
@@ -24,10 +45,12 @@ export function startDiscord() {
     discordClient = client;
 
     client.once("ready", () => {
+        setPlatformStarted("discord");
         console.log(`[Surfaces] Discord Connected as ${client.user?.tag}`);
     });
 
     client.on("interactionCreate", async (interaction) => {
+        touchPlatformEvent("discord");
         if (!interaction.isButton()) return;
 
         const customId = interaction.customId;
@@ -141,6 +164,7 @@ export function startDiscord() {
     });
 
     client.on("messageCreate", async (message) => {
+        touchPlatformEvent("discord");
         if (message.author.bot) return;
 
         // Normalize
@@ -176,8 +200,6 @@ export function startDiscord() {
         });
 
         if (brainResponse && brainResponse.responses) {
-            const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require("discord.js");
-
             for (const resp of brainResponse.responses) {
                 if (resp.interactive) {
                     const interactive = resp.interactive as InteractivePayload;
@@ -208,7 +230,7 @@ export function startDiscord() {
                         return btn;
                     });
 
-                    const row = new ActionRowBuilder().addComponents(buttons);
+                    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(buttons);
 
                     try {
                         // Build message options based on type
@@ -258,6 +280,7 @@ export function startDiscord() {
     });
 
     client.login(token).catch(err => {
+        setPlatformError("discord", err instanceof Error ? err.message : String(err));
         console.error("[Surfaces] Discord Login Error:", err);
     });
 }
@@ -271,10 +294,7 @@ export async function sendDiscordMessage(channelId: string, content: string) {
     }
     try {
         const channel = await discordClient.channels.fetch(channelId);
-        // Only send if it's a text-based channel (TextChannel, DMChannel, Thread, etc.)
-        // @ts-ignore - isTextBased() exists on all sendable channels but types are tricky
-        if (channel && channel.isTextBased()) {
-            // @ts-ignore
+        if (channel && channel.isTextBased() && "send" in channel) {
             await channel.send(content);
         }
     } catch (error) {

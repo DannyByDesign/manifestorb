@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/server/db/client";
 import { createScopedLogger } from "@/server/lib/logger";
 import { auth } from "@/server/auth";
-import { createEmailProvider } from "@/features/email/provider";
+import {
+    deleteUserDraftById,
+    getUserDraftById,
+} from "@/features/drafts/service";
 
 const logger = createScopedLogger("api/drafts");
 
@@ -23,27 +25,19 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
     }
 
     try {
-        const emailAccount = await prisma.emailAccount.findFirst({
-            where: { userId: session.user.id },
-            include: { account: true }
+        const result = await getUserDraftById({
+            userId: session.user.id,
+            draftId,
+            logger,
         });
-
-        if (!emailAccount) {
+        if (!result.success && result.error === "EMAIL_ACCOUNT_NOT_FOUND") {
             return NextResponse.json({ error: "Email account not found" }, { status: 404 });
         }
-
-        const provider = await createEmailProvider({
-            emailAccountId: emailAccount.id,
-            provider: emailAccount.account.provider,
-            logger
-        });
-
-        const draft = await provider.getDraft(draftId);
-        if (!draft) {
+        if (!result.success && result.error === "DRAFT_NOT_FOUND") {
             return NextResponse.json({ error: "Draft not found" }, { status: 404 });
         }
 
-        return NextResponse.json({ draft });
+        return NextResponse.json({ draft: result.draft });
     } catch (err) {
         logger.error("Failed to get draft", { error: err, draftId });
         return NextResponse.json(
@@ -100,37 +94,18 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ id: 
     }
 
     try {
-        // Find user's email account
-        let emailAccount;
-        
-        if (emailAccountId) {
-            emailAccount = await prisma.emailAccount.findFirst({
-                where: { 
-                    id: emailAccountId,
-                    userId
-                },
-                include: { account: true }
-            });
-        } else {
-            emailAccount = await prisma.emailAccount.findFirst({
-                where: { userId },
-                include: { account: true }
-            });
-        }
-
-        if (!emailAccount) {
+        const result = await deleteUserDraftById({
+            userId,
+            draftId,
+            logger,
+            emailAccountId,
+        });
+        if (!result.success) {
             return NextResponse.json({ error: "Email account not found" }, { status: 404 });
         }
 
-        const provider = await createEmailProvider({
-            emailAccountId: emailAccount.id,
-            provider: emailAccount.account.provider,
-            logger
-        });
-
         // Delete the draft
-        logger.info("Discarding draft", { draftId, userId, emailAccountId: emailAccount.id });
-        await provider.deleteDraft(draftId);
+        logger.info("Discarding draft", { draftId, userId, emailAccountId: result.emailAccountId });
 
         logger.info("Draft discarded successfully", { draftId });
 

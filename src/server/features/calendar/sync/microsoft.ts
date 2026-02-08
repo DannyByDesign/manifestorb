@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import prisma from "@/server/db/client";
 import type { Logger } from "@/server/lib/logger";
 import { env } from "@/env";
-import { getCalendarClientWithRefresh } from "@/server/lib/outlook/calendar-client";
+import { getCalendarClientWithRefresh } from "@/server/integrations/microsoft/calendar-client";
 import { fetchAllEvents } from "@/server/integrations/microsoft/calendar-sync";
 
 type CalendarConnectionTokens = {

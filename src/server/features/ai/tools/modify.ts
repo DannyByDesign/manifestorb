@@ -14,14 +14,15 @@ import { ApprovalService } from "@/features/approvals/service";
 import prisma from "@/server/db/client";
 import { createEmailProvider } from "@/features/email/provider";
 import { updateThreadTrackers } from "@/features/reply-tracker/handle-conversation-status";
-import { ThreadTrackerType } from "@/generated/prisma/client";
 import { getEmailAccountWithAi } from "@/server/lib/user/get";
 import { internalDateToDate } from "@/server/lib/date";
 import { scheduleTasksForUser } from "@/features/calendar/scheduling/TaskSchedulingService";
 import { isAmbiguousLocalTime, resolveTimeZoneOrUtc } from "@/features/calendar/scheduling/date-utils";
 import { createHash } from "crypto";
+import { updateDraftById } from "@/features/drafts/operations";
 
 const approvalService = new ApprovalService(prisma);
+type ApprovalCreateRequestInput = Parameters<ApprovalService["createRequest"]>[0];
 
 const modifyIdsSchema = z.array(z.string()).max(50);
 const modifyChangesSchema = z.record(z.string(), z.any());
@@ -69,7 +70,7 @@ const modifyParameters = z.discriminatedUnion("resource", [
     }).strict(),
 ]);
 
-export const modifyTool: ToolDefinition<any> = {
+export const modifyTool: ToolDefinition<typeof modifyParameters> = {
     name: "modify",
     description: `Modify existing items.
 
@@ -308,7 +309,7 @@ Preferences changes:
                 if (!ids || ids.length === 0) return { success: false, error: "No Draft IDs provided" };
                 await Promise.all(
                     ids.map((id: string) =>
-                        providers.email.updateDraft(id, {
+                        updateDraftById(providers.email, id, {
                             subject: typeof changes.subject === "string" ? changes.subject : undefined,
                             messageHtml:
                                 typeof changes.messageHtml === "string"
@@ -393,7 +394,7 @@ Preferences changes:
                     return { success: false, error: "No Task IDs provided" };
                 }
 
-                const updateData: any = {
+                const updateData = {
                     title: typeof changes.title === "string" ? changes.title : undefined,
                     description: typeof changes.description === "string" ? changes.description : undefined,
                     durationMinutes: typeof changes.durationMinutes === "number" ? changes.durationMinutes : undefined,
@@ -485,7 +486,7 @@ Preferences changes:
                         },
                         idempotencyKey,
                         expiresInSeconds: 3600
-                    } as any);
+                    } as ApprovalCreateRequestInput);
 
                     return {
                         success: true,
@@ -533,7 +534,7 @@ Preferences changes:
                         },
                         idempotencyKey,
                         expiresInSeconds: 3600
-                    } as any);
+                    } as ApprovalCreateRequestInput);
 
                     return {
                         success: true,

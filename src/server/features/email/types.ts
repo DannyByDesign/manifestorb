@@ -2,7 +2,7 @@ import type { ParsedMessage } from "@/server/lib/types";
 import type { AmodelLabel } from "@/server/lib/label";
 // import type { ThreadsQuery } from "@/app/api/threads/validation";
 type ThreadsQuery = any;
-import type { OutlookFolder } from "@/server/lib/outlook/folders";
+import type { OutlookFolder } from "@/server/integrations/microsoft/folders";
 import type { Logger } from "@/server/lib/logger";
 
 export interface EmailThread {

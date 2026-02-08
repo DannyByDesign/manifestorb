@@ -7,7 +7,7 @@ import { isDefined } from "@/server/lib/types";
 import type { Logger } from "@/server/lib/logger";
 import { getMessage } from "@/server/integrations/google/message";
 import { GmailLabel } from "@/server/integrations/google/label";
-import { OutlookLabel } from "@/server/lib/outlook/label";
+import { OutlookLabel } from "@/server/integrations/microsoft/label";
 import { getFilters, getForwardingAddresses } from "@/server/integrations/google/settings";
 
 export async function assessUser({

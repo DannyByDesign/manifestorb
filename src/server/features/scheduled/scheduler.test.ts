@@ -6,7 +6,7 @@ import prisma from "@/server/lib/__mocks__/prisma";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/server/db/client");
-vi.mock("@/server/lib/upstash", () => ({
+vi.mock("@/server/integrations/qstash", () => ({
   qstash: {
     messages: {
       delete: vi.fn().mockResolvedValue({}),

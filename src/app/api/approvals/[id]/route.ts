@@ -1,39 +1,27 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { ApprovalService } from "@/features/approvals/service";
-import prisma from "@/server/db/client";
 import { auth } from "@/server/auth";
 import { createScopedLogger } from "@/server/lib/logger";
+import prisma from "@/server/db/client";
+import { authorizeApprovalView } from "@/features/approvals/authorization";
 
 const logger = createScopedLogger("approvals/get");
 
 export async function GET(req: NextRequest, context: { params: Promise<{ id: string }> }) {
     const { id } = await context.params;
 
-    // Authentication check
     const session = await auth();
-    if (!session?.user?.id) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
 
     try {
-        // Verify the user has permission to view this approval
-        const approvalRequest = await prisma.approvalRequest.findUnique({
-            where: { id },
-            select: { userId: true }
+        const authorization = await authorizeApprovalView({
+            approvalRequestId: id,
+            sessionUserId: session?.user?.id,
+            logger,
         });
 
-        if (!approvalRequest) {
-            return NextResponse.json({ error: "Approval request not found" }, { status: 404 });
-        }
-
-        if (approvalRequest.userId !== session.user.id) {
-            logger.warn("User attempted to view another user's approval", {
-                requestUserId: approvalRequest.userId,
-                sessionUserId: session.user.id,
-                approvalRequestId: id
-            });
-            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        if (!authorization.ok) {
+            return NextResponse.json({ error: authorization.error }, { status: authorization.status });
         }
 
         const service = new ApprovalService(prisma);

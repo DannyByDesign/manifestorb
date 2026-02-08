@@ -1,6 +1,4 @@
-export * from './provider';
 export * from './client';
-export * from './watch-manager';
 export * from './mail';
 export * from './message';
 export * from './thread';
@@ -15,4 +13,3 @@ export {
     extractNameFromEmail,
     getSearchTermForSender,
 } from '@/server/lib/email';
-

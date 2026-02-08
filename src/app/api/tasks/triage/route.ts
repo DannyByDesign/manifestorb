@@ -1,8 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server";
-import prisma from "@/server/db/client";
 import { auth } from "@/server/auth";
 import { createScopedLogger } from "@/server/lib/logger";
 import { triageTasks } from "@/features/tasks/triage/TaskTriageService";
+import { findUserEmailAccountWithProvider } from "@/server/lib/user/email-account";
 
 export const dynamic = "force-dynamic";
 
@@ -15,9 +15,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const emailAccount = await prisma.emailAccount.findFirst({
-      where: { userId: session.user.id },
-      orderBy: { createdAt: "asc" },
+    const emailAccount = await findUserEmailAccountWithProvider({
+      userId: session.user.id,
     });
     if (!emailAccount) {
       return NextResponse.json({ error: "No email account linked" }, { status: 400 });

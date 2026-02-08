@@ -5,7 +5,7 @@ import { createEmailProvider } from "@/features/email/provider";
 import { captureException } from "@/server/lib/error";
 import { cleanupInvalidTokens } from "@/server/auth/cleanup-invalid-tokens";
 import type { EmailProvider } from "@/features/email/types";
-import { createManagedOutlookSubscription } from "@/server/lib/outlook/subscription-manager";
+import { createManagedOutlookSubscription } from "@/server/integrations/microsoft/subscription-manager";
 import { isMicrosoftProvider } from "@/features/email/provider-types";
 
 export type WatchEmailAccountResult =

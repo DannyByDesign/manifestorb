@@ -2,6 +2,7 @@
 import { z } from "zod";
 import { type ToolDefinition } from "./types";
 import prisma from "@/server/db/client";
+import { getDraftById } from "@/features/drafts/operations";
 
 const idsSchema = z.array(z.string()).max(20);
 
@@ -69,7 +70,7 @@ When to use:
 
             case "draft":
                 const drafts = await Promise.all(
-                    ids.map(async (id: string) => providers.email.getDraft(id))
+                    ids.map(async (id: string) => getDraftById(providers.email, id))
                 );
                 return {
                     success: true,

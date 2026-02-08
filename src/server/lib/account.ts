@@ -8,7 +8,7 @@ import {
 import {
   getOutlookClientWithRefresh,
   getAccessTokenFromClient as getOutlookAccessToken,
-} from "@/server/lib/outlook/client";
+} from "@/server/integrations/microsoft/client";
 import { redirect } from "next/navigation";
 import prisma from "@/server/db/client";
 import {

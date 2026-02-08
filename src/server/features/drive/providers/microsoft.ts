@@ -2,7 +2,7 @@ import { Client } from "@microsoft/microsoft-graph-client";
 import type { DriveItem } from "@microsoft/microsoft-graph-types";
 import type { Logger } from "@/server/lib/logger";
 import { createScopedLogger } from "@/server/lib/logger";
-import { isNotFoundError } from "@/server/lib/outlook/errors";
+import { isNotFoundError } from "@/server/integrations/microsoft/errors";
 import type {
   DriveProvider,
   DriveFolder,

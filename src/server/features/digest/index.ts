@@ -1,4 +1,4 @@
-import { publishToQstashQueue } from "@/server/lib/upstash";
+import { publishToQstashQueue } from "@/server/integrations/qstash";
 import type { Logger } from "@/server/lib/logger";
 import { emailToContent } from "@/server/lib/mail";
 import { getInternalApiUrl } from "@/server/lib/internal-api";

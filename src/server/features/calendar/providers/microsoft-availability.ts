@@ -1,6 +1,6 @@
 import type { Client } from "@microsoft/microsoft-graph-client";
 import type { Logger } from "@/server/lib/logger";
-import { getCalendarClientWithRefresh } from "@/server/lib/outlook/calendar-client";
+import { getCalendarClientWithRefresh } from "@/server/integrations/microsoft/calendar-client";
 import type {
   CalendarAvailabilityProvider,
   BusyPeriod,

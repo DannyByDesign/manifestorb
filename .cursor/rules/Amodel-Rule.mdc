@@ -3,16 +3,9 @@ alwaysApply: true
 ---
 
 ---
-description: "Project rules: Bun + TypeScript, Beads task tracking, official docs only, no any types"
+description: "Project rules: Bun + TypeScript, official docs only, no any types"
 alwaysApply: true
 ---
-
-Use external dependency "Beads" for task tracking
-echo "Use 'bd' for task tracking"
-
-BEADS-FIRST RULE (non-negotiable):
-- After any change to code, config, env files, migrations, or docs, update Beads BEFORE responding.
-- If an update is missing, stop and update Beads first, then respond.
 
 NO-SHORTCUTS DIRECTIVE (non-negotiable):
 - Never hardcode solutions or special-case single test inputs to pass tests.

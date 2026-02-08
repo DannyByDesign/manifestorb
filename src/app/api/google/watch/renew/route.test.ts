@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { POST } from "./route";
-import { ensureEmailAccountsWatched } from "@/server/integrations/google/watch-manager";
+import { ensureEmailAccountsWatched } from "@/features/email/watch-manager";
 
-vi.mock("@/server/integrations/google/watch-manager", () => ({
+vi.mock("@/features/email/watch-manager", () => ({
   ensureEmailAccountsWatched: vi.fn(),
 }));
 vi.mock("@/env", () => ({

@@ -1,10 +1,9 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { executeApprovalRequest } from "@/features/approvals/execute";
-import { verifyApprovalActionToken } from "@/features/approvals/action-token";
-import prisma from "@/server/db/client";
 import { createScopedLogger } from "@/server/lib/logger";
 import { auth } from "@/server/auth";
+import { authorizeApprovalDecision } from "@/features/approvals/authorization";
 
 const logger = createScopedLogger("approvals/approve");
 
@@ -18,40 +17,18 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
 
     try {
         const body = await req.json();
-        // Verify the user has permission to decide on this approval
-        // (they should be the owner of the approval request)
-        const approvalRequest = await prisma.approvalRequest.findUnique({
-            where: { id },
-            select: { userId: true }
+        const authorization = await authorizeApprovalDecision({
+            approvalRequestId: id,
+            expectedAction: "approve",
+            sessionUserId: session?.user?.id,
+            token,
+            logger,
         });
 
-        if (!approvalRequest) {
-            return NextResponse.json({ error: "Approval request not found" }, { status: 404 });
+        if (!authorization.ok) {
+            return NextResponse.json({ error: authorization.error }, { status: authorization.status });
         }
-
-        const tokenPayload = token ? verifyApprovalActionToken(token) : null;
-        if (tokenPayload && tokenPayload.action !== "approve") {
-            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-        }
-
-        if (tokenPayload && tokenPayload.approvalId !== id) {
-            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-        }
-
-        const actingUserId = session?.user?.id || approvalRequest.userId;
-
-        if (!session?.user?.id && !tokenPayload) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-
-        if (session?.user?.id && approvalRequest.userId !== session.user.id) {
-            logger.warn("User attempted to approve another user's request", {
-                requestUserId: approvalRequest.userId,
-                sessionUserId: session.user.id,
-                approvalRequestId: id
-            });
-            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-        }
+        const actingUserId = authorization.actingUserId;
 
         // 1. Mark as Approved in DB
         // 2. Decide + execute

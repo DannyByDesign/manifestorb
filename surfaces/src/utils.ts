@@ -77,11 +77,18 @@ export async function fetchOnboardingLinkUrl(
 export async function forwardToBrain(params: {
     provider: "slack" | "discord" | "telegram";
     content: string;
-    context: any;
+    context: Record<string, unknown>;
     history?: { role: "user" | "assistant"; content: string }[];
 }) {
     try {
-        console.log(`[Surfaces] Forwarding to Brain (${params.provider}): ${params.content.substring(0, 50)}...`);
+        console.log(`[Surfaces] Forwarding to Brain (${params.provider})`, {
+            channelId: params.context?.channelId,
+            userId: params.context?.userId,
+            messageId: params.context?.messageId,
+            isDirectMessage: params.context?.isDirectMessage,
+            contentLength: params.content.length,
+            historyCount: params.history?.length ?? 0,
+        });
         const response = await fetch(BRAIN_API_URL, {
             method: "POST",
             headers: {
@@ -97,8 +104,15 @@ export async function forwardToBrain(params: {
             console.error(text);
             return null;
         }
-
-        return await response.json();
+        const json = await response.json();
+        const responses = Array.isArray(json?.responses) ? json.responses.length : 0;
+        console.log("[Surfaces] Brain response received", {
+            provider: params.provider,
+            channelId: params.context?.channelId,
+            userId: params.context?.userId,
+            responses,
+        });
+        return json;
     } catch (error) {
         console.error("[Surfaces] Network Error forwarding to Brain:", error);
         return null;

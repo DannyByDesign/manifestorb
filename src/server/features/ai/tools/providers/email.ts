@@ -4,6 +4,11 @@ import { type ParsedMessage } from "@/server/types";
 import { createEmailProvider as createServiceEmailProvider } from "@/features/email/provider";
 import { type EmailProvider as ServiceEmailProvider, type EmailThread, type Contact } from "@/features/email/types";
 import { SafeError } from "@/server/lib/error";
+import {
+    type DraftParams,
+    type EmailChanges,
+    type ToolEmailAccount,
+} from "./types";
 
 const GMAIL_RECONNECT_MESSAGE =
     "Your Gmail connection is not active. Please reconnect your email in the Amodel web app (Settings -> Accounts) to use email features from Slack.";
@@ -17,43 +22,6 @@ function isGmailAuthError(err: unknown): boolean {
         return err.message.includes("invalid_grant") || err.message.includes("No refresh token") || err.message.includes("Gmail connection has expired");
     }
     return false;
-}
-
-// Basic Types (kept for compatibility with index.ts)
-export interface EmailAccount {
-    id: string;
-    provider: string;
-    access_token: string | null;
-    refresh_token: string | null;
-    expires_at: number | null;
-    email: string;
-}
-
-export interface EmailChanges {
-    archive?: boolean;
-    trash?: boolean;
-    read?: boolean;
-    labels?: {
-        add?: string[];
-        remove?: string[];
-    };
-    unsubscribe?: boolean;
-    tracking?: boolean;
-    followUp?: "enable" | "disable";
-    bulk_archive_senders?: boolean;
-    bulk_trash_senders?: boolean;
-    bulk_label_senders?: string;
-    targetFolderId?: string; // For Drive/Move
-}
-
-export interface DraftParams {
-    type: "new" | "reply" | "forward";
-    parentId?: string; // threadId for reply/forward
-    to?: string[];
-    cc?: string[];
-    bcc?: string[];
-    subject?: string;
-    body?: string; // HTML
 }
 
 // Tool-Specific Interface (Adapter)
@@ -72,8 +40,8 @@ export interface EmailProvider {
         totalEstimate?: number;
     }>;
     get(ids: string[]): Promise<ParsedMessage[]>;
-    modify(ids: string[], changes: EmailChanges): Promise<{ success: boolean; count: number; data?: any }>;
-    createDraft(params: DraftParams): Promise<{ draftId: string; preview: any }>;
+    modify(ids: string[], changes: EmailChanges): Promise<{ success: boolean; count: number; data?: unknown }>;
+    createDraft(params: DraftParams): Promise<{ draftId: string; preview: unknown }>;
     trash(ids: string[]): Promise<{ success: boolean; count: number }>;
     sendDraft(draftId: string): Promise<{ messageId: string; threadId: string }>;
     getDrafts(options?: { maxResults?: number }): Promise<ParsedMessage[]>;
@@ -94,7 +62,7 @@ export interface EmailProvider {
 }
 
 export async function createEmailProvider(
-    account: EmailAccount,
+    account: ToolEmailAccount,
     logger: Logger
 ): Promise<EmailProvider> {
 

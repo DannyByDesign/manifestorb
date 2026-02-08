@@ -1,23 +1,38 @@
 
-import { Telegraf } from "telegraf";
+import { Markup, Telegraf } from "telegraf";
 import { forwardToBrain, type InteractiveAction, type InteractivePayload } from "../utils";
+import {
+    setPlatformEnabled,
+    setPlatformError,
+    setPlatformStarted,
+    touchPlatformEvent
+} from "../platform-status";
 
 const CORE_BASE_URL = process.env.CORE_BASE_URL || "http://localhost:3000";
 const SHARED_SECRET = process.env.SURFACES_SHARED_SECRET || "dev-secret";
 
 export function startTelegram() {
-    const token = process.env.TELEGRAM_BOT_TOKEN;
-    if (!token) {
-        console.log("[Surfaces] Skipping Telegram (TELEGRAM_BOT_TOKEN not set)");
+    const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
+    const tokenLooksPlaceholder =
+        !token ||
+        token.toLowerCase().includes("replace") ||
+        token.toLowerCase().includes("changeme");
+    if (tokenLooksPlaceholder) {
+        setPlatformEnabled("telegram", false);
+        console.log("[Surfaces] Skipping Telegram (TELEGRAM_BOT_TOKEN missing/placeholder)");
         return;
     }
+    setPlatformEnabled("telegram", true);
 
     const bot = new Telegraf(token);
 
     // Handle Callback Queries (Buttons)
     bot.on("callback_query", async (ctx) => {
-        // @ts-ignore - Telegraf types can be tricky with callback_query generic, assuming data exists
-        const data = ctx.callbackQuery.data;
+        touchPlatformEvent("telegram");
+        const data =
+            "data" in ctx.callbackQuery && typeof ctx.callbackQuery.data === "string"
+                ? ctx.callbackQuery.data
+                : null;
         if (!data) return;
 
         // Handle draft actions (draft_send:draftId:emailAccountId:userId)
@@ -116,6 +131,7 @@ export function startTelegram() {
     });
 
     bot.on("message", async (ctx) => {
+        touchPlatformEvent("telegram");
         // We strictly handle text messages for now
         if (!("text" in ctx.message)) return;
 
@@ -137,8 +153,6 @@ export function startTelegram() {
         });
 
         if (brainResponse && brainResponse.responses) {
-            const { Markup } = require("telegraf");
-
             for (const resp of brainResponse.responses) {
                 if (resp.interactive) {
                     const interactive = resp.interactive as InteractivePayload;
@@ -217,8 +231,10 @@ export function startTelegram() {
     });
 
     bot.launch().then(() => {
+        setPlatformStarted("telegram");
         console.log("[Surfaces] Telegram Polling Started");
     }).catch(err => {
+        setPlatformError("telegram", err instanceof Error ? err.message : String(err));
         console.error("[Surfaces] Telegram Launch Error:", err);
     });
 

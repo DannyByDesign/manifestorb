@@ -1,5 +1,5 @@
 import type { Message } from "@microsoft/microsoft-graph-types";
-import type { OutlookClient } from "@/server/lib/outlook/client";
+import type { OutlookClient } from "@/server/integrations/microsoft/client";
 import type { ParsedMessage } from "@/server/lib/types";
 import {
   getMessage,
@@ -10,14 +10,14 @@ import {
   convertMessage,
   MESSAGE_SELECT_FIELDS,
   sanitizeKqlValue,
-} from "@/server/lib/outlook/message";
+} from "@/server/integrations/microsoft/message";
 import {
   getLabels,
   getLabel,
   createLabel,
   getOrCreateAmodelLabel,
   getLabelById,
-} from "@/server/lib/outlook/label";
+} from "@/server/integrations/microsoft/label";
 import type { AmodelLabel } from "@/server/lib/label";
 // import type { ThreadsQuery } from "@/app/api/threads/validation";
 type ThreadsQuery = any;
@@ -27,30 +27,30 @@ import {
   replyToEmail,
   sendEmailWithPlainText,
   sendEmailWithHtml,
-} from "@/server/lib/outlook/mail";
+} from "@/server/integrations/microsoft/mail";
 import {
   archiveThread,
   labelMessage,
   markReadThread,
   removeThreadLabel,
-} from "@/server/lib/outlook/label";
-import { trashThread } from "@/server/lib/outlook/trash";
-import { markSpam } from "@/server/lib/outlook/spam";
+} from "@/server/integrations/microsoft/label";
+import { trashThread } from "@/server/integrations/microsoft/trash";
+import { markSpam } from "@/server/integrations/microsoft/spam";
 import { handlePreviousDraftDeletion } from "@/features/rules/ai/draft-management";
 import { type Logger, createScopedLogger } from "@/server/lib/logger";
 import {
   getThreadMessages,
   getThreadsFromSenderWithSubject,
-} from "@/server/lib/outlook/thread";
-import { getOutlookAttachment } from "@/server/lib/outlook/attachment";
-import { getDraft, deleteDraft, sendDraft } from "@/server/lib/outlook/draft";
+} from "@/server/integrations/microsoft/thread";
+import { getOutlookAttachment } from "@/server/integrations/microsoft/attachment";
+import { getDraft, deleteDraft, sendDraft } from "@/server/integrations/microsoft/draft";
 import {
   getFiltersList,
   createFilter,
   deleteFilter,
   createAutoArchiveFilter,
-} from "@/server/lib/outlook/filter";
-import { queryMessagesWithFilters } from "@/server/lib/outlook/message";
+} from "@/server/integrations/microsoft/filter";
+import { queryMessagesWithFilters } from "@/server/integrations/microsoft/message";
 // import { processHistoryForUser } from "@/app/api/outlook/webhook/process-history";
 const processHistoryForUser = async (...args: any[]) => { };
 import type {
@@ -61,20 +61,20 @@ import type {
   EmailSignature,
   Contact,
 } from "@/features/email/types";
-import { unwatchOutlook, watchOutlook } from "@/server/lib/outlook/watch";
-import { escapeODataString } from "@/server/lib/outlook/odata-escape";
+import { unwatchOutlook, watchOutlook } from "@/server/integrations/microsoft/watch";
+import { escapeODataString } from "@/server/integrations/microsoft/odata-escape";
 import {
   searchContacts,
   createContact,
 } from "@/server/integrations/microsoft/contact";
-import { moveMessagesForSenders } from "@/server/lib/outlook/batch";
+import { moveMessagesForSenders } from "@/server/integrations/microsoft/batch";
 import { extractEmailAddress, getSearchTermForSender } from "@/server/lib/email";
 import {
   getOrCreateOutlookFolderIdByName,
   getOutlookFolderTree,
-} from "@/server/lib/outlook/folders";
+} from "@/server/integrations/microsoft/folders";
 import { extractSignatureFromHtml } from "@/features/email/signature-extraction";
-import { withOutlookRetry } from "@/server/lib/outlook/retry";
+import { withOutlookRetry } from "@/server/integrations/microsoft/retry";
 
 export class OutlookProvider implements EmailProvider {
   readonly name = "microsoft";

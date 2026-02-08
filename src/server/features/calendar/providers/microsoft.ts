@@ -4,7 +4,7 @@ import type { Logger } from "@/server/lib/logger";
 import {
   fetchMicrosoftCalendars,
   getCalendarClientWithRefresh,
-} from "@/server/lib/outlook/calendar-client";
+} from "@/server/integrations/microsoft/calendar-client";
 import type { CalendarOAuthProvider, CalendarTokens } from "../oauth-types";
 import { autoPopulateTimezone } from "../timezone-helpers";
 import {

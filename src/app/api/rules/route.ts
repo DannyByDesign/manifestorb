@@ -3,11 +3,13 @@ import prisma from "@/server/db/client";
 import { auth } from "@/server/auth";
 import { createScopedLogger } from "@/server/lib/logger";
 import { createRuleSchema } from "@/features/rules/ai/prompts/create-rule-schema";
+import { mapRuleActionsForMutation } from "@/features/rules/action-mapper";
 import { createRule } from "@/features/rules/rule";
+import { findUserEmailAccountWithProvider } from "@/server/lib/user/email-account";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   const logger = createScopedLogger("api/rules");
   try {
     const session = await auth();
@@ -15,10 +17,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const emailAccount = await prisma.emailAccount.findFirst({
-      where: { userId: session.user.id },
-      include: { account: true },
-      orderBy: { createdAt: "asc" },
+    const emailAccount = await findUserEmailAccountWithProvider({
+      userId: session.user.id,
     });
     if (!emailAccount) {
       return NextResponse.json({ error: "No email account linked" }, { status: 400 });
@@ -48,10 +48,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const emailAccount = await prisma.emailAccount.findFirst({
-      where: { userId: session.user.id },
-      include: { account: true },
-      orderBy: { createdAt: "asc" },
+    const emailAccount = await findUserEmailAccountWithProvider({
+      userId: session.user.id,
     });
     if (!emailAccount) {
       return NextResponse.json({ error: "No email account linked" }, { status: 400 });
@@ -72,24 +70,10 @@ export async function POST(req: NextRequest) {
         name: parsed.data.name,
         ruleId: undefined,
         condition: parsed.data.condition,
-        actions: parsed.data.actions.map((actionItem) => ({
-          type: actionItem.type,
-          fields: actionItem.fields
-            ? {
-                content: actionItem.fields.content ?? null,
-                to: actionItem.fields.to ?? null,
-                subject: actionItem.fields.subject ?? null,
-                label: actionItem.fields.label ?? null,
-                webhookUrl: actionItem.fields.webhookUrl ?? null,
-                cc: actionItem.fields.cc ?? null,
-                bcc: actionItem.fields.bcc ?? null,
-                payload: actionItem.fields.payload ?? null,
-                ...(provider === "microsoft" && {
-                  folderName: actionItem.fields.folderName ?? null,
-                }),
-              }
-            : null,
-        })),
+        actions: mapRuleActionsForMutation({
+          actions: parsed.data.actions,
+          provider,
+        }),
       },
       emailAccountId: emailAccount.id,
       provider,

@@ -4,7 +4,7 @@ import { createScopedLogger } from "@/server/lib/logger";
 import type { Client } from "@microsoft/microsoft-graph-client";
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/server/lib/outlook/calendar-client", () => ({
+vi.mock("@/server/integrations/microsoft/calendar-client", () => ({
   getCalendarClientWithRefresh: vi.fn(),
 }));
 
@@ -34,7 +34,7 @@ describe("createMicrosoftAvailabilityProvider", () => {
     };
 
     const { getCalendarClientWithRefresh } = await import(
-      "@/server/lib/outlook/calendar-client"
+      "@/server/integrations/microsoft/calendar-client"
     );
     vi.mocked(getCalendarClientWithRefresh).mockResolvedValue(
       mockClient as Client,

@@ -132,6 +132,13 @@ export class ChannelRouter {
         });
 
         if (!account || !account.user) {
+            logger.warn("No linked surface account found", {
+                provider: message.provider,
+                providerAccountId: message.context.userId,
+                channelId: message.context.channelId,
+                workspaceId: message.context.workspaceId ?? null,
+                threadId: message.context.threadId ?? null,
+            });
             const { createLinkToken } = await import("@/server/lib/linking");
             const { env } = await import("@/env");
 
@@ -161,10 +168,23 @@ export class ChannelRouter {
         }
 
         const user = account.user;
+        logger.info("Resolved linked surface account", {
+            provider: message.provider,
+            providerAccountId: message.context.userId,
+            resolvedUserId: user.id,
+            emailAccountsCount: user.emailAccounts.length,
+            channelId: message.context.channelId,
+            threadId: message.context.threadId ?? null,
+        });
         const { resolveEmailAccount } = await import("@/server/lib/user-utils");
         const emailAccount = resolveEmailAccount(user, null);
 
         if (!emailAccount) {
+            logger.warn("Linked user has no email account", {
+                resolvedUserId: user.id,
+                provider: message.provider,
+                channelId: message.context.channelId,
+            });
             return [{
                 targetChannelId: message.context.channelId,
                 content: "Your account is linked, but you haven't connected a Gmail/Outlook account yet.\n\nPlease go to the Amodel Web App to connect your email."
@@ -172,6 +192,13 @@ export class ChannelRouter {
         }
 
         if (emailAccount.account?.disconnectedAt) {
+            logger.warn("Linked email account is disconnected", {
+                resolvedUserId: user.id,
+                emailAccountId: emailAccount.id,
+                provider: message.provider,
+                channelId: message.context.channelId,
+                disconnectedAt: emailAccount.account.disconnectedAt,
+            });
             return [{
                 targetChannelId: message.context.channelId,
                 content: `Your email account (${emailAccount.email}) has been disconnected (e.g. due to a password change or revoked access).\n\nPlease reconnect it in the Amodel web app: ${env.NEXT_PUBLIC_BASE_URL}/connect`,
@@ -207,6 +234,13 @@ export class ChannelRouter {
                     channelId: channelId,
                     threadId: threadId,
                 }
+            });
+            logger.info("Created new conversation for inbound message", {
+                conversationId: conversation.id,
+                resolvedUserId: user.id,
+                provider: message.provider,
+                channelId,
+                threadId,
             });
         }
 
@@ -308,6 +342,17 @@ export class ChannelRouter {
                     baseUrl: env.NEXT_PUBLIC_BASE_URL
                 });
             }
+
+            logger.info("Built outbound response", {
+                conversationId: conversation.id,
+                resolvedUserId: user.id,
+                provider: message.provider,
+                channelId: message.context.channelId,
+                contentLength: outbound.content.length,
+                hasInteractive: Boolean(outbound.interactive),
+                approvalsCount: approvals?.length ?? 0,
+                interactivePayloadsCount: interactivePayloads?.length ?? 0,
+            });
 
             return [outbound];
 

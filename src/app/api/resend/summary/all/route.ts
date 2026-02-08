@@ -11,7 +11,7 @@ import {
 import { Frequency } from "@/generated/prisma/enums";
 import { captureException } from "@/server/lib/error";
 import type { Logger } from "@/server/lib/logger";
-import { publishToQstashQueue } from "@/server/lib/upstash";
+import { publishToQstashQueue } from "@/server/integrations/qstash";
 import { getPremiumUserFilter } from "@/features/premium";
 import type { SendSummaryEmailBody } from "../validation";
 

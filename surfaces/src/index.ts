@@ -10,6 +10,7 @@ import { processMemoryRecording } from "./jobs/recording-worker";
 import { env } from "./env";
 import { prisma } from "./db/prisma";
 import { redis } from "./db/redis";
+import { getPlatformStatuses, setPlatformError, type PlatformName } from "./platform-status";
 
 config();
 
@@ -223,6 +224,7 @@ export async function handleRequest(req: Request) {
                 let db = "ok";
                 let redisStatus = "not_configured";
                 let queueStats: { pending: number; processing: number; failed: number } | null = null;
+                const platforms = getPlatformStatuses();
 
                 try {
                     await prisma.$queryRaw`SELECT 1`;
@@ -243,11 +245,12 @@ export async function handleRequest(req: Request) {
                 }
 
                 return new Response(JSON.stringify({ 
-                    status: "ok",
+                    status: platforms.slack.started ? "ok" : "degraded",
                     uptime: process.uptime(),
                     db,
                     redis: redisStatus,
-                    queue: queueStats
+                    queue: queueStats,
+                    platforms
                 }), {
                     status: 200,
                     headers: { "Content-Type": "application/json" }
@@ -258,20 +261,44 @@ export async function handleRequest(req: Request) {
 }
 
 export async function startSidecar() {
-    // Start platform connectors
-    startSlack();
-    startDiscord();
-    startTelegram();
+    const startConnectorSafely = async (
+        name: PlatformName,
+        starter: () => void | Promise<void>
+    ): Promise<void> => {
+        try {
+            await Promise.resolve(starter());
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            setPlatformError(name, message);
+            console.error(`[Surfaces] ${name} startup failed`, { error: message });
+        }
+    };
+
+    process.on("unhandledRejection", (reason) => {
+        console.error("[Surfaces] Unhandled promise rejection", { reason });
+    });
+    process.on("uncaughtException", (error) => {
+        console.error("[Surfaces] Uncaught exception", { error });
+    });
+
+    // Start platform connectors safely so one bad integration does not take down the process.
+    await Promise.all([
+        startConnectorSafely("slack", startSlack),
+        startConnectorSafely("discord", startDiscord),
+        startConnectorSafely("telegram", startTelegram),
+    ]);
 
     // Start background job scheduler
     const scheduler = startScheduler();
 
     console.log("🚀 Surfaces Sidecar fully initialized");
 
-    // @ts-ignore
-    const Bun = globalThis.Bun;
+    const bunRuntime = (globalThis as { Bun?: { serve: (options: { port: number; fetch: typeof handleRequest }) => { stop: () => void } } }).Bun;
+    if (!bunRuntime) {
+        throw new Error("Bun runtime not available");
+    }
 
-    const server = Bun.serve({
+    const server = bunRuntime.serve({
         port: 3001,
         fetch: handleRequest,
     });

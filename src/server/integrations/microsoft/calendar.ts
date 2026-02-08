@@ -2,7 +2,7 @@ import type { Client } from "@microsoft/microsoft-graph-client";
 import { Frequency, RRule } from "rrule";
 import { env } from "@/env";
 import type { Logger } from "@/server/lib/logger";
-import { getCalendarClientWithRefresh } from "@/server/lib/outlook/calendar-client";
+import { getCalendarClientWithRefresh } from "@/server/integrations/microsoft/calendar-client";
 import { logCalendarAction } from "@/features/calendar/action-log";
 import { normalizeRecurrenceRule, toDateOnly } from "@/features/calendar/utils";
 

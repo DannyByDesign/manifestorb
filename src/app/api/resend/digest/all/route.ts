@@ -6,7 +6,7 @@ import { hasCronSecret, hasPostCronSecret } from "@/server/lib/cron";
 import { getInternalApiUrl } from "@/server/lib/internal-api";
 import { captureException } from "@/server/lib/error";
 import type { Logger } from "@/server/lib/logger";
-import { publishToQstashQueue } from "@/server/lib/upstash";
+import { publishToQstashQueue } from "@/server/integrations/qstash";
 import { getPremiumUserFilter } from "@/features/premium";
 
 export const dynamic = "force-dynamic";

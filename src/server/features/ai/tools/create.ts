@@ -24,6 +24,7 @@ import { TimeSlotManagerImpl } from "@/features/calendar/scheduling/TimeSlotMana
 import { ApprovalService } from "@/features/approvals/service";
 import { findCrossReferences } from "@/features/ai/cross-reference";
 import { createDeterministicIdempotencyKey } from "@/server/lib/idempotency";
+import { createDraft as createDraftOperation } from "@/features/drafts/operations";
 
 const logger = createScopedLogger("tools/create");
 const approvalService = new ApprovalService(prisma);
@@ -248,7 +249,7 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                 }
 
                 // Map params to DraftParams
-                const draftResult = await providers.email.createDraft({
+                const draftResult = await createDraftOperation(providers.email, {
                     type: (type as "new" | "reply" | "forward") || "new",
                     parentId,
                     to: data.to,

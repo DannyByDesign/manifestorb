@@ -2,7 +2,7 @@ import { tool, zodSchema } from "ai";
 import { z } from "zod";
 import { google } from "@ai-sdk/google";
 import { type Logger } from "@/server/lib/logger";
-import { type EmailAccount } from "@/features/ai/tools/providers/email";
+import { type ToolEmailAccount } from "@/features/ai/tools/providers/types";
 import { createEmailProvider } from "./providers/email";
 import { createCalendarProvider } from "./providers/calendar";
 import { createAutomationProvider } from "./providers/automation";
@@ -48,7 +48,7 @@ export async function createAgentTools({
     logger,
     userId
 }: {
-    emailAccount: EmailAccount;
+    emailAccount: ToolEmailAccount;
     logger: Logger;
     userId: string;
 }) {

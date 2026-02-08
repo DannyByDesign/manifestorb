@@ -2,7 +2,8 @@ import { z } from "zod";
 import { type ToolDefinition } from "./types";
 import prisma from "@/server/db/client";
 import { createRuleSchema } from "@/features/rules/ai/prompts/create-rule-schema";
-import { createRule, partialUpdateRule, updateRule, updateRuleActions } from "@/features/rules/rule";
+import { createRule, partialUpdateRule, updateRuleActions } from "@/features/rules/rule";
+import { mapRuleActionsForMutation } from "@/features/rules/action-mapper";
 import { saveLearnedPatterns } from "@/features/rules/learned-patterns";
 import { GroupItemType, LogicalOperator, ActionType } from "@/generated/prisma/enums";
 import { delayInMinutesSchema } from "@/actions/rule.validation";
@@ -246,24 +247,10 @@ Rule structure: condition (aiInstructions and/or static from/to/subject) + actio
             name: args.name,
             ruleId: undefined,
             condition: args.condition,
-            actions: args.actions.map((actionItem) => ({
-              type: actionItem.type,
-              fields: actionItem.fields
-                ? {
-                    content: actionItem.fields.content ?? null,
-                    to: actionItem.fields.to ?? null,
-                    subject: actionItem.fields.subject ?? null,
-                    label: actionItem.fields.label ?? null,
-                    webhookUrl: actionItem.fields.webhookUrl ?? null,
-                    cc: actionItem.fields.cc ?? null,
-                    bcc: actionItem.fields.bcc ?? null,
-                    payload: actionItem.fields.payload ?? null,
-                    ...(isMicrosoftProvider(provider) && {
-                      folderName: actionItem.fields.folderName ?? null,
-                    }),
-                  }
-                : null,
-            })),
+            actions: mapRuleActionsForMutation({
+              actions: args.actions,
+              provider,
+            }),
           },
           emailAccountId: context.emailAccountId,
           provider,
@@ -404,23 +391,10 @@ Rule structure: condition (aiInstructions and/or static from/to/subject) + actio
         }));
         await updateRuleActions({
           ruleId: rule.id,
-          actions: actions.map((actionItem) => ({
-            type: actionItem.type,
-            fields: {
-              label: actionItem.fields?.label ?? null,
-              to: actionItem.fields?.to ?? null,
-              cc: actionItem.fields?.cc ?? null,
-              bcc: actionItem.fields?.bcc ?? null,
-              subject: actionItem.fields?.subject ?? null,
-              content: actionItem.fields?.content ?? null,
-              webhookUrl: actionItem.fields?.webhookUrl ?? null,
-              payload: actionItem.fields?.payload ?? null,
-              ...(isMicrosoftProvider(provider) && {
-                folderName: actionItem.fields?.folderName ?? null,
-              }),
-            },
-            delayInMinutes: actionItem.delayInMinutes ?? null,
-          })),
+          actions: mapRuleActionsForMutation({
+            actions,
+            provider,
+          }),
           provider,
           emailAccountId: context.emailAccountId,
           logger: context.logger,

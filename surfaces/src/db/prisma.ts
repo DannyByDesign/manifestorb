@@ -5,7 +5,7 @@
  * Uses the shared Prisma schema (symlinked from main app).
  */
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "../../../generated/prisma/client";
+import { PrismaClient } from "../../generated/prisma/client";
 import { env } from "../env";
 
 // Create a singleton instance

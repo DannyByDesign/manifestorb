@@ -1,6 +1,6 @@
 
 import { NextResponse } from "next/server";
-import { ensureEmailAccountsWatched } from "@/server/integrations/google/watch-manager";
+import { ensureEmailAccountsWatched } from "@/features/email/watch-manager";
 import { createScopedLogger } from "@/server/lib/logger";
 import { env } from "@/env";
 import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";

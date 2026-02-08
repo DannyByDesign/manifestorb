@@ -63,10 +63,27 @@ export async function POST(req: NextRequest) {
         }
         
         const message = parseResult.data;
+        logger.info("Accepted inbound surface message", {
+            provider: message.provider,
+            externalUserId: message.context.userId,
+            channelId: message.context.channelId,
+            messageId: message.context.messageId,
+            isDirectMessage: message.context.isDirectMessage,
+            contentLength: message.content.length,
+            historyCount: message.history?.length ?? 0,
+            attachmentsCount: message.attachments?.length ?? 0,
+        });
 
         // 2. Route Message
         const router = new ChannelRouter();
         const responses = await router.handleInbound(message);
+        logger.info("Returning surface responses", {
+            provider: message.provider,
+            externalUserId: message.context.userId,
+            channelId: message.context.channelId,
+            responsesCount: responses.length,
+            hasInteractive: responses.some((response) => Boolean(response.interactive)),
+        });
 
         // 3. Return Outbound Messages
         return NextResponse.json({ responses });

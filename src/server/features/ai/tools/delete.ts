@@ -10,6 +10,7 @@
 import { z } from "zod";
 import { type ToolDefinition } from "./types";
 import prisma from "@/server/db/client";
+import { deleteDraftById } from "@/features/drafts/operations";
 
 const deleteIdsSchema = z.array(z.string()).max(200);
 
@@ -104,7 +105,7 @@ Drive: Deletes file or folder`,
             }
 
             case "draft":
-                await Promise.all(ids.map((id: string) => providers.email.deleteDraft(id)));
+                await Promise.all(ids.map((id: string) => deleteDraftById(providers.email, id)));
                 return { success: true, data: { count: ids.length } };
 
             case "task":
