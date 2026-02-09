@@ -22,6 +22,7 @@ import { addDays, isAmbiguousLocalTime, resolveTimeZoneOrUtc } from "@/features/
 import { CalendarServiceImpl } from "@/features/calendar/scheduling/CalendarServiceImpl";
 import { TimeSlotManagerImpl } from "@/features/calendar/scheduling/TimeSlotManager";
 import { ApprovalService } from "@/features/approvals/service";
+import { requiresApproval } from "@/features/approvals/policy";
 import { findCrossReferences } from "@/features/ai/cross-reference";
 import { createDeterministicIdempotencyKey } from "@/server/lib/idempotency";
 import { createDraft as createDraftOperation } from "@/features/drafts/operations";
@@ -269,6 +270,33 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
 
                 const draftId = (draftResult as { draftId?: string; id?: string }).draftId ?? (draftResult as { id?: string }).id;
                 if (data.sendOnApproval && draftId) {
+                    const needsApproval = await requiresApproval({
+                        userId: context.userId,
+                        toolName: "send",
+                        args: {
+                            draftId,
+                            resource: "email",
+                            data: {
+                                to: data.to,
+                                cc: data.cc,
+                                bcc: data.bcc,
+                                subject: data.subject,
+                            },
+                        },
+                    });
+                    if (!needsApproval) {
+                        const sendResult = await providers.email.sendDraft(draftId);
+                        return {
+                            success: true,
+                            data: {
+                                draftId,
+                                status: "sent",
+                                sendResult,
+                            },
+                            message: "Success",
+                        };
+                    }
+
                     const approvalService = new ApprovalService(prisma);
                     const idempotencyKey = createDeterministicIdempotencyKey(
                         "send-draft",

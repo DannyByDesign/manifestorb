@@ -27,6 +27,7 @@ import {
 } from "@/features/ai/tools/timezone";
 import { ApprovalService } from "@/features/approvals/service";
 import { createInAppNotification } from "@/features/notifications/create";
+import { applyTaskPreferencePayloadsForUser } from "@/features/preferences/service";
 
 const MODULE = "ai-actions";
 
@@ -510,10 +511,10 @@ const set_task_preferences: ActionFunction<{ payload?: any }> = async ({
     return;
   }
 
-  await prisma.taskPreference.upsert({
-    where: { userId },
-    update: payload,
-    create: { userId, ...payload },
+  await applyTaskPreferencePayloadsForUser({
+    userId,
+    payloads: [payload],
+    logger,
   });
 };
 

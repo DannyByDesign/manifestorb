@@ -14,6 +14,7 @@ import {
     formatDateTimeForUser,
 } from "./timezone";
 import { resolveCalendarTimeRange } from "./calendar-time";
+import { getAssistantPreferenceSnapshot } from "@/features/preferences/service";
 
 const parseFilterObject = <T extends z.ZodTypeAny>(schema: T) =>
     z.preprocess(
@@ -954,33 +955,14 @@ async function handleConversationQuery(
 }
 
 async function handlePreferencesQuery(context: QueryContext): Promise<ToolResult> {
-    const [emailAccount, taskPreference] = await Promise.all([
-        prisma.emailAccount.findFirst({
-            where: { userId: context.userId },
-            select: {
-                about: true,
-                statsEmailFrequency: true,
-                summaryEmailFrequency: true,
-            },
-        }),
-        prisma.taskPreference.findUnique({
-            where: { userId: context.userId },
-            select: {
-                workHourStart: true,
-                workHourEnd: true,
-                workDays: true,
-                bufferMinutes: true,
-                timeZone: true,
-            },
-        }),
-    ]);
+    const preferences = await getAssistantPreferenceSnapshot({
+        userId: context.userId,
+        emailAccountId: context.emailAccountId,
+    });
 
     return {
         success: true,
-        data: {
-            email: emailAccount,
-            scheduling: taskPreference,
-        },
+        data: preferences,
         message: "Current preferences loaded.",
     };
 }
@@ -1004,7 +986,7 @@ Resources:
 - notification: Search notifications by title/body, filter by type.
 - draft: List email drafts, optionally filter by query.
 - conversation: Search conversation history.
-- preferences: Read current email and scheduling preferences.
+- preferences: Read current assistant preferences (email, scheduling, AI config, digest schedule).
 - contacts: Search known contacts.
 
 Examples:

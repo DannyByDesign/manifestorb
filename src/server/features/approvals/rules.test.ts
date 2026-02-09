@@ -1,0 +1,252 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const {
+  findUniqueMock,
+  findManyMock,
+  upsertMock,
+  deleteManyMock,
+} = vi.hoisted(() => ({
+  findUniqueMock: vi.fn(),
+  findManyMock: vi.fn(),
+  upsertMock: vi.fn(),
+  deleteManyMock: vi.fn(),
+}));
+
+vi.mock("@/server/db/client", () => ({
+  default: {
+    approvalPreference: {
+      findUnique: findUniqueMock,
+      findMany: findManyMock,
+      upsert: upsertMock,
+      deleteMany: deleteManyMock,
+    },
+  },
+}));
+
+import {
+  deriveApprovalTarget,
+  evaluateApprovalRequirement,
+  getApprovalOperationLabel,
+  listApprovalRuleConfigs,
+  normalizeApprovalOperationKey,
+  resolveApprovalRuleReference,
+  removeApprovalRule,
+  setApprovalToolDefaultPolicy,
+  upsertApprovalRule,
+} from "@/features/approvals/rules";
+
+describe("approval rules engine", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    findUniqueMock.mockResolvedValue(null);
+    findManyMock.mockResolvedValue([]);
+    upsertMock.mockResolvedValue({});
+    deleteManyMock.mockResolvedValue({ count: 0 });
+  });
+
+  it("derives operation and recipients for send calls", () => {
+    const target = deriveApprovalTarget("send", {
+      draftId: "d1",
+      data: { to: ["CEO <ceo@outside.com>"] },
+    });
+    expect(target.operation).toBe("send_email");
+    expect(target.recipientEmails).toEqual(["ceo@outside.com"]);
+  });
+
+  it("requires approval by default for send", async () => {
+    await expect(
+      evaluateApprovalRequirement({ userId: "u1", toolName: "send", args: {} }),
+    ).resolves.toMatchObject({ requiresApproval: true, source: "default" });
+  });
+
+  it("requires approval by default for destructive email modify", async () => {
+    await expect(
+      evaluateApprovalRequirement({
+        userId: "u1",
+        toolName: "modify",
+        args: { resource: "email", ids: ["m1"], changes: { trash: true } },
+      }),
+    ).resolves.toMatchObject({ requiresApproval: true, source: "rule" });
+  });
+
+  it("requires approval only for bulk email delete by default", async () => {
+    await expect(
+      evaluateApprovalRequirement({
+        userId: "u1",
+        toolName: "delete",
+        args: { resource: "email", ids: ["m1"] },
+      }),
+    ).resolves.toMatchObject({ requiresApproval: false });
+
+    await expect(
+      evaluateApprovalRequirement({
+        userId: "u1",
+        toolName: "delete",
+        args: {
+          resource: "email",
+          ids: Array.from({ length: 30 }, (_, i) => `m${i}`),
+        },
+      }),
+    ).resolves.toMatchObject({ requiresApproval: true });
+  });
+
+  it("never requires approval for approval decisions", async () => {
+    await expect(
+      evaluateApprovalRequirement({
+        userId: "u1",
+        toolName: "modify",
+        args: {
+          resource: "approval",
+          ids: ["approval-1"],
+          changes: { decision: "APPROVE" },
+        },
+      }),
+    ).resolves.toMatchObject({ requiresApproval: false });
+  });
+
+  it("supports legacy conditional external-only preferences", async () => {
+    findUniqueMock.mockResolvedValue({
+      policy: "conditional",
+      conditions: { externalOnly: true, domains: ["example.com"] },
+    });
+
+    await expect(
+      evaluateApprovalRequirement({
+        userId: "u1",
+        toolName: "send",
+        args: { data: { to: ["inside@example.com"] } },
+      }),
+    ).resolves.toMatchObject({ requiresApproval: false });
+
+    await expect(
+      evaluateApprovalRequirement({
+        userId: "u1",
+        toolName: "send",
+        args: { data: { to: ["outside@other.com"] } },
+      }),
+    ).resolves.toMatchObject({ requiresApproval: true });
+  });
+
+  it("supports v2 scoped rules persisted in conditions", async () => {
+    findUniqueMock.mockResolvedValue({
+      policy: "never",
+      conditions: {
+        version: 2,
+        defaultPolicy: "never",
+        rules: [
+          {
+            id: "rule-send-external",
+            name: "External sends require approval",
+            policy: "always",
+            operation: "send_email",
+            conditions: { externalOnly: true, domains: ["example.com"] },
+          },
+        ],
+      },
+    });
+
+    await expect(
+      evaluateApprovalRequirement({
+        userId: "u1",
+        toolName: "send",
+        args: { data: { to: ["inside@example.com"] } },
+      }),
+    ).resolves.toMatchObject({ requiresApproval: false, source: "default" });
+
+    await expect(
+      evaluateApprovalRequirement({
+        userId: "u1",
+        toolName: "send",
+        args: { data: { to: ["outside@other.com"] } },
+      }),
+    ).resolves.toMatchObject({
+      requiresApproval: true,
+      source: "rule",
+      matchedRule: { id: "rule-send-external" },
+    });
+  });
+
+  it("allows approval rules to be listed and mutated", async () => {
+    findManyMock.mockResolvedValue([
+      {
+        toolName: "send",
+        policy: "always",
+        conditions: {
+          version: 2,
+          defaultPolicy: "always",
+          rules: [],
+        },
+      },
+    ]);
+    const listed = await listApprovalRuleConfigs({ userId: "u1" });
+    expect(listed.find((entry) => entry.toolName === "send")?.defaultPolicy).toBe(
+      "always",
+    );
+
+    await upsertApprovalRule({
+      userId: "u1",
+      toolName: "send",
+      rule: {
+        name: "Always approve external",
+        policy: "always",
+        operation: "send_email",
+        conditions: { externalOnly: true, domains: ["example.com"] },
+      },
+    });
+    expect(upsertMock).toHaveBeenCalledOnce();
+
+    await setApprovalToolDefaultPolicy({
+      userId: "u1",
+      toolName: "send",
+      defaultPolicy: "never",
+    });
+    expect(upsertMock).toHaveBeenCalledTimes(2);
+
+    findUniqueMock.mockResolvedValue({
+      policy: "never",
+      conditions: {
+        version: 2,
+        defaultPolicy: "never",
+        rules: [{ id: "r1", name: "x", policy: "always" }],
+      },
+    });
+    await removeApprovalRule({ userId: "u1", toolName: "send", ruleId: "r1" });
+    expect(upsertMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("normalizes plain-English operation labels to machine keys", () => {
+    expect(normalizeApprovalOperationKey("Send email")).toBe("send_email");
+    expect(getApprovalOperationLabel("delete_calendar_event")).toBe(
+      "Delete calendar events",
+    );
+  });
+
+  it("resolves approval rules by fuzzy name and respects toolName scoping", async () => {
+    findManyMock.mockResolvedValue([
+      {
+        toolName: "send",
+        policy: "always",
+        conditions: {
+          version: 2,
+          defaultPolicy: "always",
+          rules: [{ id: "a1", name: "External send guard", policy: "always" }],
+        },
+      },
+      {
+        toolName: "delete",
+        policy: "never",
+        conditions: {
+          version: 2,
+          defaultPolicy: "never",
+          rules: [{ id: "a2", name: "Delete guard", policy: "always" }],
+        },
+      },
+    ]);
+    const resolved = await resolveApprovalRuleReference({
+      userId: "u1",
+      reference: { name: "external send", toolName: "send" },
+    });
+    expect(resolved.status).toBe("resolved");
+    expect(resolved.matches[0]?.rule.id).toBe("a1");
+  });
+});

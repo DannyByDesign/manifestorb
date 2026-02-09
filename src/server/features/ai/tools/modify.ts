@@ -4,7 +4,7 @@
  * Wraps server actions / equivalents:
  * - email: archiveThreadAction, trashThreadAction, markReadThreadAction (via provider)
  * - automation: updateRuleAction, toggleRuleAction (enabled, instructions)
- * - preferences: applyDigestSchedule, applyToggleDigest, applyEmailSettings (Issue 08)
+ * - preferences: centralized preference service mutations
  * - approval: ApprovalService.decideRequest, resolveScheduleProposalRequestById
  */
 
@@ -28,6 +28,13 @@ import {
     parseDateBoundInTimeZone,
     parseLocalDateTimeInput,
 } from "./timezone";
+import {
+    applyAiConfigPatch,
+    applyDigestScheduleForEmailAccount,
+    applyEmailNotificationSettings,
+    applyTaskPreferencePatchForUser,
+    toggleDigestForEmailAccount,
+} from "@/features/preferences/service";
 
 const approvalService = new ApprovalService(prisma);
 type ApprovalCreateRequestInput = Parameters<ApprovalService["createRequest"]>[0];
@@ -210,7 +217,9 @@ Preferences changes:
 - digestTime: ISO date string (time of day for digest, e.g. "2026-01-01T09:00:00")
 - digestSchedule: { intervalDays, daysOfWeek, timeOfDay, occurrences }
 - statsEmailFrequency: "WEEKLY" | "NEVER"
-- summaryEmailFrequency: "WEEKLY" | "NEVER"`,
+- summaryEmailFrequency: "WEEKLY" | "NEVER"
+- scheduling keys: workHourStart, workHourEnd, workDays, bufferMinutes, selectedCalendarIds, timeZone, groupByProject, defaultMeetingDurationMin, meetingSlotCount, meetingExpirySeconds
+- aiConfig: { maxSteps, approvalInstructions, customInstructions, conversationCategories, defaultApprovalExpirySeconds }`,
 
     parameters: modifyParameters,
 
@@ -821,8 +830,8 @@ Preferences changes:
                 const accountId = emailAccountId;
 
                 if ("digestEnabled" in changes && changes.digestEnabled !== undefined) {
-                    const { applyToggleDigest } = await import("@/server/actions/settings");
-                    await applyToggleDigest(accountId, {
+                    await toggleDigestForEmailAccount({
+                        emailAccountId: accountId,
                         enabled: Boolean(changes.digestEnabled),
                         timeOfDay:
                             changes.digestTime != null
@@ -837,8 +846,8 @@ Preferences changes:
 
                 if ("digestSchedule" in changes && changes.digestSchedule != null) {
                     const schedule = changes.digestSchedule as Record<string, unknown>;
-                    const { applyDigestSchedule } = await import("@/server/actions/settings");
-                    await applyDigestSchedule(accountId, {
+                    await applyDigestScheduleForEmailAccount({
+                        emailAccountId: accountId,
                         intervalDays: (schedule.intervalDays as number) ?? null,
                         daysOfWeek: (schedule.daysOfWeek as number) ?? null,
                         timeOfDay:
@@ -857,8 +866,8 @@ Preferences changes:
                     const emailAccount = await getEmailAccountWithAi({ emailAccountId: accountId });
                     if (!emailAccount)
                         return { success: false, error: "Email account not found" };
-                    const { applyEmailSettings } = await import("@/server/actions/settings");
-                    await applyEmailSettings(accountId, {
+                    await applyEmailNotificationSettings({
+                        emailAccountId: accountId,
                         statsEmailFrequency:
                             (changes.statsEmailFrequency as string) ??
                             emailAccount.statsEmailFrequency ??
@@ -874,32 +883,74 @@ Preferences changes:
                 };
                 }
 
-                if ("approvalPolicy" in changes && changes.approvalPolicy != null) {
-                    const policyPayload = changes.approvalPolicy as {
-                        toolName: string;
-                        policy: string;
-                        conditions?: Record<string, unknown>;
-                    };
-                    const { toolName: prefToolName, policy, conditions } = policyPayload;
-                    await prisma.approvalPreference.upsert({
-                        where: { userId_toolName: { userId, toolName: prefToolName } },
-                        update: { policy, conditions: conditions ?? undefined },
-                        create: {
-                            userId,
-                            toolName: prefToolName,
-                            policy,
-                            conditions: conditions ?? undefined,
+                const schedulingPreferenceKeys = [
+                    "workHourStart",
+                    "workHourEnd",
+                    "workDays",
+                    "bufferMinutes",
+                    "selectedCalendarIds",
+                    "timeZone",
+                    "groupByProject",
+                    "defaultMeetingDurationMin",
+                    "meetingSlotCount",
+                    "meetingExpirySeconds",
+                ] as const;
+
+                if (schedulingPreferenceKeys.some((key) => key in changes)) {
+                    await applyTaskPreferencePatchForUser({
+                        userId,
+                        patch: {
+                            workHourStart:
+                                typeof changes.workHourStart === "number"
+                                    ? changes.workHourStart
+                                    : undefined,
+                            workHourEnd:
+                                typeof changes.workHourEnd === "number"
+                                    ? changes.workHourEnd
+                                    : undefined,
+                            workDays: Array.isArray(changes.workDays)
+                                ? (changes.workDays as number[])
+                                : undefined,
+                            bufferMinutes:
+                                typeof changes.bufferMinutes === "number"
+                                    ? changes.bufferMinutes
+                                    : undefined,
+                            selectedCalendarIds: Array.isArray(changes.selectedCalendarIds)
+                                ? (changes.selectedCalendarIds as string[])
+                                : undefined,
+                            timeZone:
+                                typeof changes.timeZone === "string"
+                                    ? changes.timeZone
+                                    : undefined,
+                            groupByProject:
+                                typeof changes.groupByProject === "boolean"
+                                    ? changes.groupByProject
+                                    : undefined,
+                            defaultMeetingDurationMin:
+                                typeof changes.defaultMeetingDurationMin === "number"
+                                    ? changes.defaultMeetingDurationMin
+                                    : undefined,
+                            meetingSlotCount:
+                                typeof changes.meetingSlotCount === "number"
+                                    ? changes.meetingSlotCount
+                                    : undefined,
+                            meetingExpirySeconds:
+                                typeof changes.meetingExpirySeconds === "number"
+                                    ? changes.meetingExpirySeconds
+                                    : undefined,
                         },
                     });
                     return {
                         success: true,
-                        message: `Approval policy for "${prefToolName}" set to "${policy}".`,
+                        message: "Scheduling preferences updated.",
                     };
                 }
 
                 if ("aiConfig" in changes && changes.aiConfig != null) {
                     const config = changes.aiConfig as Record<string, unknown>;
-                    const data = {
+                    await applyAiConfigPatch({
+                        userId,
+                        patch: {
                         ...(config.maxSteps !== undefined && { maxSteps: Number(config.maxSteps) }),
                         ...(config.customInstructions !== undefined && { customInstructions: String(config.customInstructions) }),
                         ...(config.approvalInstructions !== undefined && { approvalInstructions: String(config.approvalInstructions) }),
@@ -911,11 +962,7 @@ Preferences changes:
                         ...(config.defaultApprovalExpirySeconds !== undefined && {
                             defaultApprovalExpirySeconds: Number(config.defaultApprovalExpirySeconds),
                         }),
-                    };
-                    await prisma.userAIConfig.upsert({
-                        where: { userId },
-                        update: data,
-                        create: { userId, ...data },
+                        },
                     });
                     return { success: true, message: "AI configuration updated." };
                 }
@@ -923,7 +970,7 @@ Preferences changes:
                 return {
                     success: false,
                     error:
-                        "Unknown preference key. Supported: digestEnabled, digestSchedule, statsEmailFrequency, summaryEmailFrequency, approvalPolicy, aiConfig.",
+                        "Unknown preference key. Supported: digestEnabled, digestSchedule, statsEmailFrequency, summaryEmailFrequency, aiConfig, and scheduling keys.",
                 };
             }
 

@@ -83,7 +83,7 @@ When composing an email, use \`sendOnApproval: true\` in the create (email) tool
 
 ## Rule Management Tool
 
-- rules: Manage rules with "action" = list/create/update_conditions/update_actions/update_patterns/get_patterns/update_about/add_knowledge.
+- rules: Manage rules with actions including list/create/update_conditions/update_actions/update_patterns/get_patterns/update_about/add_knowledge/list_approval_rules/list_approval_operations/set_approval_rule/remove_approval_rule/set_approval_default/reset_approval_rules/disable/enable/delete/rename.
 
 ## Memory Management Tools
 
@@ -167,6 +167,8 @@ When the user's request involves multiple related actions across different resou
 ## Rules (see "rules" tool description)
 
 Rule structure, matching logic, and best practices are in the "rules" tool description. Do not create duplicate rules; check if the rule already exists.
+When users ask to see their rules, use rules action "list" and present a concise summary first.
+Include both email rules and approval rules by default unless the user explicitly asks for one kind only.
 ${draftPreference}
 
 ## Scheduling (see "create" tool description)
@@ -205,7 +207,17 @@ When the user asks to change settings like "send me a daily digest at 9am" or "t
 
 ## Approval Preferences
 
-Users can configure which actions require approval. When a user says "don't ask me before sending emails to my team" or "always ask before deleting anything", use the modify tool with resource "preferences" and changes.approvalPolicy (toolName, policy: \"always\" | \"never\" | \"conditional\", optional conditions).
+Users can configure which actions require approval through rules tool approval actions:
+- rules action list_approval_rules to inspect current policy.
+- rules action list_approval_operations to discover valid operation keys and user-facing labels.
+- rules action set_approval_rule to add/update a scoped rule (tool/resource/operation + policy + conditions).
+- rules action set_approval_default to set a tool-level default.
+- rules action remove_approval_rule or reset_approval_rules to remove overrides.
+Use this path when the user says things like "don't ask before sending to my team" or "always ask before deleting anything."
+
+When users say "turn this rule off" without a time window, prefer rules action "disable" with default 24-hour pause.
+If they specify a duration ("for 4 days"), pass that explicit duration.
+For rule deletions, require explicit confirmation first (confirmation, not approval workflow).
 
 ## Knowledge Base
 

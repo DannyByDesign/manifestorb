@@ -47,6 +47,7 @@ import { validateGmailLabelName } from "@/server/integrations/google/label-valid
 import { isGoogleProvider } from "@/features/email/provider-types";
 import { bulkProcessInboxEmails } from "@/features/rules/ai/bulk-process-emails";
 import { getEmailAccountWithAi } from "@/server/lib/user/get";
+import { applyTaskPreferencePayloadsForEmailAccount } from "@/features/preferences/service";
 
 export const createRuleAction = actionClient
   .metadata({ name: "createRule" })
@@ -97,7 +98,7 @@ export const createRuleAction = actionClient
         });
 
         if (preferencePayloads.length > 0) {
-          await applyTaskPreferencePayloads({
+          await applyTaskPreferencePayloadsForEmailAccount({
             emailAccountId,
             payloads: preferencePayloads,
             logger,
@@ -162,7 +163,7 @@ export const updateRuleAction = actionClient
         });
 
         if (preferencePayloads.length > 0) {
-          await applyTaskPreferencePayloads({
+          await applyTaskPreferencePayloadsForEmailAccount({
             emailAccountId,
             payloads: preferencePayloads,
             logger,
@@ -827,37 +828,6 @@ function splitTaskPreferenceActions<T extends { type: ActionType; payload?: unkn
   });
 
   return { filteredActions, preferencePayloads };
-}
-
-async function applyTaskPreferencePayloads({
-  emailAccountId,
-  payloads,
-  logger,
-}: {
-  emailAccountId: string;
-  payloads: unknown[];
-  logger: Logger;
-}) {
-  if (!payloads.length) return;
-
-  const emailAccount = await getEmailAccountWithAi({ emailAccountId });
-  if (!emailAccount) {
-    logger.warn("Email account not found for task preferences", { emailAccountId });
-    return;
-  }
-
-  const merged = payloads.reduce<Record<string, unknown>>((acc, payload) => {
-    if (payload && typeof payload === "object") {
-      return { ...acc, ...(payload as Record<string, unknown>) };
-    }
-    return acc;
-  }, {});
-
-  await prisma.taskPreference.upsert({
-    where: { userId: emailAccount.userId },
-    update: merged,
-    create: { userId: emailAccount.userId, ...merged },
-  });
 }
 
 function handleRuleError(error: unknown, logger: Logger) {

@@ -10,6 +10,7 @@ import { createRuleHistory } from "@/features/rules/rule-history";
 import { isMicrosoftProvider } from "@/features/email/provider-types";
 import { createEmailProvider } from "@/features/email/provider";
 import { resolveLabelNameAndId } from "@/server/lib/label/resolve-label";
+import { applyTaskPreferencePayloadsForEmailAccount } from "@/features/preferences/service";
 
 export function partialUpdateRule({
   ruleId,
@@ -93,7 +94,7 @@ export async function createRule({
     await createRuleHistory({ rule, triggerType: "created" });
 
     if (preferencePayloads.length > 0) {
-      await applyTaskPreferencePayloads({
+      await applyTaskPreferencePayloadsForEmailAccount({
         emailAccountId,
         payloads: preferencePayloads,
         logger,
@@ -172,7 +173,7 @@ export async function updateRule({
     await createRuleHistory({ rule, triggerType: "updated" });
 
     if (preferencePayloads.length > 0) {
-      await applyTaskPreferencePayloads({
+      await applyTaskPreferencePayloadsForEmailAccount({
         emailAccountId,
         payloads: preferencePayloads,
         logger,
@@ -443,38 +444,4 @@ function splitTaskPreferenceActions(
   });
 
   return { filteredActions, preferencePayloads };
-}
-
-async function applyTaskPreferencePayloads({
-  emailAccountId,
-  payloads,
-  logger,
-}: {
-  emailAccountId: string;
-  payloads: unknown[];
-  logger: Logger;
-}) {
-  if (!payloads.length) return;
-
-  const emailAccount = await prisma.emailAccount.findUnique({
-    where: { id: emailAccountId },
-    select: { userId: true },
-  });
-  if (!emailAccount) {
-    logger.warn("Email account not found for task preferences", { emailAccountId });
-    return;
-  }
-
-  const merged = payloads.reduce<Record<string, unknown>>((acc, payload) => {
-    if (payload && typeof payload === "object") {
-      return { ...acc, ...(payload as Record<string, unknown>) };
-    }
-    return acc;
-  }, {});
-
-  await prisma.taskPreference.upsert({
-    where: { userId: emailAccount.userId },
-    update: merged,
-    create: { userId: emailAccount.userId, ...merged },
-  });
 }

@@ -164,6 +164,10 @@ export async function executeApprovalRequest(params: {
     }
 
     const executionArgs = { ...args };
+    if (toolName === "workflow") {
+      executionArgs.preApproved = true;
+      executionArgs.approvalId = approvalRequestId;
+    }
     const argsIds = Array.isArray((executionArgs as { ids?: unknown }).ids)
       ? ((executionArgs as { ids?: unknown }).ids as unknown[]).filter(
         (value): value is string => typeof value === "string" && value.length > 0,

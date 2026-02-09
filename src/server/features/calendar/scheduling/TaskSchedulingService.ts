@@ -8,6 +8,7 @@ import type { Logger } from "@/server/lib/logger";
 import { resolveTimeZoneOrUtc } from "./date-utils";
 import { env } from "@/env";
 import { resolveDefaultCalendarTimeZone } from "@/features/ai/tools/calendar-time";
+import { applyTaskPreferencePatchForUser } from "@/features/preferences/service";
 
 const LOG_SOURCE = "TaskSchedulingService";
 
@@ -224,9 +225,9 @@ export async function resolveSchedulingEmailAccountId({
         userId,
         invalidCalendarIds,
       });
-      await prisma.taskPreference.update({
-        where: { userId },
-        data: {
+      await applyTaskPreferencePatchForUser({
+        userId,
+        patch: {
           selectedCalendarIds: Array.from(validCalendarIds),
         },
       });

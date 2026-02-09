@@ -19,23 +19,43 @@ describe("requiresApproval defaults", () => {
     vi.clearAllMocks();
   });
 
-  it("requires approval by default for create and workflow", async () => {
+  it("requires approval by default for send", async () => {
     findUniqueMock.mockResolvedValue(null);
 
     await expect(
-      requiresApproval({ userId: "user-1", toolName: "create" }),
-    ).resolves.toBe(true);
-    await expect(
-      requiresApproval({ userId: "user-1", toolName: "workflow" }),
+      requiresApproval({ userId: "user-1", toolName: "send" }),
     ).resolves.toBe(true);
   });
 
-  it("does not require approval by default for non-sensitive tools", async () => {
+  it("does not require approval by default for low-risk create/query operations", async () => {
     findUniqueMock.mockResolvedValue(null);
 
     await expect(
       requiresApproval({ userId: "user-1", toolName: "query" }),
     ).resolves.toBe(false);
+    await expect(
+      requiresApproval({
+        userId: "user-1",
+        toolName: "create",
+        args: { resource: "email", data: { to: ["a@example.com"] } },
+      }),
+    ).resolves.toBe(false);
+  });
+
+  it("requires approval by default for modify email trash operations", async () => {
+    findUniqueMock.mockResolvedValue(null);
+
+    await expect(
+      requiresApproval({
+        userId: "user-1",
+        toolName: "modify",
+        args: {
+          resource: "email",
+          ids: ["msg-1"],
+          changes: { trash: true },
+        },
+      }),
+    ).resolves.toBe(true);
   });
 
   it("respects explicit user preference overrides", async () => {

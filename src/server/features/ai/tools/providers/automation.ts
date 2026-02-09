@@ -12,6 +12,7 @@ import { createKnowledgeBody } from "@/actions/knowledge.validation";
 import { getEmailReportData, type EmailReportData } from "@/actions/report";
 import { unsubscribeFromSender } from "@/features/email/unsubscribe";
 import { findMatchingRules } from "@/features/rules/ai/match-rules";
+import { applyTaskPreferencePayloadsForUser } from "@/features/preferences/service";
 
 export interface AutomationProvider {
     listRules(): Promise<Rule[]>;
@@ -88,13 +89,10 @@ export async function createAutomationProvider(
                 .map((action) => action.payload)
                 .filter(Boolean);
             if (preferencePayloads.length > 0 && user) {
-                const merged = preferencePayloads.reduce((acc: any, payload: any) => {
-                    return { ...acc, ...payload };
-                }, {});
-                await prisma.taskPreference.upsert({
-                    where: { userId: user.id },
-                    update: merged,
-                    create: { userId: user.id, ...merged }
+                await applyTaskPreferencePayloadsForUser({
+                    userId: user.id,
+                    payloads: preferencePayloads,
+                    logger,
                 });
             }
 

@@ -5,6 +5,7 @@ import { unwatchEmails } from "@/features/email/watch-manager";
 import { createEmailProvider } from "@/features/email/provider";
 import prisma from "@/server/db/client";
 import type { Logger } from "@/server/lib/logger";
+import { resumePausedEmailRules } from "@/features/rules/management";
 
 export async function getWebhookEmailAccount(
   where: { email: string } | { watchEmailsSubscriptionId: string },
@@ -94,6 +95,16 @@ export async function getWebhookEmailAccount(
 
   if (!emailAccount) {
     logger.error("Account not found", where);
+  }
+
+  if (emailAccount) {
+    const resumed = await resumePausedEmailRules(emailAccount.id);
+    if (resumed.count > 0) {
+      emailAccount = await prisma.emailAccount.findUnique({
+        where: { id: emailAccount.id },
+        ...query,
+      });
+    }
   }
 
   return emailAccount;

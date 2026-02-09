@@ -9,23 +9,21 @@ import {
 } from "@/actions/settings.validation";
 import prisma from "@/server/db/client";
 import {
-  calculateNextScheduleDate,
-  createCanonicalTimeOfDay,
-} from "@/server/lib/schedule";
-import { ActionType, SystemType } from "@/generated/prisma/enums";
-import type { Prisma } from "@/generated/prisma/client";
+  applyDigestScheduleForEmailAccount,
+  applyEmailNotificationSettings,
+  toggleDigestForEmailAccount,
+} from "@/features/preferences/service";
+import { ActionType } from "@/generated/prisma/enums";
 
 /** Shared logic for email notification settings. Call from actions or AI modify tool. */
 export async function applyEmailSettings(
   emailAccountId: string,
   input: { statsEmailFrequency: string; summaryEmailFrequency: string },
 ) {
-  await prisma.emailAccount.update({
-    where: { id: emailAccountId },
-    data: {
-      statsEmailFrequency: input.statsEmailFrequency as "WEEKLY" | "NEVER",
-      summaryEmailFrequency: input.summaryEmailFrequency as "WEEKLY" | "NEVER",
-    },
+  await applyEmailNotificationSettings({
+    emailAccountId,
+    statsEmailFrequency: input.statsEmailFrequency as "NEVER" | "DAILY" | "WEEKLY",
+    summaryEmailFrequency: input.summaryEmailFrequency as "NEVER" | "DAILY" | "WEEKLY",
   });
 }
 
@@ -54,25 +52,12 @@ export async function applyDigestSchedule(
     occurrences: number | null;
   },
 ) {
-  const create: Prisma.ScheduleUpsertArgs["create"] = {
+  await applyDigestScheduleForEmailAccount({
     emailAccountId,
     intervalDays: parsedInput.intervalDays,
     daysOfWeek: parsedInput.daysOfWeek,
     timeOfDay: parsedInput.timeOfDay,
     occurrences: parsedInput.occurrences,
-    lastOccurrenceAt: new Date(),
-    nextOccurrenceAt: calculateNextScheduleDate({
-      ...parsedInput,
-      lastOccurrenceAt: null,
-    }),
-  };
-
-  const { emailAccountId: _emailAccountId, ...update } = create;
-
-  await prisma.schedule.upsert({
-    where: { emailAccountId },
-    create,
-    update,
   });
 }
 
@@ -142,47 +127,11 @@ export async function applyToggleDigest(
   emailAccountId: string,
   input: { enabled: boolean; timeOfDay?: Date },
 ) {
-  const { enabled, timeOfDay } = input;
-  if (enabled) {
-    const defaultSchedule = {
-      intervalDays: 1,
-      occurrences: 1,
-      daysOfWeek: 127,
-      timeOfDay: timeOfDay ?? createCanonicalTimeOfDay(9, 0),
-    };
-
-    await prisma.schedule.upsert({
-      where: { emailAccountId },
-      create: {
-        emailAccountId,
-        ...defaultSchedule,
-        lastOccurrenceAt: new Date(),
-        nextOccurrenceAt: calculateNextScheduleDate({
-          ...defaultSchedule,
-          lastOccurrenceAt: null,
-        }),
-      },
-      update: {},
-    });
-
-    const newsletterRule = await prisma.rule.findFirst({
-      where: { emailAccountId, systemType: SystemType.NEWSLETTER },
-      include: { actions: true },
-    });
-
-    if (
-      newsletterRule &&
-      !newsletterRule.actions.some((a) => a.type === ActionType.DIGEST)
-    ) {
-      await prisma.action.create({
-        data: { ruleId: newsletterRule.id, type: ActionType.DIGEST },
-      });
-    }
-  } else {
-    await prisma.schedule.deleteMany({
-      where: { emailAccountId },
-    });
-  }
+  await toggleDigestForEmailAccount({
+    emailAccountId,
+    enabled: input.enabled,
+    timeOfDay: input.timeOfDay,
+  });
 }
 
 export const toggleDigestAction = actionClient
