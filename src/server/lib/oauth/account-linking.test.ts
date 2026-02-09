@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { handleAccountLinking } from "./account-linking";
 import prisma from "@/server/lib/__mocks__/prisma";
-import { getMockEmailAccountSelect } from "@/__tests__/helpers";
+import { getMockEmailAccountSelect } from "@/tests/support/helpers";
 import { createScopedLogger } from "@/server/lib/logger";
 
 const logger = createScopedLogger("test");

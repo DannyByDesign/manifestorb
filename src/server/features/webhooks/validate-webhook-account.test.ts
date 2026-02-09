@@ -56,6 +56,8 @@ describe("validateWebhookAccount", () => {
           actions: [],
           createdAt: new Date(),
           updatedAt: new Date(),
+          expiresAt: null,
+          isTemporary: false,
           enabled: true,
           runOnThreads: false,
           groupId: null,

@@ -16,6 +16,8 @@ const logger = {
   warn: vi.fn(),
   error: vi.fn(),
   trace: vi.fn(),
+  with: vi.fn().mockReturnThis(),
+  flush: vi.fn().mockResolvedValue(undefined),
 };
 
 const baseContext = {
@@ -71,10 +73,14 @@ describe("triageTasks", () => {
           preferredTime: null,
           dueDate: new Date("2024-01-02T00:00:00.000Z"),
           startDate: null,
+          status: "OPEN",
+          isAutoScheduled: false,
+          scheduleLocked: false,
           scheduledStart: null,
           scheduledEnd: null,
           scheduleScore: null,
           reschedulePolicy: null,
+          lastScheduled: null,
         },
       ],
     });
@@ -103,10 +109,14 @@ describe("triageTasks", () => {
           preferredTime: null,
           dueDate: new Date("2024-01-02T00:00:00.000Z"),
           startDate: null,
+          status: "OPEN",
+          isAutoScheduled: false,
+          scheduleLocked: false,
           scheduledStart: null,
           scheduledEnd: null,
           scheduleScore: null,
           reschedulePolicy: null,
+          lastScheduled: null,
         },
         {
           id: "task-2",
@@ -118,10 +128,14 @@ describe("triageTasks", () => {
           preferredTime: null,
           dueDate: null,
           startDate: null,
+          status: "OPEN",
+          isAutoScheduled: false,
+          scheduleLocked: false,
           scheduledStart: null,
           scheduledEnd: null,
           scheduleScore: null,
           reschedulePolicy: null,
+          lastScheduled: null,
         },
       ],
     });

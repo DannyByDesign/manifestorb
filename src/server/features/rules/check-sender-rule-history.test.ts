@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { checkSenderRuleHistory } from "@/features/rules/check-sender-rule-history";
 import prisma from "@/server/lib/__mocks__/prisma";
-import { createMockEmailProvider } from "@/__tests__/mocks/email-provider.mock";
-import { getMockMessage, getMockExecutedRule } from "@/__tests__/helpers";
+import { createMockEmailProvider } from "@/tests/support/mocks/email-provider.mock";
+import { getMockMessage, getMockExecutedRule } from "@/tests/support/helpers";
 import { createScopedLogger } from "@/server/lib/logger";
 
 const logger = createScopedLogger("test");

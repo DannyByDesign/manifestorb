@@ -7,7 +7,7 @@ import { isAssistantEmail } from "@/features/web-chat/is-assistant-email";
 import { markMessageAsProcessing } from "@/server/lib/redis/message-processing";
 import { GmailLabel } from "@/server/integrations/google/label";
 import { processAssistantEmail } from "@/features/web-chat/process-assistant-email";
-import { getEmailAccount } from "@/__tests__/helpers";
+import { getEmailAccount } from "@/tests/support/helpers";
 import { createEmailProvider } from "@/features/email/provider";
 import { createScopedLogger } from "@/server/lib/logger";
 import { handleLabelRemovedEvent } from "@/app/api/google/webhook/process-label-removed-event";

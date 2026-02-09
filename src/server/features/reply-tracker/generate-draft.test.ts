@@ -230,7 +230,7 @@ describe("fetchMessagesAndGenerateDraft - AI content escaping", () => {
     vi.mocked(prisma.emailAccount.findUnique).mockResolvedValue({
       includeReferralSignature: false,
       signature: null,
-    } as unknown as object);
+    } as any);
 
     await fetchMessagesAndGenerateDraft(
       createMockEmailAccount(),

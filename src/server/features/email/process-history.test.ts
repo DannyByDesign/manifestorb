@@ -114,7 +114,7 @@ describe("processHistoryForUser", () => {
       id: "email-1",
       email: "user@test.com",
       lastSyncedHistoryId: "0",
-    } as unknown as object);
+    } as any);
     vi.mocked(validateWebhookAccount).mockResolvedValue({
       success: true,
       data: {
@@ -132,7 +132,7 @@ describe("processHistoryForUser", () => {
         hasAutomationRules: false,
         hasAiAccess: false,
       },
-    } as unknown as object);
+    } as any);
 
     vi.mocked(getHistory).mockResolvedValue({
       history: [
@@ -156,8 +156,8 @@ describe("processHistoryForUser", () => {
           ],
         },
       ],
-    } as unknown as object);
-    prisma.$executeRaw.mockResolvedValue(undefined as unknown as object);
+    } as any);
+    prisma.$executeRaw.mockResolvedValue(undefined as any);
 
     await processHistoryForUser(
       { emailAddress: "user@test.com", historyId: 124 },

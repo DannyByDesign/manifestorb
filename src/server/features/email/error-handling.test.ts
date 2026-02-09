@@ -34,7 +34,7 @@ describe("aiCheckIfNeedsReply error handling", () => {
 
   it("returns a safe default when no message is provided", async () => {
     const result = await aiCheckIfNeedsReply({
-      emailAccount: emailAccount as unknown as object,
+      emailAccount: emailAccount as any,
       messageToSend: undefined as unknown as EmailForLLM,
       threadContextMessages: [],
     });
@@ -47,11 +47,11 @@ describe("aiCheckIfNeedsReply error handling", () => {
     vi.mocked(createGenerateObject).mockReturnValue(
       (async () => {
         throw new Error("LLM error");
-      }) as unknown as () => Promise<{ object: { needsReply: boolean } }>,
+      }) as any,
     );
 
     const result = await aiCheckIfNeedsReply({
-      emailAccount: emailAccount as unknown as object,
+      emailAccount: emailAccount as any,
       messageToSend,
       threadContextMessages: [],
     });

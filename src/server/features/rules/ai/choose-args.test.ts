@@ -12,6 +12,7 @@ function createMockAction(overrides: Partial<Action> = {}): Action {
     createdAt: new Date(),
     updatedAt: new Date(),
     type: ActionType.DRAFT_EMAIL,
+    payload: null,
     ruleId: "test-rule-id",
     to: null,
     subject: null,

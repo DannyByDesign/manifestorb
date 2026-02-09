@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mergeAccount } from "./merge-account";
 import prisma from "@/server/lib/__mocks__/prisma";
 import { createScopedLogger } from "@/server/lib/logger";
-import { getMockUserSelect } from "@/__tests__/helpers";
+import { getMockUserSelect } from "@/tests/support/helpers";
 
 vi.mock("@/server/db/client");
 vi.mock("@/server/lib/user/merge-premium");
@@ -40,7 +40,7 @@ describe("mergeAccount", () => {
       prisma.account.update.mockResolvedValue({} as any);
       prisma.emailAccount.update.mockResolvedValue({} as any);
       prisma.user.update.mockResolvedValue({} as any);
-      prisma.$transaction.mockImplementation((ops) => Promise.resolve(ops));
+      prisma.$transaction.mockImplementation((ops: any[]) => Promise.resolve(ops));
 
       const result = await mergeAccount({
         sourceAccountId: accountId,
@@ -86,7 +86,7 @@ describe("mergeAccount", () => {
 
       prisma.account.update.mockResolvedValue({} as any);
       prisma.emailAccount.update.mockResolvedValue({} as any);
-      prisma.$transaction.mockImplementation((ops) => Promise.resolve(ops));
+      prisma.$transaction.mockImplementation((ops: any[]) => Promise.resolve(ops));
 
       const result = await mergeAccount({
         sourceAccountId: accountId,
@@ -134,7 +134,7 @@ describe("mergeAccount", () => {
       prisma.account.update.mockResolvedValue({} as any);
       prisma.emailAccount.update.mockResolvedValue({} as any);
       prisma.user.delete.mockResolvedValue({} as any);
-      prisma.$transaction.mockImplementation((ops) => Promise.resolve(ops));
+      prisma.$transaction.mockImplementation((ops: any[]) => Promise.resolve(ops));
 
       const { transferPremiumDuringMerge } = await import(
         "@/server/lib/user/merge-premium"

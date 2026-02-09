@@ -78,18 +78,20 @@ describe("buildTaskTriageContext", () => {
       knowledge: [{ title: "Work policy", content: "No meetings after 3pm." }],
       history: [],
       documents: [],
-    });
+    } as any);
 
     const result = await buildTaskTriageContext({
       userId: "user-1",
       emailAccountId: "email-1",
-      logger: {
-        info: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-        trace: vi.fn(),
-      },
-    });
+        logger: {
+          info: vi.fn(),
+          warn: vi.fn(),
+          error: vi.fn(),
+          trace: vi.fn(),
+          with: vi.fn().mockReturnThis(),
+          flush: vi.fn().mockResolvedValue(undefined),
+        },
+      });
 
     expect(result.tasks[0]).toMatchObject({
       id: "task-1",
@@ -128,6 +130,8 @@ describe("buildTaskTriageContext", () => {
           warn: vi.fn(),
           error: vi.fn(),
           trace: vi.fn(),
+          with: vi.fn().mockReturnThis(),
+          flush: vi.fn().mockResolvedValue(undefined),
         },
       }),
     ).rejects.toThrow("Email account not found for task triage context");

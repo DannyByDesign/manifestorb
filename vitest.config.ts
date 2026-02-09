@@ -52,8 +52,8 @@ export default defineConfig({
         replacement: path.join(rootDir, "src/enterprise/"),
       },
       {
-        find: /^@\/__tests__\//,
-        replacement: path.join(rootDir, "src/__tests__/"),
+        find: /^@\/tests\//,
+        replacement: path.join(rootDir, "tests/"),
       },
       {
         find: /^@\/(.*)$/,
@@ -68,6 +68,7 @@ export default defineConfig({
   test: {
     environment: "node",
     passWithNoTests: true,
-    setupFiles: ["src/__tests__/setup.ts"],
+    setupFiles: ["tests/support/setup.ts"],
+    exclude: ["tests/e2e/**", "tests/evals/**"],
   },
 });

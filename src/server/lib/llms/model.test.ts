@@ -57,7 +57,7 @@ describe("Models", () => {
     });
 
     it("should not have backup model when GOOGLE_API_KEY is not set", () => {
-      vi.mocked(env).GOOGLE_API_KEY = undefined;
+      (vi.mocked(env) as any).GOOGLE_API_KEY = undefined;
 
       const result = getModel();
       expect(result.backupModel).toBeNull();

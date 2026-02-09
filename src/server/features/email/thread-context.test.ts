@@ -25,9 +25,9 @@ const createThreadMessages = (count: number): EmailForLLM[] =>
 describe("aiCollectReplyContext fallback", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(createGenerateText).mockReturnValue(async () => ({
+    vi.mocked(createGenerateText).mockReturnValue((async () => ({
       steps: [],
-    }) as unknown as () => Promise<{ steps: Array<unknown> }>);
+    })) as any);
   });
 
   it("returns subject-based fallback results for long threads", async () => {
@@ -50,7 +50,7 @@ describe("aiCollectReplyContext fallback", () => {
         email: "user@example.com",
         userId: "user-1",
         account: { provider: "google" },
-      } as unknown as object,
+      } as any,
       emailProvider,
     });
 

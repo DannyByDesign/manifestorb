@@ -4,7 +4,7 @@ import prisma from "@/server/lib/__mocks__/prisma";
 import { aiDetermineThreadStatus } from "@/features/reply-tracker/ai/determine-thread-status";
 import { applyThreadStatusLabel } from "./label-helpers";
 import { updateThreadTrackers } from "@/features/reply-tracker/handle-conversation-status";
-import { getEmailAccount, getMockMessage } from "@/__tests__/helpers";
+import { getEmailAccount, getMockMessage } from "@/tests/support/helpers";
 import { createScopedLogger } from "@/server/lib/logger";
 import { SystemType } from "@/generated/prisma/enums";
 

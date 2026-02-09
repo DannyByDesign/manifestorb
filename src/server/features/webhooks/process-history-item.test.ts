@@ -4,8 +4,8 @@ import {
   createMockEmailProvider,
   getMockParsedMessage,
   ErrorProviders,
-} from "@/__tests__/mocks/email-provider.mock";
-import { getEmailAccount } from "@/__tests__/helpers";
+} from "@/tests/support/mocks/email-provider.mock";
+import { getEmailAccount } from "@/tests/support/helpers";
 import { createScopedLogger } from "@/server/lib/logger";
 import { handleOutboundMessage } from "@/features/reply-tracker/handle-outbound";
 

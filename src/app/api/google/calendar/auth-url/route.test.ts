@@ -30,10 +30,10 @@ describe("GET /api/google/calendar/auth-url", () => {
     const req = new NextRequest("http://localhost/api/google/calendar/auth-url");
     (req as any).auth = { emailAccountId: "email-1" };
 
-    const res = await GET(req as any);
+    const res = await GET(req as any, {} as any);
     const json = await res.json();
 
     expect(json.url).toBe("http://google/calendar");
-    expect(res.cookies.get(CALENDAR_STATE_COOKIE_NAME)?.value).toBe("state-1");
+    expect((res as any).cookies.get(CALENDAR_STATE_COOKIE_NAME)?.value).toBe("state-1");
   });
 });

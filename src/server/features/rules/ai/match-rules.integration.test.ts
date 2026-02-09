@@ -27,6 +27,7 @@ import {
   getGroupItem,
   getEmailAccount,
 } from "./match-rules.test-helpers";
+import type { EmailProvider } from "@/features/email/types";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/server/db/client");

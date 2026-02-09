@@ -55,7 +55,7 @@ describe("GET /api/google/linking/callback", () => {
       with: vi.fn().mockReturnThis(),
     };
 
-    const res = await GET(req as any);
+    const res = await GET(req as any, {} as any);
     expect(res.status).toBe(400);
   });
 
@@ -80,12 +80,12 @@ describe("GET /api/google/linking/callback", () => {
       with: vi.fn().mockReturnThis(),
     };
 
-    const res = await GET(req as any);
+    const res = await GET(req as any, {} as any);
 
     expect(res.status).toBe(307);
     expect(res.headers.get("location")).toContain(
       "http://localhost:3000/accounts?success=tokens_updated",
     );
-    expect(res.cookies.get(GOOGLE_LINKING_STATE_COOKIE_NAME)?.value).toBe("");
+    expect((res as any).cookies.get(GOOGLE_LINKING_STATE_COOKIE_NAME)?.value).toBe("");
   });
 });

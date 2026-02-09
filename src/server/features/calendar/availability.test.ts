@@ -36,7 +36,7 @@ describe("TimeSlotManager availability", () => {
   it("returns slots within working hours", async () => {
     const calendarService: CalendarService = {
       findConflicts: vi.fn().mockResolvedValue([]),
-      findBatchConflicts: vi.fn().mockImplementation((slots) =>
+      findBatchConflicts: vi.fn().mockImplementation((slots: any[]) =>
         slots.map((entry) => ({ ...entry, conflicts: [] })),
       ),
     };
@@ -55,7 +55,7 @@ describe("TimeSlotManager availability", () => {
   it("flags buffer availability on slots", async () => {
     const calendarService: CalendarService = {
       findConflicts: vi.fn().mockResolvedValue([]),
-      findBatchConflicts: vi.fn().mockImplementation((slots) =>
+      findBatchConflicts: vi.fn().mockImplementation((slots: any[]) =>
         slots.map((entry) => ({ ...entry, conflicts: [] })),
       ),
     };

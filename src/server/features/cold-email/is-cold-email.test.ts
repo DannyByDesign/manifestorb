@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { isColdEmail } from "./is-cold-email";
-import { getEmailAccount } from "@/__tests__/helpers";
+import { getEmailAccount } from "@/tests/support/helpers";
 import type { EmailForLLM } from "@/server/lib/types";
 import { GroupItemType } from "@/generated/prisma/enums";
 import prisma from "@/server/lib/__mocks__/prisma";

@@ -30,11 +30,11 @@ describe("GET /api/google/linking/auth-url", () => {
     const req = new NextRequest("http://localhost/api/google/linking/auth-url");
     (req as any).auth = { userId: "user-1" };
 
-    const res = await GET(req as any);
+    const res = await GET(req as any, {} as any);
     const json = await res.json();
 
     expect(json.url).toBe("http://google/auth");
-    expect(res.cookies.get(GOOGLE_LINKING_STATE_COOKIE_NAME)?.value).toBe(
+    expect((res as any).cookies.get(GOOGLE_LINKING_STATE_COOKIE_NAME)?.value).toBe(
       "state-1",
     );
   });

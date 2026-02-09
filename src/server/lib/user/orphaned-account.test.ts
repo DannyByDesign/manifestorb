@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { cleanupOrphanedAccount } from "./orphaned-account";
 import prisma from "@/server/lib/__mocks__/prisma";
 import { createScopedLogger } from "@/server/lib/logger";
-import { getMockAccountWithEmailAccount } from "@/__tests__/helpers";
+import { getMockAccountWithEmailAccount } from "@/tests/support/helpers";
 
 const logger = createScopedLogger("test");
 
@@ -47,7 +47,7 @@ describe("cleanupOrphanedAccount", () => {
     prisma.emailAccount.count.mockResolvedValue(0);
     prisma.account.delete.mockResolvedValue({} as any);
     prisma.user.delete.mockResolvedValue({} as any);
-    prisma.$transaction.mockImplementation((ops) => Promise.resolve(ops));
+    prisma.$transaction.mockImplementation((ops: any[]) => Promise.resolve(ops));
 
     await cleanupOrphanedAccount("account-id", logger);
 

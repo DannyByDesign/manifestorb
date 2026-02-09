@@ -40,7 +40,7 @@
       "@/hooks/*": ["./src/hooks/*"],
 
       "@/enterprise/*": ["./src/enterprise/*"],
-      "@/__tests__/*": ["./src/__tests__/*"],
+      "@/tests/*": ["./tests/*"],
       "@amodel/*": ["./src/server/packages/*"],
       "@/generated/*": ["./generated/*"],
 

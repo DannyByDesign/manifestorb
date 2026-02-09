@@ -13,7 +13,7 @@ import type {
 } from "@/server/types";
 import type { EmailProvider } from "@/features/email/types";
 import prisma from "@/server/lib/__mocks__/prisma";
-import { getEmailAccount } from "@/__tests__/helpers";
+import { getEmailAccount } from "@/tests/support/helpers";
 import { createScopedLogger } from "@/server/lib/logger";
 
 const logger = createScopedLogger("test");
@@ -50,6 +50,8 @@ export function getRule(overrides: Partial<RuleWithActions> = {}): RuleWithActio
     enabled = true,
     automate = true,
     runOnThreads = true,
+    expiresAt = null,
+    isTemporary = false,
     emailAccountId = "emailAccountId",
     conditionalOperator = LogicalOperator.AND,
     instructions = null,
@@ -72,6 +74,8 @@ export function getRule(overrides: Partial<RuleWithActions> = {}): RuleWithActio
     enabled,
     automate,
     runOnThreads,
+    expiresAt,
+    isTemporary,
     emailAccountId,
     conditionalOperator,
     instructions,

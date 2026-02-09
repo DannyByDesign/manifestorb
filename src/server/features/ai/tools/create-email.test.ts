@@ -49,7 +49,7 @@ describe("create tool (email)", () => {
 
     expect(result.success).toBe(true);
     expect(result.data.draftId).toBe("draft-1");
-    expect(result.interactive.actions).toEqual(
+    expect(result.interactive?.actions).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ value: "send" }),
         expect.objectContaining({ value: "discard" }),

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import prisma from "@/server/lib/__mocks__/prisma";
 import { cleanupStaleDrafts } from "./cleanup";
 import { createScopedLogger } from "@/server/lib/logger";
-import { createMockEmailProvider } from "@/__tests__/mocks/email-provider.mock";
+import { createMockEmailProvider } from "@/tests/support/mocks/email-provider.mock";
 import { subDays } from "date-fns/subDays";
 
 vi.mock("@/server/db/client");

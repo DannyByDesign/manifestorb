@@ -53,6 +53,7 @@ describe("queryTool email subscriptions", () => {
       {
         resource: "email",
         filter: {
+          fetchAll: false,
           subscriptionsOnly: true,
           limit: 20,
         },
@@ -78,4 +79,3 @@ describe("queryTool email subscriptions", () => {
     expect(rows[0]?.id).toBe("m-1");
   });
 });
-

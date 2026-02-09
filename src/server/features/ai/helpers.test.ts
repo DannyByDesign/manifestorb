@@ -4,7 +4,7 @@ import {
   getUserRulesPrompt,
   getEmailListPrompt,
 } from "./helpers";
-import { getEmailAccount, getEmail } from "@/__tests__/helpers";
+import { getEmailAccount, getEmail } from "@/tests/support/helpers";
 import { stringifyEmail } from "@/server/lib/stringify-email";
 
 vi.mock("@/server/lib/stringify-email", () => ({

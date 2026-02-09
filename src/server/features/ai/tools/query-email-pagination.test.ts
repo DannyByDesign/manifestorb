@@ -20,6 +20,7 @@ describe("queryTool email pagination/date forwarding", () => {
       {
         resource: "email",
         filter: {
+          fetchAll: false,
           query: "from:john@example.com",
           limit: 20,
           pageToken: "current-token",

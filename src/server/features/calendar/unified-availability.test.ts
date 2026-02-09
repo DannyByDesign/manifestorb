@@ -4,7 +4,7 @@ import prisma from "@/server/db/client";
 import { createGoogleAvailabilityProvider } from "./providers/google-availability";
 import { createMicrosoftAvailabilityProvider } from "./providers/microsoft-availability";
 import type { BusyPeriod } from "./availability-types";
-import { getCalendarConnection } from "@/__tests__/helpers";
+import { getCalendarConnection } from "@/tests/support/helpers";
 import { createScopedLogger } from "@/server/lib/logger";
 
 vi.mock("server-only", () => ({}));

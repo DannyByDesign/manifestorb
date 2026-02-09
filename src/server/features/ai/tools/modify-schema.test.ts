@@ -74,4 +74,12 @@ describe("modifyTool discriminated schema", () => {
     });
     expect(parsed.success).toBe(true);
   });
+
+  it("accepts preferences weekStartDay updates", () => {
+    const parsed = modifyTool.parameters.safeParse({
+      resource: "preferences",
+      changes: { weekStartDay: "sunday" },
+    });
+    expect(parsed.success).toBe(true);
+  });
 });

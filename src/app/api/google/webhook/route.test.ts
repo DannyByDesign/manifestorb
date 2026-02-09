@@ -36,7 +36,7 @@ describe("POST /api/google/webhook", () => {
       info: vi.fn(),
       with: vi.fn().mockReturnThis(),
     };
-    const res = await POST(req as any);
+    const res = await POST(req as any, {} as any);
     expect(res.status).toBe(403);
   });
 
@@ -54,7 +54,7 @@ describe("POST /api/google/webhook", () => {
       info: vi.fn(),
       with: vi.fn().mockReturnThis(),
     };
-    const res = await POST(req as any);
+    const res = await POST(req as any, {} as any);
     const json = await res.json();
 
     expect(json.ok).toBe(true);

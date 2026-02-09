@@ -36,6 +36,7 @@ describe("queryTool email semantic filters", () => {
       {
         resource: "email",
         filter: {
+          fetchAll: false,
           subjectContains: "E2E",
           from: "me@example.com",
           to: "me@example.com",
@@ -81,6 +82,7 @@ describe("queryTool email semantic filters", () => {
       {
         resource: "email",
         filter: {
+          fetchAll: false,
           from: "Yingying Sun",
           limit: 20,
         },
@@ -111,6 +113,7 @@ describe("queryTool email semantic filters", () => {
       {
         resource: "email",
         filter: {
+          fetchAll: false,
           query: "show emails from Yingying Sun from last 7 days",
           from: "Yingying Sun",
           dateRange: {

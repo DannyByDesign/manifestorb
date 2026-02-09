@@ -31,7 +31,7 @@ describe("GET /api/google/calendar/callback", () => {
     );
     (req as any).logger = { info: vi.fn(), error: vi.fn(), with: vi.fn() };
 
-    const res = await GET(req as any);
+    const res = await GET(req as any, {} as any);
     const json = await res.json();
 
     expect(json.ok).toBe(true);

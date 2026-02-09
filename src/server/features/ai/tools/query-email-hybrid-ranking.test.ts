@@ -58,6 +58,7 @@ describe("queryTool email hybrid ranking", () => {
       {
         resource: "email",
         filter: {
+          fetchAll: false,
           text: "E2E cleanup",
           limit: 1,
         },

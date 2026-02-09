@@ -29,7 +29,7 @@ describe("POST /api/google/calendar/webhook", () => {
     const req = new Request("http://localhost/api/google/calendar/webhook", {
       method: "POST",
     });
-    const res = await POST(req as any);
+    const res = await POST(req as any, {} as any);
     expect(res.status).toBe(400);
   });
 
@@ -42,7 +42,7 @@ describe("POST /api/google/calendar/webhook", () => {
         "x-goog-resource-id": "res-1",
       },
     });
-    const res = await POST(req as any);
+    const res = await POST(req as any, {} as any);
     const json = await res.json();
     expect(json.ok).toBe(true);
   });
@@ -70,7 +70,7 @@ describe("POST /api/google/calendar/webhook", () => {
         "x-goog-channel-token": "wrong",
       },
     });
-    const res = await POST(req as any);
+    const res = await POST(req as any, {} as any);
     expect(res.status).toBe(403);
   });
 
@@ -104,7 +104,7 @@ describe("POST /api/google/calendar/webhook", () => {
         "x-goog-channel-token": "token-1",
       },
     });
-    const res = await POST(req as any);
+    const res = await POST(req as any, {} as any);
     const json = await res.json();
     expect(json.ok).toBe(true);
     expect(syncGoogleCalendarChanges).toHaveBeenCalled();

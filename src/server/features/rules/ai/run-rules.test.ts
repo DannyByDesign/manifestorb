@@ -14,7 +14,7 @@ import type { Action } from "@/generated/prisma/client";
 import { ConditionType } from "@/server/lib/config";
 import prisma from "@/server/lib/__mocks__/prisma";
 import type { RuleWithActions } from "@/server/types";
-import { getAction, getEmailAccount, getEmail } from "@/__tests__/helpers";
+import { getAction, getEmailAccount, getEmail } from "@/tests/support/helpers";
 import { createScopedLogger } from "@/server/lib/logger";
 
 const logger = createScopedLogger("test");
@@ -62,6 +62,8 @@ const createRule = (
   emailAccountId,
   createdAt: new Date(),
   updatedAt: new Date(),
+  expiresAt: null,
+  isTemporary: false,
   actions,
   runOnThreads: false,
   from: null,
