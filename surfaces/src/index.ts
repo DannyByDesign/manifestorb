@@ -1,6 +1,6 @@
 import { config } from "dotenv";
 import { timingSafeEqual } from "node:crypto";
-import { startSlack } from "./slack";
+import { startSlack, stopSlack } from "./slack";
 import { startDiscord } from "./discord";
 import { startTelegram } from "./telegram";
 import { startScheduler, triggerEmbeddingJob, triggerDecayJob } from "./jobs/scheduler";
@@ -317,6 +317,12 @@ export async function startSidecar() {
             server.stop();
         } catch (error) {
             console.error("[Surfaces] Error stopping HTTP server", error);
+        }
+
+        try {
+            await stopSlack();
+        } catch (error) {
+            console.error("[Surfaces] Error stopping Slack connector", error);
         }
 
         try {

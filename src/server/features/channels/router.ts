@@ -315,9 +315,7 @@ export class ChannelRouter {
                     provider: message.provider,
                     userId: message.context.userId,
                     teamId: (message.context as any).teamId,
-                    messageId: dedupeKey, // Use our internal key or the provider id? Executor expects messageId for thread?
-                    // Actually executor context is type { ... messageId? ... }. 
-                    // Let's pass the real providerMessageId for reference, but usage in executor should change.
+                    messageId: providerMessageId ?? dedupeKey,
                     threadId: (message.context as any).threadId || undefined
                 }
             });

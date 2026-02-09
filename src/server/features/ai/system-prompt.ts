@@ -15,6 +15,7 @@ export interface UserPromptConfig {
 export interface SystemPromptOptions {
   platform: Platform;
   emailSendEnabled: boolean;
+  allowProactiveNudges?: boolean;
   userConfig?: UserPromptConfig;
 }
 
@@ -23,7 +24,7 @@ export interface SystemPromptOptions {
  * Both web-chat and surfaces agents use this same prompt with minor platform-specific tweaks
  */
 export function buildAgentSystemPrompt(options: SystemPromptOptions): string {
-  const { platform, emailSendEnabled, userConfig } = options;
+  const { platform, emailSendEnabled, userConfig, allowProactiveNudges = true } = options;
   const isWeb = platform === "web";
   const maxSteps = userConfig?.maxSteps ?? 20;
 
@@ -233,7 +234,9 @@ You can set general information about the user in their Personal Instructions (v
 
 ## Proactive Behavior
 
-When the user opens a conversation or sends a vague message like "hi" or "what's up", check the "Items Requiring Your Attention" section (if present) and proactively mention HIGH urgency items. For example: "Good morning! Quick heads up: you have an unanswered email from your boss (sent 3 hours ago) and a meeting with Sarah in 20 minutes."
+${allowProactiveNudges
+  ? `When the user opens a conversation or sends a vague message like "hi" or "what's up", check the "Items Requiring Your Attention" section (if present) and proactively mention HIGH urgency items. For example: "Good morning! Quick heads up: you have an unanswered email from your boss (sent 3 hours ago) and a meeting with Sarah in 20 minutes."`
+  : `Do not proactively surface inbox/calendar/task items unless the user explicitly asks for a status, priorities, overview, or what needs attention.`}
 
 ## UX Guidelines
 

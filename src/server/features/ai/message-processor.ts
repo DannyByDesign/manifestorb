@@ -11,6 +11,7 @@ import { createMemoryTools } from "@/features/ai/memory-tools";
 import { buildAgentSystemPrompt, type Platform } from "@/features/ai/system-prompt";
 import { getTodayForLLM } from "@/features/ai/helpers";
 import { getThreadContext } from "@/features/ai/thread-context";
+import { runOrchestrationPreflight } from "@/features/ai/orchestration/preflight";
 import { getModel } from "@/server/lib/llms/model";
 import { createGenerateText, chatCompletionStream } from "@/server/lib/llms";
 import { ApprovalService, getApprovalExpiry } from "@/features/approvals/service";
@@ -23,6 +24,7 @@ import { createInAppNotification } from "@/features/notifications/create";
 import { createApprovalActionToken } from "@/features/approvals/action-token";
 import { computeAdaptiveMaxSteps } from "@/features/ai/step-budget";
 import { resolveDefaultCalendarTimeZone } from "@/features/ai/tools/calendar-time";
+import { getPendingScheduleProposal } from "@/features/calendar/schedule-proposal";
 import { env } from "@/env";
 import type { Logger } from "@/server/lib/logger";
 import { createDeterministicIdempotencyKey, stableSerialize } from "@/server/lib/idempotency";
@@ -111,57 +113,49 @@ export async function processMessage(
     ? context.conversationId
     : (await ConversationService.getPrimaryWebConversation(user.id)).id;
 
-  // ---- 3. Resolve source email context for tool execution -----------------
-  const sourceEmailContext = await resolveSourceEmailContext({
-    userId: user.id,
-    emailAccountId: emailAccount.id,
-    providerMessageId: context.messageId,
-    providerThreadId: context.threadId,
-  });
-
-  // ---- 4. Create tools + memory tools ------------------------------------
-  const resolvedProvider =
-    (emailAccount as Record<string, unknown>).provider as string | undefined ??
-    emailAccount.account?.provider;
-  const baseTools = await createAgentTools({
-    emailAccount: { ...emailAccount, provider: resolvedProvider ?? "" } as unknown as Parameters<typeof createAgentTools>[0]["emailAccount"],
-    logger,
-    userId: user.id,
-    toolContext: {
-      conversationId,
-      sourceEmailMessageId: sourceEmailContext.messageId,
-      sourceEmailThreadId: sourceEmailContext.threadId,
-    },
-  });
-
-  const memoryTools = createMemoryTools({
-    userId: user.id,
-    email: emailAccount.email,
-    logger,
-  });
-
-  // ---- 5. Wrap sensitive tools with approval interceptor -----------------
-  const approvalService = new ApprovalService(prisma);
-  const expirySeconds = await getApprovalExpiry(user.id);
-  const allTools = wrapToolsWithApproval({
-    baseTools: { ...baseTools, ...memoryTools },
-    userId: user.id,
-    context,
-    approvalService,
-    expirySeconds,
-    logger,
-  });
-
-  // ---- 5. Extract message content for context retrieval ------------------
+  // ---- 3. Extract message content for orchestration ----------------------
   const messageContent =
     input.message ?? extractLatestUserMessage(input.messages ?? []);
 
-  // ---- 6. Build context pack ---------------------------------------------
+  // ---- 4. Lightweight pending-state signals for preflight ----------------
+  const [pendingApprovalSignal, pendingScheduleSignal] = await Promise.all([
+    prisma.approvalRequest.findFirst({
+      where: {
+        userId: user.id,
+        status: "PENDING",
+        expiresAt: { gt: new Date() },
+      },
+      select: { id: true },
+    }),
+    getPendingScheduleProposal(user.id),
+  ]);
+
+  // ---- 5. Orchestration preflight ----------------------------------------
+  const preflight = await runOrchestrationPreflight({
+    message: messageContent,
+    provider: context.provider,
+    userId: user.id,
+    emailAccount: {
+      id: emailAccount.id,
+      email: emailAccount.email,
+      userId: emailAccount.userId,
+    },
+    hasPendingApproval: Boolean(pendingApprovalSignal),
+    hasPendingScheduleProposal: Boolean(pendingScheduleSignal),
+  });
+
+  // ---- 6. Build context pack (tiered) ------------------------------------
   const contextPack = await ContextManager.buildContextPack({
     user: { id: user.id },
     emailAccount: emailAccount as unknown as Parameters<typeof ContextManager.buildContextPack>[0]["emailAccount"],
     messageContent,
     conversationId,
+    options: {
+      contextTier: preflight.contextTier,
+      includePendingState: true,
+      includeDomainData: preflight.needsInternalData && preflight.contextTier >= 2,
+      includeAttentionItems: preflight.allowProactiveNudges,
+    },
   });
 
   const pendingApprovals = contextPack.pendingState?.approvals?.length ?? 0;
@@ -172,14 +166,64 @@ export async function processMessage(
     hasPendingApproval: pendingApprovals > 0,
     hasPendingScheduleProposal: Boolean(contextPack.pendingState?.scheduleProposal),
   });
+  const maxStepsForTurn = preflight.needsTools
+    ? adaptiveBudget.maxSteps
+    : 1;
   logger.info("[processMessage] adaptive step budget", {
     provider: context.provider,
     configuredMaxSteps,
-    maxSteps: adaptiveBudget.maxSteps,
+    maxSteps: maxStepsForTurn,
     profile: adaptiveBudget.profile,
     pendingApprovals,
     hasPendingScheduleProposal: Boolean(contextPack.pendingState?.scheduleProposal),
+    orchestrationMode: preflight.mode,
+    needsTools: preflight.needsTools,
+    contextTier: preflight.contextTier,
+    needsInternalData: preflight.needsInternalData,
+    preflightConfidence: preflight.confidence,
   });
+
+  // ---- 6.5 Create tools only when preflight says they're needed ----------
+  let allTools: Record<string, unknown> = {};
+  if (preflight.needsTools) {
+    const sourceEmailContext = await resolveSourceEmailContext({
+      userId: user.id,
+      emailAccountId: emailAccount.id,
+      providerMessageId: context.messageId,
+      providerThreadId: context.threadId,
+    });
+
+    const resolvedProvider =
+      (emailAccount as Record<string, unknown>).provider as string | undefined ??
+      emailAccount.account?.provider;
+    const baseTools = await createAgentTools({
+      emailAccount: { ...emailAccount, provider: resolvedProvider ?? "" } as unknown as Parameters<typeof createAgentTools>[0]["emailAccount"],
+      logger,
+      userId: user.id,
+      toolContext: {
+        conversationId,
+        sourceEmailMessageId: sourceEmailContext.messageId,
+        sourceEmailThreadId: sourceEmailContext.threadId,
+      },
+    });
+
+    const memoryTools = createMemoryTools({
+      userId: user.id,
+      email: emailAccount.email,
+      logger,
+    });
+
+    const approvalService = new ApprovalService(prisma);
+    const expirySeconds = await getApprovalExpiry(user.id);
+    allTools = wrapToolsWithApproval({
+      baseTools: { ...baseTools, ...memoryTools },
+      userId: user.id,
+      context,
+      approvalService,
+      expirySeconds,
+      logger,
+    });
+  }
 
   // ---- 7. Persist user message (web only) --------------------------------
   if (context.provider === "web" && messageContent) {
@@ -219,12 +263,20 @@ export async function processMessage(
       : "";
 
   // ---- 9. Build unified system prompt ------------------------------------
+  const normalizedUserPromptConfig = userAiConfig
+    ? {
+        maxSteps: maxStepsForTurn,
+        approvalInstructions: userAiConfig.approvalInstructions ?? undefined,
+        customInstructions: userAiConfig.customInstructions ?? undefined,
+        conversationCategories: userAiConfig.conversationCategories ?? undefined,
+      }
+    : { maxSteps: maxStepsForTurn };
+
   const baseSystemPrompt = buildAgentSystemPrompt({
     platform: context.provider as Platform,
     emailSendEnabled: input.emailSendEnabled ?? false,
-    userConfig: userAiConfig
-      ? { ...userAiConfig, maxSteps: adaptiveBudget.maxSteps }
-      : { maxSteps: adaptiveBudget.maxSteps },
+    allowProactiveNudges: preflight.allowProactiveNudges,
+    userConfig: normalizedUserPromptConfig,
   });
 
   const resolvedTimeZone = await resolveDefaultCalendarTimeZone({
@@ -240,6 +292,12 @@ export async function processMessage(
     userTimeZone,
     weekStartDay:
       taskPreference?.weekStartDay === "monday" ? "monday" : "sunday",
+    orchestration: {
+      mode: preflight.mode,
+      toolsAllowed: preflight.needsTools,
+      contextTier: preflight.contextTier,
+      allowProactiveNudges: preflight.allowProactiveNudges,
+    },
   });
 
   // ---- 10. Build final messages array ------------------------------------
@@ -278,7 +336,7 @@ export async function processMessage(
       userEmail: emailAccount.email,
       conversationId,
       tools: allTools,
-      maxSteps: adaptiveBudget.maxSteps,
+      maxSteps: maxStepsForTurn,
       messages: finalMessages as ModelMessage[],
       provider: context.provider,
       logger,
@@ -291,7 +349,7 @@ export async function processMessage(
     emailAccountId: emailAccount.id,
     conversationId,
     tools: allTools,
-    maxSteps: adaptiveBudget.maxSteps,
+    maxSteps: maxStepsForTurn,
     messages: finalMessages,
     context,
     message: input.message ?? messageContent,
@@ -453,7 +511,14 @@ async function executeNonStreaming({
     responseText =
       (lastTool?.toolName === "query" && "I checked that for you.")
       || (lastTool?.toolName === "send" && "Email sent.")
-      || "Done.";
+      || "I hit an internal response issue. Please try that again.";
+    if (!lastTool) {
+      logger.warn("[executeNonStreaming] empty response without tool output", {
+        finishReason: resultAny.finishReason,
+        stepsCount: resultAny.steps?.length ?? 0,
+        toolCallsCount: resultAny.toolCalls?.length ?? 0,
+      });
+    }
   }
 
   logger.info("[executeNonStreaming] responseText diagnostic", {
@@ -762,16 +827,31 @@ function assembleSystemPrompt({
   threadContextBlock,
   userTimeZone,
   weekStartDay,
+  orchestration,
 }: {
   baseSystemPrompt: string;
   contextPack: ContextPack;
   threadContextBlock: string;
   userTimeZone?: string;
   weekStartDay: "sunday" | "monday";
+  orchestration: {
+    mode: "chat" | "thought_partner" | "lookup" | "action";
+    toolsAllowed: boolean;
+    contextTier: 0 | 1 | 2 | 3;
+    allowProactiveNudges: boolean;
+  };
 }): string {
   const pendingStateBlock = buildPendingStateBlock(contextPack);
 
   return `${baseSystemPrompt}
+
+---
+## Turn Orchestration
+- Mode: ${orchestration.mode}
+- Context tier: ${orchestration.contextTier}
+- Tools allowed this turn: ${orchestration.toolsAllowed ? "yes" : "no"}
+- Proactive nudges allowed this turn: ${orchestration.allowProactiveNudges ? "yes" : "no"}
+${!orchestration.toolsAllowed ? "- Stay in conversational mode for this turn. Do not attempt operational tool actions unless the user explicitly asks to check or change real data." : ""}
 
 ---
 ## Dynamic Context (Auto-Retrieved)
@@ -798,8 +878,9 @@ ${
     ? `
 ### Items Requiring Your Attention
 ${contextPack.attentionItems!.map((item) => `- [${item.urgency.toUpperCase()}] ${item.title}: ${item.description}${item.suggestedAction ? ` (Suggested: ${item.suggestedAction})` : ""}`).join("\n")}
-
-If the user hasn't asked about something specific, proactively mention the HIGH urgency items above.
+${orchestration.allowProactiveNudges
+  ? "\nIf the user hasn't asked about something specific, proactively mention the HIGH urgency items above.\n"
+  : ""}
 `
     : ""
 }${

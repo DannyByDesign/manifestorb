@@ -1,5 +1,6 @@
 import { App } from "@slack/bolt";
 import type { Block, KnownBlock } from "@slack/types";
+import { randomUUID } from "node:crypto";
 import {
     forwardToBrain,
     fetchOnboardingLinkUrl,
@@ -13,9 +14,14 @@ import {
     setPlatformStarted,
     touchPlatformEvent
 } from "../platform-status";
+import { redis } from "../db/redis";
 
 const CORE_BASE_URL = process.env.CORE_BASE_URL || "http://localhost:3000";
 const SHARED_SECRET = process.env.SURFACES_SHARED_SECRET || "dev-secret";
+const SLACK_LEADER_LOCK_KEY = process.env.SLACK_LEADER_LOCK_KEY || "surfaces:slack:socket-mode:leader";
+const SLACK_LEADER_LOCK_TTL_MS = Number(process.env.SLACK_LEADER_LOCK_TTL_MS || 30000);
+const SLACK_RECONNECT_WINDOW_MS = 60_000;
+const SLACK_RECONNECT_THRESHOLD = 8;
 type SlackBlock = Record<string, unknown>;
 type SlackButtonElement = Record<string, unknown>;
 
@@ -28,6 +34,12 @@ type MessageMeta = {
     channelType?: string;
     text?: string;
 };
+
+const slackThreadContext = new Map<string, string>();
+
+function threadContextKey(channelId: string, userId: string): string {
+    return `${channelId}:${userId}`;
+}
 
 function toMessageMeta(message: unknown): MessageMeta {
     if (!message || typeof message !== "object") return {};
@@ -46,11 +58,24 @@ function toMessageMeta(message: unknown): MessageMeta {
 function extractAssistantThreadTs(body: unknown): string | undefined {
     if (!body || typeof body !== "object") return undefined;
     const record = body as Record<string, unknown>;
-    const assistantThread = record.assistant_thread;
-    if (!assistantThread || typeof assistantThread !== "object") return undefined;
-    const threadRecord = assistantThread as Record<string, unknown>;
-    if (typeof threadRecord.thread_ts === "string") return threadRecord.thread_ts;
-    if (typeof threadRecord.ts === "string") return threadRecord.ts;
+    const candidateRecords: Array<Record<string, unknown>> = [record];
+    if (record.event && typeof record.event === "object") {
+        candidateRecords.push(record.event as Record<string, unknown>);
+    }
+    if (record.message && typeof record.message === "object") {
+        candidateRecords.push(record.message as Record<string, unknown>);
+    }
+    for (const candidate of candidateRecords) {
+        const assistantThread = candidate.assistant_thread;
+        if (assistantThread && typeof assistantThread === "object") {
+            const threadRecord = assistantThread as Record<string, unknown>;
+            if (typeof threadRecord.thread_ts === "string") return threadRecord.thread_ts;
+            if (typeof threadRecord.ts === "string") return threadRecord.ts;
+        }
+        if (typeof candidate.thread_ts === "string") {
+            return candidate.thread_ts;
+        }
+    }
     return undefined;
 }
 
@@ -59,6 +84,149 @@ const WELCOME_MESSAGE =
 
 let assistantStatusSupported = true;
 let assistantStatusWarningLogged = false;
+let slackStartPromise: Promise<void> | null = null;
+let slackStarted = false;
+let slackLeaderToken: string | null = null;
+let slackLeaderHeartbeat: ReturnType<typeof setInterval> | null = null;
+let slackLeaderRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let reconnectTimestamps: number[] = [];
+
+function getSocketModeClient(app: App): {
+    on?: (event: string, handler: (...args: unknown[]) => void) => void;
+} | null {
+    const maybeReceiver = (app as unknown as { receiver?: unknown }).receiver;
+    if (!maybeReceiver || typeof maybeReceiver !== "object") return null;
+    const maybeClient = (maybeReceiver as { client?: unknown }).client;
+    if (!maybeClient || typeof maybeClient !== "object") return null;
+    const onFn = (maybeClient as { on?: unknown }).on;
+    if (typeof onFn !== "function") return null;
+    return maybeClient as { on: (event: string, handler: (...args: unknown[]) => void) => void };
+}
+
+function registerSocketModeDiagnostics(app: App) {
+    const client = getSocketModeClient(app);
+    if (!client?.on) return;
+
+    client.on("connected", () => {
+        reconnectTimestamps = [];
+        setPlatformStarted("slack");
+        console.log("[Surfaces][Slack] Socket Mode connected");
+    });
+
+    client.on("reconnecting", () => {
+        const now = Date.now();
+        reconnectTimestamps.push(now);
+        reconnectTimestamps = reconnectTimestamps.filter((ts) => now - ts <= SLACK_RECONNECT_WINDOW_MS);
+        const reconnects = reconnectTimestamps.length;
+        console.warn("[Surfaces][Slack] Socket Mode reconnecting", { reconnectsInLastMinute: reconnects });
+        if (reconnects >= SLACK_RECONNECT_THRESHOLD) {
+            setPlatformError(
+                "slack",
+                `Socket Mode reconnect storm (${reconnects} reconnects in ${SLACK_RECONNECT_WINDOW_MS / 1000}s)`,
+            );
+        }
+    });
+
+    client.on("error", (error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        setPlatformError("slack", message);
+        console.error("[Surfaces][Slack] Socket Mode client error", { error: message });
+    });
+}
+
+async function acquireSlackLeaderLock(): Promise<boolean> {
+    if (!redis) return true;
+    const token = `${process.pid}:${randomUUID()}`;
+    const lock = await redis.set(
+        SLACK_LEADER_LOCK_KEY,
+        token,
+        "PX",
+        SLACK_LEADER_LOCK_TTL_MS,
+        "NX",
+    );
+    if (lock !== "OK") {
+        const holder = await redis.get(SLACK_LEADER_LOCK_KEY);
+        setPlatformError("slack", "Slack leader lock held by another instance");
+        console.warn("[Surfaces][Slack] Leader lock not acquired, skipping Slack start", {
+            lockKey: SLACK_LEADER_LOCK_KEY,
+            lockHolder: holder,
+        });
+        scheduleSlackLeaderRetry();
+        return false;
+    }
+
+    slackLeaderToken = token;
+    const heartbeatMs = Math.max(5_000, Math.floor(SLACK_LEADER_LOCK_TTL_MS / 3));
+    slackLeaderHeartbeat = setInterval(async () => {
+        if (!redis || !slackLeaderToken) return;
+        try {
+            const renewed = await redis.eval(
+                `
+                if redis.call("get", KEYS[1]) == ARGV[1] then
+                    return redis.call("pexpire", KEYS[1], ARGV[2])
+                else
+                    return 0
+                end
+                `,
+                1,
+                SLACK_LEADER_LOCK_KEY,
+                slackLeaderToken,
+                String(SLACK_LEADER_LOCK_TTL_MS),
+            );
+            if (Number(renewed) !== 1) {
+                setPlatformError("slack", "Lost Slack leader lock");
+                console.error("[Surfaces][Slack] Lost leader lock heartbeat");
+            }
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            setPlatformError("slack", `Leader lock heartbeat failed: ${message}`);
+            console.error("[Surfaces][Slack] Leader lock heartbeat error", { error: message });
+        }
+    }, heartbeatMs);
+
+    return true;
+}
+
+function scheduleSlackLeaderRetry() {
+    if (slackLeaderRetryTimer) return;
+    const retryMs = Math.max(5_000, Math.floor(SLACK_LEADER_LOCK_TTL_MS / 2));
+    slackLeaderRetryTimer = setTimeout(() => {
+        slackLeaderRetryTimer = null;
+        void startSlack().catch((error) => {
+            const message = error instanceof Error ? error.message : String(error);
+            setPlatformError("slack", `Slack restart retry failed: ${message}`);
+            console.error("[Surfaces][Slack] Failed retrying Slack startup", { error: message });
+        });
+    }, retryMs);
+}
+
+async function releaseSlackLeaderLock() {
+    if (slackLeaderRetryTimer) {
+        clearTimeout(slackLeaderRetryTimer);
+        slackLeaderRetryTimer = null;
+    }
+    if (slackLeaderHeartbeat) {
+        clearInterval(slackLeaderHeartbeat);
+        slackLeaderHeartbeat = null;
+    }
+    if (!redis || !slackLeaderToken) return;
+    try {
+        await redis.eval(
+            `
+            if redis.call("get", KEYS[1]) == ARGV[1] then
+                return redis.call("del", KEYS[1])
+            else
+                return 0
+            end
+            `,
+            1,
+            SLACK_LEADER_LOCK_KEY,
+            slackLeaderToken,
+        );
+    } finally {
+        slackLeaderToken = null;
+    }
+}
 
 async function setSlackAssistantThreadStatus(params: {
     app: App;
@@ -120,7 +288,43 @@ async function clearSlackAssistantThinkingStatus(params: {
     await setSlackAssistantThreadStatus({ ...params, status: "" });
 }
 
+async function resolvePersistedSlackThreadTs(params: {
+    providerAccountId: string;
+    channelId: string;
+}): Promise<string | undefined> {
+    try {
+        const response = await fetch(`${CORE_BASE_URL}/api/surfaces/thread-context`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "x-surfaces-secret": SHARED_SECRET,
+            },
+            body: JSON.stringify({
+                provider: "slack",
+                providerAccountId: params.providerAccountId,
+                channelId: params.channelId,
+            }),
+        });
+        if (!response.ok) return undefined;
+        const body = (await response.json()) as { threadId?: string | null };
+        return typeof body.threadId === "string" && body.threadId.length > 0
+            ? body.threadId
+            : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
 export async function startSlack() {
+    if (slackStarted) {
+        console.log("[Surfaces][Slack] start requested while already running");
+        return;
+    }
+    if (slackStartPromise) {
+        return slackStartPromise;
+    }
+
+    slackStartPromise = (async () => {
     const token = process.env.SLACK_BOT_TOKEN;
     if (!token) {
         setPlatformEnabled("slack", false);
@@ -128,6 +332,8 @@ export async function startSlack() {
         return;
     }
     setPlatformEnabled("slack", true);
+    const lockAcquired = await acquireSlackLeaderLock();
+    if (!lockAcquired) return;
 
     // Initialize Slack App in Socket Mode
     const app = new App({
@@ -136,6 +342,7 @@ export async function startSlack() {
         socketMode: true,
     });
     slackApp = app;
+    registerSocketModeDiagnostics(app);
     app.error(async (error) => {
         const msg = error instanceof Error ? error.message : String(error);
         setPlatformError("slack", msg);
@@ -365,7 +572,31 @@ export async function startSlack() {
             const userId = meta.user;
             const messageTs = meta.ts;
             const messageText = meta.text;
-            const statusThreadTs = inboundThreadTs || messageTs;
+            const cacheKey = threadContextKey(channelId, userId);
+            const cachedThreadTs = slackThreadContext.get(cacheKey);
+            const persistedThreadTs =
+                !inboundThreadTs && !cachedThreadTs
+                    ? await resolvePersistedSlackThreadTs({
+                        providerAccountId: userId,
+                        channelId,
+                    })
+                    : undefined;
+            const resolvedThreadTs = inboundThreadTs || cachedThreadTs || persistedThreadTs;
+            const replyThreadTs = resolvedThreadTs || messageTs;
+            if (resolvedThreadTs) {
+                slackThreadContext.set(cacheKey, resolvedThreadTs);
+            }
+            const statusThreadTs = resolvedThreadTs || messageTs;
+
+            console.log("[Surfaces][Slack] Thread context resolution", {
+                channel: channelId,
+                user: userId,
+                ts: messageTs,
+                inboundThreadTs: inboundThreadTs ?? null,
+                cachedThreadTs: cachedThreadTs ?? null,
+                persistedThreadTs: persistedThreadTs ?? null,
+                resolvedThreadTs: resolvedThreadTs ?? null,
+            });
 
             await setSlackAssistantThinkingStatus({
                 app,
@@ -376,10 +607,10 @@ export async function startSlack() {
             try {
                 let history: { role: "user" | "assistant"; content: string }[] = [];
                 try {
-                    const result = inboundThreadTs
+                    const result = resolvedThreadTs
                         ? await app.client.conversations.replies({
                             channel: channelId,
-                            ts: inboundThreadTs,
+                            ts: resolvedThreadTs,
                             limit: 30,
                             latest: messageTs,
                             inclusive: false,
@@ -415,7 +646,7 @@ export async function startSlack() {
                     context: {
                         channelId,
                         userId,
-                        threadId: inboundThreadTs,
+                        threadId: replyThreadTs,
                         messageId: messageTs,
                         isDirectMessage: meta.channelType === "im",
                     },
@@ -555,32 +786,34 @@ export async function startSlack() {
                             }
 
                             await say({
-                                ...(inboundThreadTs ? { thread_ts: inboundThreadTs } : {}),
+                                thread_ts: replyThreadTs,
                                 blocks: blocks as unknown as (Block | KnownBlock)[],
                                 text:
                                     plainResponseContent ||
                                     plainInteractiveSummary ||
                                     "I completed that request.",
                             });
+                            slackThreadContext.set(cacheKey, replyThreadTs);
                             console.log("[Surfaces][Slack] Sent interactive response", {
                                 channel: channelId,
                                 user: userId,
                                 ts: messageTs,
-                                threadTs: inboundThreadTs ?? null,
+                                threadTs: replyThreadTs,
                                 responseIndex: index,
                                 interactiveType: interactive.type,
                                 actionsCount: interactive.actions.length,
                             });
                         } else if (resp.content) {
                             await say({
-                                ...(inboundThreadTs ? { thread_ts: inboundThreadTs } : {}),
+                                thread_ts: replyThreadTs,
                                 text: plainResponseContent,
                             });
+                            slackThreadContext.set(cacheKey, replyThreadTs);
                             console.log("[Surfaces][Slack] Sent text response", {
                                 channel: channelId,
                                 user: userId,
                                 ts: messageTs,
-                                threadTs: inboundThreadTs ?? null,
+                                threadTs: replyThreadTs,
                                 responseIndex: index,
                                 contentLength: resp.content.length,
                             });
@@ -623,8 +856,21 @@ export async function startSlack() {
     });
 
     await app.start();
+    slackStarted = true;
     setPlatformStarted("slack");
     console.log("⚡️ Surfaces: Slack Socket Mode running");
+    })()
+        .catch(async (error) => {
+            await releaseSlackLeaderLock();
+            slackStarted = false;
+            slackApp = undefined;
+            throw error;
+        })
+        .finally(() => {
+            if (!slackStarted) slackStartPromise = null;
+        });
+
+    return slackStartPromise;
 }
 
 export async function sendSlackMessage(channelId: string, text: string, _blocks?: (Block | KnownBlock)[]) {
@@ -706,3 +952,23 @@ export async function sendWelcomeToSlackUser(slackUserId: string): Promise<{ ok:
 }
 
 let slackApp: App | undefined;
+
+export async function stopSlack() {
+    if (!slackApp) {
+        await releaseSlackLeaderLock();
+        slackStarted = false;
+        slackStartPromise = null;
+        return;
+    }
+    try {
+        await slackApp.stop();
+    } catch (error) {
+        console.error("[Surfaces][Slack] Failed to stop app cleanly", { error });
+    } finally {
+        slackApp = undefined;
+        slackStarted = false;
+        slackStartPromise = null;
+        reconnectTimestamps = [];
+        await releaseSlackLeaderLock();
+    }
+}
