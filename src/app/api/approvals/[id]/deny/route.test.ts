@@ -30,6 +30,7 @@ const mockVerify = vi.mocked(verifyApprovalActionToken);
 describe("POST /api/approvals/[id]/deny", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.SURFACES_SHARED_SECRET = "surfaces-secret";
     prisma.approvalRequest.findUnique.mockResolvedValue({
       userId: "user-1",
       user: { emailAccounts: [{ id: "email-1", account: { provider: "google" } }] },
@@ -90,6 +91,52 @@ describe("POST /api/approvals/[id]/deny", () => {
     const req = new NextRequest("http://localhost/api/approvals/req-1/deny", {
       method: "POST",
       body: JSON.stringify({ reason: "nope" }),
+    });
+
+    const res = await POST(req, { params: Promise.resolve({ id: "req-1" }) });
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json).toEqual(expect.objectContaining({ decision: "DENY" }));
+  });
+
+  it("denies using surface identity when session/token are absent", async () => {
+    mockAuth.mockResolvedValue(null as any);
+    prisma.account.findUnique.mockResolvedValue({ userId: "user-1" } as any);
+    prisma.approvalRequest.findUnique
+      .mockResolvedValueOnce({ userId: "user-1" } as any)
+      .mockResolvedValueOnce({
+        id: "req-1",
+        userId: "user-1",
+        status: "PENDING",
+        expiresAt: new Date(Date.now() + 60_000),
+      } as any)
+      .mockResolvedValueOnce({
+        userId: "user-1",
+        user: {
+          emailAccounts: [{ id: "email-1", account: { provider: "google" } }],
+        },
+        requestPayload: { tool: "reply" },
+      } as any);
+    prisma.approvalDecision.create.mockResolvedValue({
+      id: "dec-1",
+      decision: "DENY",
+    } as any);
+    prisma.$transaction.mockImplementation(
+      async (callback: (tx: any) => unknown) =>
+        callback(prisma as any),
+    );
+
+    const req = new NextRequest("http://localhost/api/approvals/req-1/deny", {
+      method: "POST",
+      headers: {
+        "x-surfaces-secret": "surfaces-secret",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        provider: "discord",
+        userId: "998877",
+      }),
     });
 
     const res = await POST(req, { params: Promise.resolve({ id: "req-1" }) });

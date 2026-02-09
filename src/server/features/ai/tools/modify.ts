@@ -27,6 +27,20 @@ type ApprovalCreateRequestInput = Parameters<ApprovalService["createRequest"]>[0
 const modifyIdsSchema = z.array(z.string()).max(50);
 const modifyChangesSchema = z.record(z.string(), z.any());
 
+function normalizeApprovalExecutionError(error: unknown): string {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("Cannot decide on request in status: EXPIRED")) {
+        return "Approval request expired. Ask me to recreate this action and request approval again.";
+    }
+    if (message.includes("Cannot decide on request in status: APPROVED")) {
+        return "Approval request was already approved.";
+    }
+    if (message.includes("Cannot decide on request in status: DENIED")) {
+        return "Approval request was already denied.";
+    }
+    return message;
+}
+
 const modifyParameters = z.discriminatedUnion("resource", [
     z.object({
         resource: z.literal("email"),
@@ -354,31 +368,62 @@ Preferences changes:
                     const { executeApprovalRequest } = await import("@/features/approvals/execute");
                     const results = await Promise.all(
                         ids.map(async (id: string) => {
-                            const execution = await executeApprovalRequest({
-                                approvalRequestId: id,
-                                decidedByUserId: emailAccountApp.userId,
-                                reason,
-                            });
-                            return {
-                                decision: "APPROVE" as const,
-                                approvalRequestId: id,
-                                execution,
-                            };
+                            try {
+                                const execution = await executeApprovalRequest({
+                                    approvalRequestId: id,
+                                    decidedByUserId: emailAccountApp.userId,
+                                    reason,
+                                });
+                                return {
+                                    decision: "APPROVE" as const,
+                                    approvalRequestId: id,
+                                    success: true,
+                                    execution,
+                                };
+                            } catch (error) {
+                                return {
+                                    decision: "APPROVE" as const,
+                                    approvalRequestId: id,
+                                    success: false,
+                                    error: normalizeApprovalExecutionError(error),
+                                };
+                            }
                         }),
                     );
-                    return { success: true, data: results };
+                    const failures = results.filter((result) => !result.success);
+                    return {
+                        success: failures.length === 0,
+                        data: results,
+                        error: failures.length > 0 ? failures[0].error : undefined,
+                    };
                 }
 
-                const approvalResults = await Promise.all(ids.map((id: string) =>
-                    approvalService.decideRequest({
-                        approvalRequestId: id,
-                        decidedByUserId: emailAccountApp.userId,
-                        decision: "DENY",
-                        reason
-                    })
-                ));
+                const approvalResults = await Promise.all(
+                    ids.map(async (id: string) => {
+                        try {
+                            const approval = await approvalService.decideRequest({
+                                approvalRequestId: id,
+                                decidedByUserId: emailAccountApp.userId,
+                                decision: "DENY",
+                                reason,
+                            });
+                            return { approvalRequestId: id, success: true, approval };
+                        } catch (error) {
+                            return {
+                                approvalRequestId: id,
+                                success: false,
+                                error: normalizeApprovalExecutionError(error),
+                            };
+                        }
+                    }),
+                );
 
-                return { success: true, data: approvalResults };
+                const failures = approvalResults.filter((result) => !result.success);
+                return {
+                    success: failures.length === 0,
+                    data: approvalResults,
+                    error: failures.length > 0 ? failures[0].error : undefined,
+                };
 
             case "task": {
                 if (changes.scheduleNow === true) {

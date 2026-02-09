@@ -35,6 +35,7 @@ const mockExecute = vi.mocked(executeApprovalRequest);
 describe("POST /api/approvals/[id]/approve", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.SURFACES_SHARED_SECRET = "surfaces-secret";
     prisma.approvalRequest.findUnique.mockResolvedValue({
       userId: "user-1",
     } as any);
@@ -91,6 +92,40 @@ describe("POST /api/approvals/[id]/approve", () => {
     expect(json).toEqual(
       expect.objectContaining({ execution: { ok: true } }),
     );
+  });
+
+  it("approves using surface identity when session/token are absent", async () => {
+    mockAuth.mockResolvedValue(null as any);
+    prisma.account.findUnique.mockResolvedValue({ userId: "user-1" } as any);
+    mockExecute.mockResolvedValue({
+      decisionRecord: { decision: "APPROVE" },
+      request: {
+        userId: "user-1",
+        user: { emailAccounts: [{ id: "email-1" }] },
+      },
+      toolName: "delete",
+      executionResult: { ok: true },
+    } as any);
+
+    const req = new NextRequest("http://localhost/api/approvals/req-1/approve", {
+      method: "POST",
+      headers: {
+        "x-surfaces-secret": "surfaces-secret",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        provider: "slack",
+        userId: "U123456",
+      }),
+    });
+
+    const res = await POST(req, { params: Promise.resolve({ id: "req-1" }) });
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({ approvalRequestId: "req-1", decidedByUserId: "user-1" }),
+    );
+    expect(json).toEqual(expect.objectContaining({ execution: { ok: true } }));
   });
 
   it("returns 403 when session user mismatches", async () => {

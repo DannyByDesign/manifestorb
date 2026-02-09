@@ -20,6 +20,11 @@ type ApprovalViewAuthSuccess = {
 };
 
 type ApprovalDecisionAction = "approve" | "deny";
+type SurfaceProvider = "slack" | "discord" | "telegram" | "web";
+
+type SurfaceActorResolution =
+  | { ok: true; userId: string }
+  | { ok: false; status: number; error: string };
 
 async function getApprovalRequestOwner(
   approvalRequestId: string,
@@ -76,6 +81,58 @@ export async function authorizeApprovalDecision({
     approvalUserId: approvalRequest.userId,
     actingUserId: sessionUserId || approvalRequest.userId,
   };
+}
+
+export async function resolveSurfaceApprovalActor(params: {
+  provider?: SurfaceProvider;
+  providerAccountId?: string;
+  providedSecret?: string | null;
+  logger: Logger;
+}): Promise<SurfaceActorResolution | null> {
+  const { provider, providerAccountId, providedSecret, logger } = params;
+  if (!providedSecret) {
+    return null;
+  }
+
+  const expectedSecret = process.env.SURFACES_SHARED_SECRET;
+  if (!expectedSecret || providedSecret !== expectedSecret) {
+    logger.warn("Surface approval request failed secret validation", {
+      provider: provider ?? null,
+      providerAccountId: providerAccountId ?? null,
+      hasExpectedSecret: Boolean(expectedSecret),
+    });
+    return { ok: false, status: 401, error: "Unauthorized" };
+  }
+
+  if (!provider || !providerAccountId) {
+    logger.warn("Surface approval request missing provider identity", {
+      provider: provider ?? null,
+      providerAccountId: providerAccountId ?? null,
+    });
+    return { ok: false, status: 400, error: "Invalid surface approval identity" };
+  }
+
+  const linkedAccount = await prisma.account.findUnique({
+    where: {
+      provider_providerAccountId: {
+        provider,
+        providerAccountId,
+      },
+    },
+    select: {
+      userId: true,
+    },
+  });
+
+  if (!linkedAccount?.userId) {
+    logger.warn("Surface approval request has no linked user", {
+      provider,
+      providerAccountId,
+    });
+    return { ok: false, status: 401, error: "Unauthorized" };
+  }
+
+  return { ok: true, userId: linkedAccount.userId };
 }
 
 export async function authorizeApprovalView({

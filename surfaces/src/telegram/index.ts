@@ -119,6 +119,7 @@ export function startTelegram() {
             },
             body: JSON.stringify({
                 userId: ctx.from.id.toString(),
+                provider: "telegram",
             })
         });
 
@@ -139,94 +140,124 @@ export function startTelegram() {
         const userId = ctx.from.id.toString();
         const chatId = ctx.chat.id.toString();
         const isDM = ctx.chat.type === 'private';
+        let typingInterval: ReturnType<typeof setInterval> | null = null;
+        const sendTyping = async () => {
+            try {
+                await ctx.sendChatAction("typing");
+            } catch (err) {
+                console.error("[Surfaces][Telegram] Failed to send typing indicator", {
+                    chatId,
+                    messageId: ctx.message.message_id,
+                    error: err instanceof Error ? err.message : String(err),
+                });
+            }
+        };
+        const startTypingIndicator = async () => {
+            await sendTyping();
+            typingInterval = setInterval(() => {
+                void sendTyping();
+            }, 4000);
+        };
+        const stopTypingIndicator = () => {
+            if (typingInterval) {
+                clearInterval(typingInterval);
+                typingInterval = null;
+            }
+        };
 
-        const brainResponse = await forwardToBrain({
-            provider: "telegram",
-            content: text,
-            context: {
-                channelId: chatId,
-                userId: userId,
-                userName: ctx.from.username || ctx.from.first_name,
-                messageId: ctx.message.message_id.toString(),
-                isDirectMessage: isDM
-            },
-        });
+        try {
+            await startTypingIndicator();
 
-        if (brainResponse && brainResponse.responses) {
-            for (const resp of brainResponse.responses) {
-                if (resp.interactive) {
-                    const interactive = resp.interactive as InteractivePayload;
-                    
-                    const isDraft = interactive.type === "draft_created";
-                    const isApprovalLike = interactive.type === "approval_request" || interactive.type === "action_request";
+            const brainResponse = await forwardToBrain({
+                provider: "telegram",
+                content: text,
+                context: {
+                    channelId: chatId,
+                    userId: userId,
+                    userName: ctx.from.username || ctx.from.first_name,
+                    messageId: ctx.message.message_id.toString(),
+                    isDirectMessage: isDM
+                },
+            });
 
-                    const buttons = interactive.actions.map((action: InteractiveAction) => {
-                        // Handle URL buttons (Edit in Gmail) - use url button
-                        if (action.url) {
-                            return Markup.button.url(action.label, action.url);
-                        }
-                        
-                        // Build callback data based on type
-                        if (isDraft) {
-                            // draft_send:draftId:emailAccountId:userId
-                            return Markup.button.callback(
-                                action.label, 
-                                `draft_${action.value}:${interactive.draftId}:${interactive.emailAccountId}:${interactive.userId}`
-                            );
-                        } else if (interactive.type === "ambiguous_time") {
-                            return Markup.button.callback(action.label, `ambiguous:${action.value}:${interactive.ambiguousRequestId}`);
-                        } else if (isApprovalLike) {
-                            // approve:requestId or deny:requestId
-                            return Markup.button.callback(action.label, `${action.value}:${interactive.approvalId}`);
-                        }
-                        return Markup.button.callback(action.label, action.value);
-                    });
+            if (brainResponse && brainResponse.responses) {
+                for (const resp of brainResponse.responses) {
+                    if (resp.interactive) {
+                        const interactive = resp.interactive as InteractivePayload;
 
-                    try {
-                        // Build message based on type
-                        let messageText: string;
-                        
-                        if (isDraft && interactive.preview) {
-                            const preview = interactive.preview;
-                            const bodySnippet = preview.body.length > 800 
-                                ? preview.body.slice(0, 800) + "..." 
-                                : preview.body;
-                            
-                            // Build rich Markdown preview
-                            const lines = [
-                                "*Draft Email*",
-                                "",
-                                `*To:* ${preview.to.join(", ")}`,
-                                `*Subject:* ${preview.subject || "(no subject)"}`
-                            ];
-                            
-                            if (preview.cc && preview.cc.length > 0) {
-                                lines.push(`*CC:* ${preview.cc.join(", ")}`);
+                        const isDraft = interactive.type === "draft_created";
+                        const isApprovalLike = interactive.type === "approval_request" || interactive.type === "action_request";
+
+                        const buttons = interactive.actions.map((action: InteractiveAction) => {
+                            // Handle URL buttons (Edit in Gmail) - use url button
+                            if (action.url) {
+                                return Markup.button.url(action.label, action.url);
                             }
-                            
-                            lines.push("", "---", "", bodySnippet);
-                            messageText = lines.join("\n");
-                        } else {
-                            // Default for approvals/action requests or drafts without preview
-                            messageText = `*${interactive.summary}*\n${resp.content}`;
-                        }
-                        
-                        await ctx.reply(messageText, {
-                            parse_mode: "Markdown",
-                            ...Markup.inlineKeyboard([buttons])
-                        });
-                    } catch (err) {
-                        console.error("[Surfaces] Failed to reply interactive on Telegram:", err);
-                    }
 
-                } else if (resp.content) {
-                    try {
-                        await ctx.reply(resp.content);
-                    } catch (err) {
-                        console.error("[Surfaces] Failed to reply on Telegram:", err);
+                            // Build callback data based on type
+                            if (isDraft) {
+                                // draft_send:draftId:emailAccountId:userId
+                                return Markup.button.callback(
+                                    action.label,
+                                    `draft_${action.value}:${interactive.draftId}:${interactive.emailAccountId}:${interactive.userId}`
+                                );
+                            } else if (interactive.type === "ambiguous_time") {
+                                return Markup.button.callback(action.label, `ambiguous:${action.value}:${interactive.ambiguousRequestId}`);
+                            } else if (isApprovalLike) {
+                                // approve:requestId or deny:requestId
+                                return Markup.button.callback(action.label, `${action.value}:${interactive.approvalId}`);
+                            }
+                            return Markup.button.callback(action.label, action.value);
+                        });
+
+                        try {
+                            // Build message based on type
+                            let messageText: string;
+
+                            if (isDraft && interactive.preview) {
+                                const preview = interactive.preview;
+                                const bodySnippet = preview.body.length > 800
+                                    ? preview.body.slice(0, 800) + "..."
+                                    : preview.body;
+
+                                // Build rich Markdown preview
+                                const lines = [
+                                    "*Draft Email*",
+                                    "",
+                                    `*To:* ${preview.to.join(", ")}`,
+                                    `*Subject:* ${preview.subject || "(no subject)"}`
+                                ];
+
+                                if (preview.cc && preview.cc.length > 0) {
+                                    lines.push(`*CC:* ${preview.cc.join(", ")}`);
+                                }
+
+                                lines.push("", "---", "", bodySnippet);
+                                messageText = lines.join("\n");
+                            } else {
+                                // Default for approvals/action requests or drafts without preview
+                                messageText = `*${interactive.summary}*\n${resp.content}`;
+                            }
+
+                            await ctx.reply(messageText, {
+                                parse_mode: "Markdown",
+                                ...Markup.inlineKeyboard([buttons])
+                            });
+                        } catch (err) {
+                            console.error("[Surfaces] Failed to reply interactive on Telegram:", err);
+                        }
+
+                    } else if (resp.content) {
+                        try {
+                            await ctx.reply(resp.content);
+                        } catch (err) {
+                            console.error("[Surfaces] Failed to reply on Telegram:", err);
+                        }
                     }
                 }
             }
+        } finally {
+            stopTypingIndicator();
         }
     });
 

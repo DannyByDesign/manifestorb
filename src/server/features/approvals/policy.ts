@@ -72,6 +72,17 @@ export async function requiresApproval({
   toolName: string;
   args?: Record<string, unknown>;
 }): Promise<boolean> {
+  // Approval decisions must never require another approval, otherwise
+  // "approve/deny" flows can recurse and never execute.
+  if (
+    toolName === "modify" &&
+    args &&
+    typeof args.resource === "string" &&
+    args.resource === "approval"
+  ) {
+    return false;
+  }
+
   const pref = await prisma.approvalPreference.findUnique({
     where: { userId_toolName: { userId, toolName } },
   });

@@ -3,9 +3,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { executeApprovalRequest } from "@/features/approvals/execute";
 import { createScopedLogger } from "@/server/lib/logger";
 import { auth } from "@/server/auth";
-import { authorizeApprovalDecision } from "@/features/approvals/authorization";
+import {
+    authorizeApprovalDecision,
+    resolveSurfaceApprovalActor,
+} from "@/features/approvals/authorization";
+import { z } from "zod";
 
 const logger = createScopedLogger("approvals/approve");
+
+const approvalDecisionBodySchema = z
+    .object({
+        reason: z.string().optional(),
+        provider: z.enum(["slack", "discord", "telegram", "web"]).optional(),
+        userId: z.string().optional(),
+    })
+    .strict();
 
 export async function POST(req: NextRequest, context: { params: Promise<{ id: string }> }) {
     const { id } = await context.params;
@@ -14,13 +26,41 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     const token =
         req.nextUrl.searchParams.get("token") ||
         req.headers.get("x-approval-token");
+    const surfaceSecret =
+        req.headers.get("x-surfaces-secret") ||
+        req.headers.get("authorization")?.replace("Bearer ", "");
 
     try {
-        const body = await req.json();
+        const rawBody = await req.json();
+        const parsedBody = approvalDecisionBodySchema.safeParse(rawBody);
+        if (!parsedBody.success) {
+            return NextResponse.json(
+                { error: "Invalid request body", details: parsedBody.error.issues },
+                { status: 400 },
+            );
+        }
+        const body = parsedBody.data;
+
+        let actingSessionUserId = session?.user?.id;
+        if (!actingSessionUserId && !token) {
+            const surfaceActor = await resolveSurfaceApprovalActor({
+                provider: body.provider,
+                providerAccountId: body.userId,
+                providedSecret: surfaceSecret,
+                logger,
+            });
+            if (surfaceActor && !surfaceActor.ok) {
+                return NextResponse.json({ error: surfaceActor.error }, { status: surfaceActor.status });
+            }
+            if (surfaceActor?.ok) {
+                actingSessionUserId = surfaceActor.userId;
+            }
+        }
+
         const authorization = await authorizeApprovalDecision({
             approvalRequestId: id,
             expectedAction: "approve",
-            sessionUserId: session?.user?.id,
+            sessionUserId: actingSessionUserId,
             token,
             logger,
         });
@@ -74,12 +114,18 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
             return NextResponse.json({ ...decisionRecord, execution: executionResult });
         } catch (execError) {
             const msg = execError instanceof Error ? execError.message : String(execError);
-            if (msg.includes("Cannot decide on request in status: APPROVED") || msg.includes("Cannot decide on request in status: DENIED")) {
+            const statusMatch = msg.match(/Cannot decide on request in status: (\w+)/);
+            if (statusMatch) {
+                const status = statusMatch[1];
+                const alreadyProcessed = status === "APPROVED" || status === "DENIED";
                 return NextResponse.json({
-                    message: "This approval was already processed.",
-                    decision: msg.includes("APPROVED") ? "APPROVED" : "DENIED",
-                    alreadyProcessed: true,
-                });
+                    message:
+                        status === "EXPIRED"
+                            ? "This approval request has expired. Please ask me to recreate the action."
+                            : "This approval was already processed.",
+                    decision: status,
+                    alreadyProcessed,
+                }, { status: alreadyProcessed ? 200 : 409 });
             }
             logger.error(`[Approval] Tool execution failed`, { error: execError });
             return NextResponse.json({ execution: "failed_exception", error: msg }, { status: 500 });

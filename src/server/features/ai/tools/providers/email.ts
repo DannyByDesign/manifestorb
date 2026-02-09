@@ -142,6 +142,19 @@ export async function createEmailProvider(
             options.hasAttachment !== undefined,
         );
 
+    const runWithConcurrency = async <T>(
+        items: T[],
+        concurrency: number,
+        worker: (item: T) => Promise<void>,
+    ) => {
+        if (items.length === 0) return;
+        const safeConcurrency = Math.max(1, concurrency);
+        for (let i = 0; i < items.length; i += safeConcurrency) {
+            const slice = items.slice(i, i + safeConcurrency);
+            await Promise.all(slice.map((item) => worker(item)));
+        }
+    };
+
     return {
         search: async ({ query, limit, fetchAll, pageToken, before, after, subjectContains, bodyContains, text, from, to, hasAttachment }) => {
             try {
@@ -343,10 +356,10 @@ export async function createEmailProvider(
             const threadIds = [...new Set(messages.map(m => m.threadId))];
 
             let count = 0;
-            await Promise.all(threadIds.map(async (tid) => {
+            await runWithConcurrency(threadIds, 5, async (tid) => {
                 await service.trashThread(tid, account.email, "ai");
                 count++;
-            }));
+            });
             return { success: true, count };
             } catch (err: unknown) {
                 if (isGmailAuthError(err)) {

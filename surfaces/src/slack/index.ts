@@ -39,6 +39,29 @@ function toMessageMeta(message: unknown): MessageMeta {
 const WELCOME_MESSAGE =
     "Hi! I'm your AI assistant. To use me here, link your Slack account to your Amodel profile (one-time setup).";
 
+async function setSlackAssistantThinkingStatus(params: {
+    app: App;
+    channelId: string;
+    threadTs: string;
+}) {
+    const { app, channelId, threadTs } = params;
+    try {
+        await app.client.assistant.threads.setStatus({
+            channel_id: channelId,
+            thread_ts: threadTs,
+            status: "is thinking...",
+        });
+    } catch (err) {
+        // This method is only available for Slack Assistant threads/scopes.
+        // Keep message flow working for regular bot apps.
+        console.log("[Surfaces][Slack] Assistant typing status unavailable", {
+            channelId,
+            threadTs,
+            error: err instanceof Error ? err.message : String(err),
+        });
+    }
+}
+
 export async function startSlack() {
     const token = process.env.SLACK_BOT_TOKEN;
     if (!token) {
@@ -86,8 +109,16 @@ export async function startSlack() {
             },
             body: JSON.stringify({
                 userId: body.user.id, // Who clicked the button
+                provider: "slack",
             })
         });
+
+        let responseBody: { error?: string; message?: string; decision?: string } | null = null;
+        try {
+            responseBody = (await response.json()) as { error?: string; message?: string; decision?: string };
+        } catch {
+            responseBody = null;
+        }
 
         if (response.ok) {
             // Update the message to remove buttons and show status
@@ -95,7 +126,15 @@ export async function startSlack() {
             // Ideally, we'd update the original block. For now, let's post a confirmation.
             await say?.(`Request ${decision}d! ✅`);
         } else {
-            await say?.(`Failed to ${decision} request. ${response.statusText}`);
+            const detail = responseBody?.message || responseBody?.error || response.statusText;
+            console.error("[Surfaces][Slack] Approval action failed", {
+                requestId,
+                decision,
+                status: response.status,
+                detail,
+                userId: body.user.id,
+            });
+            await say?.(`Failed to ${decision} request. ${detail}`);
         }
     });
 
@@ -262,6 +301,12 @@ export async function startSlack() {
                 });
                 return;
             }
+
+            await setSlackAssistantThinkingStatus({
+                app,
+                channelId: meta.channel,
+                threadTs: meta.ts,
+            });
 
             let history: { role: "user" | "assistant"; content: string }[] = [];
             try {

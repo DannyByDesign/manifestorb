@@ -6,7 +6,7 @@ import { createScopedLogger } from "@/server/lib/logger";
 import prisma from "@/server/db/client";
 
 const logger = createScopedLogger("ApprovalService");
-const DEFAULT_EXPIRY_SECONDS = 3600; // 1 hour
+const DEFAULT_EXPIRY_SECONDS = 86_400; // 24 hours
 
 /**
  * Get the approval request expiry in seconds for a user (from UserAIConfig or default).
@@ -107,12 +107,13 @@ export class ApprovalService {
             }
 
             if (new Date() > request.expiresAt) {
-                // Auto-expire if we catch it late
-                await tx.approvalRequest.update({
-                    where: { id: approvalRequestId },
-                    data: { status: "EXPIRED" }
+                logger.warn("Approval request past expiry at decision time; honoring explicit user decision", {
+                    approvalRequestId,
+                    decidedByUserId,
+                    decision,
+                    expiredAt: request.expiresAt.toISOString(),
+                    decidedAt: new Date().toISOString(),
                 });
-                throw new Error("Approval request has expired");
             }
 
             // Update Request Status

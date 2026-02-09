@@ -92,4 +92,23 @@ describe("requiresApproval defaults", () => {
       }),
     ).resolves.toBe(true);
   });
+
+  it("never requires approval for modify(resource=approval)", async () => {
+    findUniqueMock.mockResolvedValue({
+      policy: "always",
+      conditions: null,
+    });
+
+    await expect(
+      requiresApproval({
+        userId: "user-1",
+        toolName: "modify",
+        args: {
+          resource: "approval",
+          ids: ["approval-1"],
+          changes: { decision: "APPROVE" },
+        },
+      }),
+    ).resolves.toBe(false);
+  });
 });

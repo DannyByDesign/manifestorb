@@ -150,6 +150,7 @@ export function startDiscord() {
             },
             body: JSON.stringify({
                 userId: interaction.user.id,
+                provider: "discord",
             })
         });
 
@@ -167,115 +168,145 @@ export function startDiscord() {
         touchPlatformEvent("discord");
         if (message.author.bot) return;
 
+        let typingInterval: ReturnType<typeof setInterval> | null = null;
+        const sendTyping = async () => {
+            try {
+                await message.channel.sendTyping();
+            } catch (err) {
+                console.error("[Surfaces][Discord] Failed to send typing indicator", {
+                    channelId: message.channelId,
+                    messageId: message.id,
+                    error: err instanceof Error ? err.message : String(err),
+                });
+            }
+        };
+        const startTypingIndicator = async () => {
+            await sendTyping();
+            typingInterval = setInterval(() => {
+                void sendTyping();
+            }, 8000);
+        };
+        const stopTypingIndicator = () => {
+            if (typingInterval) {
+                clearInterval(typingInterval);
+                typingInterval = null;
+            }
+        };
+
         // Normalize
         const isDM = message.channel.type === ChannelType.DM;
-
-        // Determine channel ID format (e.g. "discord:channel_id" or just "channel_id")
-        // For now we send raw ID and provider identifies the namespace
-
-        // Fetch History
-        let history: { role: "user" | "assistant"; content: string }[] = [];
         try {
-            const messages = await message.channel.messages.fetch({ limit: 30, before: message.id });
-            history = messages.reverse().map(msg => ({
-                role: (msg.author.bot ? "assistant" : "user") as "user" | "assistant",
-                content: msg.content
-            })).filter(msg => msg.content !== "");
-        } catch (err) {
-            console.error("[Surfaces] Failed to fetch Discord history", err);
-        }
+            await startTypingIndicator();
 
-        const brainResponse = await forwardToBrain({
-            provider: "discord",
-            content: message.content,
-            context: {
-                channelId: message.channelId,
-                userId: message.author.id,
-                userName: message.author.username,
-                messageId: message.id,
-                isDirectMessage: isDM,
-                guildId: message.guildId,
-            },
-            history
-        });
+            // Determine channel ID format (e.g. "discord:channel_id" or just "channel_id")
+            // For now we send raw ID and provider identifies the namespace
 
-        if (brainResponse && brainResponse.responses) {
-            for (const resp of brainResponse.responses) {
-                if (resp.interactive) {
-                    const interactive = resp.interactive as InteractivePayload;
-                    
-                    const isDraft = interactive.type === "draft_created";
-                    const isApprovalLike = interactive.type === "approval_request" || interactive.type === "action_request";
+            // Fetch History
+            let history: { role: "user" | "assistant"; content: string }[] = [];
+            try {
+                const messages = await message.channel.messages.fetch({ limit: 30, before: message.id });
+                history = messages.reverse().map(msg => ({
+                    role: (msg.author.bot ? "assistant" : "user") as "user" | "assistant",
+                    content: msg.content
+                })).filter(msg => msg.content !== "");
+            } catch (err) {
+                console.error("[Surfaces] Failed to fetch Discord history", err);
+            }
 
-                    const buttons = interactive.actions.map((action: InteractiveAction) => {
-                        const btn = new ButtonBuilder()
-                            .setLabel(action.label)
-                            .setStyle(action.style === 'danger' ? ButtonStyle.Danger : ButtonStyle.Primary);
+            const brainResponse = await forwardToBrain({
+                provider: "discord",
+                content: message.content,
+                context: {
+                    channelId: message.channelId,
+                    userId: message.author.id,
+                    userName: message.author.username,
+                    messageId: message.id,
+                    isDirectMessage: isDM,
+                    guildId: message.guildId,
+                },
+                history
+            });
 
-                        // Handle URL buttons (Edit in Gmail)
-                        if (action.url) {
-                            return btn.setStyle(ButtonStyle.Link).setURL(action.url);
-                        }
+            if (brainResponse && brainResponse.responses) {
+                for (const resp of brainResponse.responses) {
+                    if (resp.interactive) {
+                        const interactive = resp.interactive as InteractivePayload;
 
-                        // Build customId based on type
-                        if (isDraft) {
-                            // draft_send:draftId:emailAccountId:userId
-                            return btn.setCustomId(`draft_${action.value}:${interactive.draftId}:${interactive.emailAccountId}:${interactive.userId}`);
-                        } else if (interactive.type === "ambiguous_time") {
-                            return btn.setCustomId(`ambiguous:${action.value}:${interactive.ambiguousRequestId}`);
-                        } else if (isApprovalLike) {
-                            // approve:requestId or deny:requestId
-                            return btn.setCustomId(`${action.value}:${interactive.approvalId}`);
-                        }
-                        return btn;
-                    });
+                        const isDraft = interactive.type === "draft_created";
+                        const isApprovalLike = interactive.type === "approval_request" || interactive.type === "action_request";
 
-                    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(buttons);
+                        const buttons = interactive.actions.map((action: InteractiveAction) => {
+                            const btn = new ButtonBuilder()
+                                .setLabel(action.label)
+                                .setStyle(action.style === 'danger' ? ButtonStyle.Danger : ButtonStyle.Primary);
 
-                    try {
-                        // Build message options based on type
-                        if (isDraft && interactive.preview) {
-                            const preview = interactive.preview;
-                            const bodySnippet = preview.body.length > 1000 
-                                ? preview.body.slice(0, 1000) + "..." 
-                                : preview.body;
-                            
-                            const embed = new EmbedBuilder()
-                                .setTitle("Draft Email")
-                                .addFields(
-                                    { name: "To", value: preview.to.join(", ") || "N/A", inline: true },
-                                    { name: "Subject", value: preview.subject || "(no subject)", inline: true }
-                                )
-                                .setDescription(bodySnippet)
-                                .setColor(0x5865F2); // Discord blurple
-                            
-                            // Add CC if present
-                            if (preview.cc && preview.cc.length > 0) {
-                                embed.addFields({ name: "CC", value: preview.cc.join(", "), inline: true });
+                            // Handle URL buttons (Edit in Gmail)
+                            if (action.url) {
+                                return btn.setStyle(ButtonStyle.Link).setURL(action.url);
                             }
-                            
-                            await message.reply({
-                                embeds: [embed],
-                                components: [row]
-                            });
-                        } else {
-                            // Default for approvals/action requests or drafts without preview
-                            await message.reply({
-                                content: `**${interactive.summary}**\n${resp.content}`,
-                                components: [row]
-                            });
+
+                            // Build customId based on type
+                            if (isDraft) {
+                                // draft_send:draftId:emailAccountId:userId
+                                return btn.setCustomId(`draft_${action.value}:${interactive.draftId}:${interactive.emailAccountId}:${interactive.userId}`);
+                            } else if (interactive.type === "ambiguous_time") {
+                                return btn.setCustomId(`ambiguous:${action.value}:${interactive.ambiguousRequestId}`);
+                            } else if (isApprovalLike) {
+                                // approve:requestId or deny:requestId
+                                return btn.setCustomId(`${action.value}:${interactive.approvalId}`);
+                            }
+                            return btn;
+                        });
+
+                        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(buttons);
+
+                        try {
+                            // Build message options based on type
+                            if (isDraft && interactive.preview) {
+                                const preview = interactive.preview;
+                                const bodySnippet = preview.body.length > 1000
+                                    ? preview.body.slice(0, 1000) + "..."
+                                    : preview.body;
+
+                                const embed = new EmbedBuilder()
+                                    .setTitle("Draft Email")
+                                    .addFields(
+                                        { name: "To", value: preview.to.join(", ") || "N/A", inline: true },
+                                        { name: "Subject", value: preview.subject || "(no subject)", inline: true }
+                                    )
+                                    .setDescription(bodySnippet)
+                                    .setColor(0x5865F2); // Discord blurple
+
+                                // Add CC if present
+                                if (preview.cc && preview.cc.length > 0) {
+                                    embed.addFields({ name: "CC", value: preview.cc.join(", "), inline: true });
+                                }
+
+                                await message.reply({
+                                    embeds: [embed],
+                                    components: [row]
+                                });
+                            } else {
+                                // Default for approvals/action requests or drafts without preview
+                                await message.reply({
+                                    content: `**${interactive.summary}**\n${resp.content}`,
+                                    components: [row]
+                                });
+                            }
+                        } catch (err) {
+                            console.error("[Surfaces] Failed to reply interactive on Discord:", err);
                         }
-                    } catch (err) {
-                        console.error("[Surfaces] Failed to reply interactive on Discord:", err);
-                    }
-                } else if (resp.content) {
-                    try {
-                        await message.reply(resp.content);
-                    } catch (err) {
-                        console.error("[Surfaces] Failed to reply on Discord:", err);
+                    } else if (resp.content) {
+                        try {
+                            await message.reply(resp.content);
+                        } catch (err) {
+                            console.error("[Surfaces] Failed to reply on Discord:", err);
+                        }
                     }
                 }
             }
+        } finally {
+            stopTypingIndicator();
         }
     });
 

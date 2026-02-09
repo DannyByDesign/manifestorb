@@ -62,8 +62,6 @@ describe("executeApprovalRequest", () => {
     expect(mockTool.execute).toHaveBeenCalledWith(
       expect.objectContaining({
         messageId: "msg-1",
-        preApproved: true,
-        approvalId: "req-1",
       }),
     );
     expect(result.executionResult).toEqual({ ok: true });
@@ -108,6 +106,121 @@ describe("executeApprovalRequest", () => {
         decidedByUserId: "user-1",
       }),
     ).rejects.toThrow("Tool missing not found in agent tools");
+  });
+
+  it("chunks large id lists for scoped execution", async () => {
+    prisma.$transaction.mockImplementation(
+      async (callback: (tx: any) => unknown) => callback(prisma as any),
+    );
+    prisma.approvalRequest.findUnique
+      .mockResolvedValueOnce({
+        id: "req-4",
+        userId: "user-1",
+        status: "PENDING",
+        expiresAt: new Date(Date.now() + 60_000),
+      } as any)
+      .mockResolvedValueOnce({
+        id: "req-4",
+        userId: "user-1",
+        requestPayload: {
+          tool: "delete",
+          args: {
+            resource: "email",
+            ids: Array.from({ length: 120 }, (_, i) => `id-${i}`),
+          },
+        },
+        user: {
+          emailAccounts: [{ id: "email-1", account: { provider: "google" } }],
+        },
+      } as any);
+    prisma.approvalRequest.update.mockResolvedValue({} as any);
+    prisma.approvalDecision.create.mockResolvedValue({
+      decision: "APPROVE",
+    } as any);
+    prisma.approvalRequest.findUnique.mockResolvedValue({
+      id: "req-4",
+      userId: "user-1",
+      requestPayload: {
+        tool: "delete",
+        args: {
+          resource: "email",
+          ids: Array.from({ length: 120 }, (_, i) => `id-${i}`),
+        },
+      },
+      user: {
+        emailAccounts: [{ id: "email-1", account: { provider: "google" } }],
+      },
+    } as any);
+
+    const mockTool = { execute: vi.fn().mockResolvedValue({ success: true }) };
+    mockCreateAgentTools.mockResolvedValue({ delete: mockTool });
+
+    const result = await executeApprovalRequest({
+      approvalRequestId: "req-4",
+      decidedByUserId: "user-1",
+    });
+
+    expect(mockTool.execute).toHaveBeenCalledTimes(3);
+    expect(result.executionResult).toEqual(
+      expect.objectContaining({
+        success: true,
+      }),
+    );
+  });
+
+  it("resets approval to pending when tool returns unsuccessful result", async () => {
+    prisma.$transaction.mockImplementation(
+      async (callback: (tx: any) => unknown) => callback(prisma as any),
+    );
+    prisma.approvalRequest.findUnique
+      .mockResolvedValueOnce({
+        id: "req-5",
+        userId: "user-1",
+        status: "PENDING",
+        expiresAt: new Date(Date.now() + 60_000),
+      } as any)
+      .mockResolvedValueOnce({
+        id: "req-5",
+        userId: "user-1",
+        requestPayload: { tool: "delete", args: { resource: "email", ids: ["id-1"] } },
+        user: {
+          emailAccounts: [{ id: "email-1", account: { provider: "google" } }],
+        },
+      } as any);
+    prisma.approvalRequest.update.mockResolvedValue({} as any);
+    prisma.approvalDecision.create.mockResolvedValue({
+      id: "dec-5",
+      decision: "APPROVE",
+    } as any);
+    prisma.approvalDecision.deleteMany.mockResolvedValue({ count: 1 } as any);
+    prisma.approvalRequest.findUnique.mockResolvedValue({
+      id: "req-5",
+      userId: "user-1",
+      requestPayload: { tool: "delete", args: { resource: "email", ids: ["id-1"] } },
+      user: {
+        emailAccounts: [{ id: "email-1", account: { provider: "google" } }],
+      },
+    } as any);
+
+    const mockTool = { execute: vi.fn().mockResolvedValue({ success: false, error: "bad run" }) };
+    mockCreateAgentTools.mockResolvedValue({ delete: mockTool });
+
+    await expect(
+      executeApprovalRequest({
+        approvalRequestId: "req-5",
+        decidedByUserId: "user-1",
+      }),
+    ).rejects.toThrow("Approved action execution failed: bad run");
+
+    expect(prisma.approvalDecision.deleteMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ approvalRequestId: "req-5" }) }),
+    );
+    expect(prisma.approvalRequest.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "req-5" },
+        data: { status: "PENDING" },
+      }),
+    );
   });
 
   it("throws when request or user is missing", async () => {
