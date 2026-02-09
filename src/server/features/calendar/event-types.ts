@@ -22,6 +22,7 @@ export interface CalendarEventCreateInput {
   location?: string;
   start: Date;
   end: Date;
+  attendees?: string[];
   allDay?: boolean;
   isRecurring?: boolean;
   recurrenceRule?: string;

@@ -1,4 +1,3 @@
-/* eslint-disable no-process-env */
 import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 import { booleanString } from "@/server/lib/zod";
@@ -106,7 +105,7 @@ export const env = createEnv({
     USE_BACKUP_MODEL: z.coerce.boolean().optional().default(false),
     HEALTH_API_KEY: z.string().optional(),
     JOBS_SHARED_SECRET: z.string().optional(),
-    CALENDAR_ACTIONS_DRY_RUN: z.coerce.boolean().optional().default(false),
+    CALENDAR_ACTIONS_DRY_RUN: booleanString.default(false),
     SIDECAR_URL: z.string().url().optional(), // URL of the surfaces sidecar for background jobs
     SURFACES_API_URL: z.string().url().optional(), // URL of the surfaces sidecar for push notifications
     OAUTH_PROXY_URL: z

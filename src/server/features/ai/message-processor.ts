@@ -89,18 +89,37 @@ export async function processMessage(
   const { user, emailAccount, context, streaming, logger } = input;
 
   // ---- 1. Load per-user config (maxSteps, custom instructions, etc.) -----
-  const userAiConfig = await prisma.userAIConfig.findUnique({
-    where: { userId: user.id },
-    select: {
-      maxSteps: true,
-      approvalInstructions: true,
-      customInstructions: true,
-      conversationCategories: true,
-    },
-  });
+  const [userAiConfig, taskPreference] = await Promise.all([
+    prisma.userAIConfig.findUnique({
+      where: { userId: user.id },
+      select: {
+        maxSteps: true,
+        approvalInstructions: true,
+        customInstructions: true,
+        conversationCategories: true,
+      },
+    }),
+    prisma.taskPreference.findUnique({
+      where: { userId: user.id },
+      select: { weekStartDay: true },
+    }),
+  ]);
   const configuredMaxSteps = userAiConfig?.maxSteps ?? 20;
 
-  // ---- 2. Create tools + memory tools ------------------------------------
+  // ---- 2. Resolve conversation -------------------------------------------
+  const conversationId = context.conversationId
+    ? context.conversationId
+    : (await ConversationService.getPrimaryWebConversation(user.id)).id;
+
+  // ---- 3. Resolve source email context for tool execution -----------------
+  const sourceEmailContext = await resolveSourceEmailContext({
+    userId: user.id,
+    emailAccountId: emailAccount.id,
+    providerMessageId: context.messageId,
+    providerThreadId: context.threadId,
+  });
+
+  // ---- 4. Create tools + memory tools ------------------------------------
   const resolvedProvider =
     (emailAccount as Record<string, unknown>).provider as string | undefined ??
     emailAccount.account?.provider;
@@ -108,6 +127,11 @@ export async function processMessage(
     emailAccount: { ...emailAccount, provider: resolvedProvider ?? "" } as unknown as Parameters<typeof createAgentTools>[0]["emailAccount"],
     logger,
     userId: user.id,
+    toolContext: {
+      conversationId,
+      sourceEmailMessageId: sourceEmailContext.messageId,
+      sourceEmailThreadId: sourceEmailContext.threadId,
+    },
   });
 
   const memoryTools = createMemoryTools({
@@ -116,7 +140,7 @@ export async function processMessage(
     logger,
   });
 
-  // ---- 3. Wrap sensitive tools with approval interceptor -----------------
+  // ---- 5. Wrap sensitive tools with approval interceptor -----------------
   const approvalService = new ApprovalService(prisma);
   const expirySeconds = await getApprovalExpiry(user.id);
   const allTools = wrapToolsWithApproval({
@@ -127,11 +151,6 @@ export async function processMessage(
     expirySeconds,
     logger,
   });
-
-  // ---- 4. Resolve conversation -------------------------------------------
-  const conversationId = context.conversationId
-    ? context.conversationId
-    : (await ConversationService.getPrimaryWebConversation(user.id)).id;
 
   // ---- 5. Extract message content for context retrieval ------------------
   const messageContent =
@@ -219,6 +238,8 @@ export async function processMessage(
     contextPack,
     threadContextBlock,
     userTimeZone,
+    weekStartDay:
+      taskPreference?.weekStartDay === "monday" ? "monday" : "sunday",
   });
 
   // ---- 10. Build final messages array ------------------------------------
@@ -642,6 +663,95 @@ function createApprovalWrappedTool({
   return wrappedToolDef;
 }
 
+type SourceEmailContext = {
+  messageId?: string;
+  threadId?: string;
+};
+
+async function resolveSourceEmailContext({
+  userId,
+  emailAccountId,
+  providerMessageId,
+  providerThreadId,
+}: {
+  userId: string;
+  emailAccountId: string;
+  providerMessageId?: string;
+  providerThreadId?: string;
+}): Promise<SourceEmailContext> {
+  const select = { messageId: true, threadId: true } as const;
+
+  if (providerMessageId) {
+    const byMessage = await prisma.emailMessage.findFirst({
+      where: {
+        emailAccountId,
+        OR: [{ id: providerMessageId }, { messageId: providerMessageId }],
+      },
+      select,
+    });
+    if (byMessage) {
+      return { messageId: byMessage.messageId, threadId: byMessage.threadId };
+    }
+  }
+
+  if (providerThreadId) {
+    const byThread = await prisma.emailMessage.findFirst({
+      where: { emailAccountId, threadId: providerThreadId },
+      orderBy: { date: "desc" },
+      select,
+    });
+    if (byThread) {
+      return { messageId: byThread.messageId, threadId: byThread.threadId };
+    }
+  }
+
+  if (!providerMessageId && !providerThreadId) {
+    return {};
+  }
+
+  const recentNotifications = await prisma.inAppNotification.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+    take: 25,
+    select: { metadata: true },
+  });
+
+  for (const notification of recentNotifications) {
+    const metadata =
+      notification.metadata && typeof notification.metadata === "object"
+        ? (notification.metadata as Record<string, unknown>)
+        : null;
+    if (!metadata) continue;
+
+    const metadataMessageId =
+      typeof metadata.messageId === "string" ? metadata.messageId : undefined;
+    const metadataThreadId =
+      typeof metadata.threadId === "string" ? metadata.threadId : undefined;
+
+    const isMatch =
+      (providerMessageId && metadataMessageId === providerMessageId) ||
+      (providerThreadId && metadataThreadId === providerThreadId);
+    if (!isMatch) continue;
+
+    const resolved = await prisma.emailMessage.findFirst({
+      where: {
+        emailAccountId,
+        OR: [
+          ...(metadataMessageId ? [{ messageId: metadataMessageId }] : []),
+          ...(metadataThreadId ? [{ threadId: metadataThreadId }] : []),
+        ],
+      },
+      orderBy: { date: "desc" },
+      select,
+    });
+    if (resolved) {
+      return { messageId: resolved.messageId, threadId: resolved.threadId };
+    }
+  }
+
+  return {};
+}
+
 // ---------------------------------------------------------------------------
 // Helper: assemble the full system prompt with context
 // ---------------------------------------------------------------------------
@@ -651,11 +761,13 @@ function assembleSystemPrompt({
   contextPack,
   threadContextBlock,
   userTimeZone,
+  weekStartDay,
 }: {
   baseSystemPrompt: string;
   contextPack: ContextPack;
   threadContextBlock: string;
   userTimeZone?: string;
+  weekStartDay: "sunday" | "monday";
 }): string {
   const pendingStateBlock = buildPendingStateBlock(contextPack);
 
@@ -667,6 +779,7 @@ function assembleSystemPrompt({
 ### Current Date and Time
 ${getTodayForLLM(new Date(), userTimeZone)}
 This is the authoritative current date. Ignore any conflicting dates in conversation history or summaries.
+Interpret "this week" and "next week" using a week that starts on ${weekStartDay === "monday" ? "Monday" : "Sunday"}.
 
 ### User Personal Instructions
 ${contextPack.system.legacyAbout || "No personal instructions set."}

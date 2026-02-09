@@ -78,6 +78,7 @@ type OutlookEventInput = {
   location?: string;
   start: Date;
   end: Date;
+  attendees?: string[];
   allDay?: boolean;
   isRecurring?: boolean;
   recurrenceRule?: string;
@@ -173,6 +174,10 @@ export async function createOutlookEvent(
       dateTime: endDate.toISOString(),
       timeZone,
     },
+    attendees: event.attendees?.map((email) => ({
+      emailAddress: { address: email },
+      type: "required",
+    })),
     location: event.location ? { displayName: event.location } : undefined,
     isAllDay: event.allDay,
     ...(recurrence && { recurrence }),

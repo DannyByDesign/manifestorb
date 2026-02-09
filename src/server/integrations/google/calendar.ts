@@ -24,6 +24,7 @@ export type GoogleCalendarEventInput = {
   location?: string;
   start: Date;
   end: Date;
+  attendees?: string[];
   allDay?: boolean;
   isRecurring?: boolean;
   recurrenceRule?: string;
@@ -61,6 +62,12 @@ export async function createGoogleEvent(
 ) {
   const dryRun = options?.dryRun ?? env.CALENDAR_ACTIONS_DRY_RUN;
   if (dryRun && params.userId) {
+    params.logger.warn("Google calendar create running in dry-run mode", {
+      userId: params.userId,
+      emailAccountId: params.emailAccountId,
+      calendarId,
+      title: event.title,
+    });
     await logCalendarAction({
       userId: params.userId,
       provider: "google",
@@ -88,6 +95,7 @@ export async function createGoogleEvent(
     summary: event.title,
     description: event.description,
     location: event.location,
+    attendees: event.attendees?.map((email) => ({ email })),
     start: {
       dateTime: event.allDay ? undefined : event.start.toISOString(),
       date: event.allDay ? toDateOnly(event.start) : undefined,

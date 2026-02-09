@@ -1099,6 +1099,7 @@ model TaskPreference {
   workHourStart             Int      @default(9)
   workHourEnd               Int      @default(17)
   workDays                  Int[]    @default([1, 2, 3, 4, 5])
+  weekStartDay              String   @default("sunday")
   bufferMinutes             Int      @default(15)
   selectedCalendarIds       String[] @default([])
   timeZone                  String?

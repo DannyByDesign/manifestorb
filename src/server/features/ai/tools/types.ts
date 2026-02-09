@@ -25,6 +25,8 @@ export interface ToolContext {
     emailAccountId: string;
     /** Optional: link created tasks to the source email (cross-feature FK) */
     emailMessageId?: string;
+    /** Optional: source email thread context for pronoun attendee resolution. */
+    emailThreadId?: string;
     /** Optional: link created tasks to the conversation (cross-feature FK) */
     conversationId?: string;
     logger: any;

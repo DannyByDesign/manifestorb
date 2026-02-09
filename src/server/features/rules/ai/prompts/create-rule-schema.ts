@@ -115,7 +115,7 @@ const actionSchema = (provider: string) =>
           .unknown()
           .nullish()
           .describe(
-            "Structured payload for task preferences, task creation, or calendar event creation actions.",
+            "Structured payload for task preferences (e.g. workHourStart/workHourEnd/workDays/weekStartDay), task creation, or calendar event creation actions.",
           ),
         ...(isMicrosoftProvider(provider) && {
           folderName: z

@@ -14,6 +14,7 @@ const taskPreferencePatchSchema = z
     workHourStart: z.number().int().min(0).max(23).optional(),
     workHourEnd: z.number().int().min(1).max(24).optional(),
     workDays: z.array(z.number().int().min(0).max(6)).max(7).optional(),
+    weekStartDay: z.enum(["sunday", "monday"]).optional(),
     bufferMinutes: z.number().int().min(0).max(240).optional(),
     selectedCalendarIds: z.array(z.string().min(1)).max(64).optional(),
     timeZone: z.string().min(1).max(100).optional(),
@@ -61,6 +62,10 @@ function pickKnownTaskPreferenceKeys(payload: Record<string, unknown>): TaskPref
       typeof payload.workHourStart === "number" ? payload.workHourStart : undefined,
     workHourEnd: typeof payload.workHourEnd === "number" ? payload.workHourEnd : undefined,
     workDays: Array.isArray(payload.workDays) ? payload.workDays : undefined,
+    weekStartDay:
+      payload.weekStartDay === "sunday" || payload.weekStartDay === "monday"
+        ? payload.weekStartDay
+        : undefined,
     bufferMinutes:
       typeof payload.bufferMinutes === "number" ? payload.bufferMinutes : undefined,
     selectedCalendarIds: Array.isArray(payload.selectedCalendarIds)
@@ -324,6 +329,7 @@ export async function getAssistantPreferenceSnapshot(params: {
         workHourStart: true,
         workHourEnd: true,
         workDays: true,
+        weekStartDay: true,
         bufferMinutes: true,
         selectedCalendarIds: true,
         timeZone: true,

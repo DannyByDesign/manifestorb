@@ -43,6 +43,17 @@ function toMessageMeta(message: unknown): MessageMeta {
     };
 }
 
+function extractAssistantThreadTs(body: unknown): string | undefined {
+    if (!body || typeof body !== "object") return undefined;
+    const record = body as Record<string, unknown>;
+    const assistantThread = record.assistant_thread;
+    if (!assistantThread || typeof assistantThread !== "object") return undefined;
+    const threadRecord = assistantThread as Record<string, unknown>;
+    if (typeof threadRecord.thread_ts === "string") return threadRecord.thread_ts;
+    if (typeof threadRecord.ts === "string") return threadRecord.ts;
+    return undefined;
+}
+
 const WELCOME_MESSAGE =
     "Hi! I'm your AI assistant. To use me here, link your Slack account to your Amodel profile (one-time setup).";
 
@@ -312,14 +323,18 @@ export async function startSlack() {
     });
 
     // Listen for messages
-    app.message(async ({ message, say }) => {
+    app.message(async ({ message, say, body }) => {
         const meta = toMessageMeta(message);
+        const assistantThreadTs = extractAssistantThreadTs(body);
+        const inboundThreadTs = assistantThreadTs ?? meta.threadTs;
         try {
             touchPlatformEvent("slack");
             console.log("[Surfaces][Slack] Incoming message event", {
                 channel: meta.channel,
                 user: meta.user,
                 ts: meta.ts,
+                threadTs: meta.threadTs ?? null,
+                assistantThreadTs: assistantThreadTs ?? null,
                 subtype: meta.subtype ?? null,
                 channelType: meta.channelType,
                 hasText: Boolean(meta.text),
@@ -350,7 +365,7 @@ export async function startSlack() {
             const userId = meta.user;
             const messageTs = meta.ts;
             const messageText = meta.text;
-            const statusThreadTs = meta.threadTs || messageTs;
+            const statusThreadTs = inboundThreadTs || messageTs;
 
             await setSlackAssistantThinkingStatus({
                 app,
@@ -361,12 +376,20 @@ export async function startSlack() {
             try {
                 let history: { role: "user" | "assistant"; content: string }[] = [];
                 try {
-                    const result = await app.client.conversations.history({
-                        channel: channelId,
-                        limit: 30,
-                        latest: messageTs,
-                        inclusive: false,
-                    });
+                    const result = inboundThreadTs
+                        ? await app.client.conversations.replies({
+                            channel: channelId,
+                            ts: inboundThreadTs,
+                            limit: 30,
+                            latest: messageTs,
+                            inclusive: false,
+                        })
+                        : await app.client.conversations.history({
+                            channel: channelId,
+                            limit: 30,
+                            latest: messageTs,
+                            inclusive: false,
+                        });
 
                     if (result.messages) {
                         history = result.messages
@@ -392,6 +415,7 @@ export async function startSlack() {
                     context: {
                         channelId,
                         userId,
+                        threadId: inboundThreadTs,
                         messageId: messageTs,
                         isDirectMessage: meta.channelType === "im",
                     },
@@ -531,23 +555,32 @@ export async function startSlack() {
                             }
 
                             await say({
+                                ...(inboundThreadTs ? { thread_ts: inboundThreadTs } : {}),
                                 blocks: blocks as unknown as (Block | KnownBlock)[],
-                                text: plainResponseContent || plainInteractiveSummary || "I completed that request.",
+                                text:
+                                    plainResponseContent ||
+                                    plainInteractiveSummary ||
+                                    "I completed that request.",
                             });
                             console.log("[Surfaces][Slack] Sent interactive response", {
                                 channel: channelId,
                                 user: userId,
                                 ts: messageTs,
+                                threadTs: inboundThreadTs ?? null,
                                 responseIndex: index,
                                 interactiveType: interactive.type,
                                 actionsCount: interactive.actions.length,
                             });
                         } else if (resp.content) {
-                            await say(plainResponseContent);
+                            await say({
+                                ...(inboundThreadTs ? { thread_ts: inboundThreadTs } : {}),
+                                text: plainResponseContent,
+                            });
                             console.log("[Surfaces][Slack] Sent text response", {
                                 channel: channelId,
                                 user: userId,
                                 ts: messageTs,
+                                threadTs: inboundThreadTs ?? null,
                                 responseIndex: index,
                                 contentLength: resp.content.length,
                             });

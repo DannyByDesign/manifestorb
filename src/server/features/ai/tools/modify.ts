@@ -218,7 +218,7 @@ Preferences changes:
 - digestSchedule: { intervalDays, daysOfWeek, timeOfDay, occurrences }
 - statsEmailFrequency: "WEEKLY" | "NEVER"
 - summaryEmailFrequency: "WEEKLY" | "NEVER"
-- scheduling keys: workHourStart, workHourEnd, workDays, bufferMinutes, selectedCalendarIds, timeZone, groupByProject, defaultMeetingDurationMin, meetingSlotCount, meetingExpirySeconds
+- scheduling keys: workHourStart, workHourEnd, workDays, weekStartDay ("sunday" | "monday"), bufferMinutes, selectedCalendarIds, timeZone, groupByProject, defaultMeetingDurationMin, meetingSlotCount, meetingExpirySeconds
 - aiConfig: { maxSteps, approvalInstructions, customInstructions, conversationCategories, defaultApprovalExpirySeconds }`,
 
     parameters: modifyParameters,
@@ -887,6 +887,7 @@ Preferences changes:
                     "workHourStart",
                     "workHourEnd",
                     "workDays",
+                    "weekStartDay",
                     "bufferMinutes",
                     "selectedCalendarIds",
                     "timeZone",
@@ -911,6 +912,11 @@ Preferences changes:
                             workDays: Array.isArray(changes.workDays)
                                 ? (changes.workDays as number[])
                                 : undefined,
+                            weekStartDay:
+                                changes.weekStartDay === "sunday" ||
+                                changes.weekStartDay === "monday"
+                                    ? changes.weekStartDay
+                                    : undefined,
                             bufferMinutes:
                                 typeof changes.bufferMinutes === "number"
                                     ? changes.bufferMinutes
