@@ -7,6 +7,7 @@ import { createDeterministicIdempotencyKey } from "@/server/lib/idempotency";
 import type { Logger } from "@/server/lib/logger";
 import { resolveTimeZoneOrUtc } from "./date-utils";
 import { env } from "@/env";
+import { resolveDefaultCalendarTimeZone } from "@/features/ai/tools/calendar-time";
 
 const LOG_SOURCE = "TaskSchedulingService";
 
@@ -68,12 +69,32 @@ export async function scheduleTasksForUser({
       },
     });
 
-    const resolvedTimeZone = resolveTimeZoneOrUtc(userSettings.timeZone);
-    if (resolvedTimeZone.isFallback) {
-      logger.warn("Invalid time zone in task preferences; falling back to UTC", {
-        userId,
-        originalTimeZone: resolvedTimeZone.original,
-      });
+    const resolvedEmailAccountId = await resolveSchedulingEmailAccountId({
+      userId,
+      emailAccountId,
+      selectedCalendarIds: userSettings.selectedCalendarIds,
+      logger,
+    });
+
+    const defaultCalendarTimeZone = await resolveDefaultCalendarTimeZone({
+      userId,
+      emailAccountId: resolvedEmailAccountId,
+    });
+    if ("error" in defaultCalendarTimeZone) {
+      throw new Error(defaultCalendarTimeZone.error);
+    }
+    let effectiveTimeZone = defaultCalendarTimeZone.timeZone;
+    if (userSettings.timeZone) {
+      const resolvedPreferenceTimeZone = resolveTimeZoneOrUtc(userSettings.timeZone);
+      if (!resolvedPreferenceTimeZone.isFallback) {
+        effectiveTimeZone = resolvedPreferenceTimeZone.timeZone;
+      } else {
+        logger.warn("Invalid time zone in task preferences; using calendar integration timezone", {
+          userId,
+          originalTimeZone: resolvedPreferenceTimeZone.original,
+          resolvedTimeZone: defaultCalendarTimeZone.timeZone,
+        });
+      }
     }
 
     const settings: SchedulingSettings = {
@@ -82,16 +103,9 @@ export async function scheduleTasksForUser({
       workDays: userSettings.workDays,
       bufferMinutes: userSettings.bufferMinutes,
       selectedCalendarIds: userSettings.selectedCalendarIds,
-      timeZone: resolvedTimeZone.timeZone,
+      timeZone: effectiveTimeZone,
       groupByProject: userSettings.groupByProject,
     };
-
-    const resolvedEmailAccountId = await resolveSchedulingEmailAccountId({
-      userId,
-      emailAccountId,
-      selectedCalendarIds: userSettings.selectedCalendarIds,
-      logger,
-    });
 
     const schedulingService = new SchedulingService(
       settings,

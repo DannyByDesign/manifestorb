@@ -1,6 +1,12 @@
 import { App } from "@slack/bolt";
 import type { Block, KnownBlock } from "@slack/types";
-import { forwardToBrain, fetchOnboardingLinkUrl, type InteractiveAction, type InteractivePayload } from "../utils";
+import {
+    forwardToBrain,
+    fetchOnboardingLinkUrl,
+    toPlainSidecarText,
+    type InteractiveAction,
+    type InteractivePayload
+} from "../utils";
 import {
     setPlatformEnabled,
     setPlatformError,
@@ -158,7 +164,7 @@ export async function startSlack() {
         }
 
         if (response.ok) {
-            await say?.(`Request ${decision}d! ✅`);
+            await say?.("success");
         } else {
             const detail = responseBody?.message || responseBody?.error || response.statusText;
             console.error("[Surfaces][Slack] Approval action failed", {
@@ -168,7 +174,7 @@ export async function startSlack() {
                 detail,
                 userId: body.user.id,
             });
-            await say?.(`Failed to ${decision} request. ${detail}`);
+            await say?.(toPlainSidecarText(`Failed to ${decision} request. ${detail}`));
         }
     });
 
@@ -192,9 +198,9 @@ export async function startSlack() {
         });
 
         if (response.ok) {
-            await say?.(`Got it — using the ${choice} time. ✅`);
+            await say?.(toPlainSidecarText(`Got it — using the ${choice} time. ✅`));
         } else {
-            await say?.(`Failed to resolve that time. ${response.statusText}`);
+            await say?.(toPlainSidecarText(`Failed to resolve that time. ${response.statusText}`));
         }
     });
 
@@ -210,7 +216,7 @@ export async function startSlack() {
         const [draftId, emailAccountId, userId] = (action.value || "").split(":");
 
         if (!draftId || !emailAccountId || !userId) {
-            await say?.("Invalid draft action data.");
+            await say?.(toPlainSidecarText("Invalid draft action data."));
             return;
         }
 
@@ -227,10 +233,10 @@ export async function startSlack() {
             });
 
             if (response.ok) {
-                await say?.("✅ Email sent successfully!");
+                await say?.(toPlainSidecarText("✅ Email sent successfully!"));
             } else {
                 const error = await response.text();
-                await say?.(`❌ Failed to send email: ${error}`);
+                await say?.(toPlainSidecarText(`❌ Failed to send email: ${error}`));
             }
         } else if (actionId === "draft_discard") {
             console.log(`[Surfaces] Discarding draft ${draftId}`);
@@ -243,9 +249,9 @@ export async function startSlack() {
             });
 
             if (response.ok) {
-                await say?.("🗑️ Draft discarded.");
+                await say?.(toPlainSidecarText("🗑️ Draft discarded."));
             } else {
-                await say?.("Failed to discard draft.");
+                await say?.(toPlainSidecarText("Failed to discard draft."));
             }
         }
     });
@@ -259,30 +265,35 @@ export async function startSlack() {
         if (!linkUrl) {
             await client.chat.postMessage({
                 channel,
-                text: `${WELCOME_MESSAGE} Something went wrong generating your link — please try messaging me again in a moment.`,
+                text: toPlainSidecarText(
+                    `${WELCOME_MESSAGE} Something went wrong generating your link — please try messaging me again in a moment.`,
+                ),
             });
             return;
         }
+        const onboardingText = toPlainSidecarText(
+            `${WELCOME_MESSAGE}\n\nTo get started, open this link to connect your Slack account (one-time): ${linkUrl}\n\nThen you can ask me about your calendar, email, and more.`,
+        );
         await client.chat.postMessage({
             channel,
-            text: `${WELCOME_MESSAGE}\n\n<${linkUrl}|Link your account> → then you can ask me about your calendar, email, and more.`,
+            text: onboardingText,
             blocks: [
                 {
                     type: "section",
-                    text: { type: "mrkdwn", text: WELCOME_MESSAGE },
+                    text: { type: "plain_text", text: WELCOME_MESSAGE },
                 },
                 {
                     type: "section",
                     text: {
-                        type: "mrkdwn",
-                        text: `To get started, <${linkUrl}|link your Slack account to Amodel> (one-time). Then you can ask me about your calendar, email, and more.`,
+                        type: "plain_text",
+                        text: `To get started, open this link to connect your Slack account (one-time): ${linkUrl}`,
                     },
                 },
                 {
                     type: "section",
                     text: {
-                        type: "mrkdwn",
-                        text: `If the button doesn't open (e.g. localhost), copy this link and open it in your browser:\n\`${linkUrl}\``,
+                        type: "plain_text",
+                        text: "Then you can ask me about your calendar, email, and more.",
                     },
                 },
                 {
@@ -406,8 +417,12 @@ export async function startSlack() {
 
                 for (const [index, resp] of brainResponse.responses.entries()) {
                     try {
+                        const plainResponseContent = toPlainSidecarText(
+                            typeof resp.content === "string" ? resp.content : "",
+                        );
                         if (resp.interactive) {
                             const interactive = resp.interactive as InteractivePayload;
+                            const plainInteractiveSummary = toPlainSidecarText(interactive.summary || "");
                             let buttonElements: SlackButtonElement[];
 
                             const isDraft = interactive.type === "draft_created";
@@ -460,8 +475,9 @@ export async function startSlack() {
                             let blocks: SlackBlock[];
                             if (isDraft && interactive.preview) {
                                 const preview = interactive.preview;
+                                const previewBody = toPlainSidecarText(preview.body || "");
                                 const bodySnippet =
-                                    preview.body.length > 500 ? `${preview.body.slice(0, 500)}...` : preview.body;
+                                    previewBody.length > 500 ? `${previewBody.slice(0, 500)}...` : previewBody;
 
                                 blocks = [
                                     {
@@ -471,8 +487,8 @@ export async function startSlack() {
                                     {
                                         type: "section",
                                         fields: [
-                                            { type: "mrkdwn", text: `*To:*\n${preview.to.join(", ")}` },
-                                            { type: "mrkdwn", text: `*Subject:*\n${preview.subject || "(no subject)"}` },
+                                            { type: "plain_text", text: `To:\n${preview.to.join(", ")}` },
+                                            { type: "plain_text", text: `Subject:\n${preview.subject || "(no subject)"}` },
                                         ],
                                     },
                                 ];
@@ -480,7 +496,7 @@ export async function startSlack() {
                                 if (preview.cc && preview.cc.length > 0) {
                                     blocks.push({
                                         type: "section",
-                                        text: { type: "mrkdwn", text: `*CC:* ${preview.cc.join(", ")}` },
+                                        text: { type: "plain_text", text: `CC: ${preview.cc.join(", ")}` },
                                     });
                                 }
 
@@ -488,7 +504,7 @@ export async function startSlack() {
                                     { type: "divider" },
                                     {
                                         type: "section",
-                                        text: { type: "mrkdwn", text: bodySnippet },
+                                        text: { type: "plain_text", text: bodySnippet || "(empty body)" },
                                     },
                                     { type: "divider" },
                                     {
@@ -501,8 +517,10 @@ export async function startSlack() {
                                     {
                                         type: "section",
                                         text: {
-                                            type: "mrkdwn",
-                                            text: `*${interactive.summary}*\n${resp.content}`,
+                                            type: "plain_text",
+                                            text: [plainInteractiveSummary, plainResponseContent]
+                                                .filter((part) => part.length > 0)
+                                                .join("\n"),
                                         },
                                     },
                                     {
@@ -514,7 +532,7 @@ export async function startSlack() {
 
                             await say({
                                 blocks: blocks as unknown as (Block | KnownBlock)[],
-                                text: resp.content,
+                                text: plainResponseContent || plainInteractiveSummary || "I completed that request.",
                             });
                             console.log("[Surfaces][Slack] Sent interactive response", {
                                 channel: channelId,
@@ -525,7 +543,7 @@ export async function startSlack() {
                                 actionsCount: interactive.actions.length,
                             });
                         } else if (resp.content) {
-                            await say(resp.content);
+                            await say(plainResponseContent);
                             console.log("[Surfaces][Slack] Sent text response", {
                                 channel: channelId,
                                 user: userId,
@@ -576,7 +594,7 @@ export async function startSlack() {
     console.log("⚡️ Surfaces: Slack Socket Mode running");
 }
 
-export async function sendSlackMessage(channelId: string, text: string, blocks?: (Block | KnownBlock)[]) {
+export async function sendSlackMessage(channelId: string, text: string, _blocks?: (Block | KnownBlock)[]) {
     if (!slackApp) {
         console.error("Slack app not initialized");
         return;
@@ -584,8 +602,8 @@ export async function sendSlackMessage(channelId: string, text: string, blocks?:
     try {
         await slackApp.client.chat.postMessage({
             channel: channelId,
-            text: text,
-            blocks: blocks
+            text: toPlainSidecarText(text),
+            blocks: undefined
         });
     } catch (error) {
         console.error("Failed to send Slack message", error);
@@ -610,27 +628,32 @@ export async function sendWelcomeToSlackUser(slackUserId: string): Promise<{ ok:
         if (!linkUrl) {
             await slackApp.client.chat.postMessage({
                 channel,
-                text: `${WELCOME_MESSAGE} Something went wrong generating your link — please try again in a moment.`,
+                text: toPlainSidecarText(
+                    `${WELCOME_MESSAGE} Something went wrong generating your link — please try again in a moment.`,
+                ),
             });
             return { ok: true };
         }
+        const onboardingText = toPlainSidecarText(
+            `${WELCOME_MESSAGE}\n\nTo get started, open this link to connect your Slack account (one-time): ${linkUrl}\n\nThen you can ask me about your calendar, email, and more.`,
+        );
         await slackApp.client.chat.postMessage({
             channel,
-            text: `${WELCOME_MESSAGE}\n\n<${linkUrl}|Link your account> → then you can ask me about your calendar, email, and more.`,
+            text: onboardingText,
             blocks: [
-                { type: "section", text: { type: "mrkdwn", text: WELCOME_MESSAGE } },
+                { type: "section", text: { type: "plain_text", text: WELCOME_MESSAGE } },
                 {
                     type: "section",
                     text: {
-                        type: "mrkdwn",
-                        text: `To get started, <${linkUrl}|link your Slack account to Amodel> (one-time). Then you can ask me about your calendar, email, and more.`,
+                        type: "plain_text",
+                        text: `To get started, open this link to connect your Slack account (one-time): ${linkUrl}`,
                     },
                 },
                 {
                     type: "section",
                     text: {
-                        type: "mrkdwn",
-                        text: `If the button doesn't open (e.g. localhost), copy this link and open it in your browser:\n\`${linkUrl}\``,
+                        type: "plain_text",
+                        text: "Then you can ask me about your calendar, email, and more.",
                     },
                 },
                 {

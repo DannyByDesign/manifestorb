@@ -5,11 +5,15 @@ import {
     ButtonStyle,
     ChannelType,
     Client,
-    EmbedBuilder,
     GatewayIntentBits,
     Partials
 } from "discord.js";
-import { forwardToBrain, type InteractiveAction, type InteractivePayload } from "../utils";
+import {
+    forwardToBrain,
+    toPlainSidecarText,
+    type InteractiveAction,
+    type InteractivePayload
+} from "../utils";
 import {
     setPlatformEnabled,
     setPlatformError,
@@ -79,11 +83,11 @@ export function startDiscord() {
 
                 if (response.ok) {
                     await interaction.editReply({
-                        content: "✅ Email sent successfully!",
+                        content: toPlainSidecarText("✅ Email sent successfully!"),
                         components: []
                     });
                 } else {
-                    await interaction.editReply("❌ Failed to send email.");
+                    await interaction.editReply(toPlainSidecarText("❌ Failed to send email."));
                 }
             } else if (action === "draft_discard") {
                 console.log(`[Surfaces] Discord: Discarding draft ${draftId}`);
@@ -97,11 +101,11 @@ export function startDiscord() {
 
                 if (response.ok) {
                     await interaction.editReply({
-                        content: "🗑️ Draft discarded.",
+                        content: toPlainSidecarText("🗑️ Draft discarded."),
                         components: []
                     });
                 } else {
-                    await interaction.editReply("Failed to discard draft.");
+                    await interaction.editReply(toPlainSidecarText("Failed to discard draft."));
                 }
             }
             return;
@@ -125,11 +129,11 @@ export function startDiscord() {
 
             if (response.ok) {
                 await interaction.editReply({
-                    content: `Got it — using the ${choice} time. ✅`,
+                    content: toPlainSidecarText(`Got it — using the ${choice} time. ✅`),
                     components: []
                 });
             } else {
-                await interaction.editReply("Failed to resolve that time.");
+                await interaction.editReply(toPlainSidecarText("Failed to resolve that time."));
             }
             return;
         }
@@ -156,11 +160,11 @@ export function startDiscord() {
 
         if (response.ok) {
             await interaction.editReply({
-                content: `Request ${action}d! ✅`,
+                content: "success",
                 components: [] // Remove buttons
             });
         } else {
-            await interaction.editReply(`Failed to ${action} request.`);
+            await interaction.editReply(toPlainSidecarText(`Failed to ${action} request.`));
         }
     });
 
@@ -229,8 +233,12 @@ export function startDiscord() {
 
             if (brainResponse && brainResponse.responses) {
                 for (const resp of brainResponse.responses) {
+                    const plainResponseContent = toPlainSidecarText(
+                        typeof resp.content === "string" ? resp.content : "",
+                    );
                     if (resp.interactive) {
                         const interactive = resp.interactive as InteractivePayload;
+                        const plainInteractiveSummary = toPlainSidecarText(interactive.summary || "");
 
                         const isDraft = interactive.type === "draft_created";
                         const isApprovalLike = interactive.type === "approval_request" || interactive.type === "action_request";
@@ -264,32 +272,31 @@ export function startDiscord() {
                             // Build message options based on type
                             if (isDraft && interactive.preview) {
                                 const preview = interactive.preview;
-                                const bodySnippet = preview.body.length > 1000
-                                    ? preview.body.slice(0, 1000) + "..."
-                                    : preview.body;
-
-                                const embed = new EmbedBuilder()
-                                    .setTitle("Draft Email")
-                                    .addFields(
-                                        { name: "To", value: preview.to.join(", ") || "N/A", inline: true },
-                                        { name: "Subject", value: preview.subject || "(no subject)", inline: true }
-                                    )
-                                    .setDescription(bodySnippet)
-                                    .setColor(0x5865F2); // Discord blurple
-
-                                // Add CC if present
+                                const previewBody = toPlainSidecarText(preview.body || "");
+                                const bodySnippet = previewBody.length > 1000
+                                    ? previewBody.slice(0, 1000) + "..."
+                                    : previewBody;
+                                const lines = [
+                                    "Draft Email",
+                                    "",
+                                    `To: ${preview.to.join(", ") || "N/A"}`,
+                                    `Subject: ${preview.subject || "(no subject)"}`,
+                                ];
                                 if (preview.cc && preview.cc.length > 0) {
-                                    embed.addFields({ name: "CC", value: preview.cc.join(", "), inline: true });
+                                    lines.push(`CC: ${preview.cc.join(", ")}`);
                                 }
+                                lines.push("", bodySnippet || "(empty body)");
 
                                 await message.reply({
-                                    embeds: [embed],
+                                    content: lines.join("\n"),
                                     components: [row]
                                 });
                             } else {
                                 // Default for approvals/action requests or drafts without preview
                                 await message.reply({
-                                    content: `**${interactive.summary}**\n${resp.content}`,
+                                    content: [plainInteractiveSummary, plainResponseContent]
+                                        .filter((part) => part.length > 0)
+                                        .join("\n"),
                                     components: [row]
                                 });
                             }
@@ -298,7 +305,7 @@ export function startDiscord() {
                         }
                     } else if (resp.content) {
                         try {
-                            await message.reply(resp.content);
+                            await message.reply(plainResponseContent);
                         } catch (err) {
                             console.error("[Surfaces] Failed to reply on Discord:", err);
                         }
@@ -326,7 +333,7 @@ export async function sendDiscordMessage(channelId: string, content: string) {
     try {
         const channel = await discordClient.channels.fetch(channelId);
         if (channel && channel.isTextBased() && "send" in channel) {
-            await channel.send(content);
+            await channel.send(toPlainSidecarText(content));
         }
     } catch (error) {
         console.error("Failed to send Discord message", error);

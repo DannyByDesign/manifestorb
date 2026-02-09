@@ -1074,6 +1074,7 @@ export class GmailProvider implements EmailProvider {
     query?: string;
     maxResults?: number;
     pageToken?: string;
+    includeNonPrimary?: boolean;
     before?: Date;
     after?: Date;
     fetchAll?: boolean;
@@ -1088,7 +1089,9 @@ export class GmailProvider implements EmailProvider {
     );
     const baseQuery = hasCategoryOrInboxScope
       ? (options.query || "")
-      : `in:inbox category:primary ${options.query || ""}`.trim();
+      : options.includeNonPrimary
+        ? `in:inbox ${options.query || ""}`.trim()
+        : `in:inbox category:primary ${options.query || ""}`.trim();
 
     // Build query string for date filtering
     let query = baseQuery;

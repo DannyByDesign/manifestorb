@@ -6,8 +6,14 @@ vi.mock("@/server/lib/user/get", () => ({
 }));
 vi.mock("@/server/db/client", () => ({
   default: {
+    emailAccount: {
+      findUnique: vi.fn().mockResolvedValue({ timezone: "UTC" }),
+    },
+    calendar: {
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
     taskPreference: {
-      findUnique: vi.fn().mockResolvedValue({ timeZone: "UTC" }),
+      findUnique: vi.fn().mockResolvedValue(null),
     },
   },
 }));

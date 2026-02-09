@@ -17,15 +17,46 @@ import { updateThreadTrackers } from "@/features/reply-tracker/handle-conversati
 import { getEmailAccountWithAi } from "@/server/lib/user/get";
 import { internalDateToDate } from "@/server/lib/date";
 import { scheduleTasksForUser } from "@/features/calendar/scheduling/TaskSchedulingService";
-import { isAmbiguousLocalTime, resolveTimeZoneOrUtc } from "@/features/calendar/scheduling/date-utils";
+import { isAmbiguousLocalTime } from "@/features/calendar/scheduling/date-utils";
 import { createHash } from "crypto";
 import { updateDraftById } from "@/features/drafts/operations";
+import {
+    resolveCalendarTimeZoneForRequest,
+    resolveDefaultCalendarTimeZone,
+} from "./calendar-time";
+import {
+    parseDateBoundInTimeZone,
+    parseLocalDateTimeInput,
+} from "./timezone";
 
 const approvalService = new ApprovalService(prisma);
 type ApprovalCreateRequestInput = Parameters<ApprovalService["createRequest"]>[0];
 
 const modifyIdsSchema = z.array(z.string()).max(50);
 const modifyChangesSchema = z.record(z.string(), z.any());
+const modifyEmailFilterSchema = z
+    .object({
+        query: z.string().optional(),
+        subjectContains: z.string().optional(),
+        bodyContains: z.string().optional(),
+        text: z.string().optional(),
+        from: z.string().optional(),
+        to: z.string().optional(),
+        dateRange: z
+            .object({
+                after: z.string().optional(),
+                before: z.string().optional(),
+            })
+            .strict()
+            .optional(),
+        limit: z.number().int().min(1).max(200).optional(),
+        pageToken: z.string().optional(),
+        fetchAll: z.boolean().optional(),
+        subscriptionsOnly: z.boolean().optional(),
+    })
+    .strict();
+
+type ModifyEmailFilter = z.infer<typeof modifyEmailFilterSchema>;
 
 function normalizeApprovalExecutionError(error: unknown): string {
     const message = error instanceof Error ? error.message : String(error);
@@ -41,12 +72,66 @@ function normalizeApprovalExecutionError(error: unknown): string {
     return message;
 }
 
+function quoteQueryToken(value: string): string {
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    if (/[\s"]/u.test(trimmed)) {
+        return `"${trimmed.replace(/"/g, '\\"')}"`;
+    }
+    return trimmed;
+}
+
+function buildEmailSearchQueryFromFilter(filter: ModifyEmailFilter | undefined): string {
+    if (!filter) return "";
+    const terms: string[] = [];
+    const isEmailLike = (value: string): boolean => value.includes("@");
+    const push = (value: string | undefined) => {
+        const trimmed = value?.trim();
+        if (trimmed) terms.push(trimmed);
+    };
+
+    push(filter.query);
+    if (filter.subjectContains) terms.push(`subject:${quoteQueryToken(filter.subjectContains)}`);
+    if (filter.from && isEmailLike(filter.from)) terms.push(`from:${quoteQueryToken(filter.from)}`);
+    if (filter.to && isEmailLike(filter.to)) terms.push(`to:${quoteQueryToken(filter.to)}`);
+    if (filter.text) push(filter.text);
+    if (filter.bodyContains) push(filter.bodyContains);
+
+    return terms.join(" ").trim();
+}
+
+function parseDateBound(value: string | undefined): Date | undefined {
+    if (!value) return undefined;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
 const modifyParameters = z.discriminatedUnion("resource", [
     z.object({
         resource: z.literal("email"),
-        ids: modifyIdsSchema,
+        ids: modifyIdsSchema.optional(),
+        filter: modifyEmailFilterSchema.optional(),
         changes: modifyChangesSchema,
-    }).strict(),
+    })
+        .strict()
+        .superRefine((value, ctx) => {
+            const unsubscribeRequested = value.changes?.unsubscribe === true;
+            const hasIds = Array.isArray(value.ids) && value.ids.length > 0;
+            if (!hasIds && !unsubscribeRequested) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ["ids"],
+                    message: "No IDs provided",
+                });
+            }
+            if (unsubscribeRequested && !hasIds && !value.filter) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ["filter"],
+                    message: "filter is required for unsubscribe when ids are omitted",
+                });
+            }
+        }),
     z.object({
         resource: z.literal("calendar"),
         ids: modifyIdsSchema,
@@ -106,6 +191,7 @@ Email changes:
 - bulk_archive_senders: boolean (archive all from these senders)
 - bulk_trash_senders: boolean (trash all from these senders)
 - bulk_label_senders: string (label name to apply to all from these senders)
+- unsubscribe: true (unsubscribe senders for selected email IDs; if IDs are unknown, provide filter to resolve matching emails first)
 - followUp: "enable" | "disable" (mark thread for follow-up detection)
 
 Calendar changes:
@@ -128,14 +214,53 @@ Preferences changes:
 
     parameters: modifyParameters,
 
-    execute: async ({ resource, ids, changes }, { emailAccountId, logger, providers, userId }) => {
+    execute: async ({ resource, ids, changes, ...rest }, { emailAccountId, logger, providers, userId }) => {
         switch (resource) {
             case "email":
-                if (!ids || ids.length === 0) return { success: false, error: "No IDs provided" };
+                const filter = (rest as { filter?: ModifyEmailFilter }).filter;
+                const normalizedIds = Array.isArray(ids)
+                    ? ids.filter((id): id is string => typeof id === "string" && id.length > 0)
+                    : [];
 
                 // Handle Unsubscribe special case
                 if (changes.unsubscribe) {
-                    const emails = await providers.email.get(ids);
+                    let targetIds = normalizedIds;
+                    if (targetIds.length === 0) {
+                        if (!filter) {
+                            return {
+                                success: false,
+                                error: "No IDs provided. For unsubscribe without IDs, provide a filter.",
+                            };
+                        }
+
+                        const searchResult = await providers.email.search({
+                            query: buildEmailSearchQueryFromFilter(filter),
+                            limit: filter.fetchAll ? undefined : (filter.limit ?? 100),
+                            fetchAll: filter.fetchAll ?? false,
+                            pageToken: filter.pageToken,
+                            includeNonPrimary: Boolean(filter.subscriptionsOnly),
+                            before: parseDateBound(filter.dateRange?.before),
+                            after: parseDateBound(filter.dateRange?.after),
+                            subjectContains: filter.subjectContains,
+                            bodyContains: filter.bodyContains,
+                            text: filter.text,
+                            from: filter.from,
+                            to: filter.to,
+                        });
+
+                        targetIds = searchResult.messages
+                            .map((message) => message.id)
+                            .filter((id): id is string => typeof id === "string" && id.length > 0);
+
+                        if (targetIds.length === 0) {
+                            return {
+                                success: false,
+                                error: "No matching emails found to unsubscribe from.",
+                            };
+                        }
+                    }
+
+                    const emails = await providers.email.get(targetIds);
                     if (emails.length === 0) return { success: false, error: "Emails not found" };
 
                     const results = await Promise.all(emails.map(async (email) => {
@@ -150,10 +275,13 @@ Preferences changes:
                             action: "unsubscribe",
                             attempted: results.length,
                             succeeded: successCount,
+                            targetIds,
                             details: results
                         }
                     };
                 }
+
+                if (normalizedIds.length === 0) return { success: false, error: "No IDs provided" };
 
                 // Handle Reply Tracking
                 if (changes.tracking === true || changes.tracking === false) {
@@ -161,7 +289,7 @@ Preferences changes:
                     if (!emailAccount) return { success: false, error: "Email account not found" };
 
                     let setupCount = 0;
-                    for (const id of ids) {
+                    for (const id of normalizedIds) {
                         const messages = await providers.email.get([id]);
                         if (messages.length > 0) {
                             const msg = messages[0];
@@ -196,7 +324,7 @@ Preferences changes:
                     if (!["enable", "disable"].includes(mode)) return { success: false, error: "followUp must be 'enable' or 'disable'" };
 
                     const { applyFollowUpLabel, removeFollowUpLabel } = await import("@/features/follow-up/labels");
-                    const emails = await providers.email.get(ids);
+                    const emails = await providers.email.get(normalizedIds);
                     if (emails.length === 0) return { success: false, error: "Emails not found" };
 
                     // Instantiate Service Provider to satisfy EmailProvider interface
@@ -237,7 +365,7 @@ Preferences changes:
 
                 // Handle Bulk Archive
                 if (changes.bulk_archive_senders) {
-                    const emails = await providers.email.get(ids);
+                    const emails = await providers.email.get(normalizedIds);
                     if (emails.length === 0) return { success: false, error: "Emails not found" };
 
                     const senders = new Set<string>();
@@ -263,7 +391,7 @@ Preferences changes:
 
                 // Handle Bulk Trash
                 if (changes.bulk_trash_senders) {
-                    const emails = await providers.email.get(ids);
+                    const emails = await providers.email.get(normalizedIds);
                     if (emails.length === 0) return { success: false, error: "Emails not found" };
 
                     const senders = new Set<string>();
@@ -291,7 +419,7 @@ Preferences changes:
                 // Handle Bulk Label
                 if (changes.bulk_label_senders && typeof changes.bulk_label_senders === "string") {
                     const labelName = changes.bulk_label_senders;
-                    const emails = await providers.email.get(ids);
+                    const emails = await providers.email.get(normalizedIds);
                     if (emails.length === 0) return { success: false, error: "Emails not found" };
 
                     const senders = new Set<string>();
@@ -316,7 +444,7 @@ Preferences changes:
 
                 return {
                     success: true,
-                    data: await providers.email.modify(ids, changes),
+                    data: await providers.email.modify(normalizedIds, changes),
                 };
 
             case "draft":
@@ -481,31 +609,56 @@ Preferences changes:
 
                 const calendarId = typeof changes.calendarId === "string" ? changes.calendarId : undefined;
                 const mode = changes.mode === "single" || changes.mode === "series" ? changes.mode : undefined;
-                const start = typeof changes.start === "string" ? new Date(changes.start) : undefined;
-                const end = typeof changes.end === "string" ? new Date(changes.end) : undefined;
                 const timeZoneInput = typeof changes.timeZone === "string" ? changes.timeZone : undefined;
-                const timeZoneResult = resolveTimeZoneOrUtc(timeZoneInput);
+                const defaultCalendarTimeZone = await resolveDefaultCalendarTimeZone({
+                    userId,
+                    emailAccountId,
+                });
+                if ("error" in defaultCalendarTimeZone) {
+                    return { success: false, error: defaultCalendarTimeZone.error };
+                }
+                const effectiveTimeZoneResolution = resolveCalendarTimeZoneForRequest({
+                    requestedTimeZone: timeZoneInput,
+                    defaultTimeZone: defaultCalendarTimeZone.timeZone,
+                });
+                if ("error" in effectiveTimeZoneResolution) {
+                    return { success: false, error: effectiveTimeZoneResolution.error };
+                }
+                const effectiveTimeZone = effectiveTimeZoneResolution.timeZone;
+                const start =
+                    typeof changes.start === "string"
+                        ? parseDateBoundInTimeZone(changes.start, effectiveTimeZone, "start") ?? undefined
+                        : undefined;
+                const end =
+                    typeof changes.end === "string"
+                        ? parseDateBoundInTimeZone(changes.end, effectiveTimeZone, "end") ?? undefined
+                        : undefined;
                 const ambiguityResolved = changes.ambiguityResolved === true;
 
                 if (changes.isRecurring === true && typeof changes.recurrenceRule !== "string") {
                     return { success: false, error: "recurrenceRule is required when isRecurring is true" };
                 }
 
-                if (timeZoneInput && timeZoneResult.isFallback) {
-                    logger.warn("Invalid time zone for calendar update; falling back to UTC", {
-                        originalTimeZone: timeZoneInput
-                    });
+                if (typeof changes.start === "string" && !start) {
+                    return { success: false, error: "Invalid calendar start. Use ISO date/time format." };
+                }
+                if (typeof changes.end === "string" && !end) {
+                    return { success: false, error: "Invalid calendar end. Use ISO date/time format." };
+                }
+                if (start && end && start.getTime() >= end.getTime()) {
+                    return { success: false, error: "Calendar end time must be after start time." };
                 }
 
-                if (!ambiguityResolved && timeZoneInput && start && isAmbiguousLocalTime(start, timeZoneResult.timeZone)) {
-                    const durationMs = end ? end.getTime() - start.getTime() : undefined;
-                    const earlierStartUtc = (await import("date-fns-tz")).fromZonedTime(start, timeZoneResult.timeZone);
+                const localStartInput = parseLocalDateTimeInput(typeof changes.start === "string" ? changes.start : undefined);
+                if (!ambiguityResolved && localStartInput && isAmbiguousLocalTime(localStartInput, effectiveTimeZone)) {
+                    const durationMs = start && end ? end.getTime() - start.getTime() : undefined;
+                    const earlierStartUtc = (await import("date-fns-tz")).fromZonedTime(localStartInput, effectiveTimeZone);
                     const laterStartUtc = new Date(earlierStartUtc.getTime() + 60 * 60 * 1000);
                     const earlierEndUtc = durationMs ? new Date(earlierStartUtc.getTime() + durationMs) : undefined;
                     const laterEndUtc = durationMs ? new Date(laterStartUtc.getTime() + durationMs) : undefined;
 
                     const idempotencyKey = createHash("sha256")
-                        .update(`ambiguous-modify:${userId}:${start.toISOString()}:${end?.toISOString()}:${timeZoneResult.timeZone}`)
+                        .update(`ambiguous-modify:${userId}:${start?.toISOString()}:${end?.toISOString()}:${effectiveTimeZone}`)
                         .digest("hex");
 
                     const request = await approvalService.createRequest({
@@ -525,7 +678,7 @@ Preferences changes:
                                     start: laterStartUtc.toISOString(),
                                     end: laterEndUtc?.toISOString()
                                 },
-                                timeZone: timeZoneResult.timeZone
+                                timeZone: effectiveTimeZone
                             },
                             message: "That time happens twice because of daylight saving. Which one did you mean?"
                         },
@@ -548,12 +701,13 @@ Preferences changes:
                     };
                 }
 
-                if (!ambiguityResolved && timeZoneInput && end && isAmbiguousLocalTime(end, timeZoneResult.timeZone)) {
-                    const earlierEndUtc = (await import("date-fns-tz")).fromZonedTime(end, timeZoneResult.timeZone);
+                const localEndInput = parseLocalDateTimeInput(typeof changes.end === "string" ? changes.end : undefined);
+                if (!ambiguityResolved && localEndInput && isAmbiguousLocalTime(localEndInput, effectiveTimeZone)) {
+                    const earlierEndUtc = (await import("date-fns-tz")).fromZonedTime(localEndInput, effectiveTimeZone);
                     const laterEndUtc = new Date(earlierEndUtc.getTime() + 60 * 60 * 1000);
 
                     const idempotencyKey = createHash("sha256")
-                        .update(`ambiguous-modify-end:${userId}:${start?.toISOString()}:${end.toISOString()}:${timeZoneResult.timeZone}`)
+                        .update(`ambiguous-modify-end:${userId}:${start?.toISOString()}:${end?.toISOString()}:${effectiveTimeZone}`)
                         .digest("hex");
 
                     const request = await approvalService.createRequest({
@@ -573,7 +727,7 @@ Preferences changes:
                                     start: start?.toISOString(),
                                     end: laterEndUtc.toISOString()
                                 },
-                                timeZone: timeZoneResult.timeZone
+                                timeZone: effectiveTimeZone
                             },
                             message: "That time happens twice because of daylight saving. Which one did you mean?"
                         },
@@ -609,7 +763,7 @@ Preferences changes:
                             allDay: typeof changes.allDay === "boolean" ? changes.allDay : undefined,
                             isRecurring: typeof changes.isRecurring === "boolean" ? changes.isRecurring : undefined,
                             recurrenceRule: typeof changes.recurrenceRule === "string" ? changes.recurrenceRule : undefined,
-                            timeZone: timeZoneInput ? timeZoneResult.timeZone : undefined,
+                            timeZone: timeZoneInput || start || end ? effectiveTimeZone : undefined,
                             mode
                         }
                     })

@@ -118,3 +118,52 @@ export async function forwardToBrain(params: {
         return null;
     }
 }
+
+/**
+ * Sidecar channels should render plain conversational text.
+ * Strip common markdown syntax so users don't see raw formatting markers.
+ */
+export function toPlainSidecarText(input: string): string {
+    if (!input) return "";
+
+    let text = input.replace(/\r\n/g, "\n");
+    text = text.replace(/\u00a0/g, " ");
+
+    // Fenced/inline code
+    text = text.replace(/```([\s\S]*?)```/g, "$1");
+    text = text.replace(/`([^`]+)`/g, "$1");
+
+    // Bold/italic markers
+    text = text.replace(/\*\*([^*]+)\*\*/g, "$1");
+    text = text.replace(/__([^_]+)__/g, "$1");
+    text = text.replace(/\*([^*\n]+)\*/g, "$1");
+    text = text.replace(/_([^_\n]+)_/g, "$1");
+    // Remove orphan markdown markers left behind by malformed source text
+    text = text.replace(/\*\*/g, "");
+    text = text.replace(/__/g, "");
+
+    // Headings/quotes/rules
+    text = text.replace(/^#{1,6}\s+/gm, "");
+    text = text.replace(/^>\s?/gm, "");
+    text = text.replace(/^\s*---+\s*$/gm, "");
+
+    // Markdown links -> "label (url)"
+    text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, "$1 ($2)");
+    // Slack links -> "label (url)" and bare "<url>" -> "url"
+    text = text.replace(/<((?:https?:\/\/)[^|>]+)\|([^>]+)>/g, "$2 ($1)");
+    text = text.replace(/<((?:https?:\/\/)[^>]+)>/g, "$1");
+    // Strip remaining Slack mention-like wrappers (<@U123>, <#C123|name>, <!subteam^...>)
+    text = text.replace(/<([@#!][^>]+)>/g, "$1");
+
+    // Normalize list markers while keeping readability
+    text = text.replace(/^\s*[-*+]\s+/gm, "- ");
+
+    // Cleanup whitespace
+    text = text
+        .split("\n")
+        .map((line) => line.replace(/[ \t]+/g, " ").trimEnd())
+        .join("\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+    return text;
+}

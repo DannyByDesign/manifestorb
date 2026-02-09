@@ -41,6 +41,23 @@ describe("modifyTool discriminated schema", () => {
     expect(parsed.success).toBe(false);
   });
 
+  it("allows unsubscribe with email filter and no ids", () => {
+    const parsed = modifyTool.parameters.safeParse({
+      resource: "email",
+      filter: { from: "moo.com", subscriptionsOnly: true },
+      changes: { unsubscribe: true },
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects unsubscribe without ids or filter", () => {
+    const parsed = modifyTool.parameters.safeParse({
+      resource: "email",
+      changes: { unsubscribe: true },
+    });
+    expect(parsed.success).toBe(false);
+  });
+
   it("rejects drive updates without ids", () => {
     const parsed = modifyTool.parameters.safeParse({
       resource: "drive",

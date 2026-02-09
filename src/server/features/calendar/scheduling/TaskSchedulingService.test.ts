@@ -14,12 +14,14 @@ vi.mock("@/server/db/client", () => ({
   default: {
     calendar: {
       findMany: vi.fn(),
+      findFirst: vi.fn(),
     },
     taskPreference: {
       update: vi.fn(),
     },
     emailAccount: {
       findFirst: vi.fn(),
+      findUnique: vi.fn(),
     },
     task: {
       findMany: vi.fn(),
@@ -172,6 +174,8 @@ describe("scheduleTasksForUser feature flag", () => {
     prisma.task.findMany = vi.fn().mockResolvedValue([]);
     prisma.task.updateMany = vi.fn().mockResolvedValue({ count: 0 });
     prisma.emailAccount.findFirst = vi.fn().mockResolvedValue({ id: "email-1" });
+    prisma.emailAccount.findUnique = vi.fn().mockResolvedValue({ timezone: "UTC" });
+    prisma.calendar.findFirst = vi.fn().mockResolvedValue(null);
 
     const result = await scheduleTasksForUser({ userId: "user-1", source: "manual" });
     expect(result).toEqual([]);

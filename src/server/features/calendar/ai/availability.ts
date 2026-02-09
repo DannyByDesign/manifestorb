@@ -10,6 +10,7 @@ import type { EmailAccountWithAI } from "@/server/lib/llms/types";
 import type { EmailForLLM } from "@/server/types";
 import prisma from "@/server/db/client";
 import { getUserInfoPrompt } from "@/features/ai/helpers";
+import { resolveDefaultCalendarTimeZone } from "@/features/ai/tools/calendar-time";
 
 const timeSlotSchema = z.object({
   start: z.string().describe("Start time in format YYYY-MM-DD HH:MM"),
@@ -93,7 +94,19 @@ export async function aiGetCalendarAvailability({
     },
   });
 
-  const userTimezone = getUserTimezone(emailAccount, calendarConnections);
+  const resolvedTimeZone = await resolveDefaultCalendarTimeZone({
+    userId: emailAccount.userId,
+    emailAccountId: emailAccount.id,
+  });
+  if ("error" in resolvedTimeZone) {
+    logger.warn("Unable to resolve calendar timezone for availability analysis", {
+      error: resolvedTimeZone.error,
+      userId: emailAccount.userId,
+      emailAccountId: emailAccount.id,
+    });
+    return null;
+  }
+  const userTimezone = resolvedTimeZone.timeZone;
 
   logger.trace("Determined user timezone", { userTimezone });
   const hasCalendarConnections = calendarConnections.length > 0;
@@ -340,40 +353,4 @@ function buildFallbackSuggestedTimes(): Array<{ start: string; end: string }> {
       end: formatDateTime(end),
     },
   ];
-}
-
-function getUserTimezone(
-  emailAccount: EmailAccountWithAI,
-  calendarConnections: Array<{
-    calendars: Array<{
-      calendarId: string;
-      timezone: string | null;
-      primary: boolean;
-    }>;
-  }>,
-): string {
-  // First priority: user's explicitly set timezone
-  if (emailAccount.timezone) {
-    return emailAccount.timezone;
-  }
-
-  // Second: try to find the primary calendar's timezone
-  for (const connection of calendarConnections) {
-    const primaryCalendar = connection.calendars.find((cal) => cal.primary);
-    if (primaryCalendar?.timezone) {
-      return primaryCalendar.timezone;
-    }
-  }
-
-  // Third: find any calendar with a timezone
-  for (const connection of calendarConnections) {
-    for (const calendar of connection.calendars) {
-      if (calendar.timezone) {
-        return calendar.timezone;
-      }
-    }
-  }
-
-  // Last resort: UTC
-  return "UTC";
 }

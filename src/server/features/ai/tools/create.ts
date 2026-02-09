@@ -25,6 +25,14 @@ import { ApprovalService } from "@/features/approvals/service";
 import { findCrossReferences } from "@/features/ai/cross-reference";
 import { createDeterministicIdempotencyKey } from "@/server/lib/idempotency";
 import { createDraft as createDraftOperation } from "@/features/drafts/operations";
+import {
+    resolveDefaultCalendarTimeZone,
+    resolveCalendarTimeZoneForRequest,
+} from "./calendar-time";
+import {
+    parseDateBoundInTimeZone,
+    parseLocalDateTimeInput,
+} from "./timezone";
 
 const logger = createScopedLogger("tools/create");
 const approvalService = new ApprovalService(prisma);
@@ -461,18 +469,52 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                     return { success: false, error: "recurrenceRule is required when isRecurring is true" };
                 }
 
+                const defaultCalendarTimeZone = await resolveDefaultCalendarTimeZone({
+                    userId: context.userId,
+                    emailAccountId,
+                });
+                if ("error" in defaultCalendarTimeZone) {
+                    return { success: false, error: defaultCalendarTimeZone.error };
+                }
+                const effectiveTimeZoneResolution = resolveCalendarTimeZoneForRequest({
+                    requestedTimeZone: data.timeZone,
+                    defaultTimeZone: defaultCalendarTimeZone.timeZone,
+                });
+                if ("error" in effectiveTimeZoneResolution) {
+                    return { success: false, error: effectiveTimeZoneResolution.error };
+                }
+                const effectiveTimeZone = effectiveTimeZoneResolution.timeZone;
+
+                const parsedStart =
+                    typeof data.start === "string"
+                        ? parseDateBoundInTimeZone(data.start, effectiveTimeZone, "start")
+                        : null;
+                const parsedEnd =
+                    typeof data.end === "string"
+                        ? parseDateBoundInTimeZone(data.end, effectiveTimeZone, "end")
+                        : null;
+
+                if (typeof data.start === "string" && !parsedStart) {
+                    return { success: false, error: "Invalid calendar start. Use ISO date/time format." };
+                }
+                if (typeof data.end === "string" && !parsedEnd) {
+                    return { success: false, error: "Invalid calendar end. Use ISO date/time format." };
+                }
+                if (parsedStart && parsedEnd && parsedStart.getTime() >= parsedEnd.getTime()) {
+                    return { success: false, error: "Calendar end time must be after start time." };
+                }
+
                 if (data.autoSchedule || !data.start || !data.end) {
                     const durationMinutes = data.durationMinutes || 30;
                     const slots = await providers.calendar.findAvailableSlots({
                         durationMinutes,
-                        start: data.start ? new Date(data.start) : undefined,
-                        end: data.end ? new Date(data.end) : undefined
+                        start: parsedStart ?? undefined,
+                        end: parsedEnd ?? undefined
                     });
-                    const timeZoneResult = resolveTimeZoneOrUtc(data.timeZone);
                     const options = slots.slice(0, 3).map((slot) => ({
                         start: slot.start.toISOString(),
                         end: slot.end.toISOString(),
-                        timeZone: timeZoneResult.timeZone
+                        timeZone: effectiveTimeZone
                     }));
                     if (options.length === 0) {
                         return { success: false, error: "No available slots found" };
@@ -533,20 +575,13 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                     };
                 }
 
-                const timeZoneResult = resolveTimeZoneOrUtc(data.timeZone);
-                if (timeZoneResult.isFallback && data.timeZone) {
-                    logger.warn("Invalid time zone for calendar create; falling back to UTC", {
-                        originalTimeZone: data.timeZone
-                    });
-                }
-
                 const ambiguityResolved = data.ambiguityResolved === true;
-                if (!ambiguityResolved && data.timeZone && data.start && isAmbiguousLocalTime(new Date(data.start), timeZoneResult.timeZone)) {
-                    const start = new Date(data.start);
-                    const end = data.end ? new Date(data.end) : undefined;
+                const localStartInput = parseLocalDateTimeInput(data.start);
+                if (!ambiguityResolved && localStartInput && isAmbiguousLocalTime(localStartInput, effectiveTimeZone)) {
+                    const start = parsedStart as Date;
+                    const end = parsedEnd ?? undefined;
                     const durationMs = end ? end.getTime() - start.getTime() : undefined;
-                    const earlierStart = new Date(start);
-                    const earlierStartUtc = (await import("date-fns-tz")).fromZonedTime(earlierStart, timeZoneResult.timeZone);
+                    const earlierStartUtc = (await import("date-fns-tz")).fromZonedTime(localStartInput, effectiveTimeZone);
                     const laterStartUtc = new Date(earlierStartUtc.getTime() + 60 * 60 * 1000);
                     const earlierEndUtc = durationMs ? new Date(earlierStartUtc.getTime() + durationMs) : undefined;
                     const laterEndUtc = durationMs ? new Date(laterStartUtc.getTime() + durationMs) : undefined;
@@ -557,7 +592,7 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                         {
                             start: data.start,
                             end: data.end,
-                            timeZone: timeZoneResult.timeZone,
+                            timeZone: effectiveTimeZone,
                         },
                     );
 
@@ -578,7 +613,7 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                                     start: laterStartUtc.toISOString(),
                                     end: laterEndUtc?.toISOString()
                                 },
-                                timeZone: timeZoneResult.timeZone
+                                timeZone: effectiveTimeZone
                             },
                             message: "That time happens twice because of daylight saving. Which one did you mean?"
                         },
@@ -601,10 +636,10 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                     };
                 }
 
-                if (!ambiguityResolved && data.timeZone && data.end && isAmbiguousLocalTime(new Date(data.end), timeZoneResult.timeZone)) {
-                    const end = new Date(data.end);
-                    const start = data.start ? new Date(data.start) : undefined;
-                    const earlierEndUtc = (await import("date-fns-tz")).fromZonedTime(end, timeZoneResult.timeZone);
+                const localEndInput = parseLocalDateTimeInput(data.end);
+                if (!ambiguityResolved && localEndInput && isAmbiguousLocalTime(localEndInput, effectiveTimeZone)) {
+                    const start = parsedStart ?? undefined;
+                    const earlierEndUtc = (await import("date-fns-tz")).fromZonedTime(localEndInput, effectiveTimeZone);
                     const laterEndUtc = new Date(earlierEndUtc.getTime() + 60 * 60 * 1000);
                     const earlierStartUtc = start ? new Date(start) : undefined;
                     const laterStartUtc = start ? new Date(start) : undefined;
@@ -615,7 +650,7 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                         {
                             start: data.start,
                             end: data.end,
-                            timeZone: timeZoneResult.timeZone,
+                            timeZone: effectiveTimeZone,
                         },
                     );
 
@@ -636,7 +671,7 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                                     start: laterStartUtc?.toISOString(),
                                     end: laterEndUtc.toISOString()
                                 },
-                                timeZone: timeZoneResult.timeZone
+                                timeZone: effectiveTimeZone
                             },
                             message: "That time happens twice because of daylight saving. Which one did you mean?"
                         },
@@ -665,12 +700,12 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                         title: data.title,
                         description: data.description,
                         location: data.location,
-                        start: new Date(data.start),
-                        end: new Date(data.end),
+                        start: parsedStart as Date,
+                        end: parsedEnd as Date,
                         allDay: data.allDay,
                         isRecurring: data.isRecurring,
                         recurrenceRule: data.recurrenceRule,
-                        timeZone: timeZoneResult.timeZone,
+                        timeZone: effectiveTimeZone,
                         addGoogleMeet: true
                     }
                 });
@@ -695,23 +730,42 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                         return { success: false, error: "Task preferences not found for scheduling" };
                     }
 
-                    const timeZoneResult = resolveTimeZoneOrUtc(preferences.timeZone);
-                    const settings = {
-                        workHourStart: preferences.workHourStart,
-                        workHourEnd: preferences.workHourEnd,
-                        workDays: preferences.workDays,
-                        bufferMinutes: preferences.bufferMinutes,
-                        selectedCalendarIds: preferences.selectedCalendarIds,
-                        timeZone: timeZoneResult.timeZone,
-                        groupByProject: preferences.groupByProject,
-                    };
-
                     const resolvedEmailAccountId = await resolveSchedulingEmailAccountId({
                         userId: context.userId,
                         emailAccountId,
                         selectedCalendarIds: preferences.selectedCalendarIds,
                         logger,
                     });
+
+                    const defaultCalendarTimeZone = await resolveDefaultCalendarTimeZone({
+                        userId: context.userId,
+                        emailAccountId: resolvedEmailAccountId,
+                    });
+                    if ("error" in defaultCalendarTimeZone) {
+                        return { success: false, error: defaultCalendarTimeZone.error };
+                    }
+                    let taskSchedulingTimeZone = defaultCalendarTimeZone.timeZone;
+                    if (preferences.timeZone) {
+                        const timeZoneResult = resolveTimeZoneOrUtc(preferences.timeZone);
+                        if (!timeZoneResult.isFallback) {
+                            taskSchedulingTimeZone = timeZoneResult.timeZone;
+                        } else {
+                            logger.warn("Invalid task preference time zone; using calendar integration timezone", {
+                                originalTimeZone: timeZoneResult.original,
+                                resolvedTimeZone: defaultCalendarTimeZone.timeZone,
+                            });
+                        }
+                    }
+
+                    const settings = {
+                        workHourStart: preferences.workHourStart,
+                        workHourEnd: preferences.workHourEnd,
+                        workDays: preferences.workDays,
+                        bufferMinutes: preferences.bufferMinutes,
+                        selectedCalendarIds: preferences.selectedCalendarIds,
+                        timeZone: taskSchedulingTimeZone,
+                        groupByProject: preferences.groupByProject,
+                    };
 
                     const calendarService = new CalendarServiceImpl(resolvedEmailAccountId, logger);
                     const timeSlotManager = new TimeSlotManagerImpl(settings, calendarService);
@@ -738,7 +792,7 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                     const options = slots.slice(0, 3).map((slot) => ({
                         start: slot.start.toISOString(),
                         end: slot.end.toISOString(),
-                        timeZone: timeZoneResult.timeZone
+                        timeZone: taskSchedulingTimeZone
                     }));
                     if (options.length === 0) {
                         return { success: false, error: "No available slots found" };

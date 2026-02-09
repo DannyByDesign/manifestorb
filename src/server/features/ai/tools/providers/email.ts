@@ -32,6 +32,7 @@ export interface EmailProvider {
         limit?: number;
         fetchAll?: boolean;
         pageToken?: string;
+        includeNonPrimary?: boolean;
         before?: Date;
         after?: Date;
         subjectContains?: string;
@@ -81,10 +82,44 @@ export async function createEmailProvider(
 
     const normalizeText = (value: string | undefined): string => value?.trim().toLowerCase() ?? "";
 
-    const includesTerm = (value: string | undefined, term: string | undefined): boolean => {
+    const tokenize = (value: string | undefined): string[] =>
+        normalizeText(value)
+            .split(/[^a-z0-9@._-]+/u)
+            .filter((token) => token.length > 0);
+
+    const tokenMatches = (candidateToken: string, valueToken: string): boolean => {
+        if (candidateToken === valueToken) return true;
+        if (valueToken.startsWith(candidateToken)) return true;
+        if (valueToken.includes(candidateToken)) return true;
+        // Supports short-form names/initials, e.g. "sun" matching sender token "s"
+        if (candidateToken.length >= 2 && valueToken.length === 1) {
+            return candidateToken.startsWith(valueToken);
+        }
+        return false;
+    };
+
+    const includesLooseTerm = (value: string | undefined, term: string | undefined): boolean => {
         const normalizedTerm = normalizeText(term);
         if (!normalizedTerm) return true;
-        return normalizeText(value).includes(normalizedTerm);
+        const normalizedValue = normalizeText(value);
+        if (!normalizedValue) return false;
+        if (normalizedValue.includes(normalizedTerm)) return true;
+
+        const queryTokens = tokenize(normalizedTerm);
+        const valueTokens = tokenize(normalizedValue);
+        if (queryTokens.length === 0 || valueTokens.length === 0) return false;
+
+        const matched = queryTokens.filter((queryToken) =>
+            valueTokens.some((valueToken) => tokenMatches(queryToken, valueToken)),
+        ).length;
+        const valueLooksLikeAddress = valueTokens.some((token) => token.includes("@"));
+        const threshold =
+            queryTokens.length <= 2
+                ? valueLooksLikeAddress
+                    ? 1
+                    : queryTokens.length
+                : Math.max(2, Math.ceil(queryTokens.length * 0.7));
+        return matched >= threshold;
     };
 
     const applyLocalSearchFilters = (
@@ -106,10 +141,10 @@ export async function createEmailProvider(
             const from = message.headers?.from || "";
             const to = message.headers?.to || "";
 
-            if (!includesTerm(subject, options.subjectContains)) return false;
-            if (!includesTerm(body, options.bodyContains)) return false;
-            if (!includesTerm(from, options.from)) return false;
-            if (!includesTerm(to, options.to)) return false;
+            if (!includesLooseTerm(subject, options.subjectContains)) return false;
+            if (!includesLooseTerm(body, options.bodyContains)) return false;
+            if (!includesLooseTerm(from, options.from)) return false;
+            if (!includesLooseTerm(to, options.to)) return false;
 
             if (options.hasAttachment !== undefined) {
                 const hasAttachment = Array.isArray(message.attachments) && message.attachments.length > 0;
@@ -118,7 +153,7 @@ export async function createEmailProvider(
 
             if (shouldCheckText) {
                 const combined = `${subject} ${body} ${from} ${to}`.trim();
-                if (!includesTerm(combined, options.text)) return false;
+                if (!includesLooseTerm(combined, options.text)) return false;
             }
 
             return true;
@@ -156,7 +191,21 @@ export async function createEmailProvider(
     };
 
     return {
-        search: async ({ query, limit, fetchAll, pageToken, before, after, subjectContains, bodyContains, text, from, to, hasAttachment }) => {
+        search: async ({
+            query,
+            limit,
+            fetchAll,
+            pageToken,
+            includeNonPrimary,
+            before,
+            after,
+            subjectContains,
+            bodyContains,
+            text,
+            from,
+            to,
+            hasAttachment,
+        }) => {
             try {
                 const localFilterOptions = {
                     subjectContains,
@@ -172,6 +221,7 @@ export async function createEmailProvider(
                         query,
                         maxResults: limit,
                         pageToken,
+                        includeNonPrimary,
                         before,
                         after,
                         fetchAll,
@@ -189,6 +239,7 @@ export async function createEmailProvider(
                         query,
                         maxResults: pageSize,
                         pageToken: nextPageToken,
+                        includeNonPrimary,
                         before,
                         after,
                         fetchAll: false,

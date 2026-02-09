@@ -1,7 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/server/db/client", () => ({ default: {} }));
+vi.mock("@/server/db/client", () => ({
+  default: {
+    emailAccount: {
+      findUnique: vi.fn().mockResolvedValue({ timezone: "America/Los_Angeles" }),
+    },
+    calendar: {
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
+    taskPreference: {
+      findUnique: vi.fn().mockResolvedValue(null),
+    },
+  },
+}));
 vi.mock("@/features/approvals/service", () => ({
   ApprovalService: class {},
 }));
@@ -24,7 +36,6 @@ vi.mock("@/features/calendar/scheduling/TaskSchedulingService", () => ({
 }));
 vi.mock("@/features/calendar/scheduling/date-utils", () => ({
   isAmbiguousLocalTime: vi.fn(() => false),
-  resolveTimeZoneOrUtc: vi.fn((tz?: string) => ({ timeZone: tz ?? "UTC", isFallback: false })),
 }));
 
 import { modifyTool } from "./modify";

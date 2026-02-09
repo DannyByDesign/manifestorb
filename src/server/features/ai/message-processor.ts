@@ -21,6 +21,8 @@ import { PrivacyService } from "@/features/privacy/service";
 import { MemoryRecordingService } from "@/features/memory/service";
 import { createInAppNotification } from "@/features/notifications/create";
 import { createApprovalActionToken } from "@/features/approvals/action-token";
+import { computeAdaptiveMaxSteps } from "@/features/ai/step-budget";
+import { resolveDefaultCalendarTimeZone } from "@/features/ai/tools/calendar-time";
 import { env } from "@/env";
 import type { Logger } from "@/server/lib/logger";
 import { createDeterministicIdempotencyKey, stableSerialize } from "@/server/lib/idempotency";
@@ -96,7 +98,7 @@ export async function processMessage(
       conversationCategories: true,
     },
   });
-  const maxSteps = userAiConfig?.maxSteps ?? 20;
+  const configuredMaxSteps = userAiConfig?.maxSteps ?? 20;
 
   // ---- 2. Create tools + memory tools ------------------------------------
   const resolvedProvider =
@@ -143,6 +145,23 @@ export async function processMessage(
     conversationId,
   });
 
+  const pendingApprovals = contextPack.pendingState?.approvals?.length ?? 0;
+  const adaptiveBudget = computeAdaptiveMaxSteps({
+    message: messageContent,
+    provider: context.provider,
+    configuredMaxSteps,
+    hasPendingApproval: pendingApprovals > 0,
+    hasPendingScheduleProposal: Boolean(contextPack.pendingState?.scheduleProposal),
+  });
+  logger.info("[processMessage] adaptive step budget", {
+    provider: context.provider,
+    configuredMaxSteps,
+    maxSteps: adaptiveBudget.maxSteps,
+    profile: adaptiveBudget.profile,
+    pendingApprovals,
+    hasPendingScheduleProposal: Boolean(contextPack.pendingState?.scheduleProposal),
+  });
+
   // ---- 7. Persist user message (web only) --------------------------------
   if (context.provider === "web" && messageContent) {
     await persistUserMessage(user.id, conversationId, messageContent, logger);
@@ -184,14 +203,16 @@ export async function processMessage(
   const baseSystemPrompt = buildAgentSystemPrompt({
     platform: context.provider as Platform,
     emailSendEnabled: input.emailSendEnabled ?? false,
-    userConfig: userAiConfig ?? undefined,
+    userConfig: userAiConfig
+      ? { ...userAiConfig, maxSteps: adaptiveBudget.maxSteps }
+      : { maxSteps: adaptiveBudget.maxSteps },
   });
 
-  const userPrefs = await prisma.taskPreference.findUnique({
-    where: { userId: user.id },
-    select: { timeZone: true },
+  const resolvedTimeZone = await resolveDefaultCalendarTimeZone({
+    userId: user.id,
+    emailAccountId: emailAccount.id,
   });
-  const userTimeZone = userPrefs?.timeZone ?? undefined;
+  const userTimeZone = "error" in resolvedTimeZone ? undefined : resolvedTimeZone.timeZone;
 
   const systemPromptWithContext = assembleSystemPrompt({
     baseSystemPrompt,
@@ -236,7 +257,7 @@ export async function processMessage(
       userEmail: emailAccount.email,
       conversationId,
       tools: allTools,
-      maxSteps,
+      maxSteps: adaptiveBudget.maxSteps,
       messages: finalMessages as ModelMessage[],
       provider: context.provider,
       logger,
@@ -249,7 +270,7 @@ export async function processMessage(
     emailAccountId: emailAccount.id,
     conversationId,
     tools: allTools,
-    maxSteps,
+    maxSteps: adaptiveBudget.maxSteps,
     messages: finalMessages,
     context,
     message: input.message ?? messageContent,

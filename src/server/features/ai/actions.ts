@@ -17,6 +17,14 @@ import { ensureEmailSendingEnabled } from "@/server/lib/mail";
 import { getEmailAccountWithAi } from "@/server/lib/user/get";
 import { scheduleTasksForUser } from "@/features/calendar/scheduling/TaskSchedulingService";
 import { createCalendarProvider } from "@/features/ai/tools/providers/calendar";
+import {
+  resolveCalendarTimeZoneForRequest,
+  resolveDefaultCalendarTimeZone,
+} from "@/features/ai/tools/calendar-time";
+import {
+  formatDateTimeForUser,
+  parseDateBoundInTimeZone,
+} from "@/features/ai/tools/timezone";
 import { ApprovalService } from "@/features/approvals/service";
 import { createInAppNotification } from "@/features/notifications/create";
 
@@ -569,6 +577,50 @@ const create_calendar_event: ActionFunction<{ payload?: any }> = async ({
     return;
   }
 
+  const defaultCalendarTimeZone = await resolveDefaultCalendarTimeZone({
+    userId,
+    emailAccountId,
+  });
+  if ("error" in defaultCalendarTimeZone) {
+    logger.warn("Unable to resolve default calendar timezone for create_calendar_event", {
+      error: defaultCalendarTimeZone.error,
+      userId,
+      emailAccountId,
+    });
+    return;
+  }
+  const effectiveTimeZone = resolveCalendarTimeZoneForRequest({
+    requestedTimeZone:
+      typeof payload.timeZone === "string" ? payload.timeZone : undefined,
+    defaultTimeZone: defaultCalendarTimeZone.timeZone,
+  });
+  if ("error" in effectiveTimeZone) {
+    logger.warn("Invalid requested timezone for create_calendar_event", {
+      error: effectiveTimeZone.error,
+      payload,
+      userId,
+      emailAccountId,
+    });
+    return;
+  }
+  const parsedStart = parseDateBoundInTimeZone(
+    String(payload.start),
+    effectiveTimeZone.timeZone,
+    "start",
+  );
+  const parsedEnd = parseDateBoundInTimeZone(
+    String(payload.end),
+    effectiveTimeZone.timeZone,
+    "end",
+  );
+  if (!parsedStart || !parsedEnd) {
+    logger.warn("Invalid calendar event payload date/time", {
+      payload,
+      resolvedTimeZone: effectiveTimeZone.timeZone,
+    });
+    return;
+  }
+
   const calendarProvider = await createCalendarProvider(
     { id: emailAccountId },
     userId,
@@ -580,12 +632,12 @@ const create_calendar_event: ActionFunction<{ payload?: any }> = async ({
     input: {
       title: payload.title,
       description: payload.description,
-      start: new Date(payload.start),
-      end: new Date(payload.end),
+      start: parsedStart,
+      end: parsedEnd,
       allDay: payload.allDay,
       isRecurring: payload.isRecurring,
       recurrenceRule: payload.recurrenceRule,
-      timeZone: payload.timeZone,
+      timeZone: effectiveTimeZone.timeZone,
       location: payload.location,
     },
   });
@@ -678,24 +730,25 @@ export const schedule_meeting: ActionFunction<Record<string, unknown>> = async (
     return;
   }
 
+  const defaultCalendarTimeZone = await resolveDefaultCalendarTimeZone({
+    userId,
+    emailAccountId,
+  });
+  if ("error" in defaultCalendarTimeZone) {
+    logger.warn("Unable to resolve default calendar timezone for schedule_meeting", {
+      error: defaultCalendarTimeZone.error,
+      userId,
+      emailAccountId,
+    });
+    return;
+  }
+  const displayTimeZone = defaultCalendarTimeZone.timeZone;
+
   // 2. Build slot descriptions for the draft
   const slotDescriptions = slots.map((slot, i) => {
-    const start = new Date(slot.start);
-    const end = new Date(slot.end);
-    const dateStr = start.toLocaleDateString("en-US", {
-      weekday: "long",
-      month: "long",
-      day: "numeric",
-    });
-    const startTime = start.toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-    });
-    const endTime = end.toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-    });
-    return `Option ${i + 1}: ${dateStr}, ${startTime} – ${endTime}`;
+    const startLabel = formatDateTimeForUser(new Date(slot.start), displayTimeZone);
+    const endLabel = formatDateTimeForUser(new Date(slot.end), displayTimeZone);
+    return `Option ${i + 1}: ${startLabel} - ${endLabel}`;
   });
 
   // 3. Create a draft reply proposing the times
@@ -728,7 +781,7 @@ export const schedule_meeting: ActionFunction<Record<string, unknown>> = async (
   const serializedOptions = slots.map((slot) => ({
     start: slot.start.toISOString(),
     end: slot.end.toISOString(),
-    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    timeZone: displayTimeZone,
   }));
 
   // 5. Create approval request

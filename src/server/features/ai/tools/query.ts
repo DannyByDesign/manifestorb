@@ -5,6 +5,15 @@ import type { Contact } from "@/features/email/types";
 import type { CalendarEvent } from "@/features/calendar/event-types";
 import type { ParsedMessage } from "@/server/lib/types";
 import { EmbeddingService } from "@/features/memory/embeddings/service";
+import {
+    containsUnsubscribeKeyword,
+    containsUnsubscribeUrlPattern,
+} from "@/server/lib/parse/unsubscribe";
+import { isNewsletterSender } from "@/features/groups/ai/find-newsletters";
+import {
+    formatDateTimeForUser,
+} from "./timezone";
+import { resolveCalendarTimeRange } from "./calendar-time";
 
 const parseFilterObject = <T extends z.ZodTypeAny>(schema: T) =>
     z.preprocess(
@@ -47,6 +56,12 @@ const queryParameters = z.discriminatedUnion("resource", [
                     limit: limitSchema,
                     pageToken: z.string().optional(),
                     fetchAll: z.boolean().optional().default(false),
+                    subscriptionsOnly: z
+                        .boolean()
+                        .optional()
+                        .describe(
+                            "If true, return likely subscription/newsletter emails (uses list-unsubscribe headers and unsubscribe language heuristics).",
+                        ),
                 })
                 .strict()
                 .optional(),
@@ -63,6 +78,7 @@ const queryParameters = z.discriminatedUnion("resource", [
                     descriptionContains: z.string().optional(),
                     locationContains: z.string().optional(),
                     attendeeEmail: z.string().email().optional(),
+                    timeZone: z.string().optional().describe("IANA timezone for interpreting dateRange and formatting results, e.g. Europe/London."),
                     dateRange: dateRangeSchema.optional(),
                     limit: limitSchema,
                 })
@@ -287,6 +303,7 @@ function quoteQueryToken(value: string): string {
 
 function buildEmailProviderQuery(filter: FilterFor<"email">): string {
     const terms: string[] = [];
+    const isEmailLike = (value: string): boolean => value.includes("@");
     const push = (value: string | undefined) => {
         const trimmed = value?.trim();
         if (trimmed) terms.push(trimmed);
@@ -297,10 +314,16 @@ function buildEmailProviderQuery(filter: FilterFor<"email">): string {
         terms.push(`subject:${quoteQueryToken(filter.subjectContains)}`);
     }
     if (filter?.from) {
-        terms.push(`from:${quoteQueryToken(filter.from)}`);
+        const from = filter.from.trim();
+        if (isEmailLike(from)) {
+            terms.push(`from:${quoteQueryToken(from)}`);
+        }
     }
     if (filter?.to) {
-        terms.push(`to:${quoteQueryToken(filter.to)}`);
+        const to = filter.to.trim();
+        if (isEmailLike(to)) {
+            terms.push(`to:${quoteQueryToken(to)}`);
+        }
     }
     if (filter?.hasAttachment) {
         terms.push("has:attachment");
@@ -331,6 +354,20 @@ function shouldUseEmailSemanticRerank(filter: FilterFor<"email">): boolean {
         filter?.text || filter?.bodyContains || filter?.subjectContains,
     );
     if (explicitSemanticFields) return true;
+
+    // Structured sender/recipient/date filters should stay fast and deterministic.
+    // Semantic reranking is most useful for fuzzy intent queries, not direct lookups.
+    if (
+        filter?.from ||
+        filter?.to ||
+        filter?.sentByMe ||
+        filter?.receivedByMe ||
+        filter?.hasAttachment ||
+        filter?.dateRange
+    ) {
+        return false;
+    }
+
     const query = filter?.query?.trim() ?? "";
     if (!query) return false;
     if (isLikelyStructuredEmailQuery(query)) return false;
@@ -359,6 +396,47 @@ function summarizeEmailForRanking(message: ParsedMessage): string {
     ]
         .filter(Boolean)
         .join(" ");
+}
+
+type SubscriptionSignals = {
+    hasListUnsubscribeHeader: boolean;
+    hasUnsubscribeLanguage: boolean;
+    hasUnsubscribeUrlPattern: boolean;
+    looksLikeNewsletterSender: boolean;
+};
+
+function getSubscriptionSignals(message: ParsedMessage): SubscriptionSignals {
+    const listUnsubscribeHeader = message.headers?.["list-unsubscribe"] ?? "";
+    const sender = message.headers?.from ?? "";
+    const searchableText = [
+        message.subject,
+        message.headers?.subject,
+        message.snippet,
+        message.textPlain,
+        message.textHtml,
+        listUnsubscribeHeader,
+    ]
+        .filter(Boolean)
+        .join(" ");
+
+    return {
+        hasListUnsubscribeHeader: listUnsubscribeHeader.trim().length > 0,
+        hasUnsubscribeLanguage: containsUnsubscribeKeyword(searchableText),
+        hasUnsubscribeUrlPattern:
+            containsUnsubscribeUrlPattern(searchableText) ||
+            containsUnsubscribeUrlPattern(listUnsubscribeHeader),
+        looksLikeNewsletterSender: isNewsletterSender(sender.toLowerCase()),
+    };
+}
+
+function isLikelySubscriptionMessage(message: ParsedMessage): boolean {
+    const signals = getSubscriptionSignals(message);
+    return (
+        signals.hasListUnsubscribeHeader ||
+        signals.hasUnsubscribeLanguage ||
+        signals.hasUnsubscribeUrlPattern ||
+        signals.looksLikeNewsletterSender
+    );
 }
 
 function buildCalendarProviderQuery(filter: FilterFor<"calendar">): string {
@@ -440,7 +518,8 @@ async function handleEmailQuery(
     filter: FilterFor<"email">,
     context: QueryContext,
 ): Promise<ToolResult> {
-    const limit = normalizeLimit(filter?.limit);
+    const startedAt = Date.now();
+    const limit = filter?.limit ?? 25;
     const dateRangeError = getRangeError(filter);
     if (dateRangeError) {
         return { success: false, error: dateRangeError };
@@ -455,11 +534,13 @@ async function handleEmailQuery(
             : filter?.fetchAll
               ? undefined
               : limit;
+        const providerStartedAt = Date.now();
         const result = await context.providers.email.search({
             query: providerQuery,
             limit: candidateLimit,
             fetchAll: filter?.fetchAll,
             pageToken: filter?.pageToken,
+            includeNonPrimary: Boolean(filter?.subscriptionsOnly),
             before: parseDateBound(filter?.dateRange?.before) ?? undefined,
             after: parseDateBound(filter?.dateRange?.after) ?? undefined,
             subjectContains: filter?.subjectContains,
@@ -469,10 +550,21 @@ async function handleEmailQuery(
             to: filter?.to,
             hasAttachment: filter?.hasAttachment,
         });
+        const providerMs = Date.now() - providerStartedAt;
 
         let rankedMessages = result.messages;
         let relevanceById = new Map<string, { score: number; matchType: "semantic" | "keyword" | "both" }>();
+        const subscriptionSignalsById = new Map<string, SubscriptionSignals>();
 
+        if (filter?.subscriptionsOnly) {
+            rankedMessages = rankedMessages.filter((message) => {
+                const signals = getSubscriptionSignals(message);
+                subscriptionSignalsById.set(message.id, signals);
+                return isLikelySubscriptionMessage(message);
+            });
+        }
+
+        const rerankStartedAt = Date.now();
         if (shouldRerank && rankedMessages.length > 1) {
             const ranked = await hybridRank({
                 items: rankedMessages,
@@ -493,6 +585,7 @@ async function handleEmailQuery(
         } else if (!filter?.fetchAll) {
             rankedMessages = rankedMessages.slice(0, limit);
         }
+        const rerankMs = shouldRerank ? Date.now() - rerankStartedAt : 0;
 
         const data: QueryListItem[] = rankedMessages.map((message: ParsedMessage) => ({
             id: message.id,
@@ -504,10 +597,12 @@ async function handleEmailQuery(
                 from: message.headers?.from,
                 threadId: message.threadId,
                 relevance: relevanceById.get(message.id),
+                subscriptionSignals: filter?.subscriptionsOnly
+                    ? subscriptionSignalsById.get(message.id)
+                    : undefined,
             },
         }));
-
-        return {
+        const response: ToolResult = {
             success: true,
             data,
             ...(result.nextPageToken
@@ -520,7 +615,21 @@ async function handleEmailQuery(
                 nextPageToken: result.nextPageToken ?? null,
                 totalEstimate: result.totalEstimate ?? null,
             },
-        } as ToolResult;
+        };
+
+        context.logger?.info?.("[query.email] timing", {
+            totalMs: Date.now() - startedAt,
+            providerMs,
+            rerankMs,
+            shouldRerank,
+            limit,
+            candidateLimit: candidateLimit ?? null,
+            resultCount: data.length,
+            hasFromFilter: Boolean(filter?.from),
+            hasToFilter: Boolean(filter?.to),
+            hasDateRange: Boolean(filter?.dateRange),
+        });
+        return response;
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
         return {
@@ -530,46 +639,19 @@ async function handleEmailQuery(
     }
 }
 
-async function resolveCalendarRange(
-    userId: string,
-    filter: FilterFor<"calendar">,
-): Promise<{ start: Date; end: Date } | { error: string }> {
-    const rangeError = getRangeError(filter);
-    if (rangeError) return { error: rangeError };
-
-    const preferences = await prisma.taskPreference.findUnique({
-        where: { userId },
-        select: { timeZone: true },
-    });
-    const timeZone = preferences?.timeZone ?? "UTC";
-
-    if (filter?.dateRange?.after || filter?.dateRange?.before) {
-        const start = parseDateBound(filter?.dateRange?.after) ?? new Date();
-        const end = parseDateBound(filter?.dateRange?.before) ?? new Date(start.getTime() + 24 * 60 * 60 * 1000);
-        return { start, end };
-    }
-
-    const { fromZonedTime, toZonedTime } = await import("date-fns-tz");
-    const nowLocal = toZonedTime(new Date(), timeZone);
-
-    const startOfDay = new Date(nowLocal);
-    startOfDay.setHours(0, 0, 0, 0);
-
-    const endOfDay = new Date(nowLocal);
-    endOfDay.setHours(23, 59, 59, 999);
-
-    return {
-        start: fromZonedTime(startOfDay, timeZone),
-        end: fromZonedTime(endOfDay, timeZone),
-    };
-}
-
 async function handleCalendarQuery(
     filter: FilterFor<"calendar">,
     context: QueryContext,
 ): Promise<ToolResult> {
     const limit = normalizeLimit(filter?.limit);
-    const range = await resolveCalendarRange(context.userId, filter);
+    const range = await resolveCalendarTimeRange({
+        userId: context.userId,
+        emailAccountId: context.emailAccountId,
+        requestedTimeZone: filter?.timeZone,
+        dateRange: filter?.dateRange,
+        defaultWindow: "today",
+        missingBoundDurationMs: 24 * 60 * 60 * 1000,
+    });
     if ("error" in range) {
         return { success: false, error: range.error };
     }
@@ -600,7 +682,7 @@ async function handleCalendarQuery(
     const data: QueryListItem[] = ordered.slice(0, limit).map((event: CalendarEvent) => ({
         id: event.id,
         title: event.title || "(No Title)",
-        snippet: `Time: ${event.startTime.toISOString()} - ${event.endTime.toISOString()}. Attendees: ${event.attendees
+        snippet: `Time: ${formatDateTimeForUser(event.startTime, range.timeZone)} - ${formatDateTimeForUser(event.endTime, range.timeZone)}. Attendees: ${event.attendees
             .map((attendee) => attendee.email)
             .join(", ")}`,
         date: event.startTime,
@@ -609,6 +691,7 @@ async function handleCalendarQuery(
             location: event.location,
             eventUrl: event.eventUrl,
             videoConferenceLink: event.videoConferenceLink,
+            timeZone: range.timeZone,
         },
     }));
 
@@ -913,7 +996,9 @@ When to use:
 
 Resources:
 - email: Search emails by semantic fields (subject/body/from/to/text/date) or Gmail/Outlook query syntax.
+  - Set email filter.subscriptionsOnly=true to find likely newsletter/subscription emails.
 - calendar: Search events by title/description/location/attendee/date.
+  - Optional filter.timeZone controls how dateRange without explicit offset is interpreted and how results are formatted.
 - task: Search tasks by title/description.
 - approval: List approval requests, optionally filtered by status.
 - notification: Search notifications by title/body, filter by type.
@@ -925,7 +1010,9 @@ Resources:
 Examples:
 - Email by semantic title window: { resource: "email", filter: { subjectContains: "E2E", dateRange: { after: "...", before: "..." }, fetchAll: true } }
 - Email broad semantic query: { resource: "email", filter: { text: "renewal contract from legal last week", limit: 20 } }
-- Calendar by attendee/title: { resource: "calendar", filter: { attendeeEmail: "john@example.com", titleContains: "1:1", dateRange: { after: "...", before: "..." } } }`,
+- Email subscriptions/newsletters: { resource: "email", filter: { subscriptionsOnly: true, fetchAll: true, limit: 200 } }
+- Calendar by attendee/title: { resource: "calendar", filter: { attendeeEmail: "john@example.com", titleContains: "1:1", dateRange: { after: "...", before: "..." } } }
+- Calendar in another timezone: { resource: "calendar", filter: { query: "free tomorrow at 2pm", timeZone: "Europe/London", dateRange: { after: "2026-02-10T14:00:00", before: "2026-02-10T15:00:00" } } }`,
     parameters: queryParameters,
     execute: async ({ resource, filter }, context) => {
         switch (resource) {

@@ -33,6 +33,7 @@ describe("queryTool discriminated schema", () => {
         subjectContains: "E2E",
         text: "cleanup",
         fetchAll: true,
+        subscriptionsOnly: true,
         limit: 100,
       },
     });
@@ -46,6 +47,7 @@ describe("queryTool discriminated schema", () => {
         titleContains: "1:1",
         locationContains: "Zoom",
         attendeeEmail: "john@example.com",
+        timeZone: "Europe/London",
         limit: 20,
       },
     });

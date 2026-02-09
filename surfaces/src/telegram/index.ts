@@ -1,6 +1,11 @@
 
 import { Markup, Telegraf } from "telegraf";
-import { forwardToBrain, type InteractiveAction, type InteractivePayload } from "../utils";
+import {
+    forwardToBrain,
+    toPlainSidecarText,
+    type InteractiveAction,
+    type InteractivePayload
+} from "../utils";
 import {
     setPlatformEnabled,
     setPlatformError,
@@ -56,11 +61,11 @@ export function startTelegram() {
                 });
 
                 if (response.ok) {
-                    await ctx.answerCbQuery("Email sent!");
-                    await ctx.editMessageText("✅ Email sent successfully!", { reply_markup: { inline_keyboard: [] } });
+                    await ctx.answerCbQuery(toPlainSidecarText("Email sent!"));
+                    await ctx.editMessageText(toPlainSidecarText("✅ Email sent successfully!"), { reply_markup: { inline_keyboard: [] } });
                 } else {
-                    await ctx.answerCbQuery("Failed to send");
-                    await ctx.editMessageText("❌ Failed to send email.", { reply_markup: { inline_keyboard: [] } });
+                    await ctx.answerCbQuery(toPlainSidecarText("Failed to send"));
+                    await ctx.editMessageText(toPlainSidecarText("❌ Failed to send email."), { reply_markup: { inline_keyboard: [] } });
                 }
             } else if (action === "draft_discard") {
                 console.log(`[Surfaces] Telegram: Discarding draft ${draftId}`);
@@ -73,10 +78,10 @@ export function startTelegram() {
                 });
 
                 if (response.ok) {
-                    await ctx.answerCbQuery("Draft discarded");
-                    await ctx.editMessageText("🗑️ Draft discarded.", { reply_markup: { inline_keyboard: [] } });
+                    await ctx.answerCbQuery(toPlainSidecarText("Draft discarded"));
+                    await ctx.editMessageText(toPlainSidecarText("🗑️ Draft discarded."), { reply_markup: { inline_keyboard: [] } });
                 } else {
-                    await ctx.answerCbQuery("Failed to discard");
+                    await ctx.answerCbQuery(toPlainSidecarText("Failed to discard"));
                 }
             }
             return;
@@ -97,10 +102,10 @@ export function startTelegram() {
             });
 
             if (response.ok) {
-                await ctx.answerCbQuery(`Using the ${choice} time`);
-                await ctx.editMessageText(`Got it — using the ${choice} time. ✅`, { reply_markup: { inline_keyboard: [] } });
+                await ctx.answerCbQuery(toPlainSidecarText(`Using the ${choice} time`));
+                await ctx.editMessageText(toPlainSidecarText(`Got it — using the ${choice} time. ✅`), { reply_markup: { inline_keyboard: [] } });
             } else {
-                await ctx.answerCbQuery("Failed to resolve time");
+                await ctx.answerCbQuery(toPlainSidecarText("Failed to resolve time"));
             }
             return;
         }
@@ -124,10 +129,10 @@ export function startTelegram() {
         });
 
         if (response.ok) {
-            await ctx.answerCbQuery(`Request ${action}d!`);
-            await ctx.editMessageText(`Request ${action}d! ✅`, { reply_markup: { inline_keyboard: [] } });
+            await ctx.answerCbQuery("success");
+            await ctx.editMessageText("success", { reply_markup: { inline_keyboard: [] } });
         } else {
-            await ctx.answerCbQuery(`Failed to ${action}`);
+            await ctx.answerCbQuery(toPlainSidecarText(`Failed to ${action}`));
         }
     });
 
@@ -182,8 +187,12 @@ export function startTelegram() {
 
             if (brainResponse && brainResponse.responses) {
                 for (const resp of brainResponse.responses) {
+                    const plainResponseContent = toPlainSidecarText(
+                        typeof resp.content === "string" ? resp.content : "",
+                    );
                     if (resp.interactive) {
                         const interactive = resp.interactive as InteractivePayload;
+                        const plainInteractiveSummary = toPlainSidecarText(interactive.summary || "");
 
                         const isDraft = interactive.type === "draft_created";
                         const isApprovalLike = interactive.type === "approval_request" || interactive.type === "action_request";
@@ -216,31 +225,33 @@ export function startTelegram() {
 
                             if (isDraft && interactive.preview) {
                                 const preview = interactive.preview;
-                                const bodySnippet = preview.body.length > 800
-                                    ? preview.body.slice(0, 800) + "..."
-                                    : preview.body;
+                                const previewBody = toPlainSidecarText(preview.body || "");
+                                const bodySnippet = previewBody.length > 800
+                                    ? previewBody.slice(0, 800) + "..."
+                                    : previewBody;
 
-                                // Build rich Markdown preview
+                                // Plain-text preview
                                 const lines = [
-                                    "*Draft Email*",
+                                    "Draft Email",
                                     "",
-                                    `*To:* ${preview.to.join(", ")}`,
-                                    `*Subject:* ${preview.subject || "(no subject)"}`
+                                    `To: ${preview.to.join(", ")}`,
+                                    `Subject: ${preview.subject || "(no subject)"}`
                                 ];
 
                                 if (preview.cc && preview.cc.length > 0) {
-                                    lines.push(`*CC:* ${preview.cc.join(", ")}`);
+                                    lines.push(`CC: ${preview.cc.join(", ")}`);
                                 }
 
-                                lines.push("", "---", "", bodySnippet);
+                                lines.push("", bodySnippet);
                                 messageText = lines.join("\n");
                             } else {
                                 // Default for approvals/action requests or drafts without preview
-                                messageText = `*${interactive.summary}*\n${resp.content}`;
+                                messageText = [plainInteractiveSummary, plainResponseContent]
+                                    .filter((part) => part.length > 0)
+                                    .join("\n");
                             }
 
-                            await ctx.reply(messageText, {
-                                parse_mode: "Markdown",
+                            await ctx.reply(toPlainSidecarText(messageText), {
                                 ...Markup.inlineKeyboard([buttons])
                             });
                         } catch (err) {
@@ -249,7 +260,7 @@ export function startTelegram() {
 
                     } else if (resp.content) {
                         try {
-                            await ctx.reply(resp.content);
+                            await ctx.reply(toPlainSidecarText(plainResponseContent));
                         } catch (err) {
                             console.error("[Surfaces] Failed to reply on Telegram:", err);
                         }

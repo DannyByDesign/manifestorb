@@ -207,6 +207,7 @@ export interface EmailProvider {
     query?: string;
     maxResults?: number;
     pageToken?: string;
+    includeNonPrimary?: boolean;
     before?: Date;
     after?: Date;
     fetchAll?: boolean;

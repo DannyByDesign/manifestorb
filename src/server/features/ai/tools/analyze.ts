@@ -10,6 +10,8 @@ import { aiCategorizeSenders } from "@/features/categorize/ai/ai-categorize-send
 import { aiClean } from "@/features/clean/ai/ai-clean";
 import { aiDetectRecurringPattern } from "@/features/rules/ai/ai-detect-recurring-pattern";
 import { type EmailForLLM } from "@/server/types";
+import { formatDateTimeForUser } from "./timezone";
+import { resolveCalendarTimeRange } from "./calendar-time";
 
 export const analyzeTool: ToolDefinition<any> = {
     name: "analyze",
@@ -22,7 +24,7 @@ Email analysis:
 
 Calendar analysis:
 - find_conflicts: Find scheduling conflicts
-- suggest_times: Suggest available meeting times
+- suggest_times: Suggest available meeting times (optionally in a specified IANA timezone)
 
 Pattern analysis:
 - detect_patterns: Analyze emails to suggest automation rules`,
@@ -41,6 +43,7 @@ Pattern analysis:
                 after: z.string().optional(),
                 before: z.string().optional(),
             }).optional(),
+            timeZone: z.string().optional().describe("IANA timezone for interpreting dateRange and formatting suggested times."),
             durationMinutes: z.number().int().min(5).max(480).optional(),
             limit: z.number().int().min(1).max(10).optional(),
         }).optional(),
@@ -202,19 +205,24 @@ Pattern analysis:
                     if (!providers.calendar) {
                         return { success: false, error: "Calendar provider not available" };
                     }
-                    const after = options?.dateRange?.after
-                        ? new Date(options.dateRange.after)
-                        : new Date();
-                    const before = options?.dateRange?.before
-                        ? new Date(options.dateRange.before)
-                        : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+                    const range = await resolveCalendarTimeRange({
+                        userId: emailAccount.userId,
+                        emailAccountId,
+                        requestedTimeZone: options?.timeZone,
+                        dateRange: options?.dateRange,
+                        defaultWindow: "next_7_days",
+                        missingBoundDurationMs: 7 * 24 * 60 * 60 * 1000,
+                    });
+                    if ("error" in range) {
+                        return { success: false, error: range.error };
+                    }
                     const durationMinutes = options?.durationMinutes ?? 30;
                     const limit = options?.limit ?? 3;
 
                     const slots = await providers.calendar.findAvailableSlots({
                         durationMinutes,
-                        start: after,
-                        end: before,
+                        start: range.start,
+                        end: range.end,
                     });
                     return {
                         success: true,
@@ -222,6 +230,9 @@ Pattern analysis:
                             suggestedTimes: slots.slice(0, limit).map((slot) => ({
                                 start: slot.start.toISOString(),
                                 end: slot.end.toISOString(),
+                                localStart: formatDateTimeForUser(slot.start, range.timeZone),
+                                localEnd: formatDateTimeForUser(slot.end, range.timeZone),
+                                timeZone: range.timeZone,
                                 score: slot.score,
                             })),
                         },

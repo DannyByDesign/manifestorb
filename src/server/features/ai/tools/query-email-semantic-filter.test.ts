@@ -69,4 +69,67 @@ describe("queryTool email semantic filters", () => {
     expect(rows.length).toBe(1);
     expect(rows[0]?.title).toBe("E2E cleanup");
   });
+
+  it("avoids brittle provider-level from clauses for non-email sender names", async () => {
+    const search = vi.fn().mockResolvedValue({
+      messages: [],
+      nextPageToken: undefined,
+      totalEstimate: 0,
+    });
+
+    await queryTool.execute(
+      {
+        resource: "email",
+        filter: {
+          from: "Yingying Sun",
+          limit: 20,
+        },
+      },
+      {
+        userId: "user-1",
+        emailAccountId: "email-1",
+        providers: {
+          email: { search },
+        },
+      } as unknown as Parameters<typeof queryTool.execute>[1],
+    );
+
+    const forwarded = search.mock.calls[0][0];
+    expect(forwarded.query).not.toContain("from:");
+    expect(forwarded.from).toBe("Yingying Sun");
+    expect(forwarded.limit).toBe(20);
+  });
+
+  it("skips semantic overfetch for structured sender/date lookups", async () => {
+    const search = vi.fn().mockResolvedValue({
+      messages: [],
+      nextPageToken: undefined,
+      totalEstimate: 0,
+    });
+
+    await queryTool.execute(
+      {
+        resource: "email",
+        filter: {
+          query: "show emails from Yingying Sun from last 7 days",
+          from: "Yingying Sun",
+          dateRange: {
+            after: "2026-02-02T00:00:00.000Z",
+            before: "2026-02-09T00:00:00.000Z",
+          },
+        },
+      },
+      {
+        userId: "user-1",
+        emailAccountId: "email-1",
+        logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        providers: {
+          email: { search },
+        },
+      } as unknown as Parameters<typeof queryTool.execute>[1],
+    );
+
+    const forwarded = search.mock.calls[0][0];
+    expect(forwarded.limit).toBe(25);
+  });
 });

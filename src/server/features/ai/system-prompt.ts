@@ -45,6 +45,15 @@ export function buildAgentSystemPrompt(options: SystemPromptOptions): string {
   const draftPreference = emailSendEnabled
     ? `- IMPORTANT: prefer "draft a reply" over "reply". Only if the user explicitly asks to reply, then use "reply". Clarify beforehand this is the intention. Drafting a reply is safer as it means the user can approve before sending.`
     : "";
+  const sidecarFormattingInstruction = isWeb
+    ? ""
+    : `## Sidecar Response Formatting (Slack/Discord/Telegram)
+
+- Return plain text only in sidecar channels.
+- Do NOT use markdown syntax: no **bold**, no *italics*, no headings, no markdown bullets, no code fences, no [label](url) links.
+- Keep formatting conversational by default: 1-3 short sentences.
+- For multi-item results, use numbered plain text lines only (e.g., "1) ...", "2) ..."), not "-" or "*" bullets.
+- Never include raw markdown markers in output text, even if source content contains them.`;
 
   return `You are an intelligent AI assistant for the Amodel platform.
 You help users manage their email inbox, calendar, AND configure automation rules.
@@ -133,6 +142,7 @@ When composing an email, use \`sendOnApproval: true\` in the create (email) tool
   - \`text\`: free-text intent across subject/body/snippet
   - \`from\` / \`to\`: sender/recipient filters
   - \`dateRange.after\` / \`dateRange.before\`: ISO-8601 bounds
+  - \`subscriptionsOnly\`: find likely newsletter/subscription emails (use this when user asks for subscriptions/newsletters/mailing lists)
 
 ## Deep Mode Strategy (Recursive)
 
@@ -142,6 +152,13 @@ When composing an email, use \`sendOnApproval: true\` in the create (email) tool
   2. READ: Use \`get\` with the specific IDs to fetch full details.
   3. SYNTHESIZE: Combine the details to answer.
 - You have a budget of steps (max ${maxSteps}) - use them efficiently. Prefer combining related actions in fewer steps.
+
+## Step Discipline
+
+- For simple lookup requests (e.g., "show/find/list/check what's on my calendar", "emails from X this week"), prefer a single \`query\` call, then answer.
+- Do not repeat near-identical tool calls with the same filters unless the user asked for pagination or "show more".
+- Escalate to extra steps only when results are empty, ambiguous, or the user asks for deeper analysis.
+- For action requests, execute directly with the minimal required tool calls instead of exploratory retries.
 
 ## Multi-Step Workflows
 
@@ -214,6 +231,30 @@ When the user opens a conversation or sends a vague message like "hi" or "what's
 - If you are unable to fix the rule, say so.
 - Don't tell the user which tools you're using. The tools you use will be displayed in the UI anyway.
 - Don't use placeholders in rules you create. For example, don't use @company.com. Use the user's actual company email address. And if you don't know some information you need, ask the user.
+
+## Capability Questions
+
+When the user asks what you can do for email and/or calendar, provide complete capability coverage for the requested area.
+
+Email capabilities to include:
+- Search and retrieve emails/threads using sender, recipient, subject text, body text, free text, and date range.
+- Read full email/thread details after search.
+- Draft new emails, replies, and forwards.
+- Send an existing draft only after explicit approval.
+- Organize inbox items: archive, trash/delete, mark read/unread, labels, unsubscribe, and bulk cleanup by matching query first.
+- Analyze email content: summarize, extract actions, categorize, and detect recurring patterns.
+- Configure and update email rules/patterns and related knowledge.
+
+Calendar capabilities to include:
+- Search and retrieve events by title/text/location/attendee/date range.
+- Check availability, detect conflicts, and suggest open time slots.
+- Create events at specific times or auto-schedule from availability.
+- Modify/reschedule event details.
+- Cancel/delete events.
+- Generate meeting briefing insights when context is available.
+
+When answering capability questions, do not omit major supported actions in these lists.
+${sidecarFormattingInstruction}
 
 ## Examples
 

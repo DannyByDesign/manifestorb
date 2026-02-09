@@ -12,6 +12,7 @@ import { createScopedLogger, type Logger } from "@/server/lib/logger";
 import { CalendarServiceImpl } from "@/features/calendar/scheduling/CalendarServiceImpl";
 import { TimeSlotManagerImpl } from "@/features/calendar/scheduling/TimeSlotManager";
 import type { SchedulingSettings, SchedulingTask } from "@/features/calendar/scheduling/types";
+import { resolveDefaultCalendarTimeZone } from "../calendar-time";
 
 export interface CalendarProvider {
   searchEvents(
@@ -225,6 +226,13 @@ export async function createCalendarProvider(
       const preferences = await prisma.taskPreference.findUnique({
         where: { userId },
       });
+      const defaultCalendarTimeZone = await resolveDefaultCalendarTimeZone({
+        userId,
+        emailAccountId: account.id,
+      });
+      if ("error" in defaultCalendarTimeZone) {
+        throw new Error(defaultCalendarTimeZone.error);
+      }
       const settings: SchedulingSettings = preferences
         ? {
             workHourStart: preferences.workHourStart,
@@ -232,7 +240,7 @@ export async function createCalendarProvider(
             workDays: preferences.workDays,
             bufferMinutes: preferences.bufferMinutes,
             selectedCalendarIds: preferences.selectedCalendarIds,
-            timeZone: preferences.timeZone || "UTC",
+            timeZone: defaultCalendarTimeZone.timeZone,
             groupByProject: preferences.groupByProject,
           }
         : {
@@ -241,7 +249,7 @@ export async function createCalendarProvider(
             workDays: [1, 2, 3, 4, 5],
             bufferMinutes: 15,
             selectedCalendarIds: [],
-            timeZone: "UTC",
+            timeZone: defaultCalendarTimeZone.timeZone,
             groupByProject: false,
           };
 
