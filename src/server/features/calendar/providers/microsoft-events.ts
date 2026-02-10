@@ -26,6 +26,9 @@ export interface MicrosoftCalendarConnectionParams {
 
 type MicrosoftEvent = {
   id?: string;
+  "@odata.etag"?: string;
+  iCalUId?: string;
+  seriesMasterId?: string;
   subject?: string;
   bodyPreview?: string;
   start?: { dateTime?: string };
@@ -37,10 +40,14 @@ type MicrosoftEvent = {
   webLink?: string;
   onlineMeeting?: { joinUrl?: string };
   onlineMeetingUrl?: string;
+  isOrganizer?: boolean;
+  showAs?: string;
+  isAllDay?: boolean;
+  organizer?: { emailAddress?: { address?: string } };
 };
 
 export class MicrosoftCalendarEventProvider implements CalendarEventProvider {
-  provider: "microsoft" = "microsoft";
+  provider = "microsoft" as const;
   private readonly connection: MicrosoftCalendarConnectionParams;
   private readonly logger: Logger;
   private readonly userId?: string;
@@ -68,17 +75,22 @@ export class MicrosoftCalendarEventProvider implements CalendarEventProvider {
     timeMin,
     timeMax,
     maxResults,
+    calendarId,
   }: {
     attendeeEmail: string;
     timeMin: Date;
     timeMax: Date;
     maxResults: number;
+    calendarId?: string;
   }): Promise<CalendarEvent[]> {
     const client = await this.getClient();
 
     // Use calendarView endpoint which correctly returns events overlapping the time range
+    const endpoint = calendarId
+      ? `/me/calendars/${calendarId}/calendarView`
+      : "/me/calendar/calendarView";
     const response = await client
-      .api("/me/calendar/calendarView")
+      .api(endpoint)
       .query({
         startDateTime: timeMin.toISOString(),
         endDateTime: timeMax.toISOString(),
@@ -99,7 +111,7 @@ export class MicrosoftCalendarEventProvider implements CalendarEventProvider {
         ),
       )
       .slice(0, maxResults)
-      .map((event) => this.parseEvent(event));
+      .map((event) => this.parseEvent(event, calendarId));
   }
 
   async fetchEvents({
@@ -135,7 +147,7 @@ export class MicrosoftCalendarEventProvider implements CalendarEventProvider {
 
     const events: MicrosoftEvent[] = response.value || [];
 
-    return events.map((event) => this.parseEvent(event));
+    return events.map((event) => this.parseEvent(event, calendarId));
   }
 
   async getEvent(
@@ -162,9 +174,9 @@ export class MicrosoftCalendarEventProvider implements CalendarEventProvider {
         eventId,
       );
 
-      const event = this.parseEvent(result.event);
+      const event = this.parseEvent(result.event, calendarId);
       const instances = result.instances?.map((instance) =>
-        this.parseEvent(instance),
+        this.parseEvent(instance, calendarId),
       );
 
       return {
@@ -197,7 +209,7 @@ export class MicrosoftCalendarEventProvider implements CalendarEventProvider {
       },
     );
 
-    return this.parseEvent(event);
+    return this.parseEvent(event, calendarId);
   }
 
   async updateEvent(
@@ -222,7 +234,7 @@ export class MicrosoftCalendarEventProvider implements CalendarEventProvider {
       },
     );
 
-    return this.parseEvent(event);
+    return this.parseEvent(event, calendarId);
   }
 
   async deleteEvent(
@@ -245,9 +257,22 @@ export class MicrosoftCalendarEventProvider implements CalendarEventProvider {
     );
   }
 
-  private parseEvent(event: MicrosoftEvent) {
+  private parseEvent(event: MicrosoftEvent, calendarId?: string) {
+    const organizerEmail = event.organizer?.emailAddress?.address ?? undefined;
     return {
       id: event.id || "",
+      provider: "microsoft",
+      calendarId,
+      iCalUid: event.iCalUId ?? undefined,
+      seriesMasterId: event.seriesMasterId ?? undefined,
+      versionToken: event["@odata.etag"] ?? undefined,
+      status: undefined,
+      organizerEmail,
+      canEdit: event.isOrganizer ?? true,
+      canRespond: true,
+      busyStatus: event.showAs ?? undefined,
+      isAllDay: event.isAllDay ?? false,
+      isDeleted: false,
       title: event.subject || "Untitled",
       description: event.bodyPreview || undefined,
       location: event.location?.displayName || undefined,

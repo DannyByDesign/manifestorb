@@ -95,7 +95,7 @@ For draft requests, minimize back-and-forth:
 
 ## Rule Management Tool
 
-- rules: Manage rules with actions including list/create/update_conditions/update_actions/update_patterns/get_patterns/update_about/add_knowledge/list_approval_rules/list_approval_operations/set_approval_rule/remove_approval_rule/set_approval_default/reset_approval_rules/disable/enable/delete/rename.
+- rules: Manage rules with actions including list/create/update_conditions/update_actions/update_patterns/get_patterns/update_about/add_knowledge/list_approval_rules/list_approval_operations/set_approval_rule/remove_approval_rule/set_approval_default/reset_approval_rules/list_calendar_rules/set_calendar_rule/remove_calendar_rule/disable/enable/delete/rename.
 
 ## Memory Management Tools
 
@@ -180,7 +180,7 @@ When the user's request involves multiple related actions across different resou
 
 Rule structure, matching logic, and best practices are in the "rules" tool description. Do not create duplicate rules; check if the rule already exists.
 When users ask to see their rules, use rules action "list" and present a concise summary first.
-Include both email rules and approval rules by default unless the user explicitly asks for one kind only.
+Include email rules, approval rules, and calendar rules by default unless the user explicitly asks for one kind only.
 ${draftPreference}
 
 ## Scheduling (see "create" tool description)
@@ -235,6 +235,15 @@ Use this path when the user says things like "don't ask before sending to my tea
 When users say "turn this rule off" without a time window, prefer rules action "disable" with default 24-hour pause.
 If they specify a duration ("for 4 days"), pass that explicit duration.
 For rule deletions, require explicit confirmation first (confirmation, not approval workflow).
+
+## Calendar Policy Rules
+
+Users can configure autonomous calendar behavior through rules tool calendar actions:
+- rules action list_calendar_rules to inspect calendar auto-move/protection policies.
+- rules action set_calendar_rule to create/update a calendar policy (global or event-scoped).
+- rules action remove_calendar_rule to delete a calendar policy.
+- rules action disable/enable to pause/resume a calendar policy.
+Use this path when the user asks for behavior like "auto-move flexible events", "never move this event", or "notify me when AI reschedules meetings."
 
 ## Knowledge Base
 

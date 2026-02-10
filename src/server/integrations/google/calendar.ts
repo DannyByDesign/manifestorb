@@ -23,6 +23,10 @@ export type GoogleCalendarEventInput = {
   location?: string;
   start: Date;
   end: Date;
+  attendees?: Array<{
+    email: string;
+    name?: string;
+  }>;
   allDay?: boolean;
   isRecurring?: boolean;
   recurrenceRule?: string;
@@ -67,6 +71,10 @@ export async function createGoogleEvent(
     summary: event.title,
     description: event.description,
     location: event.location,
+    attendees: event.attendees?.map((attendee) => ({
+      email: attendee.email,
+      displayName: attendee.name,
+    })),
     start: {
       dateTime: event.allDay ? undefined : event.start.toISOString(),
       date: event.allDay ? toDateOnly(event.start) : undefined,
@@ -119,6 +127,13 @@ export async function updateGoogleEvent(
 ) {
   const calendar = await getGoogleCalendarClient(params);
   const timeZone = event.timeZone ?? "UTC";
+  const attendees =
+    event.attendees === undefined
+      ? undefined
+      : event.attendees.map((attendee) => ({
+          email: attendee.email,
+          displayName: attendee.name,
+        }));
 
   try {
     const existingEvent = await calendar.events.get({
@@ -138,6 +153,7 @@ export async function updateGoogleEvent(
           summary: event.title,
           description: event.description,
           location: event.location,
+          attendees,
           start: event.start
             ? {
                 dateTime: event.allDay ? undefined : event.start.toISOString(),
@@ -187,6 +203,7 @@ export async function updateGoogleEvent(
             summary: event.title,
             description: event.description,
             location: event.location,
+            attendees,
             start: event.start
               ? {
                   dateTime: event.allDay ? undefined : event.start.toISOString(),
@@ -227,6 +244,7 @@ export async function updateGoogleEvent(
         summary: event.title,
         description: event.description,
         location: event.location,
+        attendees,
         start: event.start
           ? {
               dateTime: event.allDay ? undefined : event.start.toISOString(),

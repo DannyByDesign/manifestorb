@@ -77,6 +77,10 @@ type OutlookEventInput = {
   location?: string;
   start: Date;
   end: Date;
+  attendees?: Array<{
+    email: string;
+    name?: string;
+  }>;
   allDay?: boolean;
   isRecurring?: boolean;
   recurrenceRule?: string;
@@ -102,6 +106,19 @@ async function getOutlookClient(
 
 function createOutlookAllDayDate(dateStr: string) {
   return new Date(`${dateStr}T00:00:00.000Z`);
+}
+
+function mapOutlookAttendees(
+  attendees: Array<{ email: string; name?: string }> | undefined,
+) {
+  if (attendees === undefined) return undefined;
+  return attendees.map((attendee) => ({
+    emailAddress: {
+      address: attendee.email,
+      name: attendee.name ?? attendee.email,
+    },
+    type: "required" as const,
+  }));
 }
 
 export async function createOutlookEvent(
@@ -153,6 +170,7 @@ export async function createOutlookEvent(
       timeZone,
     },
     location: event.location ? { displayName: event.location } : undefined,
+    attendees: mapOutlookAttendees(event.attendees),
     isAllDay: event.allDay,
     ...(recurrence && { recurrence }),
   };
@@ -300,6 +318,7 @@ export async function updateOutlookEvent(
             }
           : undefined,
         location: event.location ? { displayName: event.location } : undefined,
+        attendees: mapOutlookAttendees(event.attendees),
         isAllDay: event.allDay,
         recurrence,
       });

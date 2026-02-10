@@ -302,10 +302,12 @@ export class ChannelRouter {
         const incomingThreadId =
             (message.context as { threadId?: string }).threadId ?? null;
         const channelId = message.context.channelId;
+        const isDirectMessage = message.context.isDirectMessage === true;
         const providerMessageId =
             (message.context as { messageId?: string }).messageId;
         const canonicalThreadId = deriveCanonicalThreadId({
             provider: message.provider,
+            isDirectMessage,
             incomingThreadId,
             messageId: providerMessageId,
         });
@@ -412,6 +414,7 @@ export class ChannelRouter {
 
                         const outboundThreadId = outboundThreadIdForProvider({
                             provider: message.provider,
+                            isDirectMessage,
                             canonicalThreadId: conversationThreadId,
                         });
                         const outbound: OutboundMessage = {
@@ -463,6 +466,7 @@ export class ChannelRouter {
                                 targetChannelId: message.context.channelId,
                                 targetThreadId: outboundThreadIdForProvider({
                                     provider: message.provider,
+                                    isDirectMessage,
                                     canonicalThreadId: conversationThreadId,
                                 }),
                                 content,
@@ -484,6 +488,7 @@ export class ChannelRouter {
                     targetChannelId: message.context.channelId,
                     targetThreadId: outboundThreadIdForProvider({
                         provider: message.provider,
+                        isDirectMessage,
                         canonicalThreadId,
                     }),
                     content: internalIssueMessage(),

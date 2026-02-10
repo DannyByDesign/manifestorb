@@ -26,7 +26,6 @@ import { requiresApproval } from "@/features/approvals/policy";
 import { findCrossReferences } from "@/features/ai/cross-reference";
 import { createDeterministicIdempotencyKey } from "@/server/lib/idempotency";
 import { createDraft as createDraftOperation } from "@/features/drafts/operations";
-import { extractEmailAddress, extractEmailAddresses } from "@/server/lib/email";
 import {
     resolveDefaultCalendarTimeZone,
     resolveCalendarTimeZoneForRequest,
@@ -35,6 +34,12 @@ import {
     parseDateBoundInTimeZone,
     parseLocalDateTimeInput,
 } from "./timezone";
+import { validateCalendarMutationSafety } from "@/features/calendar/safety-gate";
+import { upsertCalendarEventShadow } from "@/features/calendar/canonical-state";
+import {
+    resolveCalendarAttendees,
+    resolveContextualAttendees,
+} from "@/features/calendar/participant-resolver";
 
 const logger = createScopedLogger("tools/create");
 const approvalService = new ApprovalService(prisma);
@@ -56,342 +61,6 @@ const formatSlotLabel = (start: Date, end: Date | null | undefined, timeZone: st
     const endLabel = formatter.format(end);
     return `${startLabel} - ${endLabel}`;
 };
-
-const TEAM_LIKE_TERMS = [
-    "team",
-    "my team",
-    "the team",
-    "everyone",
-    "all hands",
-    "group",
-    "crew",
-    "folks",
-    "staff",
-    "squad",
-];
-
-const PARTICIPANT_TRAILING_DELIMITERS = [
-    " next ",
-    " tomorrow",
-    " today",
-    " on ",
-    " at ",
-    " from ",
-    " during ",
-    " this ",
-    " for ",
-];
-
-const PRONOUN_PARTICIPANT_TERMS = [
-    "them",
-    "him",
-    "her",
-    "that person",
-    "this person",
-    "the sender",
-    "that sender",
-];
-
-function normalizeEmail(email: string): string {
-    return email.trim().toLowerCase();
-}
-
-function includesLoose(haystack: string | undefined, needle: string | undefined): boolean {
-    if (!needle) return false;
-    const h = (haystack ?? "").toLowerCase();
-    const n = needle.toLowerCase();
-    return h.includes(n);
-}
-
-function extractParticipantPhrase(text: string): string | null {
-    const match = text.match(/\bwith\s+(.+)/i);
-    if (!match?.[1]) return null;
-    return match[1].trim();
-}
-
-function trimParticipantPhrase(phrase: string): string {
-    const normalized = ` ${phrase.trim()} `;
-    let cutIndex = normalized.length;
-    for (const delimiter of PARTICIPANT_TRAILING_DELIMITERS) {
-        const idx = normalized.toLowerCase().indexOf(delimiter);
-        if (idx !== -1 && idx < cutIndex) {
-            cutIndex = idx;
-        }
-    }
-    return normalized.slice(0, cutIndex).trim();
-}
-
-function isBroadGroupPhrase(phrase: string): boolean {
-    const normalized = phrase.toLowerCase();
-    return TEAM_LIKE_TERMS.some((term) => normalized.includes(term));
-}
-
-function isPronounParticipantReference(text: string): boolean {
-    const normalized = text.toLowerCase();
-    return PRONOUN_PARTICIPANT_TERMS.some((term) => normalized.includes(term));
-}
-
-type AttendeeResolutionReason =
-    | "explicit_attendees"
-    | "explicit_context_conflict"
-    | "resolved_from_context"
-    | "resolved_from_contacts"
-    | "broad_group_reference"
-    | "ambiguous_context_reference"
-    | "missing_context_reference"
-    | "ambiguous_contact_match"
-    | "no_contact_match"
-    | "no_participant_intent";
-
-type AttendeeResolutionResult = {
-    attendees: string[];
-    participantIntent: boolean;
-    autoResolved: boolean;
-    confidence: "high" | "medium" | "low";
-    reason: AttendeeResolutionReason;
-    candidateEmails: string[];
-};
-
-async function resolveContextualAttendeesFromEmailContext(params: {
-    emailAccountId: string;
-    sourceEmailMessageId?: string;
-    sourceEmailThreadId?: string;
-    userEmail: string;
-}): Promise<string[]> {
-    if (!params.sourceEmailMessageId && !params.sourceEmailThreadId) {
-        return [];
-    }
-
-    const message = await prisma.emailMessage.findFirst({
-        where: {
-            emailAccountId: params.emailAccountId,
-            OR: [
-                ...(params.sourceEmailMessageId
-                    ? [{ messageId: params.sourceEmailMessageId }, { id: params.sourceEmailMessageId }]
-                    : []),
-                ...(params.sourceEmailThreadId ? [{ threadId: params.sourceEmailThreadId }] : []),
-            ],
-        },
-        orderBy: { date: "desc" },
-        select: {
-            from: true,
-            to: true,
-        },
-    });
-
-    if (!message) {
-        return [];
-    }
-
-    const ownerEmail = normalizeEmail(params.userEmail);
-    const sender = normalizeEmail(extractEmailAddress(message.from));
-    const recipients = extractEmailAddresses(message.to)
-        .map((address) => normalizeEmail(address))
-        .filter((address) => Boolean(address) && address !== ownerEmail);
-
-    const candidates = new Set<string>();
-    if (sender && sender !== ownerEmail) {
-        candidates.add(sender);
-    }
-    for (const recipient of recipients) {
-        candidates.add(recipient);
-    }
-
-    return Array.from(candidates);
-}
-
-async function resolveCalendarAttendees(params: {
-    requestedAttendees: string[] | undefined;
-    title: string;
-    description?: string;
-    userEmail: string;
-    contextualAttendees: string[];
-    searchContacts: (query: string) => Promise<Array<{ email?: string; name?: string; company?: string }>>;
-}) : Promise<AttendeeResolutionResult> {
-    const combinedText = `${params.title} ${params.description ?? ""}`.trim().toLowerCase();
-    const participantPhraseRaw = extractParticipantPhrase(`${params.title} ${params.description ?? ""}`);
-    const participantPhrase = participantPhraseRaw ? trimParticipantPhrase(participantPhraseRaw) : null;
-    const hasTeamTerm = TEAM_LIKE_TERMS.some((term) => combinedText.includes(term));
-    const pronounReference =
-        isPronounParticipantReference(combinedText) ||
-        isPronounParticipantReference(participantPhrase ?? "");
-
-    const explicit = Array.from(
-        new Set(
-            (params.requestedAttendees ?? [])
-                .map((email) => normalizeEmail(String(email)))
-                .filter((email) => email.includes("@")),
-        ),
-    ).filter((email) => email !== normalizeEmail(params.userEmail));
-    if (explicit.length > 0) {
-        const contextAttendeeSet = new Set(params.contextualAttendees.map((email) => normalizeEmail(email)));
-        const hasContextConflict =
-            pronounReference &&
-            contextAttendeeSet.size === 1 &&
-            !explicit.some((email) => contextAttendeeSet.has(email));
-        if (hasContextConflict) {
-            return {
-                attendees: explicit,
-                participantIntent: true,
-                autoResolved: false,
-                confidence: "medium",
-                reason: "explicit_context_conflict",
-                candidateEmails: Array.from(contextAttendeeSet).slice(0, 1),
-            };
-        }
-        return {
-            attendees: explicit,
-            participantIntent: true,
-            autoResolved: false,
-            confidence: "high",
-            reason: "explicit_attendees",
-            candidateEmails: [],
-        };
-    }
-
-    const participantIntent = hasTeamTerm || Boolean(participantPhrase) || pronounReference;
-    if (!participantIntent) {
-        return {
-            attendees: [],
-            participantIntent: false,
-            autoResolved: false,
-            confidence: "low",
-            reason: "no_participant_intent",
-            candidateEmails: [],
-        };
-    }
-
-    // Never auto-resolve broad group references (e.g., "my team", "everyone"):
-    // require explicit attendee details from the user to avoid inviting the wrong people.
-    if (hasTeamTerm || (participantPhrase && isBroadGroupPhrase(participantPhrase))) {
-        return {
-            attendees: [],
-            participantIntent: true,
-            autoResolved: false,
-            confidence: "low",
-            reason: "broad_group_reference",
-            candidateEmails: [],
-        };
-    }
-
-    if (pronounReference) {
-        if (params.contextualAttendees.length === 1) {
-            return {
-                attendees: params.contextualAttendees,
-                participantIntent: true,
-                autoResolved: true,
-                confidence: "high",
-                reason: "resolved_from_context",
-                candidateEmails: [],
-            };
-        }
-        if (params.contextualAttendees.length > 1) {
-            return {
-                attendees: [],
-                participantIntent: true,
-                autoResolved: false,
-                confidence: "medium",
-                reason: "ambiguous_context_reference",
-                candidateEmails: params.contextualAttendees.slice(0, 5),
-            };
-        }
-        return {
-            attendees: [],
-            participantIntent: true,
-            autoResolved: false,
-            confidence: "low",
-            reason: "missing_context_reference",
-            candidateEmails: [],
-        };
-    }
-
-    const queries = new Set<string>();
-    if (participantPhrase) {
-        queries.add(participantPhrase);
-        for (const token of participantPhrase.split(/\s*(?:,|and|&)\s*/i)) {
-            const trimmed = token.trim();
-            if (trimmed.length >= 2) {
-                queries.add(trimmed);
-                for (const word of trimmed.split(/\s+/)) {
-                    const normalized = word.trim();
-                    if (normalized.length >= 3) {
-                        queries.add(normalized);
-                    }
-                }
-            }
-        }
-    }
-
-    const scored = new Map<string, number>();
-    for (const query of queries) {
-        let contacts: Array<{ email?: string; name?: string; company?: string }> = [];
-        try {
-            contacts = await params.searchContacts(query);
-        } catch {
-            continue;
-        }
-        for (const contact of contacts) {
-            const rawEmail = contact.email ? normalizeEmail(contact.email) : "";
-            if (!rawEmail || !rawEmail.includes("@") || rawEmail === normalizeEmail(params.userEmail)) continue;
-
-            let score = scored.get(rawEmail) ?? 0;
-            if (includesLoose(contact.name, query) || includesLoose(contact.email, query)) {
-                score += 3;
-            }
-            if (includesLoose(contact.company, query)) {
-                score += 1;
-            }
-            scored.set(rawEmail, score);
-        }
-    }
-
-    const ranked = Array.from(scored.entries())
-        .filter(([, score]) => score >= 3)
-        .sort((a, b) => b[1] - a[1]);
-
-    if (ranked.length === 0) {
-        return {
-            attendees: [],
-            participantIntent: true,
-            autoResolved: false,
-            confidence: "low",
-            reason: "no_contact_match",
-            candidateEmails: [],
-        };
-    }
-
-    if (ranked.length === 1) {
-        return {
-            attendees: [ranked[0][0]],
-            participantIntent: true,
-            autoResolved: true,
-            confidence: "high",
-            reason: "resolved_from_contacts",
-            candidateEmails: [],
-        };
-    }
-
-    const [top, second] = ranked;
-    if (top && second && top[1] >= second[1] + 2) {
-        return {
-            attendees: [top[0]],
-            participantIntent: true,
-            autoResolved: true,
-            confidence: "medium",
-            reason: "resolved_from_contacts",
-            candidateEmails: ranked.slice(1, 4).map(([email]) => email),
-        };
-    }
-
-    return {
-        attendees: [],
-        participantIntent: true,
-        autoResolved: false,
-        confidence: "medium",
-        reason: "ambiguous_contact_match",
-        candidateEmails: ranked.slice(0, 5).map(([email]) => email),
-    };
-}
 
 function isPlaceholderDraftBody(body: string | undefined): boolean {
     if (!body) return true;
@@ -895,8 +564,10 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                     return { success: false, error: "Unable to resolve your account email for attendee resolution." };
                 }
 
-                const contextualAttendees = await resolveContextualAttendeesFromEmailContext({
+                const contextualAttendees = await resolveContextualAttendees({
+                    userId: context.userId,
                     emailAccountId,
+                    conversationId: context.conversationId,
                     sourceEmailMessageId: context.emailMessageId,
                     sourceEmailThreadId: context.emailThreadId,
                     userEmail: ownerAccount.email,
@@ -906,6 +577,7 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                     requestedAttendees: data.attendees,
                     title: data.title,
                     description: data.description,
+                    currentMessage: context.currentMessage,
                     userEmail: ownerAccount.email,
                     contextualAttendees,
                     searchContacts: async (query) => providers.email.searchContacts(query),
@@ -924,6 +596,11 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                     return {
                         success: false,
                         error: `${confirmationMessage} Please confirm this attendee or provide a different name/email.${alternativesLabel}`,
+                        clarification: {
+                            kind: "missing_fields" as const,
+                            prompt: `${confirmationMessage} Please confirm the attendee or share the right email.${alternativesLabel}`,
+                            missingFields: ["attendees"],
+                        },
                         data: {
                             needsClarification: true,
                             reason: "attendee_confirmation_required",
@@ -942,6 +619,8 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                     const clarificationMessage =
                         attendeeResolution.reason === "broad_group_reference"
                             ? "I can't schedule a meeting with a broad group reference like \"the team\" without explicit attendees."
+                            : attendeeResolution.reason === "contextual_group_reference"
+                                ? "I found a likely group from context."
                             : attendeeResolution.reason === "missing_context_reference"
                                 ? "I couldn't resolve who \"them\" refers to from context."
                                 : attendeeResolution.reason === "ambiguous_context_reference" ||
@@ -951,6 +630,11 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                     return {
                         success: false,
                         error: `${clarificationMessage} Please provide attendee names or emails so I can invite them.${candidateList}`,
+                        clarification: {
+                            kind: "missing_fields" as const,
+                            prompt: `${clarificationMessage} Please share attendee names or emails so I can invite them.${candidateList}`,
+                            missingFields: ["attendees"],
+                        },
                         data: {
                             needsClarification: true,
                             reason: "unresolved_attendees",
@@ -1007,13 +691,35 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                         start: parsedStart ?? undefined,
                         end: parsedEnd ?? undefined
                     });
-                    const options = slots.slice(0, 3).map((slot) => ({
-                        start: slot.start.toISOString(),
-                        end: slot.end.toISOString(),
-                        timeZone: effectiveTimeZone
-                    }));
+                    const safeOptions: Array<{ start: string; end?: string; timeZone: string }> = [];
+                    for (const slot of slots) {
+                        const safety = await validateCalendarMutationSafety({
+                            userId: context.userId,
+                            emailAccountId,
+                            mutation: "create",
+                            providers: { calendar: providers.calendar },
+                            proposedStart: slot.start,
+                            proposedEnd: slot.end,
+                        });
+                        if (!safety.ok) continue;
+                        safeOptions.push({
+                            start: slot.start.toISOString(),
+                            end: slot.end.toISOString(),
+                            timeZone: effectiveTimeZone,
+                        });
+                        if (safeOptions.length >= 3) break;
+                    }
+                    const options = safeOptions;
                     if (options.length === 0) {
-                        return { success: false, error: "No available slots found" };
+                        return {
+                            success: false,
+                            clarification: {
+                                kind: "missing_fields",
+                                prompt:
+                                    "I couldn't find a safe slot in that range. I can try a wider window or a shorter duration. Which do you want?",
+                                missingFields: ["time window or duration"],
+                            },
+                        };
                     }
 
                     const idempotencyKey = createDeterministicIdempotencyKey(
@@ -1190,6 +896,22 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                     };
                 }
 
+                const safety = await validateCalendarMutationSafety({
+                    userId: context.userId,
+                    emailAccountId,
+                    mutation: "create",
+                    providers: { calendar: providers.calendar },
+                    proposedStart: parsedStart as Date,
+                    proposedEnd: parsedEnd as Date,
+                });
+                if (!safety.ok) {
+                    return {
+                        success: false,
+                        error: safety.error,
+                        clarification: safety.clarification,
+                    };
+                }
+
                 const event = await providers.calendar.createEvent({
                     calendarId: calendarData.calendarId,
                     input: {
@@ -1205,6 +927,15 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                         timeZone: effectiveTimeZone,
                         addGoogleMeet: true
                     }
+                });
+                await upsertCalendarEventShadow({
+                    userId: context.userId,
+                    emailAccountId,
+                    event,
+                    source: "ai",
+                    metadata: { tool: "create", resource: "calendar" },
+                }).catch((error) => {
+                    logger.warn("Failed to upsert canonical event shadow after create", { error });
                 });
                 // Post-create task scheduling – best-effort; don't lose the event if this fails
                 try {

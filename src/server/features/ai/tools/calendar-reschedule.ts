@@ -30,6 +30,17 @@ type HandleCalendarRescheduleParams = {
       }): Promise<CalendarEvent>;
     };
   };
+  validateCandidate?: (params: {
+    eventId: string;
+    currentEvent: CalendarEvent;
+    targetStart: Date;
+    targetEnd: Date;
+    strategy: RescheduleStrategy;
+  }) => Promise<{
+    ok: boolean;
+    error?: string;
+    clarification?: ToolResult["clarification"];
+  }>;
 };
 
 type RescheduleDirective = {
@@ -127,59 +138,86 @@ function addMinutes(date: Date, minutes: number): Date {
   return new Date(date.getTime() + minutes * 60_000);
 }
 
-function deriveTimeWindow(params: {
+function chooseSlot(params: {
+  strategy: RescheduleStrategy;
+  slots: Array<{ start: Date; end: Date; score: number }>;
+}): { start: Date; end: Date } | null {
+  const sorted = [...params.slots].sort((a, b) => {
+    const scoreDiff = (b.score ?? 0) - (a.score ?? 0);
+    if (Math.abs(scoreDiff) > 0.0001) return scoreDiff;
+    if (params.strategy === "earlier") {
+      return b.start.getTime() - a.start.getTime();
+    }
+    return a.start.getTime() - b.start.getTime();
+  });
+  const pick = sorted[0];
+  return pick ? { start: pick.start, end: pick.end } : null;
+}
+
+function startOfLocalWeek(dateUtc: Date, timeZone: string): Date {
+  const local = toZonedTime(dateUtc, timeZone);
+  const day = local.getDay();
+  local.setDate(local.getDate() - day);
+  local.setHours(0, 0, 0, 0);
+  return fromZonedTime(local, timeZone);
+}
+
+function endOfLocalWeek(dateUtc: Date, timeZone: string): Date {
+  const local = toZonedTime(dateUtc, timeZone);
+  const day = local.getDay();
+  local.setDate(local.getDate() + (6 - day));
+  local.setHours(23, 59, 59, 999);
+  return fromZonedTime(local, timeZone);
+}
+
+function deriveTimeWindows(params: {
   strategy: RescheduleStrategy;
   event: CalendarEvent;
   overrideAfter?: Date;
   overrideBefore?: Date;
   timeZone: string;
-}): { start: Date; end: Date } {
+}): Array<{ start: Date; end: Date; label: string }> {
   const { strategy, event, overrideAfter, overrideBefore, timeZone } = params;
 
   if (overrideAfter && overrideBefore) {
-    return { start: overrideAfter, end: overrideBefore };
+    return [{ start: overrideAfter, end: overrideBefore, label: "requested_window" }];
   }
 
   if (strategy === "later") {
-    return {
-      start: overrideAfter ?? addMinutes(event.endTime, 1),
-      end: overrideBefore ?? endOfLocalDay(event.startTime, timeZone),
-    };
+    const sameDayStart = overrideAfter ?? addMinutes(event.endTime, 1);
+    const sameDayEnd = overrideBefore ?? endOfLocalDay(event.startTime, timeZone);
+    const weekEnd = overrideBefore ?? endOfLocalWeek(event.startTime, timeZone);
+    return [
+      { start: sameDayStart, end: sameDayEnd, label: "same_day_later" },
+      { start: sameDayStart, end: weekEnd, label: "same_week_later" },
+      {
+        start: sameDayStart,
+        end: addMinutes(event.endTime, 14 * 24 * 60),
+        label: "next_two_weeks_later",
+      },
+    ];
   }
 
   if (strategy === "earlier") {
-    return {
-      start: overrideAfter ?? startOfLocalDay(event.startTime, timeZone),
-      end: overrideBefore ?? addMinutes(event.startTime, -1),
-    };
+    const sameDayStart = overrideAfter ?? startOfLocalDay(event.startTime, timeZone);
+    const sameDayEnd = overrideBefore ?? addMinutes(event.startTime, -1);
+    const weekStart = overrideAfter ?? startOfLocalWeek(event.startTime, timeZone);
+    return [
+      { start: sameDayStart, end: sameDayEnd, label: "same_day_earlier" },
+      { start: weekStart, end: sameDayEnd, label: "same_week_earlier" },
+      {
+        start: addMinutes(event.startTime, -14 * 24 * 60),
+        end: sameDayEnd,
+        label: "previous_two_weeks_earlier",
+      },
+    ];
   }
 
-  return {
-    start: overrideAfter ?? addMinutes(event.endTime, 1),
-    end: overrideBefore ?? addMinutes(event.endTime, 14 * 24 * 60),
-  };
-}
-
-function chooseSlot(params: {
-  strategy: RescheduleStrategy;
-  event: CalendarEvent;
-  slots: Array<{ start: Date; end: Date; score: number }>;
-}): { start: Date; end: Date } | null {
-  const sorted = [...params.slots].sort((a, b) => a.start.getTime() - b.start.getTime());
-
-  if (params.strategy === "earlier") {
-    const candidates = sorted.filter((slot) => slot.end.getTime() <= params.event.startTime.getTime());
-    const pick = candidates[candidates.length - 1];
-    return pick ? { start: pick.start, end: pick.end } : null;
-  }
-
-  const lowerBound =
-    params.strategy === "later" || params.strategy === "next_available"
-      ? params.event.endTime.getTime()
-      : Number.NEGATIVE_INFINITY;
-
-  const pick = sorted.find((slot) => slot.start.getTime() >= lowerBound);
-  return pick ? { start: pick.start, end: pick.end } : null;
+  const defaultStart = overrideAfter ?? addMinutes(event.endTime, 1);
+  return [
+    { start: defaultStart, end: overrideBefore ?? addMinutes(event.endTime, 7 * 24 * 60), label: "next_week" },
+    { start: defaultStart, end: overrideBefore ?? addMinutes(event.endTime, 14 * 24 * 60), label: "next_two_weeks" },
+  ];
 }
 
 function buildUpdateInput(params: {
@@ -257,7 +295,7 @@ export async function handleCalendarReschedule(
       targetStart = params.start ?? (params.end ? new Date(params.end.getTime() - durationMinutes * 60_000) : undefined);
       targetEnd = params.end ?? (params.start ? new Date(params.start.getTime() + durationMinutes * 60_000) : undefined);
     } else {
-      const timeWindow = deriveTimeWindow({
+      const windows = deriveTimeWindows({
         strategy,
         event: currentEvent,
         overrideAfter: directive.after,
@@ -265,44 +303,51 @@ export async function handleCalendarReschedule(
         timeZone: params.effectiveTimeZone,
       });
 
-      if (timeWindow.start.getTime() >= timeWindow.end.getTime()) {
+      let foundSlot: { start: Date; end: Date } | null = null;
+
+      for (const window of windows) {
+        if (window.start.getTime() >= window.end.getTime()) {
+          continue;
+        }
+
+        const slots = await params.providers.calendar.findAvailableSlots({
+          durationMinutes,
+          start: window.start,
+          end: window.end,
+        });
+
+        const candidate = chooseSlot({ strategy, slots });
+        if (!candidate) continue;
+
+        if (params.validateCandidate) {
+          const validation = await params.validateCandidate({
+            eventId,
+            currentEvent,
+            targetStart: candidate.start,
+            targetEnd: candidate.end,
+            strategy,
+          });
+          if (!validation.ok) continue;
+        }
+
+        foundSlot = candidate;
+        break;
+      }
+
+      if (!foundSlot) {
         return {
           success: false,
           clarification: {
             kind: "missing_fields",
             prompt:
-              "I can move it, but I need a wider time range. What time window should I search for the new slot?",
-            missingFields: ["time window"],
+              "I couldn't find a safe slot in that range. I can try a wider window or a shorter duration. Which do you prefer?",
+            missingFields: ["time window or duration"],
           },
         };
       }
 
-      const slots = await params.providers.calendar.findAvailableSlots({
-        durationMinutes,
-        start: timeWindow.start,
-        end: timeWindow.end,
-      });
-
-      const slot = chooseSlot({
-        strategy,
-        event: currentEvent,
-        slots,
-      });
-
-      if (!slot) {
-        return {
-          success: false,
-          clarification: {
-            kind: "missing_fields",
-            prompt:
-              "I couldn't find an open slot in that range. Want me to try a different window?",
-            missingFields: ["time window"],
-          },
-        };
-      }
-
-      targetStart = slot.start;
-      targetEnd = slot.end;
+      targetStart = foundSlot.start;
+      targetEnd = foundSlot.end;
     }
 
     if (!targetStart || !targetEnd) {
@@ -319,6 +364,23 @@ export async function handleCalendarReschedule(
 
     if (targetStart.getTime() >= targetEnd.getTime()) {
       return { success: false, error: "Calendar end time must be after start time." };
+    }
+
+    if (params.validateCandidate) {
+      const validation = await params.validateCandidate({
+        eventId,
+        currentEvent,
+        targetStart,
+        targetEnd,
+        strategy,
+      });
+      if (!validation.ok) {
+        return {
+          success: false,
+          ...(validation.error ? { error: validation.error } : {}),
+          ...(validation.clarification ? { clarification: validation.clarification } : {}),
+        };
+      }
     }
 
     const updatedEvent = await params.providers.calendar.updateEvent({

@@ -8,6 +8,7 @@ import { syncMicrosoftCalendarChanges } from "@/features/calendar/sync/microsoft
 import { ensureGoogleCalendarWatch } from "@/features/calendar/sync/google";
 import { ensureMicrosoftCalendarSubscription } from "@/features/calendar/sync/microsoft";
 import { scheduleTasksForUser } from "@/features/calendar/scheduling/TaskSchedulingService";
+import { runAdaptiveCalendarReplan } from "@/features/calendar/adaptive-replanner";
 
 export const maxDuration = 300;
 
@@ -98,6 +99,7 @@ export const POST = withError("calendar/sync/reconcile", async (request) => {
               emailAccountId: connection.emailAccountId,
             },
             logger,
+            userId: connection.emailAccount.userId,
           })
         : await syncGoogleCalendarChanges({
             calendar: {
@@ -116,6 +118,7 @@ export const POST = withError("calendar/sync/reconcile", async (request) => {
               emailAccountId: connection.emailAccountId,
             },
             logger,
+            userId: connection.emailAccount.userId,
           });
 
     if (syncResult.changed) {
@@ -124,6 +127,27 @@ export const POST = withError("calendar/sync/reconcile", async (request) => {
         userId: connection.emailAccount.userId,
         emailAccountId: connection.emailAccountId,
         source: "reconcile",
+      });
+      await runAdaptiveCalendarReplan({
+        userId: connection.emailAccount.userId,
+        emailAccountId: connection.emailAccountId,
+        source: "reconcile",
+        changedEvents: (syncResult.canonical?.events ?? []) as Array<{
+          id?: string;
+          provider?: string;
+          calendarId?: string;
+          iCalUid?: string;
+          title?: string;
+          startTime?: string;
+          endTime?: string;
+        }>,
+        logger,
+      }).catch((error) => {
+        logger.error("Adaptive calendar replan failed during reconcile", {
+          error,
+          calendarId: calendar.calendarId,
+          provider: connection.provider,
+        });
       });
     }
   }

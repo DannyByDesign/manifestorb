@@ -11,6 +11,7 @@ import { z } from "zod";
 import { type ToolDefinition } from "./types";
 import prisma from "@/server/db/client";
 import { deleteDraftById } from "@/features/drafts/operations";
+import { markCalendarEventShadowDeleted } from "@/features/calendar/canonical-state";
 
 const deleteIdsSchema = z.array(z.string()).max(200);
 
@@ -77,13 +78,31 @@ Drive: Deletes file or folder`,
                 }
 
                 const deleteMode = mode ?? "single";
-                await Promise.all(ids.map((id: string) =>
-                    providers.calendar.deleteEvent({
+                await Promise.all(ids.map(async (id: string) => {
+                    const existing = typeof providers.calendar.getEvent === "function"
+                        ? await providers.calendar.getEvent({
+                            eventId: id,
+                            calendarId,
+                        }).catch(() => null)
+                        : null;
+                    await providers.calendar.deleteEvent({
                         calendarId,
                         eventId: id,
                         deleteOptions: { mode: deleteMode }
-                    })
-                ));
+                    });
+
+                    if (existing?.provider && existing.calendarId) {
+                        await markCalendarEventShadowDeleted({
+                            userId,
+                            emailAccountId,
+                            provider: existing.provider,
+                            calendarId: existing.calendarId,
+                            externalEventId: id,
+                            iCalUid: existing.iCalUid,
+                            source: "ai",
+                        }).catch(() => {});
+                    }
+                }));
                 return { success: true, data: { count: ids.length } };
 
             case "automation":

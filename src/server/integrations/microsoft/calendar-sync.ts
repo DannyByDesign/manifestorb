@@ -6,6 +6,7 @@ const PAGE_SIZE = 200;
 
 export interface OutlookEvent {
   id: string;
+  iCalUId?: string;
   subject?: string;
   body?: { content: string };
   start: { dateTime: string; timeZone: string };

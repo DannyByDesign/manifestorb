@@ -92,6 +92,53 @@ describe("POST /api/surfaces/context", () => {
         });
     });
 
+    it("recovers latest canonical thread when incoming thread is missing", async () => {
+        prisma.account.findUnique.mockResolvedValue({ userId: "user-1" } as never);
+        prisma.conversation.findFirst
+            .mockResolvedValueOnce(null)
+            .mockResolvedValueOnce({
+                id: "conv-latest",
+                channelId: "C123",
+                threadId: "1717682630.123456",
+            } as never);
+
+        const { POST } = await import("./route");
+        const req = new NextRequest("http://localhost/api/surfaces/context", {
+            method: "POST",
+            headers: { "x-surfaces-secret": "secret" },
+            body: JSON.stringify({
+                provider: "slack",
+                providerAccountId: "U123",
+                channelId: "C123",
+                messageId: "999.000",
+            }),
+        });
+
+        const res = await POST(req);
+        const json = await res.json();
+
+        expect(res.status).toBe(200);
+        expect(json.linked).toBe(true);
+        expect(json.canonicalThreadId).toBe("1717682630.123456");
+        expect(json.conversationId).toBe("conv-latest");
+        expect(prisma.conversation.findFirst).toHaveBeenNthCalledWith(2, {
+            where: {
+                userId: "user-1",
+                provider: "slack",
+                channelId: "C123",
+                threadId: { not: null },
+            },
+            orderBy: {
+                updatedAt: "desc",
+            },
+            select: {
+                id: true,
+                channelId: true,
+                threadId: true,
+            },
+        });
+    });
+
     it("falls back to incoming thread when no stored thread exists", async () => {
         prisma.account.findUnique.mockResolvedValue({ userId: "user-1" } as never);
         prisma.conversation.findFirst.mockResolvedValueOnce(null);

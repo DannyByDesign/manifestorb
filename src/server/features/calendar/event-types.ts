@@ -5,6 +5,18 @@ export interface CalendarEventAttendee {
 
 export interface CalendarEvent {
   id: string;
+  provider?: "google" | "microsoft";
+  calendarId?: string;
+  iCalUid?: string;
+  seriesMasterId?: string;
+  versionToken?: string;
+  status?: string;
+  organizerEmail?: string;
+  canEdit?: boolean;
+  canRespond?: boolean;
+  busyStatus?: string;
+  isAllDay?: boolean;
+  isDeleted?: boolean;
   title: string;
   description?: string;
   location?: string;
@@ -22,6 +34,7 @@ export interface CalendarEventCreateInput {
   location?: string;
   start: Date;
   end: Date;
+  attendees?: CalendarEventAttendee[];
   allDay?: boolean;
   isRecurring?: boolean;
   recurrenceRule?: string;
@@ -46,6 +59,7 @@ export interface CalendarEventProvider {
     timeMin: Date;
     timeMax: Date;
     maxResults: number;
+    calendarId?: string;
   }): Promise<CalendarEvent[]>;
 
   fetchEvents(options: {

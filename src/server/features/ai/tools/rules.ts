@@ -33,6 +33,15 @@ import {
   temporarilyDisableEmailRule,
 } from "@/features/rules/management";
 import { updateAccountAbout } from "@/features/preferences/service";
+import {
+  disableCalendarPolicyRule,
+  enableCalendarPolicyRule,
+  listCalendarPolicyRules,
+  removeCalendarPolicyRule,
+  renameCalendarPolicyRule,
+  resolveCalendarPolicyRuleReference,
+  upsertCalendarPolicyRule,
+} from "@/features/calendar/policy-rules";
 
 const actionSchema = z.enum([
   "list",
@@ -49,6 +58,9 @@ const actionSchema = z.enum([
   "remove_approval_rule",
   "set_approval_default",
   "reset_approval_rules",
+  "list_calendar_rules",
+  "set_calendar_rule",
+  "remove_calendar_rule",
   "disable",
   "enable",
   "delete",
@@ -179,14 +191,14 @@ const resetApprovalRulesSchema = z.object({
 });
 
 const listRulesPayloadSchema = z.object({
-  kind: z.enum(["all", "email", "approval"]).optional(),
+  kind: z.enum(["all", "email", "approval", "calendar"]).optional(),
   query: z.string().optional(),
   includeIds: z.boolean().optional(),
   verbose: z.boolean().optional(),
 });
 
 const lifecyclePayloadSchema = z.object({
-  kind: z.enum(["email", "approval"]).optional(),
+  kind: z.enum(["email", "approval", "calendar"]).optional(),
   ruleId: z.string().optional(),
   ruleName: z.string().optional(),
   confirm: z.boolean().optional(),
@@ -194,6 +206,38 @@ const lifecyclePayloadSchema = z.object({
   until: z.string().optional(),
   newName: z.string().optional(),
   toolName: z.string().optional(),
+});
+
+const calendarPolicyRuleCriteriaSchema = z
+  .object({
+    provider: z.enum(["google", "microsoft"]).optional(),
+    calendarId: z.string().optional(),
+    iCalUid: z.string().optional(),
+    titleContains: z.string().optional(),
+  })
+  .strict();
+
+const setCalendarRuleSchema = z.object({
+  ruleId: z.string().optional(),
+  name: z.string().optional(),
+  scope: z.enum(["global", "event"]).optional(),
+  eventId: z.string().optional(),
+  shadowEventId: z.string().optional(),
+  provider: z.enum(["google", "microsoft"]).optional(),
+  calendarId: z.string().optional(),
+  iCalUid: z.string().optional(),
+  reschedulePolicy: z.enum(["FIXED", "FLEXIBLE", "APPROVAL_REQUIRED"]),
+  notifyOnAutoMove: z.boolean().optional(),
+  isProtected: z.boolean().optional(),
+  enabled: z.boolean().optional(),
+  priority: z.number().int().optional(),
+  disabledUntil: z.string().optional(),
+  expiresAt: z.string().optional(),
+  criteria: calendarPolicyRuleCriteriaSchema.optional(),
+});
+
+const removeCalendarRuleSchema = z.object({
+  ruleId: z.string().min(1),
 });
 
 const rulesToolParameters = z.object({
@@ -204,6 +248,15 @@ const rulesToolParameters = z.object({
 const RULE_QUERY_SYNONYMS: Record<string, string[]> = {
   approval: ["approval", "approve", "permission", "confirm", "safety", "ask first"],
   email: ["email", "inbox", "auto", "archive", "label", "sender", "unsubscribe"],
+  calendar: [
+    "calendar",
+    "meeting",
+    "reschedule",
+    "protected time",
+    "focus block",
+    "auto move",
+    "heads up",
+  ],
 };
 
 function includesLoose(haystack: string, needle: string): boolean {
@@ -220,13 +273,17 @@ function includesLoose(haystack: string, needle: string): boolean {
   return matched.length >= Math.max(1, Math.ceil(rhsTokens.length * 0.6));
 }
 
-function inferKindFromQuery(query: string | undefined): "all" | "email" | "approval" {
+function inferKindFromQuery(
+  query: string | undefined,
+): "all" | "email" | "approval" | "calendar" {
   if (!query?.trim()) return "all";
   const lower = query.toLowerCase();
   const approvalHit = RULE_QUERY_SYNONYMS.approval.some((term) => lower.includes(term));
   const emailHit = RULE_QUERY_SYNONYMS.email.some((term) => lower.includes(term));
-  if (approvalHit && !emailHit) return "approval";
-  if (emailHit && !approvalHit) return "email";
+  const calendarHit = RULE_QUERY_SYNONYMS.calendar.some((term) => lower.includes(term));
+  if (approvalHit && !emailHit && !calendarHit) return "approval";
+  if (emailHit && !approvalHit && !calendarHit) return "email";
+  if (calendarHit && !approvalHit && !emailHit) return "calendar";
   return "all";
 }
 
@@ -258,6 +315,11 @@ type LifecycleRuleCandidate =
       id: string;
       name: string;
       toolName: string;
+    }
+  | {
+      kind: "calendar";
+      id: string;
+      name: string;
     };
 
 type LifecycleRuleResolution =
@@ -298,7 +360,7 @@ function mapLifecycleConfirmationCandidates(
 async function resolveLifecycleRule(params: {
   userId: string;
   emailAccountId: string;
-  kind?: "email" | "approval";
+  kind?: "email" | "approval" | "calendar";
   ruleId?: string;
   ruleName?: string;
   toolName?: string;
@@ -381,17 +443,58 @@ async function resolveLifecycleRule(params: {
     };
   };
 
+  const resolveCalendar = async (): Promise<LifecycleRuleResolution> => {
+    const resolution = await resolveCalendarPolicyRuleReference({
+      userId: params.userId,
+      emailAccountId: params.emailAccountId,
+      reference: {
+        id: params.ruleId,
+        name: params.ruleName,
+      },
+    });
+    if (resolution.status === "none") return { status: "none", candidates: [] };
+    if (resolution.status === "ambiguous") {
+      return {
+        status: "ambiguous",
+        candidates: resolution.matches.map((match) => ({
+          kind: "calendar" as const,
+          id: match.rule.id,
+          name: match.rule.name,
+        })),
+      };
+    }
+    const selected = resolution.matches[0]!;
+    return {
+      status: "resolved",
+      candidate: {
+        kind: "calendar",
+        id: selected.rule.id,
+        name: selected.rule.name,
+      },
+      candidates: [
+        {
+          kind: "calendar",
+          id: selected.rule.id,
+          name: selected.rule.name,
+        },
+      ],
+    };
+  };
+
   if (params.kind === "email") return resolveEmail();
   if (params.kind === "approval") return resolveApproval();
+  if (params.kind === "calendar") return resolveCalendar();
 
-  const [emailResolution, approvalResolution] = await Promise.all([
+  const [emailResolution, approvalResolution, calendarResolution] = await Promise.all([
     resolveEmail(),
     resolveApproval(),
+    resolveCalendar(),
   ]);
 
   const ambiguousCandidates = [
     ...(emailResolution.status === "ambiguous" ? emailResolution.candidates : []),
     ...(approvalResolution.status === "ambiguous" ? approvalResolution.candidates : []),
+    ...(calendarResolution.status === "ambiguous" ? calendarResolution.candidates : []),
   ];
   if (ambiguousCandidates.length > 0) {
     return { status: "ambiguous", candidates: ambiguousCandidates };
@@ -400,6 +503,7 @@ async function resolveLifecycleRule(params: {
   const resolvedCandidates = [
     ...(emailResolution.status === "resolved" ? emailResolution.candidates : []),
     ...(approvalResolution.status === "resolved" ? approvalResolution.candidates : []),
+    ...(calendarResolution.status === "resolved" ? calendarResolution.candidates : []),
   ];
   if (resolvedCandidates.length === 0) {
     return { status: "none", candidates: [] };
@@ -418,7 +522,7 @@ async function resolveLifecycleRule(params: {
 
 export const rulesTool: ToolDefinition<typeof rulesToolParameters> = {
   name: "rules",
-  description: `Manage email and approval rules. Actions: list, create, update_conditions, update_actions, update_patterns, get_patterns, update_about, add_knowledge, list_approval_rules, list_approval_operations, set_approval_rule, remove_approval_rule, set_approval_default, reset_approval_rules, disable, enable, delete, rename.
+  description: `Manage email, approval, and calendar policy rules. Actions: list, create, update_conditions, update_actions, update_patterns, get_patterns, update_about, add_knowledge, list_approval_rules, list_approval_operations, set_approval_rule, remove_approval_rule, set_approval_default, reset_approval_rules, list_calendar_rules, set_calendar_rule, remove_calendar_rule, disable, enable, delete, rename.
 Rule structure: condition (aiInstructions and/or static from/to/subject) + actions (archive, label, draft, reply, send, mark read, etc.). Static conditions use AND; top-level conditions can use AND/OR (conditionalOperator). Use {{variables}} in action fields for AI-generated content. Prefer short rule names (e.g. Newsletters, Urgent). Check if a rule already exists before creating.`,
   parameters: rulesToolParameters,
   securityLevel: "CAUTION",
@@ -442,13 +546,17 @@ Rule structure: condition (aiInstructions and/or static from/to/subject) + actio
         const listPayload = parsedListPayload.data;
         await resumePausedEmailRules(context.emailAccountId);
 
-        const [account, rawEmailRules, approvalConfigs] = await Promise.all([
+        const [account, rawEmailRules, approvalConfigs, calendarPolicyRules] = await Promise.all([
           prisma.emailAccount.findUnique({
             where: { id: context.emailAccountId },
             select: { about: true },
           }),
           listEmailRules(context.emailAccountId),
           listApprovalRuleConfigs({ userId: context.userId }),
+          listCalendarPolicyRules({
+            userId: context.userId,
+            emailAccountId: context.emailAccountId,
+          }),
         ]);
         const effectiveKind = listPayload.kind ?? inferKindFromQuery(listPayload.query);
         const includeIds = listPayload.includeIds === true;
@@ -510,6 +618,18 @@ Rule structure: condition (aiInstructions and/or static from/to/subject) + actio
             priority: rule.priority ?? 0,
           })),
         );
+        const mappedCalendarRules = calendarPolicyRules.map((rule) => ({
+          ...(includeIds ? { id: rule.id } : {}),
+          name: rule.name,
+          scope: rule.scope,
+          reschedulePolicy: rule.reschedulePolicy,
+          isProtected: rule.isProtected,
+          notifyOnAutoMove: rule.notifyOnAutoMove,
+          enabled: rule.enabled,
+          pausedUntil: rule.disabledUntil,
+          priority: rule.priority,
+          ...(verbose ? { criteria: rule.criteria, eventIdentity: rule.eventIdentity } : {}),
+        }));
 
         const query = listPayload.query?.trim();
         const filteredEmailRules = !query
@@ -540,17 +660,43 @@ Rule structure: condition (aiInstructions and/or static from/to/subject) + actio
                 query,
               ),
             );
+        const filteredCalendarRules = !query
+          ? mappedCalendarRules
+          : mappedCalendarRules.filter((rule) =>
+              includesLoose(
+                [
+                  rule.name,
+                  rule.scope,
+                  rule.reschedulePolicy,
+                  rule.isProtected ? "protected" : "",
+                  rule.notifyOnAutoMove ? "notify" : "silent",
+                  JSON.stringify(rule.criteria ?? {}),
+                  JSON.stringify(rule.eventIdentity ?? {}),
+                ].join(" "),
+                query,
+              ),
+            );
 
         const emailRulesForResponse =
-          effectiveKind === "approval" ? [] : filteredEmailRules;
+          effectiveKind === "approval" || effectiveKind === "calendar"
+            ? []
+            : filteredEmailRules;
         const approvalRulesForResponse =
-          effectiveKind === "email" ? [] : filteredApprovalRules;
+          effectiveKind === "email" || effectiveKind === "calendar"
+            ? []
+            : filteredApprovalRules;
+        const calendarRulesForResponse =
+          effectiveKind === "email" || effectiveKind === "approval"
+            ? []
+            : filteredCalendarRules;
 
         const conciseSummary = {
           totalEmailRules: emailRulesForResponse.length,
           totalApprovalRules: approvalRulesForResponse.length,
+          totalCalendarRules: calendarRulesForResponse.length,
           emailRuleTitles: emailRulesForResponse.slice(0, 5).map((rule) => rule.name),
           approvalRuleTitles: approvalRulesForResponse.slice(0, 5).map((rule) => rule.name),
+          calendarRuleTitles: calendarRulesForResponse.slice(0, 5).map((rule) => rule.name),
           mode: "concise",
         };
 
@@ -563,6 +709,7 @@ Rule structure: condition (aiInstructions and/or static from/to/subject) + actio
             rules: emailRulesForResponse,
             emailRules: emailRulesForResponse,
             approvalRules: approvalRulesForResponse,
+            calendarRules: calendarRulesForResponse,
           },
         };
       }
@@ -1002,6 +1149,90 @@ Rule structure: condition (aiInstructions and/or static from/to/subject) + actio
         }
         return { success: true, data: result };
       }
+      case "list_calendar_rules": {
+        const parsedListPayload = listRulesPayloadSchema.safeParse(payload ?? {});
+        if (!parsedListPayload.success) {
+          return { success: false, error: "Invalid payload", data: parsedListPayload.error };
+        }
+        const includeIds = parsedListPayload.data.includeIds === true;
+        const verbose = parsedListPayload.data.verbose === true;
+        const query = parsedListPayload.data.query?.trim();
+        const rules = await listCalendarPolicyRules({
+          userId: context.userId,
+          emailAccountId: context.emailAccountId,
+        });
+        const mapped = rules.map((rule) => ({
+          ...(includeIds ? { id: rule.id } : {}),
+          name: rule.name,
+          scope: rule.scope,
+          reschedulePolicy: rule.reschedulePolicy,
+          isProtected: rule.isProtected,
+          notifyOnAutoMove: rule.notifyOnAutoMove,
+          enabled: rule.enabled,
+          pausedUntil: rule.disabledUntil,
+          priority: rule.priority,
+          ...(verbose ? { criteria: rule.criteria, eventIdentity: rule.eventIdentity } : {}),
+        }));
+        const filtered = !query
+          ? mapped
+          : mapped.filter((rule) =>
+              includesLoose(
+                [
+                  rule.name,
+                  rule.scope,
+                  rule.reschedulePolicy,
+                  rule.isProtected ? "protected" : "",
+                  rule.notifyOnAutoMove ? "notify" : "silent",
+                  JSON.stringify(rule.criteria ?? {}),
+                  JSON.stringify(rule.eventIdentity ?? {}),
+                ].join(" "),
+                query,
+              ),
+            );
+        return {
+          success: true,
+          data: {
+            calendarRules: filtered,
+            summary: {
+              totalCalendarRules: filtered.length,
+              calendarRuleTitles: filtered.slice(0, 5).map((rule) => rule.name),
+              mode: "concise",
+            },
+          },
+        };
+      }
+      case "set_calendar_rule": {
+        const parsed = setCalendarRuleSchema.safeParse(payload);
+        if (!parsed.success) {
+          return { success: false, error: "Invalid payload", data: parsed.error };
+        }
+        try {
+          const rule = await upsertCalendarPolicyRule({
+            userId: context.userId,
+            emailAccountId: context.emailAccountId,
+            rule: parsed.data,
+          });
+          return { success: true, data: rule };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          return { success: false, error: message };
+        }
+      }
+      case "remove_calendar_rule": {
+        const parsed = removeCalendarRuleSchema.safeParse(payload);
+        if (!parsed.success) {
+          return { success: false, error: "Invalid payload", data: parsed.error };
+        }
+        const result = await removeCalendarPolicyRule({
+          userId: context.userId,
+          emailAccountId: context.emailAccountId,
+          ruleId: parsed.data.ruleId,
+        });
+        if (!result.removed) {
+          return { success: false, error: "Calendar rule not found" };
+        }
+        return { success: true, data: result };
+      }
       case "set_approval_default": {
         const parsed = setApprovalDefaultSchema.safeParse(payload);
         if (!parsed.success) {
@@ -1082,6 +1313,24 @@ Rule structure: condition (aiInstructions and/or static from/to/subject) + actio
             message: `Disabled "${disabled.rule?.name ?? selected.name}" until ${until.toISOString()}.`,
           };
         }
+        if (selected.kind === "calendar") {
+          const disabled = await disableCalendarPolicyRule({
+            userId: context.userId,
+            emailAccountId: context.emailAccountId,
+            ruleId: selected.id,
+            disabledUntil: until,
+          });
+          if (!disabled.updated) return { success: false, error: "Calendar rule not found." };
+          return {
+            success: true,
+            data: {
+              kind: "calendar",
+              ruleName: selected.name,
+              pausedUntil: until.toISOString(),
+            },
+            message: `Disabled "${selected.name}" until ${until.toISOString()}.`,
+          };
+        }
 
         await temporarilyDisableEmailRule({
           emailAccountId: context.emailAccountId,
@@ -1135,6 +1384,15 @@ Rule structure: condition (aiInstructions and/or static from/to/subject) + actio
             data: { kind: "approval", name: enabled.rule?.name ?? selected.name, toolName: selected.toolName },
           };
         }
+        if (selected.kind === "calendar") {
+          const enabled = await enableCalendarPolicyRule({
+            userId: context.userId,
+            emailAccountId: context.emailAccountId,
+            ruleId: selected.id,
+          });
+          if (!enabled.updated) return { success: false, error: "Calendar rule not found." };
+          return { success: true, data: { kind: "calendar", ruleName: selected.name } };
+        }
         await enableEmailRule({
           emailAccountId: context.emailAccountId,
           ruleId: selected.id,
@@ -1179,6 +1437,22 @@ Rule structure: condition (aiInstructions and/or static from/to/subject) + actio
           return {
             success: true,
             data: { kind: "approval", name: renamed.rule?.name ?? newName, toolName: selected.toolName },
+          };
+        }
+        if (selected.kind === "calendar") {
+          const renamed = await renameCalendarPolicyRule({
+            userId: context.userId,
+            emailAccountId: context.emailAccountId,
+            ruleId: selected.id,
+            newName,
+          });
+          if (!renamed.updated) return { success: false, error: "Calendar rule not found." };
+          return {
+            success: true,
+            data: {
+              kind: "calendar",
+              ruleName: renamed.rule?.title ?? newName,
+            },
           };
         }
 
@@ -1235,6 +1509,22 @@ Rule structure: condition (aiInstructions and/or static from/to/subject) + actio
               deleted: true,
               ruleName: selected.name,
               toolName: selected.toolName,
+            },
+          };
+        }
+        if (selected.kind === "calendar") {
+          const removed = await removeCalendarPolicyRule({
+            userId: context.userId,
+            emailAccountId: context.emailAccountId,
+            ruleId: selected.id,
+          });
+          if (!removed.removed) return { success: false, error: "Calendar rule not found." };
+          return {
+            success: true,
+            data: {
+              kind: "calendar",
+              deleted: true,
+              ruleName: selected.name,
             },
           };
         }

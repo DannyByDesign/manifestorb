@@ -28,6 +28,8 @@ type MessageMeta = {
     subtype?: string;
     channelType?: string;
     text?: string;
+    botId?: string;
+    appId?: string;
 };
 
 function toMessageMeta(message: unknown): MessageMeta {
@@ -41,6 +43,8 @@ function toMessageMeta(message: unknown): MessageMeta {
         subtype: typeof record.subtype === "string" ? record.subtype : undefined,
         channelType: typeof record.channel_type === "string" ? record.channel_type : undefined,
         text: typeof record.text === "string" ? record.text : undefined,
+        botId: typeof record.bot_id === "string" ? record.bot_id : undefined,
+        appId: typeof record.app_id === "string" ? record.app_id : undefined,
     };
 }
 
@@ -83,6 +87,13 @@ function resolveCanonicalThread(params: {
             getConversationKey({ channelId: params.channelId, userId: params.userId }),
         ) || params.messageTs
     );
+}
+
+function normalizeSlackThreadTs(threadTs?: string | null): string | undefined {
+    if (typeof threadTs !== "string") return undefined;
+    const trimmed = threadTs.trim();
+    if (!trimmed || trimmed === "root") return undefined;
+    return trimmed;
 }
 
 async function setSlackAssistantThreadStatus(params: {
@@ -241,8 +252,8 @@ async function replyToInteractionThread(params: {
     if (!channelId) return;
     await app.client.chat.postMessage({
         channel: channelId,
-        thread_ts: threadTs,
         text: toPlainSidecarText(text),
+        thread_ts: normalizeSlackThreadTs(threadTs),
     });
 }
 
@@ -471,6 +482,8 @@ export async function startSlack() {
                 user: meta.user,
                 ts: meta.ts,
                 subtype: meta.subtype ?? null,
+                botId: meta.botId ?? null,
+                appId: meta.appId ?? null,
                 channelType: meta.channelType,
                 hasText: Boolean(meta.text),
                 textLength: meta.text?.length ?? 0,
@@ -482,6 +495,18 @@ export async function startSlack() {
                     channel: meta.channel,
                     user: meta.user,
                     ts: meta.ts,
+                });
+                return;
+            }
+
+            // Never process bot/app-authored messages as user input.
+            if (meta.botId || meta.appId) {
+                console.log("[Surfaces][Slack] Skipping bot/app-authored message", {
+                    channel: meta.channel,
+                    user: meta.user,
+                    ts: meta.ts,
+                    botId: meta.botId ?? null,
+                    appId: meta.appId ?? null,
                 });
                 return;
             }
@@ -500,6 +525,7 @@ export async function startSlack() {
             const userId = meta.user;
             const messageTs = meta.ts;
             const messageText = meta.text;
+            const isDirectMessage = meta.channelType === "im" || channelId.startsWith("D");
             const locallyResolvedThreadTs = resolveCanonicalThread({
                 channelId,
                 userId,
@@ -510,16 +536,20 @@ export async function startSlack() {
                 provider: "slack",
                 providerAccountId: userId,
                 channelId,
+                isDirectMessage,
                 incomingThreadId: meta.threadTs,
                 messageId: messageTs,
             });
-            const statusThreadTs = backendCanonicalThreadTs || locallyResolvedThreadTs;
+            const resolvedThreadTs =
+                normalizeSlackThreadTs(backendCanonicalThreadTs) ??
+                normalizeSlackThreadTs(locallyResolvedThreadTs) ??
+                messageTs;
             rememberCanonicalThread({
                 channelId,
                 userId,
-                threadTs: statusThreadTs,
+                threadTs: resolvedThreadTs,
             });
-            let canonicalThreadTsFromBrain: string | undefined;
+            const statusThreadTs = resolvedThreadTs;
 
             console.log("[Surfaces][Slack] Resolved canonical thread", {
                 channel: channelId,
@@ -527,24 +557,27 @@ export async function startSlack() {
                 messageTs,
                 incomingThreadTs: meta.threadTs ?? null,
                 backendThreadTs: backendCanonicalThreadTs ?? null,
-                resolvedThreadTs: statusThreadTs,
+                localThreadTs: locallyResolvedThreadTs ?? null,
+                resolvedThreadTs: resolvedThreadTs ?? null,
+                isDirectMessage,
             });
 
-            await setSlackAssistantThinkingStatus({
-                app,
-                channelId,
-                threadTs: statusThreadTs,
-            });
+            if (statusThreadTs) {
+                await setSlackAssistantThinkingStatus({
+                    app,
+                    channelId,
+                    threadTs: statusThreadTs,
+                });
+            }
 
             try {
                 let history: { role: "user" | "assistant"; content: string }[] = [];
                 try {
                     const result = await app.client.conversations.replies({
                         channel: channelId,
-                        ts: statusThreadTs,
+                        ts: resolvedThreadTs,
                         limit: 30,
                     });
-
                     if (result.messages) {
                         history = result.messages
                             .filter((msg) => msg.ts !== messageTs)
@@ -559,7 +592,7 @@ export async function startSlack() {
                         channel: channelId,
                         user: userId,
                         ts: messageTs,
-                        threadTs: statusThreadTs,
+                        threadTs: resolvedThreadTs,
                         error: err instanceof Error ? err.message : String(err),
                     });
                 }
@@ -571,8 +604,8 @@ export async function startSlack() {
                         channelId,
                         userId,
                         messageId: messageTs,
-                        threadId: statusThreadTs,
-                        isDirectMessage: meta.channelType === "im",
+                        threadId: resolvedThreadTs,
+                        isDirectMessage,
                     },
                     history,
                 });
@@ -596,12 +629,11 @@ export async function startSlack() {
 
                 for (const [index, resp] of brainResponse.responses.entries()) {
                     try {
-                        const responseThreadTs =
-                            typeof (resp as { targetThreadId?: unknown }).targetThreadId === "string" &&
-                            (resp as { targetThreadId?: string }).targetThreadId
-                                ? (resp as { targetThreadId: string }).targetThreadId
-                                : statusThreadTs;
-                        canonicalThreadTsFromBrain = responseThreadTs;
+                        const responseThreadTs = normalizeSlackThreadTs(
+                            typeof (resp as { targetThreadId?: unknown }).targetThreadId === "string"
+                                ? ((resp as { targetThreadId?: string }).targetThreadId ?? undefined)
+                                : resolvedThreadTs,
+                        );
                         rememberCanonicalThread({
                             channelId,
                             userId,
@@ -722,9 +754,9 @@ export async function startSlack() {
 
                             await app.client.chat.postMessage({
                                 channel: channelId,
-                                thread_ts: responseThreadTs,
                                 blocks: blocks as unknown as (Block | KnownBlock)[],
                                 text: plainResponseContent || plainInteractiveSummary || "I completed that request.",
+                                thread_ts: responseThreadTs,
                             });
                             console.log("[Surfaces][Slack] Sent interactive response", {
                                 channel: channelId,
@@ -738,8 +770,8 @@ export async function startSlack() {
                         } else if (resp.content) {
                             await app.client.chat.postMessage({
                                 channel: channelId,
-                                thread_ts: responseThreadTs,
                                 text: plainResponseContent,
+                                thread_ts: responseThreadTs,
                             });
                             console.log("[Surfaces][Slack] Sent text response", {
                                 channel: channelId,
@@ -770,19 +802,11 @@ export async function startSlack() {
                     }
                 }
             } finally {
-                const threadsToClear = Array.from(
-                    new Set(
-                        [statusThreadTs, canonicalThreadTsFromBrain].filter(
-                            (threadTs): threadTs is string =>
-                                typeof threadTs === "string" && threadTs.length > 0,
-                        ),
-                    ),
-                );
-                for (const threadTs of threadsToClear) {
+                if (statusThreadTs) {
                     await clearSlackAssistantThinkingStatus({
                         app,
                         channelId,
-                        threadTs,
+                        threadTs: statusThreadTs,
                     });
                 }
             }
@@ -815,9 +839,9 @@ export async function sendSlackMessage(
     try {
         await slackApp.client.chat.postMessage({
             channel: channelId,
-            thread_ts: threadId || undefined,
             text: toPlainSidecarText(text),
-            blocks: undefined
+            blocks: undefined,
+            thread_ts: normalizeSlackThreadTs(threadId),
         });
     } catch (error) {
         console.error("Failed to send Slack message", error);

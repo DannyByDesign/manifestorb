@@ -25,7 +25,7 @@ export interface GoogleCalendarConnectionParams {
 }
 
 export class GoogleCalendarEventProvider implements CalendarEventProvider {
-  provider: "google" = "google";
+  provider = "google" as const;
   private readonly connection: GoogleCalendarConnectionParams;
   private readonly logger: Logger;
   private readonly userId?: string;
@@ -53,16 +53,18 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
     timeMin,
     timeMax,
     maxResults,
+    calendarId,
   }: {
     attendeeEmail: string;
     timeMin: Date;
     timeMax: Date;
     maxResults: number;
+    calendarId?: string;
   }): Promise<CalendarEvent[]> {
     const client = await this.getClient();
 
     const response = await client.events.list({
-      calendarId: "primary",
+      calendarId: calendarId ?? "primary",
       timeMin: timeMin.toISOString(),
       timeMax: timeMax.toISOString(),
       maxResults,
@@ -80,7 +82,7 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
           (a) => a.email?.toLowerCase() === attendeeEmail.toLowerCase(),
         ),
       )
-      .map((event) => this.parseEvent(event));
+      .map((event) => this.parseEvent(event, calendarId));
   }
 
   async fetchEvents({
@@ -107,7 +109,7 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
 
     const events = response.data.items || [];
 
-    return events.map((event) => this.parseEvent(event));
+    return events.map((event) => this.parseEvent(event, calendarId));
   }
 
   async getEvent(
@@ -128,9 +130,9 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
         eventId,
       );
 
-      const event = this.parseEvent(result.event);
+      const event = this.parseEvent(result.event, calendarId);
       const instances = result.instances?.map((instance) =>
-        this.parseEvent(instance),
+        this.parseEvent(instance, calendarId),
       );
 
       return {
@@ -163,7 +165,7 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
       },
     );
 
-    return this.parseEvent(event);
+    return this.parseEvent(event, calendarId);
   }
 
   async updateEvent(
@@ -188,7 +190,7 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
       },
     );
 
-    return this.parseEvent(event);
+    return this.parseEvent(event, calendarId);
   }
 
   async deleteEvent(
@@ -211,13 +213,15 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
     );
   }
 
-  private parseEvent(event: calendar_v3.Schema$Event) {
+  private parseEvent(event: calendar_v3.Schema$Event, calendarId?: string) {
     const startTime = new Date(
       event.start?.dateTime || event.start?.date || Date.now(),
     );
     const endTime = new Date(
       event.end?.dateTime || event.end?.date || Date.now(),
     );
+    const isAllDay = Boolean(event.start?.date && !event.start?.dateTime);
+    const organizerEmail = event.organizer?.email ?? event.creator?.email ?? undefined;
 
     let videoConferenceLink = event.hangoutLink ?? undefined;
     if (event.conferenceData?.entryPoints) {
@@ -229,6 +233,18 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
 
     return {
       id: event.id || "",
+      provider: "google",
+      calendarId,
+      iCalUid: event.iCalUID ?? undefined,
+      seriesMasterId: event.recurringEventId ?? undefined,
+      versionToken: event.etag ?? undefined,
+      status: event.status ?? undefined,
+      organizerEmail,
+      canEdit: event.guestsCanModify ?? true,
+      canRespond: true,
+      busyStatus: event.transparency === "transparent" ? "free" : "busy",
+      isAllDay,
+      isDeleted: event.status === "cancelled",
       title: event.summary || "Untitled",
       description: event.description || undefined,
       location: event.location || undefined,

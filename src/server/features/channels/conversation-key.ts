@@ -2,6 +2,14 @@ import type { ChannelProvider } from "./types";
 
 const THREADLESS_PROVIDERS = new Set<ChannelProvider>(["discord", "telegram"]);
 
+function isThreadlessConversation(params: {
+  provider: ChannelProvider;
+  isDirectMessage?: boolean;
+}): boolean {
+  if (THREADLESS_PROVIDERS.has(params.provider)) return true;
+  return false;
+}
+
 function normalizeId(value?: string | null): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
@@ -10,10 +18,18 @@ function normalizeId(value?: string | null): string | undefined {
 
 export function deriveCanonicalThreadId(params: {
   provider: ChannelProvider;
+  isDirectMessage?: boolean;
   incomingThreadId?: string | null;
   messageId?: string | null;
 }): string {
-  if (THREADLESS_PROVIDERS.has(params.provider)) return "root";
+  if (
+    isThreadlessConversation({
+      provider: params.provider,
+      isDirectMessage: params.isDirectMessage,
+    })
+  ) {
+    return "root";
+  }
   return (
     normalizeId(params.incomingThreadId) ??
     normalizeId(params.messageId) ??
@@ -37,8 +53,17 @@ export function buildConversationIdentityKey(params: {
 
 export function outboundThreadIdForProvider(params: {
   provider: ChannelProvider;
+  isDirectMessage?: boolean;
   canonicalThreadId: string;
 }): string | undefined {
-  if (THREADLESS_PROVIDERS.has(params.provider)) return undefined;
+  if (
+    params.canonicalThreadId === "root" ||
+    isThreadlessConversation({
+      provider: params.provider,
+      isDirectMessage: params.isDirectMessage,
+    })
+  ) {
+    return undefined;
+  }
   return params.canonicalThreadId;
 }

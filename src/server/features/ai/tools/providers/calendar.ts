@@ -154,7 +154,7 @@ export async function createCalendarProvider(
       let events: CalendarEvent[] = [];
 
       if (selectedCalendarIds.length > 0) {
-        const calendars = await prisma.calendar.findMany({
+        const calendars = (await prisma.calendar.findMany({
           where: {
             calendarId: { in: selectedCalendarIds },
             isEnabled: true,
@@ -167,7 +167,7 @@ export async function createCalendarProvider(
             calendarId: true,
             connection: { select: { provider: true } },
           },
-        });
+        })) ?? [];
 
         if (calendars.length === 0) {
           scopedLogger.warn("Selected calendars not found for search", {
@@ -191,6 +191,7 @@ export async function createCalendarProvider(
                 timeMin: range.start,
                 timeMax: range.end,
                 maxResults: 250,
+                calendarId: calendar.calendarId,
               });
             }
             return provider.fetchEvents({
@@ -203,24 +204,67 @@ export async function createCalendarProvider(
         );
         events = results.flat();
       } else {
-        const results = await Promise.all(
-          providers.map((provider) => {
-            if (attendeeEmail) {
-              return provider.fetchEventsWithAttendee({
-                attendeeEmail,
+        const calendars = (await prisma.calendar.findMany({
+          where: {
+            isEnabled: true,
+            connection: {
+              emailAccountId: account.id,
+              isConnected: true,
+            },
+          },
+          select: {
+            calendarId: true,
+            connection: { select: { provider: true } },
+          },
+        })) ?? [];
+
+        if (calendars.length > 0) {
+          const results = await Promise.all(
+            calendars.map((calendar) => {
+              const provider = providerByType.get(
+                calendar.connection.provider as "google" | "microsoft",
+              );
+              if (!provider) {
+                return Promise.resolve<CalendarEvent[]>([]);
+              }
+              if (attendeeEmail) {
+                return provider.fetchEventsWithAttendee({
+                  attendeeEmail,
+                  timeMin: range.start,
+                  timeMax: range.end,
+                  maxResults: 250,
+                  calendarId: calendar.calendarId,
+                });
+              }
+              return provider.fetchEvents({
+                timeMin: range.start,
+                timeMax: range.end,
+                maxResults: 250,
+                calendarId: calendar.calendarId,
+              });
+            }),
+          );
+          events = results.flat();
+        } else {
+          const results = await Promise.all(
+            providers.map((provider) => {
+              if (attendeeEmail) {
+                return provider.fetchEventsWithAttendee({
+                  attendeeEmail,
+                  timeMin: range.start,
+                  timeMax: range.end,
+                  maxResults: 250,
+                });
+              }
+              return provider.fetchEvents({
                 timeMin: range.start,
                 timeMax: range.end,
                 maxResults: 250,
               });
-            }
-            return provider.fetchEvents({
-              timeMin: range.start,
-              timeMax: range.end,
-              maxResults: 250,
-            });
-          }),
-        );
-        events = results.flat();
+            }),
+          );
+          events = results.flat();
+        }
       }
 
       if (!query) return events;

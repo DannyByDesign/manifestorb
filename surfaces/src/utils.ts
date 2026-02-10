@@ -78,6 +78,7 @@ export async function fetchCanonicalSidecarThread(params: {
     provider: "slack" | "discord" | "telegram";
     providerAccountId: string;
     channelId: string;
+    isDirectMessage?: boolean;
     incomingThreadId?: string;
     messageId: string;
 }): Promise<string | null> {
