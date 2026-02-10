@@ -1,0 +1,11 @@
+[build]
+builder = "RAILPACK"
+buildCommand = "bun install && bun run build"
+
+[deploy]
+preDeployCommand = "bunx prisma migrate deploy"
+startCommand = "bun run start"
+healthcheckPath = "/api/health"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

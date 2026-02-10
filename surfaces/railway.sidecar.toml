@@ -1,0 +1,8 @@
+[build]
+builder = "RAILPACK"
+buildCommand = "bun install"
+
+[deploy]
+startCommand = "bun run start"
+restartPolicyType = "ALWAYS"
+restartPolicyMaxRetries = 0
