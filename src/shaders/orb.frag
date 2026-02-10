@@ -486,6 +486,15 @@ vec3 sampleBackground(vec3 rd, vec2 screenUv) {
   return bgColor;
 }
 
+// Internal volumetric tint variation, tuned for subtle layered depth.
+float layeredVolumeNoise(vec3 p) {
+  vec3 q = p * 1.6;
+  float n1 = snoise01(q + vec3(uTime * 0.03, -uTime * 0.02, uTime * 0.025));
+  float n2 = snoise01(q * 2.2 + vec3(-uTime * 0.05, uTime * 0.04, -uTime * 0.03));
+  float n3 = snoise01(q * 4.0 + vec3(uTime * 0.07, 0.0, -uTime * 0.06));
+  return clamp(n1 * 0.55 + n2 * 0.3 + n3 * 0.15, 0.0, 1.0);
+}
+
 // ============================================
 // Volumetric Glass Shading
 // ============================================
@@ -564,6 +573,12 @@ vec4 shadeGlass(vec3 frontHitPos, vec3 frontNormal, vec3 rayDir, vec2 screenUv) 
   float edgeFactor = smoothstep(0.35, 0.85, 1.0 - NdotV);
   float bgSaturationBoost = 1.0 + edgeFactor * uEdgeSaturation;
   refractedColor *= bgSaturationBoost;
+
+  // Layered interior tint to avoid flat glass and mimic interacting fluid masses.
+  float volumeNoise = layeredVolumeNoise(frontHitPos);
+  vec3 volumeTint = mix(uWarmColor, uCoolColor, volumeNoise);
+  float volumeAmount = 0.07 + (1.0 - NdotV) * 0.12;
+  refractedColor = mix(refractedColor, refractedColor + volumeTint * 0.32, volumeAmount);
   
   // --- Blend reflection and refraction ---
   vec3 glassColor = mix(refractedColor, reflection, fresnel);

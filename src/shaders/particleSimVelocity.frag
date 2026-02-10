@@ -24,6 +24,9 @@ uniform float uFollowStrength;
 uniform float uDrag;
 uniform float uBoundaryPull;
 uniform float uMaxSpeed;
+uniform sampler2D uFlowTexture;
+uniform float uFlowTextureInfluence;
+uniform float uFlowTextureScale;
 
 // ============================================
 // Simplex Noise (3D)
@@ -167,6 +170,21 @@ vec3 baseFlowField(vec3 p) {
   return curlNoise(warped * uFlowScale + uTime * 0.1);
 }
 
+vec3 sampleFlowTexture(vec3 p) {
+  if (uFlowTextureInfluence <= 0.001) return vec3(0.0);
+
+  vec2 uv = p.xz * (0.5 * uFlowTextureScale) + 0.5;
+  uv = clamp(uv, vec2(0.0), vec2(1.0));
+
+  vec2 flow = texture2D(uFlowTexture, uv).xy;
+  vec3 flow3 = vec3(flow.x, 0.0, flow.y);
+
+  // Add gentle vertical drift tied to radial profile to avoid flat 2D motion.
+  float r = length(p);
+  flow3.y = (0.5 - abs(p.y)) * (0.6 + 0.4 * smoothstep(0.2, 0.9, r)) * 0.18;
+  return flow3;
+}
+
 vec3 galaxyRotation(vec3 p) {
   // Tangential vector around Y axis
   vec3 tang = normalize(vec3(-p.z, 0.0, p.x));
@@ -198,29 +216,46 @@ void main() {
   vec3 vel = velData.xyz;
   float seed = velData.w;
   
-  // Layer logic via seed
-  // Matches Sparkles.tsx: <0.45 Dust, <0.93 Body, >0.93 Glint
-  float seedNorm = fract(seed); // Assuming seed is large random
-  // Actually seed in texture is initialized as Math.random() + (white?10:0)
-  // so fract(seed) works for 0..1 distribution
+  // Layer is encoded in velocity seed (0, 10, 20 + random frac)
+  float layer = floor(seed / 10.0 + 0.001); // 0=dust, 1=body, 2=glint
+  float seedNorm = fract(seed);
   
+  // Layer-specific response envelopes:
+  // Dust: slow/suspended
+  // Body: medium cohesive swirl
+  // Glint: fast bursty motion
   float followFactor = 1.0;
-  float layer = 0.0; // 0=Dust, 1=Body, 2=Glint
-  
-  // This logic must roughly match the "layers" attribute distribution
-  // Since we don't pass layer map to compute shader, we infer from random
-  // Note: This is an approximation since JS Math.random and Shader hash differ.
-  // But for chaos it is fine.
-  
-  if (seedNorm < 0.45) {
-     // Dust: High follow (suspended)
-     followFactor = 1.8;
-  } else if (seedNorm < 0.93) {
-     // Body: Medium follow
-     followFactor = 1.0;
+  float dragMul = 1.0;
+  float flowGain = 1.0;
+  float speedMin = 0.12;
+  float speedMax = 0.6;
+  float pulseSpeed = 0.5;
+  float pulseBias = 0.65;
+
+  if (layer < 0.5) {
+    followFactor = 1.6;
+    dragMul = 1.25;
+    flowGain = 0.9;
+    speedMin = 0.08;
+    speedMax = 0.35;
+    pulseSpeed = 0.35;
+    pulseBias = 0.78;
+  } else if (layer < 1.5) {
+    followFactor = 1.0;
+    dragMul = 1.0;
+    flowGain = 1.0;
+    speedMin = 0.32;
+    speedMax = 0.95;
+    pulseSpeed = 0.85;
+    pulseBias = 0.55;
   } else {
-     // Glint: Low follow (momentum)
-     followFactor = 0.5;
+    followFactor = 0.6;
+    dragMul = 0.82;
+    flowGain = 1.3;
+    speedMin = 0.95;
+    speedMax = 2.4;
+    pulseSpeed = 1.7;
+    pulseBias = 0.38;
   }
   
   if (life <= 0.0) {
@@ -236,6 +271,7 @@ void main() {
   
   // 1. Base Curl Flow
   targetVel += baseFlowField(pos);
+  targetVel += sampleFlowTexture(pos) * uFlowTextureInfluence * flowGain;
   
   // 2. Galaxy Rotation
   targetVel += galaxyRotation(pos);
@@ -260,13 +296,22 @@ void main() {
   
   // Use noise to trigger occasional pauses
   // Dust (layer < 0.45, seed < 0.45) pauses more often
-  float pauseNoise = snoise(vec3(seed * 10.0, uTime * 0.5, 0.0));
-  float pauseThreshold = (seedNorm < 0.45) ? 0.6 : 0.85; // Dust pauses easily, glints rarely
+  float pauseNoise = snoise(vec3(seed * 6.0, uTime * 0.45, 0.0));
+  float pauseThreshold = (layer < 0.5) ? 0.55 : (layer < 1.5 ? 0.83 : 0.94);
   
   if (pauseNoise > pauseThreshold) {
      // Enter "suspended" state - drift very slowly
-     targetVel *= 0.05;
-     followFactor = 5.0; // Strong lock to this low velocity (stops momentum)
+     targetVel *= (layer < 0.5) ? 0.03 : 0.2;
+     followFactor = (layer < 0.5) ? 4.5 : followFactor * 1.4;
+  }
+
+  // Shape target velocity by layer-specific speed envelope.
+  float pulse = 0.5 + 0.5 * sin(uTime * pulseSpeed + seedNorm * 6.28318);
+  pulse = mix(pulseBias, 1.0, pulse);
+  float targetSpeed = mix(speedMin, speedMax, pulse);
+  float tvLen = length(targetVel);
+  if (tvLen > 0.0001) {
+    targetVel = targetVel / tvLen * targetSpeed;
   }
   
   // ==========================
@@ -285,7 +330,7 @@ void main() {
   // ==========================
   
   // Drag
-  vel *= (1.0 - uDrag);
+  vel *= (1.0 - uDrag * dragMul);
   
   // Soft Boundary Pull (keep in orb)
   float r = length(pos);
@@ -302,4 +347,3 @@ void main() {
   
   gl_FragColor = vec4(vel, seed);
 }
-

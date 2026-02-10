@@ -144,15 +144,13 @@ vec3 randomInSphere(vec3 seed) {
 // Density Functions
 // ============================================
 
-// Shell probability distribution function
-// Shell probability distribution function
-// Peak around r ~ 0.85 of orb radius (Surface Only)
+// Multi-band radial probability distribution.
+// Emphasizes outer shell while keeping interior layers alive.
 float shellPDF(float r) {
-  // r in 0..1
-  // Sharp shell at 0.85, very little elsewhere
-  float shell = exp(-pow((r - 0.85) / 0.08, 2.0));
-  float core = 0.0; // Remove core density completely
-  return clamp(core + shell, 0.0, 1.0);
+  float shellOuter = exp(-pow((r - 0.86) / 0.08, 2.0));
+  float shellMid = exp(-pow((r - 0.62) / 0.16, 2.0)) * 0.55;
+  float shellCore = exp(-pow((r - 0.36) / 0.20, 2.0)) * 0.22;
+  return clamp(shellOuter + shellMid + shellCore, 0.0, 1.0);
 }
 
 uniform float uDensityNoiseScale;   // ~0.6
@@ -162,7 +160,7 @@ uniform vec3 uDensityOffset;        // animated slowly
 float clusterDensity(vec3 p) {
   float cluster = 0.5 + 0.5 * snoise(p * uDensityNoiseScale + uDensityOffset);
   cluster = pow(cluster, uDensityContrast); // >1 increases clustering
-  return max(cluster, 0.15); // minimum density
+  return max(cluster, 0.2);
 }
 
 // ============================================

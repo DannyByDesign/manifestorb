@@ -33,6 +33,9 @@ interface ParticleComputeUniforms {
   uDrag: THREE.IUniform<number>;
   uBoundaryPull: THREE.IUniform<number>;
   uMaxSpeed: THREE.IUniform<number>;
+  uFlowTexture: THREE.IUniform<THREE.Texture | null>;
+  uFlowTextureInfluence: THREE.IUniform<number>;
+  uFlowTextureScale: THREE.IUniform<number>;
 }
 
 // ============================================
@@ -50,7 +53,8 @@ export class ParticleCompute {
     renderer: THREE.WebGLRenderer,
     particleCount: number,
     isMobile: boolean = false,
-    isWhiteArray?: Float32Array
+    isWhiteArray?: Float32Array,
+    layerArray?: Float32Array
   ) {
     // Texture dimensions (square for simplicity)
     // 256x256 = 65,536 max particles
@@ -75,7 +79,7 @@ export class ParticleCompute {
     // Initialize texture data
     // Particles start distributed throughout the sphere, not just center
     this.initPositionTexture(positionTexture, particleCount, isWhiteArray);
-    this.initVelocityTexture(velocityTexture, particleCount, isWhiteArray);
+    this.initVelocityTexture(velocityTexture, particleCount, isWhiteArray, layerArray);
 
     // Add compute variables
     this.positionVariable = this.gpuCompute.addVariable(
@@ -132,6 +136,9 @@ export class ParticleCompute {
     velUniforms.uDrag = { value: 0.04 };
     velUniforms.uBoundaryPull = { value: 0.8 };
     velUniforms.uMaxSpeed = { value: 2.0 };
+    velUniforms.uFlowTexture = { value: null };
+    velUniforms.uFlowTextureInfluence = { value: 0.95 };
+    velUniforms.uFlowTextureScale = { value: 1.0 };
 
     // Initialize GPU compute
     const error = this.gpuCompute.init();
@@ -150,8 +157,6 @@ export class ParticleCompute {
     isWhiteArray?: Float32Array
   ): void {
     const data = texture.image.data as Float32Array;
-    const fillRadius = 0.85; // Distribute throughout this radius
-
     for (let i = 0; i < this.textureWidth * this.textureHeight; i++) {
       const idx = i * 4;
 
@@ -202,7 +207,8 @@ export class ParticleCompute {
   private initVelocityTexture(
     texture: THREE.DataTexture,
     particleCount: number,
-    isWhiteArray?: Float32Array
+    isWhiteArray?: Float32Array,
+    layerArray?: Float32Array
   ): void {
     const data = texture.image.data as Float32Array;
 
@@ -215,9 +221,11 @@ export class ParticleCompute {
         data[idx + 0] = (Math.random() - 0.5) * speed;
         data[idx + 1] = (Math.random() - 0.5) * speed;
         data[idx + 2] = (Math.random() - 0.5) * speed;
-        // Seed for noise variation (encode isWhite in high bit)
+        // Seed for noise variation and layer decoding in shader:
+        // layer is encoded in the integer decade (0, 10, 20), random in fractional part.
         const isWhite = isWhiteArray ? isWhiteArray[i] > 0.5 : false;
-        data[idx + 3] = Math.random() + (isWhite ? 10.0 : 0.0);
+        const layer = layerArray ? Math.max(0, Math.min(2, Math.round(layerArray[i]))) : isWhite ? 2 : 1;
+        data[idx + 3] = layer * 10.0 + Math.random();
       } else {
         data[idx + 0] = 0;
         data[idx + 1] = 0;
@@ -235,7 +243,8 @@ export class ParticleCompute {
     deltaTime: number,
     orbRadius: number,
     pointerLocal: THREE.Vector3 | null,
-    pointerEnergy: number
+    pointerEnergy: number,
+    flowTexture: THREE.Texture | null
   ): void {
     // Clamp deltaTime to prevent physics explosion on tab switch
     const dt = Math.min(deltaTime, 0.05);
@@ -269,6 +278,8 @@ export class ParticleCompute {
       velUniforms.uPointerLocal.value.set(0, 0, -999);
     }
     velUniforms.uPointerEnergy.value = pointerEnergy;
+    velUniforms.uFlowTexture.value = flowTexture;
+    velUniforms.uFlowTextureInfluence.value = flowTexture ? 0.95 : 0.0;
 
     // Run compute
     this.gpuCompute.compute();
