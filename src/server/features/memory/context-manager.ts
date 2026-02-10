@@ -21,6 +21,7 @@ import { recordBulkAccess } from "@/features/memory/decay";
 import { posthogCaptureEvent } from "@/server/lib/posthog";
 import { getPendingScheduleProposal } from "@/features/calendar/schedule-proposal";
 import { scanForAttentionItems } from "@/features/ai/proactive/scanner";
+import { createCalendarEventProviders } from "@/features/calendar/event-provider";
 
 const logger = createScopedLogger("ContextManager");
 
@@ -63,12 +64,23 @@ export interface PendingApprovalState {
     tool: string;
     description: string;
     argsSummary: string;
+    draftId?: string;
+}
+
+/** Most recently created draft surfaced to the user in this conversation. */
+export interface PendingDraftState {
+    draftId: string;
+    summary?: string;
+    subject?: string;
+    to?: string[];
+    createdAt: string;
 }
 
 /** Injected only when present; enables natural-language resolution without interceptors. */
 export interface PendingStateContext {
     scheduleProposal?: PendingScheduleProposalState;
     approvals?: PendingApprovalState[];
+    activeDraft?: PendingDraftState;
 }
 
 export interface ContextPack {
@@ -145,6 +157,55 @@ export interface ContextBuildOptions {
     includePendingState?: boolean;
     includeDomainData?: boolean;
     includeAttentionItems?: boolean;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null;
+}
+
+function normalizeRecipientList(value: unknown): string[] | undefined {
+    if (!Array.isArray(value)) return undefined;
+    const list = value.filter((item): item is string => typeof item === "string").slice(0, 10);
+    return list.length > 0 ? list : undefined;
+}
+
+function extractActiveDraftFromHistory(history: ConversationMessage[]): PendingDraftState | undefined {
+    const sorted = [...history].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    const staleThresholdMs = Date.now() - 24 * 60 * 60 * 1000;
+
+    for (const message of sorted) {
+        if (message.role !== "assistant") continue;
+        if (message.createdAt.getTime() < staleThresholdMs) break;
+
+        const content = (message.content ?? "").toLowerCase();
+        if (content.includes("email sent successfully") || content.includes("draft discarded")) {
+            return undefined;
+        }
+
+        if (!isRecord(message.toolCalls)) continue;
+        const toolCalls = message.toolCalls as Record<string, unknown>;
+        const candidates: unknown[] = [];
+        if (isRecord(toolCalls.interactive)) candidates.push(toolCalls.interactive);
+        if (Array.isArray(toolCalls.interactivePayloads)) {
+            candidates.push(...toolCalls.interactivePayloads);
+        }
+
+        for (const candidate of candidates) {
+            if (!isRecord(candidate)) continue;
+            if (candidate.type !== "draft_created") continue;
+            const draftId = typeof candidate.draftId === "string" ? candidate.draftId : undefined;
+            if (!draftId) continue;
+            return {
+                draftId,
+                summary: typeof candidate.summary === "string" ? candidate.summary : undefined,
+                subject: typeof candidate.subject === "string" ? candidate.subject : undefined,
+                to: normalizeRecipientList(candidate.to),
+                createdAt: message.createdAt.toISOString(),
+            };
+        }
+    }
+
+    return undefined;
 }
 
 export class ContextManager {
@@ -235,9 +296,71 @@ export class ContextManager {
                 })
                 : Promise.resolve(null);
 
-        const upcomingEventsPromise = Promise.resolve(
-            [] as Array<{ id: string; title: string; start: Date; end: Date; attendees?: string[]; location?: string }>,
-        );
+        const upcomingEventsPromise = includeDomainData
+            ? (async () => {
+                try {
+                    const providers = await createCalendarEventProviders(emailAccount.id, logger);
+                    if (providers.length === 0) return [];
+
+                    const now = new Date();
+                    const windowEnd = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+                    const results = await Promise.allSettled(
+                        providers.map((provider) =>
+                            provider.fetchEvents({
+                                timeMin: now,
+                                timeMax: windowEnd,
+                                maxResults: 20,
+                            }),
+                        ),
+                    );
+
+                    const dedupe = new Set<string>();
+                    const upcoming = results
+                        .filter(
+                            (result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof providers[number]["fetchEvents"]>>> =>
+                                result.status === "fulfilled",
+                        )
+                        .flatMap((result) => result.value)
+                        .filter((event) => {
+                            const key = `${event.id}:${event.startTime.toISOString()}:${event.endTime.toISOString()}`;
+                            if (dedupe.has(key)) return false;
+                            dedupe.add(key);
+                            return true;
+                        })
+                        .map((event) => ({
+                            id: event.id,
+                            title: event.title || "Untitled",
+                            start: event.startTime,
+                            end: event.endTime,
+                            attendees: event.attendees
+                                .map((attendee) => attendee.email)
+                                .filter(Boolean)
+                                .slice(0, 10),
+                            location: event.location ?? undefined,
+                        }))
+                        .sort((a, b) => a.start.getTime() - b.start.getTime())
+                        .slice(0, 20);
+
+                    return upcoming;
+                } catch (error) {
+                    logger.warn("Failed to load upcoming events for context", {
+                        userId: user.id,
+                        emailAccountId: emailAccount.id,
+                        error: error instanceof Error ? error.message : String(error),
+                    });
+                    return [];
+                }
+            })()
+            : Promise.resolve(
+                [] as Array<{
+                    id: string;
+                    title: string;
+                    start: Date;
+                    end: Date;
+                    attendees?: string[];
+                    location?: string;
+                }>,
+            );
 
         const recentEmailsPromise = includeDomainData
             ? prisma.emailMessage
@@ -343,6 +466,7 @@ export class ContextManager {
         const history: ConversationMessage[] = merged.sort(
             (a, b) => a.createdAt.getTime() - b.createdAt.getTime()
         );
+        const activeDraft = extractActiveDraftFromHistory(history);
 
         // 2b. Fetch pending state (only when present) for natural-language resolution
         const [pendingProposal, pendingApprovalRows] = includePendingState
@@ -407,16 +531,28 @@ export class ContextManager {
         });
         if (sendApprovals.length > 0) {
             const approvals: PendingApprovalState[] = sendApprovals.map((r) => {
-                const p = r.requestPayload as { tool?: string; description?: string; args?: Record<string, unknown> };
+                const p = r.requestPayload as {
+                    tool?: string;
+                    description?: string;
+                    args?: Record<string, unknown>;
+                    draftId?: string;
+                };
                 const argsSummary =
                     typeof p?.args === "object" && p.args !== null
                         ? JSON.stringify(p.args).slice(0, 120) + (JSON.stringify(p.args).length > 120 ? "…" : "")
                         : "";
+                const draftId =
+                    typeof p?.draftId === "string"
+                        ? p.draftId
+                        : typeof p?.args?.draftId === "string"
+                            ? p.args.draftId
+                            : undefined;
                 return {
                     id: r.id,
                     tool: p?.tool ?? "send",
                     description: p?.description ?? "Send email",
                     argsSummary,
+                    draftId,
                 };
             });
             pendingState = {
@@ -445,6 +581,12 @@ export class ContextManager {
             pendingState = {
                 ...pendingState,
                 approvals: (pendingState?.approvals ?? []).concat(approvals),
+            };
+        }
+        if (activeDraft) {
+            pendingState = {
+                ...pendingState,
+                activeDraft,
             };
         }
 
