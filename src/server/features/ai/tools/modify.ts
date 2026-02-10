@@ -28,6 +28,7 @@ import {
     parseDateBoundInTimeZone,
     parseLocalDateTimeInput,
 } from "./timezone";
+import { handleCalendarReschedule } from "./calendar-reschedule";
 import {
     applyAiConfigPatch,
     applyDigestScheduleForEmailAccount,
@@ -205,6 +206,9 @@ Calendar changes:
 - title, description, location, start, end, allDay, isRecurring, recurrenceRule, timeZone
 - mode: "single" | "series"
 - calendarId (optional)
+- rescheduleStrategy: "later" | "earlier" | "next_available" | "exact"
+- reschedule: string or object form of strategy (e.g. "later", { strategy: "next_available" })
+- start without end keeps existing event duration; end without start does the same
 
 Task changes:
 - title, description, durationMinutes, status, priority, energyLevel, preferredTime
@@ -757,6 +761,24 @@ Preferences changes:
                             ]
                         }
                     };
+                }
+
+                const rescheduleResult = await handleCalendarReschedule({
+                    ids,
+                    calendarId,
+                    mode,
+                    changes,
+                    start,
+                    end,
+                    timeZoneInput,
+                    effectiveTimeZone,
+                    providers: { calendar: providers.calendar },
+                });
+                if (rescheduleResult) {
+                    if (rescheduleResult.success) {
+                        await scheduleTasksForUser({ userId, emailAccountId, source: "ai" });
+                    }
+                    return rescheduleResult;
                 }
 
                 const results = await Promise.all(ids.map((id: string) =>

@@ -1,5 +1,4 @@
 import type { calendar_v3 } from "@googleapis/calendar";
-import { env } from "@/env";
 import type { Logger } from "@/server/lib/logger";
 import { getCalendarClientWithRefresh } from "@/features/calendar/client";
 import { logCalendarAction } from "@/features/calendar/action-log";
@@ -57,27 +56,7 @@ export async function createGoogleEvent(
   params: GoogleCalendarConnectionParams,
   calendarId: string,
   event: GoogleCalendarEventInput,
-  options?: { dryRun?: boolean },
 ) {
-  const dryRun = options?.dryRun ?? env.CALENDAR_ACTIONS_DRY_RUN;
-  if (dryRun && params.userId) {
-    await logCalendarAction({
-      userId: params.userId,
-      provider: "google",
-      action: "create",
-      calendarId,
-      dryRun: true,
-      emailAccountId: params.emailAccountId,
-      payload: event,
-    });
-    return {
-      id: "dry-run",
-      summary: event.title,
-      start: { dateTime: event.start.toISOString() },
-      end: { dateTime: event.end.toISOString() },
-    } as calendar_v3.Schema$Event;
-  }
-
   const calendar = await getGoogleCalendarClient(params);
 
   const recurrence = event.isRecurring
@@ -137,23 +116,7 @@ export async function updateGoogleEvent(
   calendarId: string,
   eventId: string,
   event: GoogleCalendarEventUpdate,
-  options?: { dryRun?: boolean },
 ) {
-  const dryRun = options?.dryRun ?? env.CALENDAR_ACTIONS_DRY_RUN;
-  if (dryRun && params.userId) {
-    await logCalendarAction({
-      userId: params.userId,
-      provider: "google",
-      action: "update",
-      calendarId,
-      eventId,
-      dryRun: true,
-      emailAccountId: params.emailAccountId,
-      payload: event,
-    });
-    return { id: eventId } as calendar_v3.Schema$Event;
-  }
-
   const calendar = await getGoogleCalendarClient(params);
   const timeZone = event.timeZone ?? "UTC";
 
@@ -324,23 +287,7 @@ export async function deleteGoogleEvent(
   calendarId: string,
   eventId: string,
   mode: "single" | "series" = "single",
-  options?: { dryRun?: boolean },
 ) {
-  const dryRun = options?.dryRun ?? env.CALENDAR_ACTIONS_DRY_RUN;
-  if (dryRun && params.userId) {
-    await logCalendarAction({
-      userId: params.userId,
-      provider: "google",
-      action: "delete",
-      calendarId,
-      eventId,
-      dryRun: true,
-      emailAccountId: params.emailAccountId,
-      payload: { mode },
-    });
-    return;
-  }
-
   const calendar = await getGoogleCalendarClient(params);
 
   try {

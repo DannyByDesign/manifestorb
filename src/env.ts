@@ -55,7 +55,7 @@ export const env = createEnv({
     GOOGLE_API_KEY: z.string().min(1), // Primary provider for base tier
     OPENAI_API_KEY: z.string().min(1), // Required for embeddings only
 
-    OPENAI_ZERO_DATA_RETENTION: z.coerce.boolean().optional().default(false),
+    OPENAI_ZERO_DATA_RETENTION: booleanString.default(false),
 
     UPSTASH_REDIS_URL: z.string().optional(),
     UPSTASH_REDIS_TOKEN: z.string().optional(),
@@ -73,8 +73,8 @@ export const env = createEnv({
     SENTRY_ORGANIZATION: z.string().optional(),
     SENTRY_PROJECT: z.string().optional(),
 
-    DISABLE_LOG_ZOD_ERRORS: z.coerce.boolean().optional(),
-    ENABLE_DEBUG_LOGS: z.coerce.boolean().default(false),
+    DISABLE_LOG_ZOD_ERRORS: booleanString,
+    ENABLE_DEBUG_LOGS: booleanString.default(false),
 
     AI_RULE_TIMEOUT_MS: z.string().optional(),
 
@@ -103,10 +103,9 @@ export const env = createEnv({
     INTERNAL_API_URL: z.string().optional(),
     INTERNAL_API_KEY: z.string(),
     WHITELIST_FROM: z.string().optional(),
-    USE_BACKUP_MODEL: z.coerce.boolean().optional().default(false),
+    USE_BACKUP_MODEL: booleanString.default(false),
     HEALTH_API_KEY: z.string().optional(),
     JOBS_SHARED_SECRET: z.string().optional(),
-    CALENDAR_ACTIONS_DRY_RUN: z.coerce.boolean().optional().default(false),
     SIDECAR_URL: z.string().url().optional(), // URL of the surfaces sidecar for background jobs
     SURFACES_API_URL: z.string().url().optional(), // URL of the surfaces sidecar for push notifications
     OAUTH_PROXY_URL: z
@@ -148,7 +147,7 @@ export const env = createEnv({
     NEXT_PUBLIC_POSTHOG_HERO_AB: z.string().optional(),
     NEXT_PUBLIC_POSTHOG_ONBOARDING_SURVEY_ID: z.string().optional(),
     NEXT_PUBLIC_BASE_URL: z.string(),
-    NEXT_PUBLIC_CONTACTS_ENABLED: z.coerce.boolean().optional().default(false),
+    NEXT_PUBLIC_CONTACTS_ENABLED: booleanString.default(false),
     NEXT_PUBLIC_EMAIL_SEND_ENABLED: booleanString.default(true),
     NEXT_PUBLIC_SENTRY_DSN: z.string().optional(),
     NEXT_PUBLIC_SUPPORT_EMAIL: z
@@ -170,16 +169,16 @@ export const env = createEnv({
       .boolean()
       .optional()
       .default(false),
-    NEXT_PUBLIC_USE_AEONIK_FONT: z.coerce.boolean().optional().default(false),
-    NEXT_PUBLIC_BYPASS_PREMIUM_CHECKS: z.coerce.boolean().optional(),
-    NEXT_PUBLIC_DIGEST_ENABLED: z.coerce.boolean().optional(),
-    NEXT_PUBLIC_MEETING_BRIEFS_ENABLED: z.coerce.boolean().optional(),
-    NEXT_PUBLIC_FOLLOW_UP_REMINDERS_ENABLED: z.coerce.boolean().optional(),
-    NEXT_PUBLIC_INTEGRATIONS_ENABLED: z.coerce.boolean().optional(),
-    NEXT_PUBLIC_SMART_FILING_ENABLED: z.coerce.boolean().optional(),
-    NEXT_PUBLIC_CLEANER_ENABLED: z.coerce.boolean().optional(),
-    NEXT_PUBLIC_IS_RESEND_CONFIGURED: z.coerce.boolean().optional(),
-    NEXT_PUBLIC_CALENDAR_SCHEDULING_ENABLED: z.coerce.boolean().optional(),
+    NEXT_PUBLIC_USE_AEONIK_FONT: booleanString.default(false),
+    NEXT_PUBLIC_BYPASS_PREMIUM_CHECKS: booleanString,
+    NEXT_PUBLIC_DIGEST_ENABLED: booleanString,
+    NEXT_PUBLIC_MEETING_BRIEFS_ENABLED: booleanString,
+    NEXT_PUBLIC_FOLLOW_UP_REMINDERS_ENABLED: booleanString,
+    NEXT_PUBLIC_INTEGRATIONS_ENABLED: booleanString,
+    NEXT_PUBLIC_SMART_FILING_ENABLED: booleanString,
+    NEXT_PUBLIC_CLEANER_ENABLED: booleanString,
+    NEXT_PUBLIC_IS_RESEND_CONFIGURED: booleanString,
+    NEXT_PUBLIC_CALENDAR_SCHEDULING_ENABLED: booleanString,
   },
   // For Next.js >= 13.4.4, you only need to destructure client variables:
   experimental__runtimeEnv: {

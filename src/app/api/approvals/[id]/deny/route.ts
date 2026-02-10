@@ -20,6 +20,21 @@ const approvalDecisionBodySchema = z
     })
     .strict();
 
+function parseSendDraftPayload(payload: unknown): {
+    actionType?: string;
+    draftId?: string;
+    emailAccountId?: string;
+} {
+    if (!payload || typeof payload !== "object") return {};
+    const record = payload as Record<string, unknown>;
+    return {
+        actionType: typeof record.actionType === "string" ? record.actionType : undefined,
+        draftId: typeof record.draftId === "string" ? record.draftId : undefined,
+        emailAccountId:
+            typeof record.emailAccountId === "string" ? record.emailAccountId : undefined,
+    };
+}
+
 export async function POST(req: NextRequest, context: { params: Promise<{ id: string }> }) {
     const { id } = await context.params;
 
@@ -95,16 +110,65 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
             }
         });
 
+        const payload = parseSendDraftPayload(request?.requestPayload);
+        const shouldDiscardDraft = payload.actionType === "send_draft" && Boolean(payload.draftId);
+        const cleanup = {
+            attempted: shouldDiscardDraft,
+            deleted: false,
+            error: undefined as string | undefined,
+        };
+
+        if (shouldDiscardDraft && payload.draftId) {
+            try {
+                const { deleteUserDraftById } = await import("@/features/drafts/service");
+                const cleanupResult = await deleteUserDraftById({
+                    userId: authorization.actingUserId,
+                    draftId: payload.draftId,
+                    logger,
+                    emailAccountId: payload.emailAccountId,
+                });
+                if (cleanupResult.success) {
+                    cleanup.deleted = true;
+                } else {
+                    cleanup.error = "Email account not found for draft cleanup.";
+                }
+            } catch (cleanupErr) {
+                const message = cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr);
+                // Idempotent cleanup: draft may already be gone.
+                if (message === "Draft not found") {
+                    cleanup.deleted = true;
+                } else {
+                    cleanup.error = message;
+                    logger.error("Failed to discard draft after denial", {
+                        approvalRequestId: id,
+                        draftId: payload.draftId,
+                        error: message,
+                    });
+                }
+            }
+        }
+
         if (request && request.user) {
             const { ChannelRouter } = await import("@/features/channels/router");
             const router = new ChannelRouter();
 
-            await router.pushMessage(request.userId, "Denied. I cancelled that request.").catch(err => {
+            const denialMessage = shouldDiscardDraft
+                ? (cleanup.deleted
+                    ? "Denied. I cancelled that request and discarded the draft."
+                    : "Denied. I cancelled that request, but I could not discard the draft automatically.")
+                : "Denied. I cancelled that request.";
+
+            await router.pushMessage(request.userId, denialMessage).catch(err => {
                 logger.error("Failed to send denial notification", { error: err });
             });
         }
 
-        return NextResponse.json(result);
+        return NextResponse.json({
+            ...result,
+            draftCleanup: cleanup.attempted
+                ? { deleted: cleanup.deleted, error: cleanup.error }
+                : undefined,
+        });
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         const statusMatch = msg.match(/Cannot decide on request in status: (\w+)/);

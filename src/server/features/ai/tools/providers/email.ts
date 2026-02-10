@@ -41,6 +41,8 @@ export interface EmailProvider {
         from?: string;
         to?: string;
         hasAttachment?: boolean;
+        sentByMe?: boolean;
+        receivedByMe?: boolean;
     }): Promise<{
         messages: ParsedMessage[];
         nextPageToken?: string;
@@ -131,15 +133,25 @@ export async function createEmailProvider(
             from?: string;
             to?: string;
             hasAttachment?: boolean;
+            sentByMe?: boolean;
+            receivedByMe?: boolean;
         },
     ): ParsedMessage[] => {
         const shouldCheckText = normalizeText(options.text).length > 0;
+        const normalizedOwnerEmail = normalizeText(account.email);
+        const containsOwnerEmail = (value: string | undefined): boolean => {
+            const normalized = normalizeText(value);
+            if (!normalizedOwnerEmail || !normalized) return false;
+            return normalized.includes(normalizedOwnerEmail);
+        };
 
         return messages.filter((message) => {
             const subject = message.subject || message.headers?.subject || "";
             const body = message.textPlain || message.snippet || "";
             const from = message.headers?.from || "";
             const to = message.headers?.to || "";
+            const cc = message.headers?.cc || "";
+            const bcc = message.headers?.bcc || "";
 
             if (!includesLooseTerm(subject, options.subjectContains)) return false;
             if (!includesLooseTerm(body, options.bodyContains)) return false;
@@ -156,6 +168,19 @@ export async function createEmailProvider(
                 if (!includesLooseTerm(combined, options.text)) return false;
             }
 
+            if (options.sentByMe !== undefined) {
+                const sentByMe = containsOwnerEmail(from);
+                if (sentByMe !== options.sentByMe) return false;
+            }
+
+            if (options.receivedByMe !== undefined) {
+                const receivedByMe =
+                    containsOwnerEmail(to) ||
+                    containsOwnerEmail(cc) ||
+                    containsOwnerEmail(bcc);
+                if (receivedByMe !== options.receivedByMe) return false;
+            }
+
             return true;
         });
     };
@@ -167,6 +192,8 @@ export async function createEmailProvider(
         from?: string;
         to?: string;
         hasAttachment?: boolean;
+        sentByMe?: boolean;
+        receivedByMe?: boolean;
     }): boolean =>
         Boolean(
             normalizeText(options.subjectContains) ||
@@ -174,7 +201,9 @@ export async function createEmailProvider(
             normalizeText(options.text) ||
             normalizeText(options.from) ||
             normalizeText(options.to) ||
-            options.hasAttachment !== undefined,
+            options.hasAttachment !== undefined ||
+            options.sentByMe !== undefined ||
+            options.receivedByMe !== undefined,
         );
 
     const runWithConcurrency = async <T>(
@@ -205,6 +234,8 @@ export async function createEmailProvider(
             from,
             to,
             hasAttachment,
+            sentByMe,
+            receivedByMe,
         }) => {
             try {
                 const localFilterOptions = {
@@ -214,6 +245,8 @@ export async function createEmailProvider(
                     from,
                     to,
                     hasAttachment,
+                    sentByMe,
+                    receivedByMe,
                 };
 
                 if (!hasLocalFilter(localFilterOptions)) {

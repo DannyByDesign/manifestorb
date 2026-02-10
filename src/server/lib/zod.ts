@@ -1,10 +1,17 @@
 import { z } from "zod";
 
-// Parses boolean env vars: "false" → false, any other value → true, unset → uses .default()
+// Parses boolean env vars consistently.
+// Truthy: "true", "1", "yes", "on"
+// Falsy: "false", "0", "no", "off"
+// Empty/unset: undefined (so schema defaults can apply)
 export const booleanString = z.preprocess((val) => {
-  if (!val) return undefined;
-  if (String(val).toLowerCase() === "false") return false;
-  return true;
+  if (val === undefined || val === null) return undefined;
+  if (typeof val === "boolean") return val;
+  const normalized = String(val).trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (["false", "0", "no", "off"].includes(normalized)) return false;
+  if (["true", "1", "yes", "on"].includes(normalized)) return true;
+  return undefined;
 }, z.boolean().optional());
 
 /**

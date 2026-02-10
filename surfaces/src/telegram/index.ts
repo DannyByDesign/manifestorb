@@ -16,6 +16,20 @@ import {
 const CORE_BASE_URL = process.env.CORE_BASE_URL || "http://localhost:3000";
 const SHARED_SECRET = process.env.SURFACES_SHARED_SECRET || "dev-secret";
 
+type CallbackButtonContext = {
+    editMessageReplyMarkup: (markup: { inline_keyboard: [] }) => Promise<unknown>;
+};
+
+async function clearCallbackButtons(ctx: CallbackButtonContext) {
+    try {
+        await ctx.editMessageReplyMarkup({ inline_keyboard: [] });
+    } catch (err) {
+        console.warn("[Surfaces][Telegram] Failed to clear callback buttons", {
+            error: err instanceof Error ? err.message : String(err),
+        });
+    }
+}
+
 export function startTelegram() {
     const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
     const tokenLooksPlaceholder =
@@ -42,6 +56,9 @@ export function startTelegram() {
 
         // Handle draft actions (draft_send:draftId:emailAccountId:userId)
         if (data.startsWith("draft_send:") || data.startsWith("draft_discard:")) {
+            await clearCallbackButtons(ctx);
+            await ctx.answerCbQuery(toPlainSidecarText("Processing..."));
+
             const parts = data.split(":");
             const action = parts[0]; // draft_send or draft_discard
             const draftId = parts[1];
@@ -61,11 +78,9 @@ export function startTelegram() {
                 });
 
                 if (response.ok) {
-                    await ctx.answerCbQuery(toPlainSidecarText("Email sent!"));
-                    await ctx.editMessageText(toPlainSidecarText("✅ Email sent successfully!"), { reply_markup: { inline_keyboard: [] } });
+                    await ctx.reply(toPlainSidecarText("success"));
                 } else {
-                    await ctx.answerCbQuery(toPlainSidecarText("Failed to send"));
-                    await ctx.editMessageText(toPlainSidecarText("❌ Failed to send email."), { reply_markup: { inline_keyboard: [] } });
+                    await ctx.reply(toPlainSidecarText("Failed to send email."));
                 }
             } else if (action === "draft_discard") {
                 console.log(`[Surfaces] Telegram: Discarding draft ${draftId}`);
@@ -78,10 +93,9 @@ export function startTelegram() {
                 });
 
                 if (response.ok) {
-                    await ctx.answerCbQuery(toPlainSidecarText("Draft discarded"));
-                    await ctx.editMessageText(toPlainSidecarText("🗑️ Draft discarded."), { reply_markup: { inline_keyboard: [] } });
+                    await ctx.reply(toPlainSidecarText("success"));
                 } else {
-                    await ctx.answerCbQuery(toPlainSidecarText("Failed to discard"));
+                    await ctx.reply(toPlainSidecarText("Failed to discard draft."));
                 }
             }
             return;
@@ -89,6 +103,9 @@ export function startTelegram() {
 
         // Handle ambiguous time actions (ambiguous:choice:requestId)
         if (data.startsWith("ambiguous:")) {
+            await clearCallbackButtons(ctx);
+            await ctx.answerCbQuery(toPlainSidecarText("Processing..."));
+
             const [, choice, requestId] = data.split(":");
             if (choice !== "earlier" && choice !== "later") return;
 
@@ -102,10 +119,9 @@ export function startTelegram() {
             });
 
             if (response.ok) {
-                await ctx.answerCbQuery(toPlainSidecarText(`Using the ${choice} time`));
-                await ctx.editMessageText(toPlainSidecarText(`Got it — using the ${choice} time. ✅`), { reply_markup: { inline_keyboard: [] } });
+                await ctx.reply(toPlainSidecarText("success"));
             } else {
-                await ctx.answerCbQuery(toPlainSidecarText("Failed to resolve time"));
+                await ctx.reply(toPlainSidecarText("Failed to resolve that time."));
             }
             return;
         }
@@ -113,6 +129,9 @@ export function startTelegram() {
         // Handle approval actions
         const [action, requestId] = data.split(":");
         if (action !== "approve" && action !== "deny") return;
+
+        await clearCallbackButtons(ctx);
+        await ctx.answerCbQuery(toPlainSidecarText("Processing..."));
 
         console.log(`[Surfaces] Telegram: Processing ${action} for request ${requestId}`);
 
@@ -128,11 +147,8 @@ export function startTelegram() {
             })
         });
 
-        if (response.ok) {
-            await ctx.answerCbQuery("success");
-            await ctx.editMessageText("success", { reply_markup: { inline_keyboard: [] } });
-        } else {
-            await ctx.answerCbQuery(toPlainSidecarText(`Failed to ${action}`));
+        if (!response.ok) {
+            await ctx.reply(toPlainSidecarText(`Failed to ${action} request.`));
         }
     });
 

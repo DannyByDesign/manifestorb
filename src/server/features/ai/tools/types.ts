@@ -4,6 +4,7 @@ import { type EmailProvider } from "./providers/email";
 import { type CalendarProvider } from "./providers/calendar";
 import { type AutomationProvider } from "./providers/automation";
 import { type DriveProvider } from "./providers/drive";
+import { type Logger } from "@/server/lib/logger";
 
 export type Resource = "email" | "calendar" | "drive" | "contacts" | "automation" | "knowledge" | "preferences" | "patterns" | "report" | "notification" | "approval" | "summary" | "task";
 
@@ -17,7 +18,7 @@ export interface Filter {
 }
 
 export interface Changes {
-    [key: string]: any;
+    [key: string]: unknown;
 }
 
 export interface ToolContext {
@@ -25,9 +26,13 @@ export interface ToolContext {
     emailAccountId: string;
     /** Optional: link created tasks to the source email (cross-feature FK) */
     emailMessageId?: string;
+    /** Optional: source email thread linkage for contextual operations. */
+    emailThreadId?: string;
     /** Optional: link created tasks to the conversation (cross-feature FK) */
     conversationId?: string;
-    logger: any;
+    /** Optional: raw user message for intent-sensitive tool behavior. */
+    currentMessage?: string;
+    logger: Logger;
     providers: {
         email: EmailProvider;
         calendar: CalendarProvider;
@@ -74,7 +79,7 @@ export interface InteractivePayload {
 
 export interface AmbiguousTimePayload {
     originalTool: "create" | "modify";
-    originalArgs: Record<string, any>;
+    originalArgs: Record<string, unknown>;
     options: {
         earlier: { start: string; end?: string };
         later: { start: string; end?: string };
@@ -85,9 +90,14 @@ export interface AmbiguousTimePayload {
 
 export interface ToolResult {
     success: boolean;
-    data?: any;
+    data?: unknown;
     error?: string;
     message?: string;
+    clarification?: {
+        kind: "resource" | "missing_fields" | "invalid_fields" | "permissions" | "rate_limit" | "other";
+        prompt: string;
+        missingFields?: string[];
+    };
     truncated?: boolean;
     paging?: Record<string, unknown>;
     meta?: {

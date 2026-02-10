@@ -16,7 +16,7 @@ Core calendar primitives, provider adapters, and scheduling engine plumbing.
   - `scheduling/adapters/CalendarProviderAdapter.ts`: bridges provider events into scheduling.
 - **Guardrails + observability**:
   - `action-log.ts`: audit logging for calendar mutations.
-  - Env flags: `NEXT_PUBLIC_CALENDAR_SCHEDULING_ENABLED`, `CALENDAR_ACTIONS_DRY_RUN`.
+  - Env flag: `NEXT_PUBLIC_CALENDAR_SCHEDULING_ENABLED`.
 - **Availability utilities**:
   - `ai/availability.ts`, `unified-availability.ts`: provider-agnostic availability helpers.
 
@@ -25,7 +25,7 @@ This directory provides event access, scheduling, conflict checks, and watch ren
 - **Agent tools**: Calendar event create/update/delete wired into AI tools (draft-first; user approval). Query/get use calendar provider.
 - **Schedule something**: AI proposes 1–3 slots; user selects via chat (e.g. 1/2/3) or approval UI.
 - **Conflict resolution**: Webhook detects external calendar changes (deduped); schedule proposal + resolver + verbal selection.
-- **Watch renewal**: Cron `POST /api/google/calendar/watch/renew` (CRON_SECRET). Feature flags: `NEXT_PUBLIC_CALENDAR_SCHEDULING_ENABLED`, `CALENDAR_ACTIONS_DRY_RUN`.
+- **Watch renewal**: Cron `POST /api/google/calendar/watch/renew` (CRON_SECRET). Feature flag: `NEXT_PUBLIC_CALENDAR_SCHEDULING_ENABLED`.
 
 ## Internal Reconcile (Sidecar)
 - Sidecar runs a reconciliation job that calls `POST /api/calendar/sync/reconcile`.

@@ -18,6 +18,7 @@ export interface CalendarProvider {
   searchEvents(
     query: string,
     range: { start: Date; end: Date },
+    attendeeEmail?: string,
   ): Promise<CalendarEvent[]>;
   findAvailableSlots(options: {
     durationMinutes: number;
@@ -143,7 +144,7 @@ export async function createCalendarProvider(
   };
 
   return {
-    searchEvents: async (query, range) => {
+    searchEvents: async (query, range, attendeeEmail) => {
       const preferences = await prisma.taskPreference.findUnique({
         where: { userId },
         select: { selectedCalendarIds: true },
@@ -184,6 +185,14 @@ export async function createCalendarProvider(
             if (!provider) {
               return Promise.resolve<CalendarEvent[]>([]);
             }
+            if (attendeeEmail) {
+              return provider.fetchEventsWithAttendee({
+                attendeeEmail,
+                timeMin: range.start,
+                timeMax: range.end,
+                maxResults: 250,
+              });
+            }
             return provider.fetchEvents({
               timeMin: range.start,
               timeMax: range.end,
@@ -195,13 +204,21 @@ export async function createCalendarProvider(
         events = results.flat();
       } else {
         const results = await Promise.all(
-          providers.map((provider) =>
-            provider.fetchEvents({
+          providers.map((provider) => {
+            if (attendeeEmail) {
+              return provider.fetchEventsWithAttendee({
+                attendeeEmail,
+                timeMin: range.start,
+                timeMax: range.end,
+                maxResults: 250,
+              });
+            }
+            return provider.fetchEvents({
               timeMin: range.start,
               timeMax: range.end,
               maxResults: 250,
-            }),
-          ),
+            });
+          }),
         );
         events = results.flat();
       }
@@ -226,6 +243,27 @@ export async function createCalendarProvider(
       const preferences = await prisma.taskPreference.findUnique({
         where: { userId },
       });
+      const fallbackCalendars = await prisma.calendar.findMany({
+        where: {
+          connection: {
+            emailAccountId: account.id,
+            isConnected: true,
+          },
+          isEnabled: true,
+        },
+        select: { calendarId: true },
+      });
+      const fallbackCalendarIds = fallbackCalendars
+        .map((calendar) => calendar.calendarId)
+        .filter((id) => id.length > 0);
+      const selectedCalendarIds =
+        (preferences?.selectedCalendarIds ?? []).filter(Boolean).length > 0
+          ? (preferences?.selectedCalendarIds ?? []).filter(Boolean)
+          : fallbackCalendarIds;
+
+      if (selectedCalendarIds.length === 0) {
+        throw new Error("No enabled calendars available for availability checks.");
+      }
       const defaultCalendarTimeZone = await resolveDefaultCalendarTimeZone({
         userId,
         emailAccountId: account.id,
@@ -239,7 +277,7 @@ export async function createCalendarProvider(
             workHourEnd: preferences.workHourEnd,
             workDays: preferences.workDays,
             bufferMinutes: preferences.bufferMinutes,
-            selectedCalendarIds: preferences.selectedCalendarIds,
+            selectedCalendarIds,
             timeZone: defaultCalendarTimeZone.timeZone,
             groupByProject: preferences.groupByProject,
           }
@@ -248,7 +286,7 @@ export async function createCalendarProvider(
             workHourEnd: 17,
             workDays: [1, 2, 3, 4, 5],
             bufferMinutes: 15,
-            selectedCalendarIds: [],
+            selectedCalendarIds,
             timeZone: defaultCalendarTimeZone.timeZone,
             groupByProject: false,
           };

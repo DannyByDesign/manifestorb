@@ -46,11 +46,18 @@ function createUnavailableAutomationProvider(reason: string): AutomationProvider
 export async function createAgentTools({
     emailAccount,
     logger,
-    userId
+    userId,
+    toolContext,
 }: {
     emailAccount: ToolEmailAccount;
     logger: Logger;
     userId: string;
+    toolContext?: {
+        conversationId?: string;
+        sourceEmailMessageId?: string;
+        sourceEmailThreadId?: string;
+        currentMessage?: string;
+    };
 }) {
     // Initialize Providers
     const emailProvider = await createEmailProvider(emailAccount, logger);
@@ -90,6 +97,10 @@ export async function createAgentTools({
     const context: ToolContext = {
         userId,
         emailAccountId: emailAccount.id,
+        emailMessageId: toolContext?.sourceEmailMessageId,
+        emailThreadId: toolContext?.sourceEmailThreadId,
+        conversationId: toolContext?.conversationId,
+        currentMessage: toolContext?.currentMessage,
         logger,
         providers: {
             email: emailProvider,

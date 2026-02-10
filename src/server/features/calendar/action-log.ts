@@ -10,7 +10,6 @@ export async function logCalendarAction(params: {
   calendarId?: string;
   eventId?: string;
   emailAccountId?: string;
-  dryRun?: boolean;
   payload?: unknown;
   response?: unknown;
   error?: unknown;
@@ -24,7 +23,6 @@ export async function logCalendarAction(params: {
         calendarId: params.calendarId,
         eventId: params.eventId,
         emailAccountId: params.emailAccountId,
-        dryRun: params.dryRun ?? false,
         payload: params.payload ?? undefined,
         response: params.response ?? undefined,
         error: params.error ?? undefined,

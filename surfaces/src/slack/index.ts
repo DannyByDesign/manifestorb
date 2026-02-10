@@ -1,6 +1,7 @@
 import { App } from "@slack/bolt";
 import type { Block, KnownBlock } from "@slack/types";
 import {
+    fetchCanonicalSidecarThread,
     forwardToBrain,
     fetchOnboardingLinkUrl,
     toPlainSidecarText,
@@ -48,6 +49,41 @@ const WELCOME_MESSAGE =
 
 let assistantStatusSupported = true;
 let assistantStatusWarningLogged = false;
+const canonicalThreadByConversationKey = new Map<string, string>();
+
+function getConversationKey(params: { channelId: string; userId: string }) {
+    return `${params.channelId}:${params.userId}`;
+}
+
+function rememberCanonicalThread(params: {
+    channelId: string;
+    userId: string;
+    threadTs?: string | null;
+}) {
+    if (!params.threadTs) return;
+    canonicalThreadByConversationKey.set(getConversationKey(params), params.threadTs);
+}
+
+function resolveCanonicalThread(params: {
+    channelId: string;
+    userId: string;
+    incomingThreadTs?: string;
+    messageTs: string;
+}) {
+    if (params.incomingThreadTs) {
+        rememberCanonicalThread({
+            channelId: params.channelId,
+            userId: params.userId,
+            threadTs: params.incomingThreadTs,
+        });
+        return params.incomingThreadTs;
+    }
+    return (
+        canonicalThreadByConversationKey.get(
+            getConversationKey({ channelId: params.channelId, userId: params.userId }),
+        ) || params.messageTs
+    );
+}
 
 async function setSlackAssistantThreadStatus(params: {
     app: App;
@@ -109,6 +145,107 @@ async function clearSlackAssistantThinkingStatus(params: {
     await setSlackAssistantThreadStatus({ ...params, status: "" });
 }
 
+function getInteractionThreadContext(body: unknown): {
+    channelId?: string;
+    threadTs?: string;
+} {
+    if (!body || typeof body !== "object") return {};
+    const record = body as Record<string, unknown>;
+    const channelObj =
+        record.channel && typeof record.channel === "object"
+            ? (record.channel as Record<string, unknown>)
+            : undefined;
+    const messageObj =
+        record.message && typeof record.message === "object"
+            ? (record.message as Record<string, unknown>)
+            : undefined;
+    const containerObj =
+        record.container && typeof record.container === "object"
+            ? (record.container as Record<string, unknown>)
+            : undefined;
+    const channelId =
+        typeof channelObj?.id === "string"
+            ? channelObj.id
+            : undefined;
+    const threadTs =
+        typeof messageObj?.thread_ts === "string"
+            ? messageObj.thread_ts
+            : typeof messageObj?.ts === "string"
+                ? messageObj.ts
+                : typeof containerObj?.thread_ts === "string"
+                    ? containerObj.thread_ts
+                    : undefined;
+    return { channelId, threadTs };
+}
+
+function getInteractionMessageContext(body: unknown): {
+    channelId?: string;
+    messageTs?: string;
+    text?: string;
+    blocks?: SlackBlock[];
+} {
+    if (!body || typeof body !== "object") return {};
+    const record = body as Record<string, unknown>;
+    const channelObj =
+        record.channel && typeof record.channel === "object"
+            ? (record.channel as Record<string, unknown>)
+            : undefined;
+    const messageObj =
+        record.message && typeof record.message === "object"
+            ? (record.message as Record<string, unknown>)
+            : undefined;
+    const channelId = typeof channelObj?.id === "string" ? channelObj.id : undefined;
+    const messageTs = typeof messageObj?.ts === "string" ? messageObj.ts : undefined;
+    const text = typeof messageObj?.text === "string" ? messageObj.text : undefined;
+    const blocks = Array.isArray(messageObj?.blocks) ? (messageObj.blocks as SlackBlock[]) : undefined;
+    return { channelId, messageTs, text, blocks };
+}
+
+async function clearInteractionButtons(params: {
+    app: App;
+    body: unknown;
+}) {
+    const { app, body } = params;
+    const { channelId, messageTs, text, blocks } = getInteractionMessageContext(body);
+    if (!channelId || !messageTs || !Array.isArray(blocks)) return;
+
+    const nextBlocks = blocks.filter((block) => {
+        return (block?.type as string | undefined) !== "actions";
+    });
+
+    if (nextBlocks.length === blocks.length) return;
+
+    try {
+        await app.client.chat.update({
+            channel: channelId,
+            ts: messageTs,
+            text: toPlainSidecarText(text || "Processing request..."),
+            blocks: nextBlocks as unknown as (Block | KnownBlock)[],
+        });
+    } catch (err) {
+        console.warn("[Surfaces][Slack] Failed to clear interaction buttons", {
+            channelId,
+            messageTs,
+            error: err instanceof Error ? err.message : String(err),
+        });
+    }
+}
+
+async function replyToInteractionThread(params: {
+    app: App;
+    body: unknown;
+    text: string;
+}) {
+    const { app, body, text } = params;
+    const { channelId, threadTs } = getInteractionThreadContext(body);
+    if (!channelId) return;
+    await app.client.chat.postMessage({
+        channel: channelId,
+        thread_ts: threadTs,
+        text: toPlainSidecarText(text),
+    });
+}
+
 export async function startSlack() {
     const token = process.env.SLACK_BOT_TOKEN;
     if (!token) {
@@ -132,8 +269,9 @@ export async function startSlack() {
     });
 
     // Handle Approvals
-    app.action(/approve_request|deny_request/, async ({ body, action, ack, say }) => {
+    app.action(/approve_request|deny_request/, async ({ body, action, ack }) => {
         await ack();
+        await clearInteractionButtons({ app, body });
 
         if (action.type !== "button") return;
 
@@ -163,9 +301,7 @@ export async function startSlack() {
             responseBody = null;
         }
 
-        if (response.ok) {
-            await say?.("success");
-        } else {
+        if (!response.ok) {
             const detail = responseBody?.message || responseBody?.error || response.statusText;
             console.error("[Surfaces][Slack] Approval action failed", {
                 requestId,
@@ -174,13 +310,18 @@ export async function startSlack() {
                 detail,
                 userId: body.user.id,
             });
-            await say?.(toPlainSidecarText(`Failed to ${decision} request. ${detail}`));
+            await replyToInteractionThread({
+                app,
+                body,
+                text: `Failed to ${decision} request. ${detail}`,
+            });
         }
     });
 
     // Handle Ambiguous Time Choices
-    app.action(/ambiguous_earlier|ambiguous_later/, async ({ action, ack, say }) => {
+    app.action(/ambiguous_earlier|ambiguous_later/, async ({ body, action, ack }) => {
         await ack();
+        await clearInteractionButtons({ app, body });
 
         if (action.type !== "button") return;
         const actionId = ("action_id" in action) ? action.action_id : undefined;
@@ -198,15 +339,24 @@ export async function startSlack() {
         });
 
         if (response.ok) {
-            await say?.(toPlainSidecarText(`Got it — using the ${choice} time. ✅`));
+            await replyToInteractionThread({
+                app,
+                body,
+                text: `Got it — using the ${choice} time. ✅`,
+            });
         } else {
-            await say?.(toPlainSidecarText(`Failed to resolve that time. ${response.statusText}`));
+            await replyToInteractionThread({
+                app,
+                body,
+                text: `Failed to resolve that time. ${response.statusText}`,
+            });
         }
     });
 
     // Handle Draft Send/Discard
-    app.action(/draft_send|draft_discard/, async ({ action, ack, say }) => {
+    app.action(/draft_send|draft_discard/, async ({ body, action, ack }) => {
         await ack();
+        await clearInteractionButtons({ app, body });
 
         if (action.type !== "button") return;
 
@@ -216,7 +366,7 @@ export async function startSlack() {
         const [draftId, emailAccountId, userId] = (action.value || "").split(":");
 
         if (!draftId || !emailAccountId || !userId) {
-            await say?.(toPlainSidecarText("Invalid draft action data."));
+            await replyToInteractionThread({ app, body, text: "Invalid draft action data." });
             return;
         }
 
@@ -233,10 +383,10 @@ export async function startSlack() {
             });
 
             if (response.ok) {
-                await say?.(toPlainSidecarText("✅ Email sent successfully!"));
+                await replyToInteractionThread({ app, body, text: "✅ Email sent successfully!" });
             } else {
                 const error = await response.text();
-                await say?.(toPlainSidecarText(`❌ Failed to send email: ${error}`));
+                await replyToInteractionThread({ app, body, text: `❌ Failed to send email: ${error}` });
             }
         } else if (actionId === "draft_discard") {
             console.log(`[Surfaces] Discarding draft ${draftId}`);
@@ -249,9 +399,9 @@ export async function startSlack() {
             });
 
             if (response.ok) {
-                await say?.(toPlainSidecarText("🗑️ Draft discarded."));
+                await replyToInteractionThread({ app, body, text: "🗑️ Draft discarded." });
             } else {
-                await say?.(toPlainSidecarText("Failed to discard draft."));
+                await replyToInteractionThread({ app, body, text: "Failed to discard draft." });
             }
         }
     });
@@ -312,7 +462,7 @@ export async function startSlack() {
     });
 
     // Listen for messages
-    app.message(async ({ message, say }) => {
+    app.message(async ({ message }) => {
         const meta = toMessageMeta(message);
         try {
             touchPlatformEvent("slack");
@@ -350,7 +500,35 @@ export async function startSlack() {
             const userId = meta.user;
             const messageTs = meta.ts;
             const messageText = meta.text;
-            const statusThreadTs = meta.threadTs || messageTs;
+            const locallyResolvedThreadTs = resolveCanonicalThread({
+                channelId,
+                userId,
+                incomingThreadTs: meta.threadTs,
+                messageTs,
+            });
+            const backendCanonicalThreadTs = await fetchCanonicalSidecarThread({
+                provider: "slack",
+                providerAccountId: userId,
+                channelId,
+                incomingThreadId: meta.threadTs,
+                messageId: messageTs,
+            });
+            const statusThreadTs = backendCanonicalThreadTs || locallyResolvedThreadTs;
+            rememberCanonicalThread({
+                channelId,
+                userId,
+                threadTs: statusThreadTs,
+            });
+            let canonicalThreadTsFromBrain: string | undefined;
+
+            console.log("[Surfaces][Slack] Resolved canonical thread", {
+                channel: channelId,
+                user: userId,
+                messageTs,
+                incomingThreadTs: meta.threadTs ?? null,
+                backendThreadTs: backendCanonicalThreadTs ?? null,
+                resolvedThreadTs: statusThreadTs,
+            });
 
             await setSlackAssistantThinkingStatus({
                 app,
@@ -361,16 +539,15 @@ export async function startSlack() {
             try {
                 let history: { role: "user" | "assistant"; content: string }[] = [];
                 try {
-                    const result = await app.client.conversations.history({
+                    const result = await app.client.conversations.replies({
                         channel: channelId,
+                        ts: statusThreadTs,
                         limit: 30,
-                        latest: messageTs,
-                        inclusive: false,
                     });
 
                     if (result.messages) {
                         history = result.messages
-                            .reverse()
+                            .filter((msg) => msg.ts !== messageTs)
                             .map((msg) => ({
                                 role: (msg.bot_id ? "assistant" : "user") as "user" | "assistant",
                                 content: msg.text || "",
@@ -378,10 +555,11 @@ export async function startSlack() {
                             .filter((msg) => msg.content !== "");
                     }
                 } catch (err) {
-                    console.error("[Surfaces][Slack] Failed to fetch history", {
+                    console.error("[Surfaces][Slack] Failed to fetch thread history", {
                         channel: channelId,
                         user: userId,
                         ts: messageTs,
+                        threadTs: statusThreadTs,
                         error: err instanceof Error ? err.message : String(err),
                     });
                 }
@@ -393,6 +571,7 @@ export async function startSlack() {
                         channelId,
                         userId,
                         messageId: messageTs,
+                        threadId: statusThreadTs,
                         isDirectMessage: meta.channelType === "im",
                     },
                     history,
@@ -417,6 +596,17 @@ export async function startSlack() {
 
                 for (const [index, resp] of brainResponse.responses.entries()) {
                     try {
+                        const responseThreadTs =
+                            typeof (resp as { targetThreadId?: unknown }).targetThreadId === "string" &&
+                            (resp as { targetThreadId?: string }).targetThreadId
+                                ? (resp as { targetThreadId: string }).targetThreadId
+                                : statusThreadTs;
+                        canonicalThreadTsFromBrain = responseThreadTs;
+                        rememberCanonicalThread({
+                            channelId,
+                            userId,
+                            threadTs: responseThreadTs,
+                        });
                         const plainResponseContent = toPlainSidecarText(
                             typeof resp.content === "string" ? resp.content : "",
                         );
@@ -530,7 +720,9 @@ export async function startSlack() {
                                 ];
                             }
 
-                            await say({
+                            await app.client.chat.postMessage({
+                                channel: channelId,
+                                thread_ts: responseThreadTs,
                                 blocks: blocks as unknown as (Block | KnownBlock)[],
                                 text: plainResponseContent || plainInteractiveSummary || "I completed that request.",
                             });
@@ -538,16 +730,22 @@ export async function startSlack() {
                                 channel: channelId,
                                 user: userId,
                                 ts: messageTs,
+                                threadTs: responseThreadTs,
                                 responseIndex: index,
                                 interactiveType: interactive.type,
                                 actionsCount: interactive.actions.length,
                             });
                         } else if (resp.content) {
-                            await say(plainResponseContent);
+                            await app.client.chat.postMessage({
+                                channel: channelId,
+                                thread_ts: responseThreadTs,
+                                text: plainResponseContent,
+                            });
                             console.log("[Surfaces][Slack] Sent text response", {
                                 channel: channelId,
                                 user: userId,
                                 ts: messageTs,
+                                threadTs: responseThreadTs,
                                 responseIndex: index,
                                 contentLength: resp.content.length,
                             });
@@ -572,11 +770,21 @@ export async function startSlack() {
                     }
                 }
             } finally {
-                await clearSlackAssistantThinkingStatus({
-                    app,
-                    channelId,
-                    threadTs: statusThreadTs,
-                });
+                const threadsToClear = Array.from(
+                    new Set(
+                        [statusThreadTs, canonicalThreadTsFromBrain].filter(
+                            (threadTs): threadTs is string =>
+                                typeof threadTs === "string" && threadTs.length > 0,
+                        ),
+                    ),
+                );
+                for (const threadTs of threadsToClear) {
+                    await clearSlackAssistantThinkingStatus({
+                        app,
+                        channelId,
+                        threadTs,
+                    });
+                }
             }
         } catch (err) {
             console.error("[Surfaces][Slack] Unhandled error in message pipeline", {
@@ -594,7 +802,12 @@ export async function startSlack() {
     console.log("⚡️ Surfaces: Slack Socket Mode running");
 }
 
-export async function sendSlackMessage(channelId: string, text: string, _blocks?: (Block | KnownBlock)[]) {
+export async function sendSlackMessage(
+    channelId: string,
+    text: string,
+    _blocks?: (Block | KnownBlock)[],
+    threadId?: string | null,
+) {
     if (!slackApp) {
         console.error("Slack app not initialized");
         return;
@@ -602,6 +815,7 @@ export async function sendSlackMessage(channelId: string, text: string, _blocks?
     try {
         await slackApp.client.chat.postMessage({
             channel: channelId,
+            thread_ts: threadId || undefined,
             text: toPlainSidecarText(text),
             blocks: undefined
         });

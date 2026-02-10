@@ -1,6 +1,7 @@
 
 import {
     ActionRowBuilder,
+    type ButtonInteraction,
     ButtonBuilder,
     ButtonStyle,
     ChannelType,
@@ -23,6 +24,30 @@ import {
 
 const CORE_BASE_URL = process.env.CORE_BASE_URL || "http://localhost:3000";
 const SHARED_SECRET = process.env.SURFACES_SHARED_SECRET || "dev-secret";
+
+async function clearInteractionButtons(interaction: ButtonInteraction) {
+    const currentContent = toPlainSidecarText(
+        typeof interaction.message.content === "string" && interaction.message.content.length > 0
+            ? interaction.message.content
+            : "Processing request...",
+    );
+
+    try {
+        await interaction.update({
+            content: currentContent,
+            components: []
+        });
+    } catch (err) {
+        console.warn("[Surfaces][Discord] Failed to clear interaction buttons", {
+            interactionId: interaction.id,
+            messageId: interaction.message.id,
+            error: err instanceof Error ? err.message : String(err),
+        });
+        if (!interaction.deferred && !interaction.replied) {
+            await interaction.deferUpdate();
+        }
+    }
+}
 
 export function startDiscord() {
     const token = process.env.DISCORD_BOT_TOKEN?.trim();
@@ -61,13 +86,13 @@ export function startDiscord() {
         
         // Handle draft actions (draft_send:draftId:emailAccountId:userId)
         if (customId.startsWith("draft_send:") || customId.startsWith("draft_discard:")) {
+            await clearInteractionButtons(interaction);
+
             const parts = customId.split(":");
             const action = parts[0]; // draft_send or draft_discard
             const draftId = parts[1];
             const emailAccountId = parts[2];
             const userId = parts[3];
-
-            await interaction.deferReply();
 
             if (action === "draft_send") {
                 console.log(`[Surfaces] Discord: Sending draft ${draftId}`);
@@ -82,12 +107,9 @@ export function startDiscord() {
                 });
 
                 if (response.ok) {
-                    await interaction.editReply({
-                        content: toPlainSidecarText("✅ Email sent successfully!"),
-                        components: []
-                    });
+                    await interaction.followUp(toPlainSidecarText("success"));
                 } else {
-                    await interaction.editReply(toPlainSidecarText("❌ Failed to send email."));
+                    await interaction.followUp(toPlainSidecarText("Failed to send email."));
                 }
             } else if (action === "draft_discard") {
                 console.log(`[Surfaces] Discord: Discarding draft ${draftId}`);
@@ -100,12 +122,9 @@ export function startDiscord() {
                 });
 
                 if (response.ok) {
-                    await interaction.editReply({
-                        content: toPlainSidecarText("🗑️ Draft discarded."),
-                        components: []
-                    });
+                    await interaction.followUp(toPlainSidecarText("success"));
                 } else {
-                    await interaction.editReply(toPlainSidecarText("Failed to discard draft."));
+                    await interaction.followUp(toPlainSidecarText("Failed to discard draft."));
                 }
             }
             return;
@@ -113,10 +132,10 @@ export function startDiscord() {
 
         // Handle ambiguous time actions (ambiguous:choice:requestId)
         if (customId.startsWith("ambiguous:")) {
+            await clearInteractionButtons(interaction);
+
             const [, choice, requestId] = customId.split(":");
             if (choice !== "earlier" && choice !== "later") return;
-
-            await interaction.deferReply();
 
             const response = await fetch(`${CORE_BASE_URL}/api/ambiguous-time/${requestId}/resolve`, {
                 method: "POST",
@@ -128,12 +147,9 @@ export function startDiscord() {
             });
 
             if (response.ok) {
-                await interaction.editReply({
-                    content: toPlainSidecarText(`Got it — using the ${choice} time. ✅`),
-                    components: []
-                });
+                await interaction.followUp(toPlainSidecarText("success"));
             } else {
-                await interaction.editReply(toPlainSidecarText("Failed to resolve that time."));
+                await interaction.followUp(toPlainSidecarText("Failed to resolve that time."));
             }
             return;
         }
@@ -142,7 +158,7 @@ export function startDiscord() {
         const [action, requestId] = customId.split(":");
         if (action !== "approve" && action !== "deny") return;
 
-        await interaction.deferReply();
+        await clearInteractionButtons(interaction);
 
         console.log(`[Surfaces] Discord: Processing ${action} for request ${requestId}`);
 
@@ -158,13 +174,8 @@ export function startDiscord() {
             })
         });
 
-        if (response.ok) {
-            await interaction.editReply({
-                content: "success",
-                components: [] // Remove buttons
-            });
-        } else {
-            await interaction.editReply(toPlainSidecarText(`Failed to ${action} request.`));
+        if (!response.ok) {
+            await interaction.followUp(toPlainSidecarText(`Failed to ${action} request.`));
         }
     });
 

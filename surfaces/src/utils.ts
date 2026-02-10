@@ -74,6 +74,41 @@ export async function fetchOnboardingLinkUrl(
     }
 }
 
+export async function fetchCanonicalSidecarThread(params: {
+    provider: "slack" | "discord" | "telegram";
+    providerAccountId: string;
+    channelId: string;
+    incomingThreadId?: string;
+    messageId: string;
+}): Promise<string | null> {
+    try {
+        const response = await fetch(`${CORE_BASE_URL}/api/surfaces/context`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${SHARED_SECRET}`,
+            },
+            body: JSON.stringify(params),
+        });
+        if (!response.ok) {
+            return null;
+        }
+        const data = (await response.json()) as { canonicalThreadId?: string | null };
+        return typeof data.canonicalThreadId === "string" && data.canonicalThreadId.length > 0
+            ? data.canonicalThreadId
+            : null;
+    } catch (error) {
+        console.error("[Surfaces] Failed to resolve canonical sidecar thread", {
+            provider: params.provider,
+            channelId: params.channelId,
+            providerAccountId: params.providerAccountId,
+            messageId: params.messageId,
+            error: error instanceof Error ? error.message : String(error),
+        });
+        return null;
+    }
+}
+
 export async function forwardToBrain(params: {
     provider: "slack" | "discord" | "telegram";
     content: string;

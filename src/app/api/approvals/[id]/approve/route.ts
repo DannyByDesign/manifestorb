@@ -98,11 +98,11 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
 
             const userMessage =
                 toolName === "send"
-                    ? "Approved. Your message has been sent."
+                    ? "Approved. I sent that message."
                     : toolName === "create"
                         ? "Approved. I created that for you."
-                        : toolName === "modify"
-                            ? "Approved. I applied the update."
+                    : toolName === "modify"
+                        ? "Approved. I applied the update."
                             : toolName === "delete"
                                 ? "Approved. I removed it."
                                 : "Approved. I completed the request.";

@@ -53,4 +53,24 @@ describe("queryTool discriminated schema", () => {
     });
     expect(parsed.success).toBe(true);
   });
+
+  it("accepts plain-text filter strings and maps them to resource defaults", () => {
+    const parsed = queryTool.parameters.safeParse({
+      resource: "email",
+      filter: "find emails from mom last week",
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.filter?.text).toBe("find emails from mom last week");
+    }
+  });
+
+  it("rejects unknown top-level keys to avoid silent argument drops", () => {
+    const parsed = queryTool.parameters.safeParse({
+      resource: "email",
+      filter: { query: "from:john@example.com" },
+      extra: "unexpected",
+    });
+    expect(parsed.success).toBe(false);
+  });
 });

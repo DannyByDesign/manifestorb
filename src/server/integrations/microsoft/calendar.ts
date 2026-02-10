@@ -1,6 +1,5 @@
 import type { Client } from "@microsoft/microsoft-graph-client";
 import { Frequency, RRule } from "rrule";
-import { env } from "@/env";
 import type { Logger } from "@/server/lib/logger";
 import { getCalendarClientWithRefresh } from "@/server/integrations/microsoft/calendar-client";
 import { logCalendarAction } from "@/features/calendar/action-log";
@@ -109,27 +108,7 @@ export async function createOutlookEvent(
   params: MicrosoftCalendarConnectionParams,
   calendarId: string,
   event: OutlookEventInput,
-  options?: { dryRun?: boolean },
 ) {
-  const dryRun = options?.dryRun ?? env.CALENDAR_ACTIONS_DRY_RUN;
-  if (dryRun && params.userId) {
-    await logCalendarAction({
-      userId: params.userId,
-      provider: "microsoft",
-      action: "create",
-      calendarId,
-      dryRun: true,
-      emailAccountId: params.emailAccountId,
-      payload: event,
-    });
-    return {
-      id: "dry-run",
-      subject: event.title,
-      start: { dateTime: event.start.toISOString(), timeZone: event.timeZone },
-      end: { dateTime: event.end.toISOString(), timeZone: event.timeZone },
-    } as MSGraphEvent;
-  }
-
   const client = await getOutlookClient(params);
   const timeZone = event.timeZone || "UTC";
 
@@ -258,23 +237,7 @@ export async function updateOutlookEvent(
   calendarId: string,
   eventId: string,
   event: OutlookEventUpdate,
-  options?: { dryRun?: boolean },
 ) {
-  const dryRun = options?.dryRun ?? env.CALENDAR_ACTIONS_DRY_RUN;
-  if (dryRun && params.userId) {
-    await logCalendarAction({
-      userId: params.userId,
-      provider: "microsoft",
-      action: "update",
-      calendarId,
-      eventId,
-      dryRun: true,
-      emailAccountId: params.emailAccountId,
-      payload: event,
-    });
-    return { id: eventId } as MSGraphEvent;
-  }
-
   const client = await getOutlookClient(params);
   const timeZone = event.timeZone ?? "UTC";
 
@@ -382,23 +345,7 @@ export async function deleteOutlookEvent(
   calendarId: string,
   eventId: string,
   mode: "single" | "series" = "single",
-  options?: { dryRun?: boolean },
 ) {
-  const dryRun = options?.dryRun ?? env.CALENDAR_ACTIONS_DRY_RUN;
-  if (dryRun && params.userId) {
-    await logCalendarAction({
-      userId: params.userId,
-      provider: "microsoft",
-      action: "delete",
-      calendarId,
-      eventId,
-      dryRun: true,
-      emailAccountId: params.emailAccountId,
-      payload: { mode },
-    });
-    return;
-  }
-
   const client = await getOutlookClient(params);
 
   try {
