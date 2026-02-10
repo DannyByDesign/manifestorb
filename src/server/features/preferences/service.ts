@@ -11,6 +11,7 @@ const frequencySchema = z.enum(["NEVER", "DAILY", "WEEKLY"]);
 
 const taskPreferencePatchSchema = z
   .object({
+    weekStartDay: z.enum(["SUNDAY", "MONDAY"]).optional(),
     workHourStart: z.number().int().min(0).max(23).optional(),
     workHourEnd: z.number().int().min(1).max(24).optional(),
     workDays: z.array(z.number().int().min(0).max(6)).max(7).optional(),
@@ -58,6 +59,10 @@ function omitUndefined<T extends Record<string, unknown>>(input: T): Partial<T> 
 
 function pickKnownTaskPreferenceKeys(payload: Record<string, unknown>): TaskPreferencePatch {
   return omitUndefined({
+    weekStartDay:
+      payload.weekStartDay === "SUNDAY" || payload.weekStartDay === "MONDAY"
+        ? payload.weekStartDay
+        : undefined,
     workHourStart:
       typeof payload.workHourStart === "number" ? payload.workHourStart : undefined,
     workHourEnd: typeof payload.workHourEnd === "number" ? payload.workHourEnd : undefined,

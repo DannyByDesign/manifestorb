@@ -18,6 +18,13 @@ const {
   temporarilyDisableEmailRuleMock,
   enableEmailRuleMock,
   renameEmailRuleMock,
+  listCalendarPolicyRulesMock,
+  resolveCalendarPolicyRuleReferenceMock,
+  disableCalendarPolicyRuleMock,
+  enableCalendarPolicyRuleMock,
+  renameCalendarPolicyRuleMock,
+  removeCalendarPolicyRuleMock,
+  upsertCalendarPolicyRuleMock,
 } = vi.hoisted(() => ({
   emailAccountFindUniqueMock: vi.fn(),
   ruleDeleteMock: vi.fn(),
@@ -36,6 +43,13 @@ const {
   temporarilyDisableEmailRuleMock: vi.fn(),
   enableEmailRuleMock: vi.fn(),
   renameEmailRuleMock: vi.fn(),
+  listCalendarPolicyRulesMock: vi.fn(),
+  resolveCalendarPolicyRuleReferenceMock: vi.fn(),
+  disableCalendarPolicyRuleMock: vi.fn(),
+  enableCalendarPolicyRuleMock: vi.fn(),
+  renameCalendarPolicyRuleMock: vi.fn(),
+  removeCalendarPolicyRuleMock: vi.fn(),
+  upsertCalendarPolicyRuleMock: vi.fn(),
 }));
 
 vi.mock("@/server/db/client", () => ({
@@ -78,6 +92,16 @@ vi.mock("@/features/rules/management", () => ({
   temporarilyDisableEmailRule: temporarilyDisableEmailRuleMock,
   enableEmailRule: enableEmailRuleMock,
   renameEmailRule: renameEmailRuleMock,
+}));
+
+vi.mock("@/features/calendar/policy-rules", () => ({
+  listCalendarPolicyRules: listCalendarPolicyRulesMock,
+  resolveCalendarPolicyRuleReference: resolveCalendarPolicyRuleReferenceMock,
+  disableCalendarPolicyRule: disableCalendarPolicyRuleMock,
+  enableCalendarPolicyRule: enableCalendarPolicyRuleMock,
+  renameCalendarPolicyRule: renameCalendarPolicyRuleMock,
+  removeCalendarPolicyRule: removeCalendarPolicyRuleMock,
+  upsertCalendarPolicyRule: upsertCalendarPolicyRuleMock,
 }));
 
 vi.mock("@/features/rules/ai/prompts/create-rule-schema", () => ({
@@ -129,9 +153,19 @@ describe("rules tool UX behavior", () => {
     });
     temporarilyDisableEmailRuleMock.mockResolvedValue({});
     disableApprovalRuleMock.mockResolvedValue({ updated: true, rule: { name: "x" } });
+    listCalendarPolicyRulesMock.mockResolvedValue([]);
+    resolveCalendarPolicyRuleReferenceMock.mockResolvedValue({
+      status: "none",
+      matches: [],
+    });
+    disableCalendarPolicyRuleMock.mockResolvedValue({ updated: true, rule: { id: "cr-1", title: "x" } });
+    enableCalendarPolicyRuleMock.mockResolvedValue({ updated: true, rule: { id: "cr-1", title: "x" } });
+    renameCalendarPolicyRuleMock.mockResolvedValue({ updated: true, rule: { id: "cr-1", title: "x" } });
+    removeCalendarPolicyRuleMock.mockResolvedValue({ removed: true });
+    upsertCalendarPolicyRuleMock.mockResolvedValue({ id: "cr-1", name: "Protected Friday" });
   });
 
-  it("lists both email and approval rules by default with concise summary and hidden IDs", async () => {
+  it("lists email, approval, and calendar rules by default with concise summary and hidden IDs", async () => {
     emailAccountFindUniqueMock
       .mockResolvedValueOnce({ id: "email-1", account: { provider: "google" } })
       .mockResolvedValueOnce({ about: "Exec user profile" });
@@ -168,6 +202,18 @@ describe("rules tool UX behavior", () => {
         ],
       },
     ]);
+    listCalendarPolicyRulesMock.mockResolvedValue([
+      {
+        id: "cr-1",
+        name: "Protected travel",
+        scope: "global",
+        reschedulePolicy: "APPROVAL_REQUIRED",
+        isProtected: true,
+        notifyOnAutoMove: false,
+        enabled: true,
+        priority: 90,
+      },
+    ]);
 
     const result = await rulesTool.execute(
       { action: "list", payload: {} },
@@ -182,10 +228,54 @@ describe("rules tool UX behavior", () => {
     expect(result.data.summary).toMatchObject({
       totalEmailRules: 1,
       totalApprovalRules: 1,
+      totalCalendarRules: 1,
       mode: "concise",
     });
     expect(result.data.emailRules[0]).not.toHaveProperty("id");
     expect(result.data.approvalRules[0]).not.toHaveProperty("id");
+    expect(result.data.calendarRules[0]).not.toHaveProperty("id");
+  });
+
+  it("sets calendar policy rules through the canonical rules tool", async () => {
+    upsertCalendarPolicyRuleMock.mockResolvedValue({
+      id: "cr-1",
+      name: "Auto-move flexible events",
+      scope: "global",
+      reschedulePolicy: "FLEXIBLE",
+      notifyOnAutoMove: true,
+      isProtected: false,
+      enabled: true,
+      priority: 20,
+    });
+
+    const result = await rulesTool.execute(
+      {
+        action: "set_calendar_rule",
+        payload: {
+          name: "Auto-move flexible events",
+          scope: "global",
+          reschedulePolicy: "FLEXIBLE",
+          notifyOnAutoMove: true,
+          isProtected: false,
+          priority: 20,
+        },
+      },
+      {
+        userId: "user-1",
+        emailAccountId: "email-1",
+        logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      } as never,
+    );
+
+    expect(result.success).toBe(true);
+    expect(upsertCalendarPolicyRuleMock).toHaveBeenCalledWith({
+      userId: "user-1",
+      emailAccountId: "email-1",
+      rule: expect.objectContaining({
+        name: "Auto-move flexible events",
+        reschedulePolicy: "FLEXIBLE",
+      }),
+    });
   });
 
   it("uses a 24h default pause window for disable action", async () => {

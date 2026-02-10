@@ -3,8 +3,21 @@ import { authkitMiddleware } from "@/server/auth";
 import { matchQuarantinedPath } from "@/lib/quarantine";
 
 const authMiddleware = authkitMiddleware();
+const AUTH_BYPASS_API_PREFIXES = [
+  "/api/surfaces/",
+  "/api/approvals/",
+  "/api/drafts/",
+  "/api/ambiguous-time/",
+  "/api/health",
+];
 
 export default function proxy(req: NextRequest) {
+  const { pathname } = req.nextUrl;
+
+  if (AUTH_BYPASS_API_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+    return NextResponse.next();
+  }
+
   const match = matchQuarantinedPath(req.nextUrl.pathname);
   if (match) {
     if (req.nextUrl.pathname.startsWith("/api/")) {

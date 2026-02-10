@@ -104,7 +104,7 @@ describe("tool email provider search", () => {
 
   it("matches sender names flexibly (full name vs initial variants)", async () => {
     const service = {
-      getMessagesWithPagination: vi.fn().mockResolvedValueOnce({
+      getMessagesWithPagination: vi.fn().mockResolvedValue({
         messages: [
           {
             id: "m-1",
@@ -207,5 +207,101 @@ describe("tool email provider search", () => {
 
     expect(result.messages).toHaveLength(2);
     expect(result.messages.map((message) => message.id)).toEqual(["m-1", "m-3"]);
+  });
+
+  it("supports sentByMe and receivedByMe local filters", async () => {
+    const service = {
+      getMessagesWithPagination: vi.fn().mockResolvedValue({
+        messages: [
+          {
+            id: "m-sent",
+            threadId: "t-sent",
+            snippet: "sent",
+            historyId: "h-sent",
+            inline: [],
+            headers: {
+              subject: "Sent item",
+              from: "Me <me@example.com>",
+              to: "friend@example.com",
+              date: "2026-02-08T00:00:00.000Z",
+            },
+            subject: "Sent item",
+            textPlain: "hello",
+            date: "2026-02-08T00:00:00.000Z",
+          },
+          {
+            id: "m-received",
+            threadId: "t-received",
+            snippet: "received",
+            historyId: "h-received",
+            inline: [],
+            headers: {
+              subject: "Received item",
+              from: "friend@example.com",
+              to: "me@example.com",
+              date: "2026-02-08T01:00:00.000Z",
+            },
+            subject: "Received item",
+            textPlain: "reply",
+            date: "2026-02-08T01:00:00.000Z",
+          },
+        ],
+        nextPageToken: undefined,
+        totalEstimate: 2,
+      }),
+      getMessagesBatch: vi.fn(),
+      getThread: vi.fn(),
+      searchContacts: vi.fn(),
+      createContact: vi.fn(),
+      createDraft: vi.fn(),
+      sendDraft: vi.fn(),
+      getDrafts: vi.fn(),
+      getDraft: vi.fn(),
+      updateDraft: vi.fn(),
+      deleteDraft: vi.fn(),
+      archiveThread: vi.fn(),
+      trashThread: vi.fn(),
+      markReadThread: vi.fn(),
+      labelMessage: vi.fn(),
+      removeThreadLabels: vi.fn(),
+    } as unknown as Awaited<ReturnType<typeof import("@/features/email/provider")["createEmailProvider"]>>;
+
+    const providerFactory = (await import("@/features/email/provider")).createEmailProvider as unknown as {
+      mockResolvedValue: (value: unknown) => void;
+    };
+    providerFactory.mockResolvedValue(service);
+
+    const provider = await createEmailProvider(
+      {
+        id: "email-1",
+        provider: "google",
+        access_token: null,
+        refresh_token: null,
+        expires_at: null,
+        email: "me@example.com",
+      },
+      {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+        trace: vi.fn(),
+        with: vi.fn().mockReturnThis(),
+      } as unknown as Parameters<typeof createEmailProvider>[1],
+    );
+
+    const sent = await provider.search({
+      query: "",
+      sentByMe: true,
+      limit: 10,
+    });
+    expect(sent.messages.map((message) => message.id)).toEqual(["m-sent"]);
+
+    const received = await provider.search({
+      query: "",
+      receivedByMe: true,
+      limit: 10,
+    });
+    expect(received.messages.map((message) => message.id)).toEqual(["m-received"]);
   });
 });

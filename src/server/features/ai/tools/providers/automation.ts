@@ -2,22 +2,37 @@
 import { type Logger } from "@/server/lib/logger";
 import prisma from "@/server/db/client";
 import { type Rule, type Knowledge } from "@/generated/prisma/client";
-import { ActionType } from "@/generated/prisma/enums";
+import { ActionType, LogicalOperator, SystemType } from "@/generated/prisma/enums";
 import { ONBOARDING_PROCESS_EMAILS_COUNT } from "@/server/lib/config";
 import { bulkProcessInboxEmails } from "@/features/rules/ai/bulk-process-emails";
 import { createEmailProvider as createServiceEmailProvider } from "@/features/email/provider";
 import { getEmailAccountWithAi } from "@/server/lib/user/get";
-import { createRuleBody } from "@/actions/rule.validation";
+import { createRuleBody, type CreateRuleBody } from "@/actions/rule.validation";
 import { createKnowledgeBody } from "@/actions/knowledge.validation";
 import { getEmailReportData, type EmailReportData } from "@/actions/report";
 import { unsubscribeFromSender } from "@/features/email/unsubscribe";
 import { findMatchingRules } from "@/features/rules/ai/match-rules";
 import { applyTaskPreferencePayloadsForUser } from "@/features/preferences/service";
 
+type RuleUpdateInput = {
+    name?: string;
+    enabled?: boolean;
+    instructions?: string | null;
+    runOnThreads?: boolean;
+    from?: string | null;
+    to?: string | null;
+    subject?: string | null;
+    body?: string | null;
+    conditionalOperator?: LogicalOperator | null;
+    systemType?: SystemType | null;
+    expiresAt?: string | Date | null;
+    isTemporary?: boolean;
+};
+
 export interface AutomationProvider {
     listRules(): Promise<Rule[]>;
-    createRule(data: any): Promise<Rule>;
-    updateRule(id: string, data: any): Promise<Rule>;
+    createRule(data: CreateRuleBody): Promise<Rule>;
+    updateRule(id: string, data: RuleUpdateInput): Promise<Rule>;
     deleteRule(id: string): Promise<void>;
     deleteTemporaryRulesByName(name: string): Promise<void>;
 
@@ -27,7 +42,7 @@ export interface AutomationProvider {
 
     generateReport(): Promise<EmailReportData>;
     unsubscribe(senderEmail: string): Promise<{ success: boolean; error?: string }>;
-    matchRules(messageId: string): Promise<{ matches: any[]; reasoning: string }>;
+    matchRules(messageId: string): Promise<Awaited<ReturnType<typeof findMatchingRules>>>;
 }
 
 export async function createAutomationProvider(
@@ -57,7 +72,7 @@ export async function createAutomationProvider(
             });
         },
 
-        async createRule(data: any) {
+        async createRule(data: CreateRuleBody) {
             // Validate using existing schema
             const validated = createRuleBody.parse(data);
 
@@ -149,7 +164,7 @@ export async function createAutomationProvider(
             return rule;
         },
 
-        async updateRule(id: string, data: any) {
+        async updateRule(id: string, data: RuleUpdateInput) {
             // Simplified update: only specific fields
             // Just enabling Prisma update for now
             return prisma.rule.update({

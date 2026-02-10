@@ -35,6 +35,12 @@ import {
     parseDateBoundInTimeZone,
     parseLocalDateTimeInput,
 } from "./timezone";
+import { validateCalendarMutationSafety } from "@/features/calendar/safety-gate";
+import { upsertCalendarEventShadow } from "@/features/calendar/canonical-state";
+import {
+    resolveCalendarAttendees,
+    resolveContextualAttendees,
+} from "@/features/calendar/participant-resolver";
 
 const logger = createScopedLogger("tools/create");
 const approvalService = new ApprovalService(prisma);
@@ -394,12 +400,15 @@ async function resolveCalendarAttendees(params: {
 }
 
 const emailCreateDataSchema = z.object({
+    // Back-compat: some model outputs incorrectly place draft type under data.
+    // We accept and normalize this to avoid runtime failures.
+    type: z.enum(["new", "reply", "forward"]).optional(),
     to: z.array(z.string()).optional(),
     cc: z.array(z.string()).optional(),
     bcc: z.array(z.string()).optional(),
     subject: z.string().optional(),
     body: z.string().optional(),
-    sendOnApproval: z.boolean().optional().describe("If true, creates a draft and sends an approval notification. When user approves, the draft is sent. Use unless user says 'just save as draft'."),
+    sendOnApproval: z.boolean().optional().describe("If true, creates a draft and immediately requests approval to send it. Set true only when the user explicitly asks to send now (or send right after approval). For normal draft/compose requests, leave false."),
 }).strict();
 
 const calendarCreateDataSchema = z.object({
@@ -531,6 +540,7 @@ When to use:
 Email: Creates a DRAFT only. User must manually send from UI.
 - type: "new" | "reply" | "forward"
 - For reply/forward: provide parentId (thread ID / message ID)
+- If message intent/body is missing for a new draft, ask one concise clarification instead of inventing placeholder text.
 - Returns: { draftId, previewUrl } for user to review and send
 
 Calendar (scheduling): When the user wants to schedule a meeting, call, or appointment (any intent to find time):
@@ -559,14 +569,28 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                     return { success: false, error: "Email account not found or provider not linked. The user needs to connect Gmail/Outlook." };
                 }
                 // Validate recipients for new emails
-                const draftType = (type as "new" | "reply" | "forward") || "new";
+                const draftType =
+                    (type as "new" | "reply" | "forward" | undefined) ||
+                    (data.type as "new" | "reply" | "forward" | undefined) ||
+                    "new";
                 if (draftType === "new" && (!data.to || data.to.length === 0)) {
                     return {
                         success: false,
                         error: "Cannot create a new email draft without recipients. Provide at least one email address in data.to. If the user mentioned a name, search for their email with query(resource: 'contacts', filter: { query: 'name' }) first."
                     };
                 }
-                const isReply = type === "reply";
+                if (draftType === "new" && isPlaceholderDraftBody(data.body)) {
+                    return {
+                        success: false,
+                        error: "Missing email message intent/body content.",
+                        clarification: {
+                            kind: "missing_fields",
+                            prompt: "Absolutely. What should the email say?",
+                            missingFields: ["data.body"],
+                        },
+                    };
+                }
+                const isReply = draftType === "reply";
 
                 if (isReply && parentId && providers.email) {
                     try {
@@ -597,7 +621,7 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
 
                 // Map params to DraftParams
                 const draftResult = await createDraftOperation(providers.email, {
-                    type: (type as "new" | "reply" | "forward") || "new",
+                    type: draftType,
                     parentId,
                     to: data.to,
                     cc: data.cc,
@@ -607,6 +631,13 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                 });
 
                 const draftId = (draftResult as { draftId?: string; id?: string }).draftId ?? (draftResult as { id?: string }).id;
+                logger.info("[create/email] draft created", {
+                    userId: context.userId,
+                    draftId: draftId ?? null,
+                    sendOnApproval: data.sendOnApproval === true,
+                    recipientCount: data.to?.length ?? 0,
+                    subject: data.subject ?? null,
+                });
                 if (data.sendOnApproval && draftId) {
                     const needsApproval = await requiresApproval({
                         userId: context.userId,
@@ -677,6 +708,15 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                         success: true,
                         data: { draftId, approvalId: approval.id, status: "draft_pending_approval" },
                         message: "Draft created and ready for your approval. You'll see a notification to review and send.",
+                        interactive: {
+                            type: "approval_request" as const,
+                            approvalId: approval.id,
+                            summary: `Approve send for "${data.subject || "(No subject)"}"?`,
+                            actions: [
+                                { label: "Approve", style: "primary" as const, value: "approve" },
+                                { label: "Deny", style: "danger" as const, value: "deny" },
+                            ],
+                        },
                     };
                 }
 
@@ -959,13 +999,35 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                         start: parsedStart ?? undefined,
                         end: parsedEnd ?? undefined
                     });
-                    const options = slots.slice(0, 3).map((slot) => ({
-                        start: slot.start.toISOString(),
-                        end: slot.end.toISOString(),
-                        timeZone: effectiveTimeZone
-                    }));
+                    const safeOptions: Array<{ start: string; end?: string; timeZone: string }> = [];
+                    for (const slot of slots) {
+                        const safety = await validateCalendarMutationSafety({
+                            userId: context.userId,
+                            emailAccountId,
+                            mutation: "create",
+                            providers: { calendar: providers.calendar },
+                            proposedStart: slot.start,
+                            proposedEnd: slot.end,
+                        });
+                        if (!safety.ok) continue;
+                        safeOptions.push({
+                            start: slot.start.toISOString(),
+                            end: slot.end.toISOString(),
+                            timeZone: effectiveTimeZone,
+                        });
+                        if (safeOptions.length >= 3) break;
+                    }
+                    const options = safeOptions;
                     if (options.length === 0) {
-                        return { success: false, error: "No available slots found" };
+                        return {
+                            success: false,
+                            clarification: {
+                                kind: "missing_fields",
+                                prompt:
+                                    "I couldn't find a safe slot in that range. I can try a wider window or a shorter duration. Which do you want?",
+                                missingFields: ["time window or duration"],
+                            },
+                        };
                     }
 
                     const idempotencyKey = createDeterministicIdempotencyKey(
@@ -1142,6 +1204,22 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                     };
                 }
 
+                const safety = await validateCalendarMutationSafety({
+                    userId: context.userId,
+                    emailAccountId,
+                    mutation: "create",
+                    providers: { calendar: providers.calendar },
+                    proposedStart: parsedStart as Date,
+                    proposedEnd: parsedEnd as Date,
+                });
+                if (!safety.ok) {
+                    return {
+                        success: false,
+                        error: safety.error,
+                        clarification: safety.clarification,
+                    };
+                }
+
                 const event = await providers.calendar.createEvent({
                     calendarId: calendarData.calendarId,
                     input: {
@@ -1157,6 +1235,15 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                         timeZone: effectiveTimeZone,
                         addGoogleMeet: true
                     }
+                });
+                await upsertCalendarEventShadow({
+                    userId: context.userId,
+                    emailAccountId,
+                    event,
+                    source: "ai",
+                    metadata: { tool: "create", resource: "calendar" },
+                }).catch((error) => {
+                    logger.warn("Failed to upsert canonical event shadow after create", { error });
                 });
                 // Post-create task scheduling – best-effort; don't lose the event if this fails
                 try {

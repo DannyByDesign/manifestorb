@@ -7,6 +7,7 @@ import { scheduleTasksForUser } from "@/features/calendar/scheduling/TaskSchedul
 import { createInAppNotification } from "@/features/notifications/create";
 import { wasRecentCalendarAction } from "@/features/calendar/action-log";
 import { isDefined } from "@/server/lib/types";
+import { runAdaptiveCalendarReplan } from "@/features/calendar/adaptive-replanner";
 
 export const maxDuration = 300;
 
@@ -78,6 +79,7 @@ export const POST = withError("google/calendar/webhook", async (request) => {
         emailAccountId: calendar.connection.emailAccountId,
       },
       logger,
+      userId: calendar.connection.emailAccount.userId,
     });
 
     if (syncResult.changed) {
@@ -85,6 +87,27 @@ export const POST = withError("google/calendar/webhook", async (request) => {
         userId: calendar.connection.emailAccount.userId,
         emailAccountId: calendar.connection.emailAccountId,
         source: "webhook",
+      });
+
+      await runAdaptiveCalendarReplan({
+        userId: calendar.connection.emailAccount.userId,
+        emailAccountId: calendar.connection.emailAccountId,
+        source: "webhook",
+        changedEvents: (syncResult.canonical?.events ?? []) as Array<{
+          id?: string;
+          provider?: string;
+          calendarId?: string;
+          iCalUid?: string;
+          title?: string;
+          startTime?: string;
+          endTime?: string;
+        }>,
+        logger,
+      }).catch((error) => {
+        logger.error("Adaptive calendar replan failed after Google webhook", {
+          error,
+          calendarId: calendar.calendarId,
+        });
       });
 
       const emailAccount = await prisma.emailAccount.findUnique({

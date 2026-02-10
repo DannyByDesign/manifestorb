@@ -28,6 +28,9 @@ import {
     parseDateBoundInTimeZone,
     parseLocalDateTimeInput,
 } from "./timezone";
+import { handleCalendarReschedule } from "./calendar-reschedule";
+import { validateCalendarMutationSafety } from "@/features/calendar/safety-gate";
+import { upsertCalendarEventShadow } from "@/features/calendar/canonical-state";
 import {
     applyAiConfigPatch,
     applyDigestScheduleForEmailAccount,
@@ -205,6 +208,9 @@ Calendar changes:
 - title, description, location, start, end, allDay, isRecurring, recurrenceRule, timeZone
 - mode: "single" | "series"
 - calendarId (optional)
+- rescheduleStrategy: "later" | "earlier" | "next_available" | "exact"
+- reschedule: string or object form of strategy (e.g. "later", { strategy: "next_available" })
+- start without end keeps existing event duration; end without start does the same
 
 Task changes:
 - title, description, durationMinutes, status, priority, energyLevel, preferredTime
@@ -532,6 +538,10 @@ Preferences changes:
                         success: failures.length === 0,
                         data: results,
                         error: failures.length > 0 ? failures[0].error : undefined,
+                        message:
+                            failures.length === 0
+                                ? "Approved. I completed that request."
+                                : "I couldn't complete the approved action yet.",
                     };
                 }
 
@@ -560,6 +570,10 @@ Preferences changes:
                     success: failures.length === 0,
                     data: approvalResults,
                     error: failures.length > 0 ? failures[0].error : undefined,
+                    message:
+                        failures.length === 0
+                            ? "Denied. I cancelled that request."
+                            : "I couldn't finish the denial action cleanly.",
                 };
 
             case "task": {
@@ -759,6 +773,73 @@ Preferences changes:
                     };
                 }
 
+                const rescheduleResult = await handleCalendarReschedule({
+                    ids,
+                    calendarId,
+                    mode,
+                    changes,
+                    start,
+                    end,
+                    timeZoneInput,
+                    effectiveTimeZone,
+                    providers: { calendar: providers.calendar },
+                    validateCandidate: async ({
+                        eventId,
+                        targetStart,
+                        targetEnd,
+                        strategy,
+                    }) => {
+                        const safety = await validateCalendarMutationSafety({
+                            userId,
+                            emailAccountId,
+                            mutation: strategy === "exact" ? "update" : "reschedule",
+                            providers: { calendar: providers.calendar },
+                            targetEventId: eventId,
+                            calendarId,
+                            proposedStart: targetStart,
+                            proposedEnd: targetEnd,
+                            mode,
+                        });
+                        if (!safety.ok) {
+                            return {
+                                ok: false,
+                                error: safety.error,
+                                clarification: safety.clarification,
+                            };
+                        }
+                        return { ok: true };
+                    },
+                });
+                if (rescheduleResult) {
+                    if (rescheduleResult.success) {
+                        const movedEvents = ((rescheduleResult.data as { events?: unknown })?.events ?? []) as Array<{
+                            id?: string;
+                        }>;
+                        await Promise.all(
+                            movedEvents
+                                .filter((event): event is { id: string } => typeof event.id === "string")
+                                .map(async (event) => {
+                                    const refreshed = await providers.calendar.getEvent({
+                                        eventId: event.id,
+                                        calendarId,
+                                    });
+                                    if (!refreshed) return;
+                                    await upsertCalendarEventShadow({
+                                        userId,
+                                        emailAccountId,
+                                        event: refreshed,
+                                        source: "ai",
+                                        metadata: { tool: "modify", mutation: "reschedule" },
+                                    });
+                                }),
+                        ).catch((error) => {
+                            logger.warn("Failed to upsert canonical shadow after reschedule", { error });
+                        });
+                        await scheduleTasksForUser({ userId, emailAccountId, source: "ai" });
+                    }
+                    return rescheduleResult;
+                }
+
                 const results = await Promise.all(ids.map((id: string) =>
                     providers.calendar.updateEvent({
                         calendarId,
@@ -777,6 +858,20 @@ Preferences changes:
                         }
                     })
                 ));
+
+                await Promise.all(
+                    results.map(async (event) => {
+                        await upsertCalendarEventShadow({
+                            userId,
+                            emailAccountId,
+                            event,
+                            source: "ai",
+                            metadata: { tool: "modify", mutation: "update" },
+                        });
+                    }),
+                ).catch((error) => {
+                    logger.warn("Failed to upsert canonical shadow after calendar update", { error });
+                });
 
                 await scheduleTasksForUser({ userId, emailAccountId, source: "ai" });
                 return { success: true, data: results };
@@ -884,6 +979,7 @@ Preferences changes:
                 }
 
                 const schedulingPreferenceKeys = [
+                    "weekStartDay",
                     "workHourStart",
                     "workHourEnd",
                     "workDays",
@@ -901,6 +997,11 @@ Preferences changes:
                     await applyTaskPreferencePatchForUser({
                         userId,
                         patch: {
+                            weekStartDay:
+                                changes.weekStartDay === "SUNDAY" ||
+                                changes.weekStartDay === "MONDAY"
+                                    ? changes.weekStartDay
+                                    : undefined,
                             workHourStart:
                                 typeof changes.workHourStart === "number"
                                     ? changes.workHourStart

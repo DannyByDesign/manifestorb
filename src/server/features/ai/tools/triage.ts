@@ -2,13 +2,15 @@ import { z } from "zod";
 import { type ToolDefinition } from "./types";
 import { triageTasks } from "@/features/tasks/triage/TaskTriageService";
 
-export const triageTool: ToolDefinition<any> = {
+const triageParameters = z.object({
+  message: z.string().optional(),
+});
+
+export const triageTool: ToolDefinition<typeof triageParameters> = {
   name: "triage",
   description:
     "Rank the user's tasks and suggest what to do next with rationale.",
-  parameters: z.object({
-    message: z.string().optional(),
-  }),
+  parameters: triageParameters,
   securityLevel: "SAFE",
   execute: async ({ message }, context) => {
     const result = await triageTasks({

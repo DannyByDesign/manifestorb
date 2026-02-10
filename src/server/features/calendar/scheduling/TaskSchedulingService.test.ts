@@ -18,6 +18,7 @@ vi.mock("@/server/db/client", () => ({
     },
     taskPreference: {
       update: vi.fn(),
+      upsert: vi.fn(),
     },
     emailAccount: {
       findFirst: vi.fn(),
@@ -112,9 +113,10 @@ describe("resolveSchedulingEmailAccountId", () => {
       logger: mockLogger as any,
     });
 
-    expect(prisma.taskPreference.update).toHaveBeenCalledWith({
+    expect(prisma.taskPreference.upsert).toHaveBeenCalledWith({
       where: { userId: "user-1" },
-      data: { selectedCalendarIds: [] },
+      update: { selectedCalendarIds: [] },
+      create: { userId: "user-1", selectedCalendarIds: [] },
     });
     expect(result).toBe("email-fallback");
   });

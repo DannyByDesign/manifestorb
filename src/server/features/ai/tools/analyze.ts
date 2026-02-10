@@ -9,11 +9,30 @@ import { createCalendarEventProviders } from "@/features/calendar/event-provider
 import { aiCategorizeSenders } from "@/features/categorize/ai/ai-categorize-senders";
 import { aiClean } from "@/features/clean/ai/ai-clean";
 import { aiDetectRecurringPattern } from "@/features/rules/ai/ai-detect-recurring-pattern";
-import { type EmailForLLM } from "@/server/types";
 import { formatDateTimeForUser } from "./timezone";
 import { resolveCalendarTimeRange } from "./calendar-time";
 
-export const analyzeTool: ToolDefinition<any> = {
+const analyzeParameters = z.object({
+    resource: z.enum(["email", "calendar", "patterns", "automation"]),
+    ids: z.array(z.string()).optional(),
+    analysisType: z.enum([
+        "summarize", "extract_actions", "categorize", "clean_suggestions", // Email
+        "find_conflicts", "suggest_times", "briefing", // Calendar
+        "detect_patterns", // Patterns
+        "assess_risk" // Automation
+    ]),
+    options: z.object({
+        dateRange: z.object({
+            after: z.string().optional(),
+            before: z.string().optional(),
+        }).optional(),
+        timeZone: z.string().optional().describe("IANA timezone for interpreting dateRange and formatting suggested times."),
+        durationMinutes: z.number().int().min(5).max(480).optional(),
+        limit: z.number().int().min(1).max(10).optional(),
+    }).optional(),
+});
+
+export const analyzeTool: ToolDefinition<typeof analyzeParameters> = {
     name: "analyze",
     description: `AI-powered analysis of items. Read-only, safe operation.
     
@@ -29,25 +48,7 @@ Calendar analysis:
 Pattern analysis:
 - detect_patterns: Analyze emails to suggest automation rules`,
 
-    parameters: z.object({
-        resource: z.enum(["email", "calendar", "patterns", "automation"]),
-        ids: z.array(z.string()).optional(),
-        analysisType: z.enum([
-            "summarize", "extract_actions", "categorize", "clean_suggestions", // Email
-            "find_conflicts", "suggest_times", "briefing", // Calendar
-            "detect_patterns", // Patterns
-            "assess_risk" // Automation
-        ]),
-        options: z.object({
-            dateRange: z.object({
-                after: z.string().optional(),
-                before: z.string().optional(),
-            }).optional(),
-            timeZone: z.string().optional().describe("IANA timezone for interpreting dateRange and formatting suggested times."),
-            durationMinutes: z.number().int().min(5).max(480).optional(),
-            limit: z.number().int().min(1).max(10).optional(),
-        }).optional(),
-    }),
+    parameters: analyzeParameters,
 
     execute: async ({ resource, ids, analysisType, options }, { emailAccountId, logger, providers }) => {
         const emailAccount = await getEmailAccountWithAi({ emailAccountId });

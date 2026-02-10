@@ -12,6 +12,16 @@ vi.mock("@/server/db/client", () => ({
     taskPreference: {
       findUnique: vi.fn().mockResolvedValue(null),
     },
+    calendarEventShadow: {
+      findFirst: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({ id: "shadow-1" }),
+      update: vi.fn().mockResolvedValue({ id: "shadow-1" }),
+    },
+    calendarEventPolicy: {
+      findFirst: vi.fn().mockResolvedValue(null),
+      findMany: vi.fn().mockResolvedValue([]),
+      create: vi.fn().mockResolvedValue({ id: "policy-1" }),
+    },
   },
 }));
 vi.mock("@/features/approvals/service", () => ({
@@ -53,7 +63,7 @@ describe("modifyTool calendar recurrence semantics", () => {
         emailAccountId: "email-1",
         logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
         providers: { calendar: { updateEvent: vi.fn() } },
-      } as any,
+      } as unknown as Parameters<typeof modifyTool.execute>[1],
     );
 
     expect(result).toEqual({
@@ -76,7 +86,7 @@ describe("modifyTool calendar recurrence semantics", () => {
         emailAccountId: "email-1",
         logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
         providers: { calendar: { updateEvent } },
-      } as any,
+      } as unknown as Parameters<typeof modifyTool.execute>[1],
     );
 
     expect(updateEvent).toHaveBeenCalledWith(
@@ -89,5 +99,132 @@ describe("modifyTool calendar recurrence semantics", () => {
       }),
     );
     expect(result.success).toBe(true);
+  });
+
+  it("reschedules to the next later slot when strategy is later", async () => {
+    const updateEvent = vi.fn().mockResolvedValue({ id: "evt-1" });
+    const getEvent = vi.fn().mockResolvedValue({
+      id: "evt-1",
+      title: "1:1",
+      startTime: new Date("2026-02-13T18:00:00.000Z"),
+      endTime: new Date("2026-02-13T19:00:00.000Z"),
+      attendees: [],
+    });
+    const findAvailableSlots = vi.fn().mockResolvedValue([
+      {
+        start: new Date("2026-02-13T23:00:00.000Z"),
+        end: new Date("2026-02-14T00:00:00.000Z"),
+        score: 0.9,
+      },
+    ]);
+
+    const result = await modifyTool.execute(
+      {
+        resource: "calendar",
+        ids: ["evt-1"],
+        changes: { rescheduleStrategy: "later" },
+      },
+      {
+        userId: "user-1",
+        emailAccountId: "email-1",
+        logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
+        providers: {
+          calendar: {
+            updateEvent,
+            getEvent,
+            findAvailableSlots,
+            searchEvents: vi.fn().mockResolvedValue([]),
+          },
+        },
+      } as unknown as Parameters<typeof modifyTool.execute>[1],
+    );
+
+    expect(getEvent).toHaveBeenCalledWith({ eventId: "evt-1", calendarId: undefined });
+    expect(findAvailableSlots).toHaveBeenCalledWith(
+      expect.objectContaining({
+        durationMinutes: 60,
+      }),
+    );
+    expect(updateEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: "evt-1",
+        input: expect.objectContaining({
+          start: new Date("2026-02-13T23:00:00.000Z"),
+          end: new Date("2026-02-14T00:00:00.000Z"),
+        }),
+      }),
+    );
+    expect(result.success).toBe(true);
+  });
+
+  it("preserves existing duration when only start is provided", async () => {
+    const updateEvent = vi.fn().mockResolvedValue({ id: "evt-1" });
+    const getEvent = vi.fn().mockResolvedValue({
+      id: "evt-1",
+      title: "Sync",
+      startTime: new Date("2026-02-14T18:00:00.000Z"),
+      endTime: new Date("2026-02-14T18:30:00.000Z"),
+      attendees: [],
+    });
+
+    const result = await modifyTool.execute(
+      {
+        resource: "calendar",
+        ids: ["evt-1"],
+        changes: { start: "2026-02-14T20:00:00Z" },
+      },
+      {
+        userId: "user-1",
+        emailAccountId: "email-1",
+        logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
+        providers: {
+          calendar: {
+            updateEvent,
+            getEvent,
+            findAvailableSlots: vi.fn(),
+            searchEvents: vi.fn().mockResolvedValue([]),
+          },
+        },
+      } as unknown as Parameters<typeof modifyTool.execute>[1],
+    );
+
+    expect(updateEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: "evt-1",
+        input: expect.objectContaining({
+          start: new Date("2026-02-14T20:00:00.000Z"),
+          end: new Date("2026-02-14T20:30:00.000Z"),
+        }),
+      }),
+    );
+    expect(result.success).toBe(true);
+  });
+
+  it("asks for a wider window when no slot is available for reschedule", async () => {
+    const getEvent = vi.fn().mockResolvedValue({
+      id: "evt-1",
+      title: "1:1",
+      startTime: new Date("2026-02-13T18:00:00.000Z"),
+      endTime: new Date("2026-02-13T19:00:00.000Z"),
+      attendees: [],
+    });
+    const findAvailableSlots = vi.fn().mockResolvedValue([]);
+
+    const result = await modifyTool.execute(
+      {
+        resource: "calendar",
+        ids: ["evt-1"],
+        changes: { reschedule: "later" },
+      },
+      {
+        userId: "user-1",
+        emailAccountId: "email-1",
+        logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
+        providers: { calendar: { updateEvent: vi.fn(), getEvent, findAvailableSlots } },
+      } as unknown as Parameters<typeof modifyTool.execute>[1],
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.clarification?.prompt).toContain("couldn't find a safe slot");
   });
 });

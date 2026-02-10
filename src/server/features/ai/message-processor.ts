@@ -307,7 +307,7 @@ export async function processMessage(
     threadContextBlock,
     userTimeZone,
     weekStartDay:
-      taskPreference?.weekStartDay === "monday" ? "monday" : "sunday",
+      taskPreference?.weekStartDay === "MONDAY" ? "monday" : "sunday",
     orchestration: {
       mode: preflight.mode,
       toolsAllowed: preflight.needsTools,
@@ -991,6 +991,7 @@ function createApprovalWrappedTool({
     parameters: (original as Record<string, unknown>).parameters,
     execute: async (args: Record<string, unknown>) => {
       if (args?.approvalId && args?.preApproved) return originalExecute(args);
+      if (shouldBypassApprovalIntercept(name, args)) return originalExecute(args);
 
       const needsApproval = await requiresApproval({
         userId,
@@ -1061,7 +1062,7 @@ function createApprovalWrappedTool({
           approvalId: approval.id,
           tool: name,
         },
-        message: "This action requires approval. A request has been sent.",
+        message: "I need your approval before I continue. I sent the request.",
         interactive: {
           type: "approval_request",
           approvalId: approval.id,
@@ -1075,6 +1076,29 @@ function createApprovalWrappedTool({
     },
   };
   return wrappedToolDef;
+}
+
+function shouldBypassApprovalIntercept(
+  toolName: string,
+  args: Record<string, unknown>,
+): boolean {
+  if (toolName !== "create") return false;
+  const resource = typeof args.resource === "string" ? args.resource : "";
+  if (resource === "email") {
+    const data =
+      args.data && typeof args.data === "object"
+        ? (args.data as Record<string, unknown>)
+        : null;
+    return data?.sendOnApproval === true;
+  }
+  if (resource === "calendar") {
+    const data =
+      args.data && typeof args.data === "object"
+        ? (args.data as Record<string, unknown>)
+        : null;
+    return data?.autoSchedule === true;
+  }
+  return false;
 }
 
 type SourceEmailContext = {

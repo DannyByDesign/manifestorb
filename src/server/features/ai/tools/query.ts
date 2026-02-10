@@ -16,14 +16,17 @@ import {
 import { resolveCalendarTimeRange } from "./calendar-time";
 import { getAssistantPreferenceSnapshot } from "@/features/preferences/service";
 
-const parseFilterObject = <T extends z.ZodTypeAny>(schema: T) =>
+const parseFilterObject = <T extends z.ZodTypeAny>(
+    schema: T,
+    options?: { stringFallback?: (value: string) => unknown },
+) =>
     z.preprocess(
         (value) => {
             if (typeof value !== "string") return value;
             try {
                 return JSON.parse(value) as Record<string, unknown>;
             } catch {
-                return undefined;
+                return options?.stringFallback ? options.stringFallback(value) : undefined;
             }
         },
         schema,
@@ -38,134 +41,140 @@ const dateRangeSchema = z
 
 const limitSchema = z.number().int().min(1).max(100).optional();
 
+const emailFilterSchema = z
+    .object({
+        query: z.string().optional(),
+        subjectContains: z.string().optional(),
+        bodyContains: z.string().optional(),
+        text: z.string().optional(),
+        from: z.string().optional(),
+        to: z.string().optional(),
+        hasAttachment: z.boolean().optional(),
+        sentByMe: z.boolean().optional(),
+        receivedByMe: z.boolean().optional(),
+        dateRange: dateRangeSchema.optional(),
+        limit: limitSchema,
+        pageToken: z.string().optional(),
+        fetchAll: z.boolean().optional().default(false),
+        subscriptionsOnly: z
+            .boolean()
+            .optional()
+            .describe(
+                "If true, return likely subscription/newsletter emails (uses list-unsubscribe headers and unsubscribe language heuristics).",
+            ),
+    })
+    .strict();
+
+const calendarFilterSchema = z
+    .object({
+        query: z.string().optional(),
+        text: z.string().optional(),
+        titleContains: z.string().optional(),
+        descriptionContains: z.string().optional(),
+        locationContains: z.string().optional(),
+        attendeeEmail: z.string().email().optional(),
+        timeZone: z.string().optional().describe("IANA timezone for interpreting dateRange and formatting results, e.g. Europe/London."),
+        dateRange: dateRangeSchema.optional(),
+        limit: limitSchema,
+    })
+    .strict();
+
+const contactsFilterSchema = z
+    .object({
+        query: z.string().optional(),
+        limit: limitSchema,
+    })
+    .strict();
+
+const taskFilterSchema = z
+    .object({
+        query: z.string().optional(),
+        limit: limitSchema,
+    })
+    .strict();
+
+const approvalFilterSchema = z
+    .object({
+        status: z
+            .enum(["PENDING", "APPROVED", "DENIED", "EXPIRED", "CANCELLED"])
+            .optional(),
+        limit: limitSchema,
+    })
+    .strict();
+
+const notificationFilterSchema = z
+    .object({
+        query: z.string().optional(),
+        type: z.string().optional(),
+        limit: limitSchema,
+    })
+    .strict();
+
+const draftFilterSchema = z
+    .object({
+        query: z.string().optional(),
+        limit: limitSchema,
+    })
+    .strict();
+
+const conversationFilterSchema = z
+    .object({
+        query: z.string().optional(),
+        limit: limitSchema,
+    })
+    .strict();
+
 const queryParameters = z.discriminatedUnion("resource", [
     z.object({
         resource: z.literal("email"),
-        filter: parseFilterObject(
-            z
-                .object({
-                    query: z.string().optional(),
-                    subjectContains: z.string().optional(),
-                    bodyContains: z.string().optional(),
-                    text: z.string().optional(),
-                    from: z.string().optional(),
-                    to: z.string().optional(),
-                    hasAttachment: z.boolean().optional(),
-                    sentByMe: z.boolean().optional(),
-                    receivedByMe: z.boolean().optional(),
-                    dateRange: dateRangeSchema.optional(),
-                    limit: limitSchema,
-                    pageToken: z.string().optional(),
-                    fetchAll: z.boolean().optional().default(false),
-                    subscriptionsOnly: z
-                        .boolean()
-                        .optional()
-                        .describe(
-                            "If true, return likely subscription/newsletter emails (uses list-unsubscribe headers and unsubscribe language heuristics).",
-                        ),
-                })
-                .strict()
-                .optional(),
-        ),
-    }),
+        filter: parseFilterObject(emailFilterSchema.optional(), {
+            stringFallback: (value) => ({ text: value }),
+        }),
+    }).strict(),
     z.object({
         resource: z.literal("calendar"),
-        filter: parseFilterObject(
-            z
-                .object({
-                    query: z.string().optional(),
-                    text: z.string().optional(),
-                    titleContains: z.string().optional(),
-                    descriptionContains: z.string().optional(),
-                    locationContains: z.string().optional(),
-                    attendeeEmail: z.string().email().optional(),
-                    timeZone: z.string().optional().describe("IANA timezone for interpreting dateRange and formatting results, e.g. Europe/London."),
-                    dateRange: dateRangeSchema.optional(),
-                    limit: limitSchema,
-                })
-                .strict()
-                .optional(),
-        ),
-    }),
+        filter: parseFilterObject(calendarFilterSchema.optional(), {
+            stringFallback: (value) => ({ query: value }),
+        }),
+    }).strict(),
     z.object({
         resource: z.literal("contacts"),
-        filter: parseFilterObject(
-            z
-                .object({
-                    query: z.string().optional(),
-                    limit: limitSchema,
-                })
-                .strict()
-                .optional(),
-        ),
-    }),
+        filter: parseFilterObject(contactsFilterSchema.optional(), {
+            stringFallback: (value) => ({ query: value }),
+        }),
+    }).strict(),
     z.object({
         resource: z.literal("task"),
-        filter: parseFilterObject(
-            z
-                .object({
-                    query: z.string().optional(),
-                    limit: limitSchema,
-                })
-                .strict()
-                .optional(),
-        ),
-    }),
+        filter: parseFilterObject(taskFilterSchema.optional(), {
+            stringFallback: (value) => ({ query: value }),
+        }),
+    }).strict(),
     z.object({
         resource: z.literal("approval"),
-        filter: parseFilterObject(
-            z
-                .object({
-                    status: z
-                        .enum(["PENDING", "APPROVED", "DENIED", "EXPIRED", "CANCELLED"])
-                        .optional(),
-                    limit: limitSchema,
-                })
-                .strict()
-                .optional(),
-        ),
-    }),
+        filter: parseFilterObject(approvalFilterSchema.optional()),
+    }).strict(),
     z.object({
         resource: z.literal("notification"),
-        filter: parseFilterObject(
-            z
-                .object({
-                    query: z.string().optional(),
-                    type: z.string().optional(),
-                    limit: limitSchema,
-                })
-                .strict()
-                .optional(),
-        ),
-    }),
+        filter: parseFilterObject(notificationFilterSchema.optional(), {
+            stringFallback: (value) => ({ query: value }),
+        }),
+    }).strict(),
     z.object({
         resource: z.literal("draft"),
-        filter: parseFilterObject(
-            z
-                .object({
-                    query: z.string().optional(),
-                    limit: limitSchema,
-                })
-                .strict()
-                .optional(),
-        ),
-    }),
+        filter: parseFilterObject(draftFilterSchema.optional(), {
+            stringFallback: (value) => ({ query: value }),
+        }),
+    }).strict(),
     z.object({
         resource: z.literal("conversation"),
-        filter: parseFilterObject(
-            z
-                .object({
-                    query: z.string().optional(),
-                    limit: limitSchema,
-                })
-                .strict()
-                .optional(),
-        ),
-    }),
+        filter: parseFilterObject(conversationFilterSchema.optional(), {
+            stringFallback: (value) => ({ query: value }),
+        }),
+    }).strict(),
     z.object({
         resource: z.literal("preferences"),
         filter: parseFilterObject(z.object({}).strict().optional()),
-    }),
+    }).strict(),
 ]);
 
 type QueryParams = z.infer<typeof queryParameters>;
@@ -550,6 +559,8 @@ async function handleEmailQuery(
             from: filter?.from,
             to: filter?.to,
             hasAttachment: filter?.hasAttachment,
+            sentByMe: filter?.sentByMe,
+            receivedByMe: filter?.receivedByMe,
         });
         const providerMs = Date.now() - providerStartedAt;
 
@@ -658,7 +669,11 @@ async function handleCalendarQuery(
     }
 
     const providerQuery = buildCalendarProviderQuery(filter);
-    const events = await context.providers.calendar.searchEvents(providerQuery, range);
+    const events = await context.providers.calendar.searchEvents(
+        providerQuery,
+        range,
+        filter?.attendeeEmail,
+    );
     const filtered = events.filter((event: CalendarEvent) =>
         matchesCalendarStructuredFilters(event, filter),
     );
@@ -689,6 +704,15 @@ async function handleCalendarQuery(
         date: event.startTime,
         source: "calendar",
         data: {
+            provider: event.provider ?? null,
+            calendarId: event.calendarId ?? null,
+            iCalUid: event.iCalUid ?? null,
+            seriesMasterId: event.seriesMasterId ?? null,
+            versionToken: event.versionToken ?? null,
+            status: event.status ?? null,
+            organizerEmail: event.organizerEmail ?? null,
+            canEdit: event.canEdit ?? null,
+            busyStatus: event.busyStatus ?? null,
             location: event.location,
             eventUrl: event.eventUrl,
             videoConferenceLink: event.videoConferenceLink,

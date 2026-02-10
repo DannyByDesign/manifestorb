@@ -35,7 +35,7 @@ export async function handleRequest(req: Request) {
             }
 
             const body = await req.json();
-            const { platform, channelId, content } = body;
+            const { platform, channelId, threadId, content } = body;
 
             if (!platform || !channelId || !content) {
                 return new Response("Missing required fields", { status: 400 });
@@ -43,7 +43,7 @@ export async function handleRequest(req: Request) {
 
             if (platform === "slack") {
                 const { sendSlackMessage } = await import("./slack");
-                await sendSlackMessage(channelId, content);
+                await sendSlackMessage(channelId, content, undefined, threadId);
                 return new Response("Notification sent to Slack", { status: 200 });
             }
 

@@ -84,6 +84,37 @@ export async function scheduleTasksForUser({
     if ("error" in defaultCalendarTimeZone) {
       throw new Error(defaultCalendarTimeZone.error);
     }
+    let effectiveSelectedCalendarIds = (userSettings.selectedCalendarIds ?? []).filter(Boolean);
+    if (effectiveSelectedCalendarIds.length === 0) {
+      const connectedCalendars = await prisma.calendar.findMany({
+        where: {
+          isEnabled: true,
+          connection: {
+            emailAccountId: resolvedEmailAccountId,
+            isConnected: true,
+          },
+        },
+        select: { calendarId: true },
+        orderBy: { createdAt: "asc" },
+      });
+      effectiveSelectedCalendarIds = connectedCalendars
+        .map((calendar) => calendar.calendarId)
+        .filter((id) => id.length > 0);
+      if (effectiveSelectedCalendarIds.length > 0) {
+        await applyTaskPreferencePatchForUser({
+          userId,
+          patch: {
+            selectedCalendarIds: effectiveSelectedCalendarIds,
+          },
+        });
+      } else {
+        logger.warn("No enabled calendars available for scheduling", {
+          userId,
+          emailAccountId: resolvedEmailAccountId,
+        });
+        return [];
+      }
+    }
     let effectiveTimeZone = defaultCalendarTimeZone.timeZone;
     if (userSettings.timeZone) {
       const resolvedPreferenceTimeZone = resolveTimeZoneOrUtc(userSettings.timeZone);
@@ -103,7 +134,7 @@ export async function scheduleTasksForUser({
       workHourEnd: userSettings.workHourEnd,
       workDays: userSettings.workDays,
       bufferMinutes: userSettings.bufferMinutes,
-      selectedCalendarIds: userSettings.selectedCalendarIds,
+      selectedCalendarIds: effectiveSelectedCalendarIds,
       timeZone: effectiveTimeZone,
       groupByProject: userSettings.groupByProject,
     };

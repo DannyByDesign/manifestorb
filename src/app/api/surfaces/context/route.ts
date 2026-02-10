@@ -11,6 +11,7 @@ const bodySchema = z.object({
     provider: z.enum(["slack", "discord", "telegram", "web"]),
     providerAccountId: z.string().min(1),
     channelId: z.string().min(1),
+    isDirectMessage: z.boolean().optional(),
     incomingThreadId: z.string().optional(),
     messageId: z.string().optional(),
 });
@@ -37,11 +38,13 @@ export async function POST(req: NextRequest) {
             provider,
             providerAccountId,
             channelId,
+            isDirectMessage,
             incomingThreadId,
             messageId,
         } = parsed.data;
-        const canonicalThreadId = deriveCanonicalThreadId({
+        let canonicalThreadId = deriveCanonicalThreadId({
             provider,
+            isDirectMessage,
             incomingThreadId,
             messageId,
         });
@@ -65,7 +68,7 @@ export async function POST(req: NextRequest) {
             });
         }
 
-        const conversation = await prisma.conversation.findFirst({
+        let conversation = await prisma.conversation.findFirst({
             where: {
                 userId: account.userId,
                 provider,
@@ -78,6 +81,32 @@ export async function POST(req: NextRequest) {
                 threadId: true,
             },
         });
+
+        // Slack sometimes omits thread_ts on inbound events. In that case, recover
+        // the most recent canonical thread for this user/channel so replies stay in
+        // a single continuous assistant conversation.
+        if (!conversation && !incomingThreadId) {
+            const latestConversation = await prisma.conversation.findFirst({
+                where: {
+                    userId: account.userId,
+                    provider,
+                    channelId,
+                    threadId: { not: null },
+                },
+                orderBy: {
+                    updatedAt: "desc",
+                },
+                select: {
+                    id: true,
+                    channelId: true,
+                    threadId: true,
+                },
+            });
+            if (latestConversation?.threadId) {
+                canonicalThreadId = latestConversation.threadId;
+                conversation = latestConversation;
+            }
+        }
 
         return NextResponse.json({
             linked: true,

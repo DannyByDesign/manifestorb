@@ -5,6 +5,11 @@ import type { Logger } from "@/server/lib/logger";
 import { getCalendarClientWithRefresh } from "@/features/calendar/client";
 import { startOfYear } from "@/features/calendar/utils";
 import { env } from "@/env";
+import {
+  buildCalendarEventSnapshot,
+  markCalendarEventShadowDeleted,
+  upsertCalendarEventShadow,
+} from "@/features/calendar/canonical-state";
 
 type CalendarConnectionTokens = {
   accessToken: string | null;
@@ -118,10 +123,12 @@ export async function syncGoogleCalendarChanges({
   calendar,
   connection,
   logger,
+  userId,
 }: {
   calendar: CalendarSyncRecord;
   connection: CalendarConnectionTokens;
   logger: Logger;
+  userId?: string;
 }) {
   const client = await getGoogleClient(connection, logger);
   const start = startOfYear(new Date().getUTCFullYear());
@@ -158,6 +165,84 @@ export async function syncGoogleCalendarChanges({
       calendar.googleSyncToken,
     );
 
+    let canonicalProcessed = 0;
+    let canonicalDeleted = 0;
+    let canonicalRemapped = 0;
+    const canonicalEvents: Array<Record<string, unknown>> = [];
+
+    if (userId && items.length > 0) {
+      for (const item of items) {
+        const eventId = item.id ?? undefined;
+        if (!eventId) continue;
+
+        const isCancelled = item.status === "cancelled";
+        if (isCancelled) {
+          const deleted = await markCalendarEventShadowDeleted({
+            userId,
+            emailAccountId: connection.emailAccountId,
+            provider: "google",
+            calendarId: calendar.calendarId,
+            externalEventId: eventId,
+            iCalUid: item.iCalUID ?? undefined,
+            source: "webhook",
+          });
+          if (deleted) canonicalDeleted += 1;
+          continue;
+        }
+
+        const startValue = item.start?.dateTime ?? item.start?.date;
+        const endValue = item.end?.dateTime ?? item.end?.date;
+        if (!startValue || !endValue) continue;
+
+        const startTime = new Date(startValue);
+        const endTime = new Date(endValue);
+        if (Number.isNaN(startTime.getTime()) || Number.isNaN(endTime.getTime())) continue;
+
+        const event = {
+          id: eventId,
+          provider: "google" as const,
+          calendarId: calendar.calendarId,
+          iCalUid: item.iCalUID ?? undefined,
+          seriesMasterId: item.recurringEventId ?? undefined,
+          versionToken: item.etag ?? undefined,
+          status: item.status ?? undefined,
+          organizerEmail: item.organizer?.email ?? item.creator?.email ?? undefined,
+          canEdit: item.guestsCanModify ?? true,
+          canRespond: true,
+          busyStatus: item.transparency === "transparent" ? "free" : "busy",
+          isAllDay: Boolean(item.start?.date && !item.start?.dateTime),
+          isDeleted: false,
+          title: item.summary || "Untitled",
+          description: item.description || undefined,
+          location: item.location || undefined,
+          eventUrl: item.htmlLink || undefined,
+          videoConferenceLink: item.hangoutLink || undefined,
+          startTime,
+          endTime,
+          attendees:
+            item.attendees?.map((attendee) => ({
+              email: attendee.email || "",
+              name: attendee.displayName ?? undefined,
+            })) || [],
+        };
+
+        const upserted = await upsertCalendarEventShadow({
+          userId,
+          emailAccountId: connection.emailAccountId,
+          event,
+          source: "webhook",
+          metadata: {
+            syncProvider: "google",
+            webhookCalendarId: calendar.calendarId,
+          },
+        });
+        if (!upserted) continue;
+        canonicalProcessed += 1;
+        if (upserted.remapped) canonicalRemapped += 1;
+        canonicalEvents.push(buildCalendarEventSnapshot(event));
+      }
+    }
+
     if (nextSyncToken) {
       await prisma.calendar.update({
         where: { id: calendar.id },
@@ -170,7 +255,16 @@ export async function syncGoogleCalendarChanges({
         .then(({ updateSchedulingInsights }) => updateSchedulingInsights(userId))
         .catch(() => {});
     }
-    return { changed: items.length > 0, items };
+    return {
+      changed: items.length > 0,
+      items,
+      canonical: {
+        processed: canonicalProcessed,
+        deleted: canonicalDeleted,
+        remapped: canonicalRemapped,
+        events: canonicalEvents,
+      },
+    };
   } catch (error: unknown) {
     const status =
       (error as { code?: number; response?: { status?: number } })?.code ??
@@ -190,7 +284,16 @@ export async function syncGoogleCalendarChanges({
           .then(({ updateSchedulingInsights }) => updateSchedulingInsights(userId))
           .catch(() => {});
       }
-      return { changed: retryItems.length > 0, items: retryItems };
+      return {
+        changed: retryItems.length > 0,
+        items: retryItems,
+        canonical: {
+          processed: 0,
+          deleted: 0,
+          remapped: 0,
+          events: [],
+        },
+      };
     }
 
     throw error;
