@@ -1,32 +1,23 @@
 // Sparkles Vertex Shader (GPU Compute Integration)
-// Reads particle positions from GPU compute texture
 
 precision highp float;
 
-// ============================================
-// Attributes
-// ============================================
-attribute vec2 aUv;       // UV to sample position texture
-attribute float aPhase;   // Random phase for flicker
-attribute float aIsWhite; // 1.0 for white accent, 0.0 for base
-attribute float aSeed;    // Per-particle seed for variation (0-1)
-attribute float aLayer;   // 0=Dust, 1=Body, 2=Glint
-attribute float aSprite;  // Sprite index
-attribute float aRot;     // Rotation (0..2PI)
-attribute float aAspect;  // Aspect ratio
-attribute float aTwinkle; // Twinkle offset
+attribute vec2 aUv;
+attribute float aPhase;
+attribute float aIsWhite;
+attribute float aSeed;
+attribute float aLayer;
+attribute float aSprite;
+attribute float aRot;
+attribute float aAspect;
+attribute float aTwinkle;
 
-// ============================================
-// Uniforms
-// ============================================
 uniform float uTime;
 uniform float uOrbRadius;
 uniform float uMorphFade;
-uniform sampler2D texturePosition;  // GPU compute position texture (xyz = pos, w = life)
+uniform float uPixelRatio;
+uniform sampler2D texturePosition;
 
-// ============================================
-// Varyings
-// ============================================
 varying float vDepthFade;
 varying float vRadialFade;
 varying float vPhase;
@@ -41,113 +32,70 @@ varying float vTwinkle;
 varying float vLayer;
 varying float vBrightness;
 
-// ============================================
-// Layer Logic
-// ============================================
-
 float getLayerSize(float layer, float seed) {
   if (layer < 0.5) {
-    // Dust: 0.25 - 1.2
-    return 0.25 + seed * 0.95;
+    // Dust: tiny suspended grains
+    return 0.08 + seed * 0.35;
   } else if (layer < 1.5) {
-    // Body: 1.2 - 6.0
-    return 1.2 + seed * 4.8;
-  } else {
-    // Glint: 4.0 - 14.0
-    return 4.0 + seed * 10.0;
+    // Body: small-to-mid grains
+    return 0.22 + seed * 1.3;
   }
+
+  // Glint: medium points (bloom handles apparent size)
+  return 0.45 + seed * 1.8;
 }
 
 float getLayerBrightness(float layer, float seed) {
   if (layer < 0.5) {
-    // Dust: very dim (0.15 - 0.4)
-    return 0.15 + seed * 0.25;
+    return 0.08 + seed * 0.24;
   } else if (layer < 1.5) {
-    // Body: mid (0.4 - 0.85)
-    return 0.4 + seed * 0.45;
-  } else {
-    // Glint: bright HDR (1.2 - 2.2) - triggers bloom
-    return 1.2 + seed * 1.0;
+    return 0.35 + seed * 0.65;
   }
+
+  return 1.3 + seed * 1.4;
 }
 
 void main() {
-  // ========================================
-  // SAMPLE POSITION FROM GPU COMPUTE TEXTURE
-  // ========================================
-  
   vec4 posData = texture2D(texturePosition, aUv);
   vec3 particlePos = posData.xyz;
   float life = posData.w;
-  
-  // Scale to orb radius
+
   vec3 worldPos = particlePos * uOrbRadius;
-  
-  // ========================================
-  // RADIAL FADE (halo effect at edges)
-  // ========================================
-  
+
   float localRadius = length(particlePos);
-  vRadialFade = 1.0 - smoothstep(0.75, 1.0, localRadius);
-  
-  // ========================================
-  // VIEW SPACE TRANSFORM
-  // ========================================
-  
+  vRadialFade = smoothstep(1.0, 0.1, localRadius);
+
   vec4 mvPos = modelViewMatrix * vec4(worldPos, 1.0);
-  float particleZ = -mvPos.z;
-  
-  // ========================================
-  // DEPTH FADE (front = bright, back = dim)
-  // ========================================
-  
+  float particleZ = max(0.001, -mvPos.z);
+
   float orbCenterZ = -(modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0)).z;
-  float zNear = orbCenterZ - uOrbRadius * 1.2;
-  float zFar = orbCenterZ + uOrbRadius * 1.2;
-  
+  float zNear = orbCenterZ - uOrbRadius * 1.25;
+  float zFar = orbCenterZ + uOrbRadius * 1.25;
+
   float rawDepth = 1.0 - smoothstep(zNear, zFar, particleZ);
   vDepthFade = rawDepth * rawDepth;
-  
-  // ========================================
-  // POINT SIZE (life-based + depth-based)
-  // ========================================
-  
-  // Normalize life for rendering (immortal particles have life > 10)
+
   float normalizedLife = life > 10.0 ? 1.0 : life;
-  
-  // Life affects size (shrink as particle ages/dies)
-  float lifeSize = smoothstep(0.0, 0.3, normalizedLife);
-  
-  // Get base size from layer
+  float lifeSize = smoothstep(0.0, 0.4, normalizedLife);
+
   float layerSize = getLayerSize(aLayer, aSeed);
-  
-  // Apply depth scaling (perspective size)
-  float depthScale = (200.0 / particleZ);
-  
-  gl_PointSize = layerSize * depthScale * lifeSize;
-  
-  // Clamp max size to avoid massive artifacts
-  gl_PointSize = clamp(gl_PointSize, 0.0, 64.0);
-  
-  // ========================================
-  // BRIGHTNESS (passed to varying)
-  // ========================================
+  float depthScale = 120.0 / particleZ;
+
+  gl_PointSize = layerSize * depthScale * lifeSize * uPixelRatio;
+  gl_PointSize = clamp(gl_PointSize, 0.0, 28.0);
+
   vBrightness = getLayerBrightness(aLayer, aSeed);
-  
-  // ========================================
-  // PASS VARYINGS
-  // ========================================
-  
+
   vPhase = aPhase;
   vIsWhite = aIsWhite;
   vMorphFade = uMorphFade;
-  vLife = normalizedLife;  // Pass normalized life (immortal particles clamped to 1.0)
-  vSeed = aSeed;           // Per-particle seed for brightness/hue variation
+  vLife = normalizedLife;
+  vSeed = aSeed;
   vSprite = aSprite;
   vRot = aRot;
   vAspect = aAspect;
   vTwinkle = aTwinkle;
   vLayer = aLayer;
-  
+
   gl_Position = projectionMatrix * mvPos;
 }
