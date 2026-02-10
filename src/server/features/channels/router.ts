@@ -1,22 +1,101 @@
 
-import { InboundMessage, OutboundMessage, type InteractivePayload } from "./types";
+import {
+    InboundMessage,
+    OutboundMessage,
+    type ChannelProvider,
+    type InteractivePayload,
+} from "./types";
 import { createScopedLogger } from "@/server/lib/logger";
 import prisma from "@/server/db/client";
-import { createGenerateText } from "@/server/lib/llms";
-import { convertToCoreMessages, streamText } from "ai";
-import { getModel } from "@/server/lib/llms/model";
 import { createHash } from "crypto";
 import { env } from "@/env";
 import { createApprovalActionToken } from "@/features/approvals/action-token";
 import { getErrorMessage } from "@/server/lib/error";
+import { internalIssueMessage } from "@/features/ai/conversational-copy";
+import {
+    buildConversationIdentityKey,
+    deriveCanonicalThreadId,
+    outboundThreadIdForProvider,
+} from "./conversation-key";
+import { runSerializedConversationTurn } from "./runtime";
 
 const logger = createScopedLogger("ChannelRouter");
 
-function buildTimeRangeFromChanges(changes?: Record<string, any>): string | undefined {
+async function resolveCanonicalConversation(params: {
+    userId: string;
+    provider: ChannelProvider;
+    channelId: string;
+    threadId: string;
+}) {
+    const where = {
+        userId: params.userId,
+        provider: params.provider,
+        channelId: params.channelId,
+        threadId: params.threadId,
+    };
+
+    const existing = await prisma.conversation.findFirst({ where });
+    if (existing) return existing;
+
+    const legacyWithoutThread = await prisma.conversation.findFirst({
+        where: {
+            userId: params.userId,
+            provider: params.provider,
+            channelId: params.channelId,
+            threadId: null,
+        },
+        orderBy: { updatedAt: "desc" },
+    });
+
+    if (legacyWithoutThread) {
+        try {
+            return await prisma.conversation.update({
+                where: { id: legacyWithoutThread.id },
+                data: { threadId: params.threadId },
+            });
+        } catch (error) {
+            const maybeCode =
+                typeof error === "object" && error !== null && "code" in error
+                    ? (error as { code?: unknown }).code
+                    : undefined;
+            if (maybeCode !== "P2002") throw error;
+            const conflicted = await prisma.conversation.findFirst({ where });
+            if (conflicted) return conflicted;
+            throw error;
+        }
+    }
+
+    try {
+        return await prisma.conversation.create({
+            data: {
+                userId: params.userId,
+                provider: params.provider,
+                channelId: params.channelId,
+                threadId: params.threadId,
+            },
+        });
+    } catch (error) {
+        const maybeCode =
+            typeof error === "object" && error !== null && "code" in error
+                ? (error as { code?: unknown }).code
+                : undefined;
+        if (maybeCode !== "P2002") throw error;
+        const conflicted = await prisma.conversation.findFirst({ where });
+        if (conflicted) return conflicted;
+        throw error;
+    }
+}
+
+function buildTimeRangeFromChanges(changes?: Record<string, unknown>): string | undefined {
     if (!changes) return undefined;
-    const start = changes.start || changes.scheduledStart || changes.startDate;
-    const end = changes.end || changes.scheduledEnd;
-    const due = changes.dueDate;
+    const start =
+        (typeof changes.start === "string" && changes.start) ||
+        (typeof changes.scheduledStart === "string" && changes.scheduledStart) ||
+        (typeof changes.startDate === "string" && changes.startDate);
+    const end =
+        (typeof changes.end === "string" && changes.end) ||
+        (typeof changes.scheduledEnd === "string" && changes.scheduledEnd);
+    const due = typeof changes.dueDate === "string" ? changes.dueDate : undefined;
 
     if (start && end) {
         return `${start} → ${end}`;
@@ -31,15 +110,27 @@ function buildTimeRangeFromChanges(changes?: Record<string, any>): string | unde
 }
 
 function buildApprovalInteractivePayload(params: {
-    approval: any;
+    approval: {
+        id: string;
+        requestPayload?: unknown;
+    };
     baseUrl: string;
 }): InteractivePayload {
     const { approval, baseUrl } = params;
-    const payload = approval?.requestPayload as Record<string, any> | undefined;
+    const payload =
+        approval?.requestPayload && typeof approval.requestPayload === "object"
+            ? (approval.requestPayload as Record<string, unknown>)
+            : undefined;
     const toolName = payload?.tool;
-    const args = payload?.args || {};
-    const resource = args?.resource;
-    const changes = args?.changes || {};
+    const args =
+        payload?.args && typeof payload.args === "object"
+            ? (payload.args as Record<string, unknown>)
+            : {};
+    const resource = args.resource;
+    const changes =
+        args.changes && typeof args.changes === "object"
+            ? (args.changes as Record<string, unknown>)
+            : {};
 
     let approveUrl = `${baseUrl}/approvals/${approval.id}`;
     let denyUrl = `${baseUrl}/approvals/${approval.id}/deny`;
@@ -145,7 +236,10 @@ export class ChannelRouter {
             const token = await createLinkToken({
                 provider: message.provider,
                 providerAccountId: message.context.userId,
-                providerTeamId: (message.context as any).teamId, // If available
+                providerTeamId:
+                    "teamId" in message.context && typeof message.context.teamId === "string"
+                        ? message.context.teamId
+                        : undefined, // If available
                 metadata: {
                     channelId: message.context.channelId
                 }
@@ -205,173 +299,196 @@ export class ChannelRouter {
             }];
         }
 
-        const threadId = (message.context as any).threadId || null;
+        const incomingThreadId =
+            (message.context as { threadId?: string }).threadId ?? null;
         const channelId = message.context.channelId;
-        const providerMessageId = (message.context as any).messageId;
-
-        // 1.5 Ensure Stable Conversation
-        // We find or create the conversation based on the external context.
-        // Prisma's "connectOrCreate" or upsert is good here if we have a unique constraint.
-        // schema: @@unique([userId, provider, channelId, threadId]) - Note: Postgres unique with NULLs works (distinct), 
-        // BUT strict equality on NULL varies. Prisma handles this well typically? 
-        // Actually, for safety, if threadId is missing, we must be careful.
-        // To avoid complex nullable unique issues, we can check first.
-
-        let conversation = await prisma.conversation.findFirst({
-            where: {
-                userId: user.id,
-                provider: message.provider,
-                channelId: channelId,
-                threadId: threadId // Prisma treats undefined/null as NULL match
-            }
+        const providerMessageId =
+            (message.context as { messageId?: string }).messageId;
+        const canonicalThreadId = deriveCanonicalThreadId({
+            provider: message.provider,
+            incomingThreadId,
+            messageId: providerMessageId,
+        });
+        const queueKey = buildConversationIdentityKey({
+            userId: user.id,
+            provider: message.provider,
+            channelId,
+            threadId: canonicalThreadId,
         });
 
-        if (!conversation) {
-            conversation = await prisma.conversation.create({
-                data: {
-                    userId: user.id,
-                    provider: message.provider,
-                    channelId: channelId,
-                    threadId: threadId,
-                }
-            });
-            logger.info("Created new conversation for inbound message", {
-                conversationId: conversation.id,
-                resolvedUserId: user.id,
+        try {
+            return await runSerializedConversationTurn({
+                queueKey,
                 provider: message.provider,
                 channelId,
-                threadId,
-            });
-        }
-
-        // 1.6 Persist Inbound Message (Unified History) with Dedupe
-        // Dedupe Key: SHA-256(provider : channelId : messageId)
-        // Fallback for web/transient: content hash
-        let dedupeKey = "";
-        if (providerMessageId) {
-            dedupeKey = createHash("sha256")
-                .update(`${message.provider}:${channelId}:${providerMessageId}`)
-                .digest("hex");
-        } else {
-            dedupeKey = createHash("sha256")
-                .update(`${message.provider}:${channelId}:${message.content}:${Date.now()}`) // Transient fallback
-                .digest("hex");
-        }
-
-        try {
-            const { PrivacyService } = await import("@/features/privacy/service");
-            const shouldRecord = await PrivacyService.shouldRecord(user.id);
-
-            if (shouldRecord) {
-                await prisma.conversationMessage.upsert({
-                    where: {
-                        dedupeKey: dedupeKey
-                    },
-                    update: {}, // Idempotent
-                    create: {
-                        // id: default cuid is fine
+                threadId: canonicalThreadId,
+                execute: async () => {
+                    const conversation = await resolveCanonicalConversation({
                         userId: user.id,
-                        conversationId: conversation.id, // Linked!
-                        dedupeKey: dedupeKey,
-                        role: "user",
-                        content: message.content,
-                        toolCalls: undefined, // Fix null error: InputJsonValue | undefined
-
                         provider: message.provider,
-                        providerMessageId: providerMessageId,
-                        channelId: channelId,
-                        threadId: threadId,
+                        channelId,
+                        threadId: canonicalThreadId,
+                    });
+                    const conversationThreadId =
+                        conversation.threadId ?? canonicalThreadId;
 
-                        emailAccountId: emailAccount.id
+                    // 1.6 Persist Inbound Message (Unified History) with Dedupe
+                    // Dedupe Key: SHA-256(provider : channelId : messageId)
+                    // Fallback for web/transient: content hash
+                    let dedupeKey = "";
+                    if (providerMessageId) {
+                        dedupeKey = createHash("sha256")
+                            .update(`${message.provider}:${channelId}:${providerMessageId}`)
+                            .digest("hex");
+                    } else {
+                        dedupeKey = createHash("sha256")
+                            .update(`${message.provider}:${channelId}:${message.content}:${Date.now()}`)
+                            .digest("hex");
                     }
-                });
-            }
-        } catch (err) {
-            logger.error("Failed to persist inbound message", { error: err });
-        }
 
-        // 3. Trigger Memory Recording (Async)
-        // UNIFIED: Uses userId for cross-platform memory
-        try {
-            const { MemoryRecordingService } = await import("@/features/memory/service");
-            if (await MemoryRecordingService.shouldRecord(user.id)) {
-                await MemoryRecordingService.enqueueMemoryRecording(user.id, emailAccount.email);
-            }
-        } catch (e) {
-            logger.error("Failed to trigger memory recording", { error: e });
-        }
+                    try {
+                        const { PrivacyService } = await import("@/features/privacy/service");
+                        const shouldRecord = await PrivacyService.shouldRecord(user.id);
 
-        // 2. Run Unified Agent
-        try {
-            const { runOneShotAgent } = await import("@/features/channels/executor");
+                        if (shouldRecord) {
+                            await prisma.conversationMessage.upsert({
+                                where: {
+                                    dedupeKey: dedupeKey,
+                                },
+                                update: {},
+                                create: {
+                                    userId: user.id,
+                                    conversationId: conversation.id,
+                                    dedupeKey: dedupeKey,
+                                    role: "user",
+                                    content: message.content,
+                                    toolCalls: undefined,
+                                    provider: message.provider,
+                                    providerMessageId: providerMessageId,
+                                    channelId: channelId,
+                                    threadId: conversationThreadId,
+                                    emailAccountId: emailAccount.id,
+                                },
+                            });
+                        }
+                    } catch (err) {
+                        logger.error("Failed to persist inbound message", { error: err });
+                    }
 
-            const { text, approvals, interactivePayloads } = await runOneShotAgent({
-                user: user,
-                emailAccount: emailAccount,
-                message: message.content,
-                context: {
-                    conversationId: conversation.id, // Include this!
-                    channelId: message.context.channelId,
-                    provider: message.provider,
-                    userId: message.context.userId,
-                    teamId: (message.context as any).teamId,
-                    messageId: dedupeKey, // Use our internal key or the provider id? Executor expects messageId for thread?
-                    // Actually executor context is type { ... messageId? ... }. 
-                    // Let's pass the real providerMessageId for reference, but usage in executor should change.
-                    threadId: (message.context as any).threadId || undefined
-                }
+                    try {
+                        const { MemoryRecordingService } = await import("@/features/memory/service");
+                        if (await MemoryRecordingService.shouldRecord(user.id)) {
+                            await MemoryRecordingService.enqueueMemoryRecording(
+                                user.id,
+                                emailAccount.email,
+                            );
+                        }
+                    } catch (e) {
+                        logger.error("Failed to trigger memory recording", { error: e });
+                    }
+
+                    try {
+                        const { runOneShotAgent } = await import("@/features/channels/executor");
+
+                        const { text, approvals, interactivePayloads } = await runOneShotAgent({
+                            user: user,
+                            emailAccount: emailAccount,
+                            message: message.content,
+                            history: message.history,
+                            context: {
+                                conversationId: conversation.id,
+                                channelId: message.context.channelId,
+                                provider: message.provider,
+                                userId: message.context.userId,
+                                teamId:
+                                    "teamId" in message.context &&
+                                    typeof message.context.teamId === "string"
+                                        ? message.context.teamId
+                                        : undefined,
+                                messageId: providerMessageId ?? dedupeKey,
+                                threadId: conversationThreadId,
+                            },
+                        });
+
+                        const outboundThreadId = outboundThreadIdForProvider({
+                            provider: message.provider,
+                            canonicalThreadId: conversationThreadId,
+                        });
+                        const outbound: OutboundMessage = {
+                            targetChannelId: message.context.channelId,
+                            targetThreadId: outboundThreadId,
+                            content: text,
+                        };
+
+                        if (interactivePayloads && interactivePayloads.length > 0) {
+                            outbound.interactive = interactivePayloads[0];
+                        } else if (approvals && approvals.length > 0) {
+                            const approval = approvals[0];
+                            const { env } = await import("@/env");
+
+                            outbound.interactive = buildApprovalInteractivePayload({
+                                approval,
+                                baseUrl: env.NEXT_PUBLIC_BASE_URL,
+                            });
+                        }
+
+                        logger.info("Built outbound response", {
+                            conversationId: conversation.id,
+                            resolvedUserId: user.id,
+                            provider: message.provider,
+                            channelId: message.context.channelId,
+                            threadId: outboundThreadId ?? null,
+                            contentLength: outbound.content.length,
+                            hasInteractive: Boolean(outbound.interactive),
+                            approvalsCount: approvals?.length ?? 0,
+                            interactivePayloadsCount: interactivePayloads?.length ?? 0,
+                        });
+
+                        return [outbound];
+                    } catch (error) {
+                        logger.error("Error running agent", { error });
+                        const baseContent = internalIssueMessage();
+                        const verbose =
+                            env.NODE_ENV !== "production" ||
+                            process.env.E2E_VERBOSE_ERRORS === "true";
+                        const detail = verbose
+                            ? (getErrorMessage(error) ??
+                                (error instanceof Error ? error.message : String(error)))
+                            : "";
+                        const content = detail
+                            ? `${baseContent} Details: ${detail}`
+                            : baseContent;
+                        return [
+                            {
+                                targetChannelId: message.context.channelId,
+                                targetThreadId: outboundThreadIdForProvider({
+                                    provider: message.provider,
+                                    canonicalThreadId: conversationThreadId,
+                                }),
+                                content,
+                            },
+                        ];
+                    }
+                },
             });
-
-            // 3. Construct Output
-            const outbound: OutboundMessage = {
-                targetChannelId: message.context.channelId,
-                content: text
-            };
-
-            // Priority 1: Attach interactive payload from tool results (e.g., draft buttons)
-            if (interactivePayloads && interactivePayloads.length > 0) {
-                outbound.interactive = interactivePayloads[0]; // Use first interactive payload
-            }
-            // Priority 2: Attach interactive approval UI if generated
-            else if (approvals && approvals.length > 0) {
-                const approval = approvals[0]; // Just show the first one for simplicity
-                const { env } = await import("@/env");
-
-                outbound.interactive = buildApprovalInteractivePayload({
-                    approval,
-                    baseUrl: env.NEXT_PUBLIC_BASE_URL
-                });
-            }
-
-            logger.info("Built outbound response", {
-                conversationId: conversation.id,
-                resolvedUserId: user.id,
-                provider: message.provider,
-                channelId: message.context.channelId,
-                contentLength: outbound.content.length,
-                hasInteractive: Boolean(outbound.interactive),
-                approvalsCount: approvals?.length ?? 0,
-                interactivePayloadsCount: interactivePayloads?.length ?? 0,
-            });
-
-            return [outbound];
-
         } catch (error) {
-            logger.error("Error running agent", { error });
-            const baseContent = "I encountered an error processing your request.";
-            const verbose =
-                env.NODE_ENV !== "production" ||
-                process.env.E2E_VERBOSE_ERRORS === "true";
-            const detail = verbose
-                ? (getErrorMessage(error) ?? (error instanceof Error ? error.message : String(error)))
-                : "";
-            const content = detail
-                ? `${baseContent} ${detail}`
-                : baseContent;
-            return [{
-                targetChannelId: message.context.channelId,
-                content,
-            }];
+            logger.error("Error running serialized conversation turn", {
+                error,
+                provider: message.provider,
+                channelId,
+                threadId: canonicalThreadId,
+                resolvedUserId: user.id,
+            });
+            return [
+                {
+                    targetChannelId: message.context.channelId,
+                    targetThreadId: outboundThreadIdForProvider({
+                        provider: message.provider,
+                        canonicalThreadId,
+                    }),
+                    content: internalIssueMessage(),
+                },
+            ];
         }
     }
 
@@ -381,17 +498,47 @@ export class ChannelRouter {
      */
     async pushMessage(userId: string, content: string): Promise<boolean> {
         try {
-            // Find the most recent conversation on a supported platform
-            const conversation = await prisma.conversation.findFirst({
+            // Prefer the most recent sidecar message metadata for precise channel/thread routing.
+            const recentMessage = await prisma.conversationMessage.findFirst({
                 where: {
                     userId: userId,
                     provider: { in: ["slack", "discord", "telegram"] }
                 },
-                orderBy: { updatedAt: "desc" }
+                orderBy: { createdAt: "desc" },
+                select: {
+                    provider: true,
+                    channelId: true,
+                    threadId: true,
+                    conversationId: true,
+                },
             });
+
+            // Fallback to conversation record if no message exists yet.
+            const conversation = recentMessage
+                ? {
+                    provider: recentMessage.provider,
+                    channelId: recentMessage.channelId,
+                    threadId: recentMessage.threadId,
+                    id: recentMessage.conversationId,
+                }
+                : await prisma.conversation.findFirst({
+                    where: {
+                        userId: userId,
+                        provider: { in: ["slack", "discord", "telegram"] }
+                    },
+                    orderBy: { updatedAt: "desc" }
+                });
 
             if (!conversation) {
                 logger.warn("No active conversation found for push", { userId });
+                return false;
+            }
+            if (!conversation.channelId) {
+                logger.warn("Active conversation missing channelId; cannot push", {
+                    userId,
+                    provider: conversation.provider,
+                    conversationId: conversation.id,
+                });
                 return false;
             }
 
@@ -412,6 +559,7 @@ export class ChannelRouter {
                 body: JSON.stringify({
                     platform: conversation.provider,
                     channelId: conversation.channelId,
+                    threadId: conversation.threadId,
                     content: content
                 })
             });

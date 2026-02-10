@@ -21,6 +21,7 @@ import { recordBulkAccess } from "@/features/memory/decay";
 import { posthogCaptureEvent } from "@/server/lib/posthog";
 import { getPendingScheduleProposal } from "@/features/calendar/schedule-proposal";
 import { scanForAttentionItems } from "@/features/ai/proactive/scanner";
+import { createCalendarEventProviders } from "@/features/calendar/event-provider";
 
 const logger = createScopedLogger("ContextManager");
 
@@ -46,7 +47,7 @@ export interface DomainObjectRef {
     title: string;
     snippet: string;
     source: "email" | "event";
-    originalObject?: any;
+    originalObject?: unknown;
 }
 
 /** Pending schedule proposal so the agent can interpret "the first one", "Tuesday", etc. */
@@ -63,12 +64,23 @@ export interface PendingApprovalState {
     tool: string;
     description: string;
     argsSummary: string;
+    draftId?: string;
+}
+
+/** Most recently created draft surfaced to the user in this conversation. */
+export interface PendingDraftState {
+    draftId: string;
+    summary?: string;
+    subject?: string;
+    to?: string[];
+    createdAt: string;
 }
 
 /** Injected only when present; enables natural-language resolution without interceptors. */
 export interface PendingStateContext {
     scheduleProposal?: PendingScheduleProposalState;
     approvals?: PendingApprovalState[];
+    activeDraft?: PendingDraftState;
 }
 
 export interface ContextPack {
@@ -138,35 +150,98 @@ export interface ContextPack {
     };
 }
 
+export type ContextTier = 0 | 1 | 2 | 3;
+
+export interface ContextBuildOptions {
+    contextTier?: ContextTier;
+    includePendingState?: boolean;
+    includeDomainData?: boolean;
+    includeAttentionItems?: boolean;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null;
+}
+
+function normalizeRecipientList(value: unknown): string[] | undefined {
+    if (!Array.isArray(value)) return undefined;
+    const list = value.filter((item): item is string => typeof item === "string").slice(0, 10);
+    return list.length > 0 ? list : undefined;
+}
+
+function extractActiveDraftFromHistory(history: ConversationMessage[]): PendingDraftState | undefined {
+    const sorted = [...history].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    const staleThresholdMs = Date.now() - 24 * 60 * 60 * 1000;
+
+    for (const message of sorted) {
+        if (message.role !== "assistant") continue;
+        if (message.createdAt.getTime() < staleThresholdMs) break;
+
+        const content = (message.content ?? "").toLowerCase();
+        if (content.includes("email sent successfully") || content.includes("draft discarded")) {
+            return undefined;
+        }
+
+        if (!isRecord(message.toolCalls)) continue;
+        const toolCalls = message.toolCalls as Record<string, unknown>;
+        const candidates: unknown[] = [];
+        if (isRecord(toolCalls.interactive)) candidates.push(toolCalls.interactive);
+        if (Array.isArray(toolCalls.interactivePayloads)) {
+            candidates.push(...toolCalls.interactivePayloads);
+        }
+
+        for (const candidate of candidates) {
+            if (!isRecord(candidate)) continue;
+            if (candidate.type !== "draft_created") continue;
+            const draftId = typeof candidate.draftId === "string" ? candidate.draftId : undefined;
+            if (!draftId) continue;
+            return {
+                draftId,
+                summary: typeof candidate.summary === "string" ? candidate.summary : undefined,
+                subject: typeof candidate.subject === "string" ? candidate.subject : undefined,
+                to: normalizeRecipientList(candidate.to),
+                createdAt: message.createdAt.toISOString(),
+            };
+        }
+    }
+
+    return undefined;
+}
+
 export class ContextManager {
     static async buildContextPack({
         user,
         emailAccount,
         messageContent,
-        conversationId  // Optional - kept for backward compatibility but not used for retrieval
+        options,
     }: {
         user: Pick<User, "id">;  // User ID for unified context retrieval
         emailAccount: EmailAccount;
         messageContent: string;
         conversationId?: string;  // Optional - context is now user-level, not conversation-level
+        options?: ContextBuildOptions;
     }): Promise<ContextPack> {
         const startTime = Date.now();
+        const contextTier = options?.contextTier ?? 3;
+        const includePendingState = options?.includePendingState ?? true;
+        const includeDomainData = options?.includeDomainData ?? contextTier >= 3;
+        const includeAttentionItems =
+            options?.includeAttentionItems ?? (contextTier >= 3 && includeDomainData);
+        const normalizedMessage = messageContent.trim();
 
         // 1. Run searches in parallel for better performance
         let facts: MemoryFact[] = [];
         let knowledge: Knowledge[] = [];
-        let factScores: Map<string, number> = new Map();
-
-        if (messageContent && messageContent.trim().length > 0) {
+        if (contextTier >= 2 && normalizedMessage.length > 0) {
             const [factResults, knowledgeResults] = await Promise.all([
                 searchMemoryFacts({
                     userId: user.id,
-                    query: messageContent,
+                    query: normalizedMessage,
                     limit: 10
                 }),
                 searchKnowledge({
                     userId: user.id,
-                    query: messageContent,
+                    query: normalizedMessage,
                     limit: 5
                 })
             ]);
@@ -175,10 +250,7 @@ export class ContextManager {
                 .filter(r => r.score >= MIN_RELEVANCE_SCORE)
                 .sort((a, b) => b.score - a.score)
                 .slice(0, 10)
-                .map(r => {
-                    factScores.set(r.item.id, r.score);
-                    return r.item;
-                });
+                .map(r => r.item);
 
             knowledge = knowledgeResults
                 .filter(r => r.score >= MIN_RELEVANCE_SCORE)
@@ -193,87 +265,193 @@ export class ContextManager {
             logger.trace("Context search complete", {
                 factCount: facts.length,
                 knowledgeCount: knowledge.length,
-                queryLength: messageContent.length
+                queryLength: normalizedMessage.length,
+                contextTier,
             });
         }
 
         // 2. Fetch UNIFIED History (hybrid: recent + relevance), Summary, and domain objects in parallel
-        const recentTake = 10;
-        const relevantTake = 10;
-        const [recentHistory, relevantHistoryResults, userSummary, upcomingEvents, recentEmails, pendingTasks, recentFilings, attentionItems] = await Promise.all([
-            prisma.conversationMessage.findMany({
-                where: { userId: user.id },
-                orderBy: { createdAt: 'desc' },
-                take: recentTake,
-            }),
-            messageContent.trim().length > 0
+        const recentTake = contextTier === 0 ? 4 : contextTier === 1 ? 8 : 10;
+        const relevantTake = contextTier >= 3 ? 10 : contextTier >= 2 ? 6 : 0;
+
+        const recentHistoryPromise = prisma.conversationMessage.findMany({
+            where: { userId: user.id },
+            orderBy: { createdAt: "desc" },
+            take: recentTake,
+        });
+
+        const relevantHistoryPromise =
+            relevantTake > 0 && normalizedMessage.length > 0
                 ? searchConversationHistory({
                     userId: user.id,
-                    query: messageContent,
+                    query: normalizedMessage,
                     limit: relevantTake,
                 }).then((results) => results.map((r) => r.item))
-                : Promise.resolve([] as ConversationMessage[]),
-            prisma.userSummary.findUnique({
-                where: { userId: user.id }
-            }),
-            // Upcoming calendar events: not stored in DB; leave empty (provider could be called later)
-            Promise.resolve([] as Array<{ id: string; title: string; start: Date; end: Date; attendees?: string[]; location?: string }>),
-            // Recent emails (last 48h) from user's email accounts
-            prisma.emailMessage.findMany({
-                where: {
-                    emailAccount: { userId: user.id },
-                    inbox: true,
-                    date: { gte: new Date(Date.now() - 48 * 60 * 60 * 1000) },
-                },
-                orderBy: { date: "desc" },
-                take: 10,
-                select: {
-                    threadId: true,
-                    from: true,
-                    date: true,
-                    read: true,
-                },
-            }).then(rows =>
-                rows.map((r) => ({
-                    threadId: r.threadId,
-                    subject: "(No subject)",
-                    from: r.from,
-                    snippet: "",
-                    receivedAt: r.date,
-                    needsReply: !r.read,
-                }))
-            ).catch(() => []),
-            // Pending tasks
-            prisma.task.findMany({
-                where: {
-                    userId: user.id,
-                    status: { in: ["PENDING", "IN_PROGRESS"] },
-                },
-                orderBy: [{ dueDate: "asc" }, { priority: "desc" }],
-                take: 10,
-                select: {
-                    id: true,
-                    title: true,
-                    dueDate: true,
-                    priority: true,
-                    status: true,
-                },
-            }).catch(() => []),
-            // Recent drive filings (last 7 days)
-            prisma.documentFiling.findMany({
-                where: {
-                    emailAccount: { userId: user.id },
-                    createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
-                },
-                orderBy: { createdAt: "desc" },
-                take: 5,
-                select: {
-                    filename: true,
-                    folderPath: true,
-                    createdAt: true,
-                },
-            }).catch(() => []),
-            scanForAttentionItems(user.id).catch(() => []),
+                : Promise.resolve([] as ConversationMessage[]);
+
+        const userSummaryPromise =
+            contextTier >= 1
+                ? prisma.userSummary.findUnique({
+                    where: { userId: user.id },
+                })
+                : Promise.resolve(null);
+
+        const upcomingEventsPromise = includeDomainData
+            ? (async () => {
+                try {
+                    const providers = await createCalendarEventProviders(emailAccount.id, logger);
+                    if (providers.length === 0) return [];
+
+                    const now = new Date();
+                    const windowEnd = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+                    const results = await Promise.allSettled(
+                        providers.map((provider) =>
+                            provider.fetchEvents({
+                                timeMin: now,
+                                timeMax: windowEnd,
+                                maxResults: 20,
+                            }),
+                        ),
+                    );
+
+                    const dedupe = new Set<string>();
+                    const upcoming = results
+                        .filter(
+                            (result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof providers[number]["fetchEvents"]>>> =>
+                                result.status === "fulfilled",
+                        )
+                        .flatMap((result) => result.value)
+                        .filter((event) => {
+                            const key = `${event.id}:${event.startTime.toISOString()}:${event.endTime.toISOString()}`;
+                            if (dedupe.has(key)) return false;
+                            dedupe.add(key);
+                            return true;
+                        })
+                        .map((event) => ({
+                            id: event.id,
+                            title: event.title || "Untitled",
+                            start: event.startTime,
+                            end: event.endTime,
+                            attendees: event.attendees
+                                .map((attendee) => attendee.email)
+                                .filter(Boolean)
+                                .slice(0, 10),
+                            location: event.location ?? undefined,
+                        }))
+                        .sort((a, b) => a.start.getTime() - b.start.getTime())
+                        .slice(0, 20);
+
+                    return upcoming;
+                } catch (error) {
+                    logger.warn("Failed to load upcoming events for context", {
+                        userId: user.id,
+                        emailAccountId: emailAccount.id,
+                        error: error instanceof Error ? error.message : String(error),
+                    });
+                    return [];
+                }
+            })()
+            : Promise.resolve(
+                [] as Array<{
+                    id: string;
+                    title: string;
+                    start: Date;
+                    end: Date;
+                    attendees?: string[];
+                    location?: string;
+                }>,
+            );
+
+        const recentEmailsPromise = includeDomainData
+            ? prisma.emailMessage
+                .findMany({
+                    where: {
+                        emailAccount: { userId: user.id },
+                        inbox: true,
+                        date: { gte: new Date(Date.now() - 48 * 60 * 60 * 1000) },
+                    },
+                    orderBy: { date: "desc" },
+                    take: 10,
+                    select: {
+                        threadId: true,
+                        from: true,
+                        date: true,
+                        read: true,
+                    },
+                })
+                .then((rows) =>
+                    rows.map((r) => ({
+                        threadId: r.threadId,
+                        subject: "(No subject)",
+                        from: r.from,
+                        snippet: "",
+                        receivedAt: r.date,
+                        needsReply: !r.read,
+                    })),
+                )
+                .catch(() => [])
+            : Promise.resolve([]);
+
+        const pendingTasksPromise = includeDomainData
+            ? prisma.task
+                .findMany({
+                    where: {
+                        userId: user.id,
+                        status: { in: ["PENDING", "IN_PROGRESS"] },
+                    },
+                    orderBy: [{ dueDate: "asc" }, { priority: "desc" }],
+                    take: 10,
+                    select: {
+                        id: true,
+                        title: true,
+                        dueDate: true,
+                        priority: true,
+                        status: true,
+                    },
+                })
+                .catch(() => [])
+            : Promise.resolve([]);
+
+        const recentFilingsPromise = includeDomainData
+            ? prisma.documentFiling
+                .findMany({
+                    where: {
+                        emailAccount: { userId: user.id },
+                        createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+                    },
+                    orderBy: { createdAt: "desc" },
+                    take: 5,
+                    select: {
+                        filename: true,
+                        folderPath: true,
+                        createdAt: true,
+                    },
+                })
+                .catch(() => [])
+            : Promise.resolve([]);
+
+        const attentionItemsPromise = includeAttentionItems
+            ? scanForAttentionItems(user.id).catch(() => [])
+            : Promise.resolve([]);
+
+        const [
+            recentHistory,
+            relevantHistoryResults,
+            userSummary,
+            upcomingEvents,
+            recentEmails,
+            pendingTasks,
+            recentFilings,
+            attentionItems,
+        ] = await Promise.all([
+            recentHistoryPromise,
+            relevantHistoryPromise,
+            userSummaryPromise,
+            upcomingEventsPromise,
+            recentEmailsPromise,
+            pendingTasksPromise,
+            recentFilingsPromise,
+            attentionItemsPromise,
         ]);
 
         // Merge recent + relevant, dedupe by id, sort oldest first
@@ -288,9 +466,11 @@ export class ContextManager {
         const history: ConversationMessage[] = merged.sort(
             (a, b) => a.createdAt.getTime() - b.createdAt.getTime()
         );
+        const activeDraft = extractActiveDraftFromHistory(history);
 
         // 2b. Fetch pending state (only when present) for natural-language resolution
-        const [pendingProposal, pendingApprovalRows] = await Promise.all([
+        const [pendingProposal, pendingApprovalRows] = includePendingState
+            ? await Promise.all([
             getPendingScheduleProposal(user.id),
             prisma.approvalRequest.findMany({
                 where: {
@@ -301,7 +481,8 @@ export class ContextManager {
                 orderBy: { createdAt: "desc" },
                 take: 5,
             }),
-        ]);
+        ])
+            : [null, [] as Array<{ id: string; requestPayload: unknown }>];
 
         const formatSlotLabel = (start: string, end: string | undefined, timeZone: string) => {
             const startDate = new Date(start);
@@ -335,7 +516,7 @@ export class ContextManager {
                     requestId: pendingProposal.id,
                     description: payload?.description ?? "Schedule proposal",
                     originalIntent: payload?.originalIntent === "task" ? "task" : "event",
-                    options: options.map((opt, i) => ({
+                    options: options.map((opt) => ({
                         start: opt.start,
                         end: opt.end,
                         timeZone: opt.timeZone,
@@ -350,16 +531,28 @@ export class ContextManager {
         });
         if (sendApprovals.length > 0) {
             const approvals: PendingApprovalState[] = sendApprovals.map((r) => {
-                const p = r.requestPayload as { tool?: string; description?: string; args?: Record<string, unknown> };
+                const p = r.requestPayload as {
+                    tool?: string;
+                    description?: string;
+                    args?: Record<string, unknown>;
+                    draftId?: string;
+                };
                 const argsSummary =
                     typeof p?.args === "object" && p.args !== null
                         ? JSON.stringify(p.args).slice(0, 120) + (JSON.stringify(p.args).length > 120 ? "…" : "")
                         : "";
+                const draftId =
+                    typeof p?.draftId === "string"
+                        ? p.draftId
+                        : typeof p?.args?.draftId === "string"
+                            ? p.args.draftId
+                            : undefined;
                 return {
                     id: r.id,
                     tool: p?.tool ?? "send",
                     description: p?.description ?? "Send email",
                     argsSummary,
+                    draftId,
                 };
             });
             pendingState = {
@@ -390,6 +583,12 @@ export class ContextManager {
                 approvals: (pendingState?.approvals ?? []).concat(approvals),
             };
         }
+        if (activeDraft) {
+            pendingState = {
+                ...pendingState,
+                activeDraft,
+            };
+        }
 
         // 3. Apply token budget
         const contextPack = this.applyTokenBudget({
@@ -406,8 +605,9 @@ export class ContextManager {
             knowledge,
             history,
             documents: [], // Populated by Deep Mode later
-            pendingState: pendingState ?? undefined,
-            attentionItems: attentionItems.map((a) => ({
+            pendingState: includePendingState ? pendingState ?? undefined : undefined,
+            attentionItems: includeAttentionItems
+                ? attentionItems.map((a) => ({
                 id: a.id,
                 type: a.type,
                 urgency: a.urgency,
@@ -415,8 +615,9 @@ export class ContextManager {
                 description: a.description,
                 actionable: a.actionable,
                 suggestedAction: a.suggestedAction,
-            })),
-            domain: {
+            }))
+                : [],
+            domain: includeDomainData ? {
                 upcomingEvents,
                 recentEmails,
                 pendingTasks: pendingTasks.map((t) => ({
@@ -431,7 +632,7 @@ export class ContextManager {
                     folderPath: f.folderPath,
                     filedAt: f.createdAt,
                 })),
-            },
+            } : undefined,
         });
 
         // 4. Track metrics (fire and forget)
@@ -445,6 +646,9 @@ export class ContextManager {
             hasSummary: !!contextPack.system.summary,
             totalChars,
             elapsedMs,
+            contextTier,
+            includeDomainData,
+            includeAttentionItems,
         }).catch(() => {});
 
         logger.trace("Context pack built", {
@@ -452,7 +656,10 @@ export class ContextManager {
             knowledgeCount: contextPack.knowledge.length,
             historyCount: contextPack.history.length,
             totalChars,
-            elapsedMs
+            elapsedMs,
+            contextTier,
+            includeDomainData,
+            includeAttentionItems,
         });
 
         return contextPack;
@@ -464,7 +671,6 @@ export class ContextManager {
      */
     private static applyTokenBudget(contextPack: ContextPack): ContextPack {
         const result = { ...contextPack };
-        let usedChars = 0;
 
         // 1. Summary (highest priority after system prompt)
         if (result.system.summary) {
@@ -474,7 +680,6 @@ export class ContextManager {
                     CONTEXT_BUDGET.summary
                 );
             }
-            usedChars += result.system.summary.length;
         }
 
         // 2. Facts (high priority - user preferences)
@@ -486,7 +691,6 @@ export class ContextManager {
             factChars += factLength;
             return true;
         });
-        usedChars += factChars;
 
         // 3. Knowledge (medium priority)
         const knowledgeBudget = CONTEXT_BUDGET.knowledge;
@@ -504,7 +708,6 @@ export class ContextManager {
                 knowledgeChars += kLength;
                 return true;
             });
-        usedChars += knowledgeChars;
 
         // 4. History (lower priority - oldest first removed)
         const historyBudget = CONTEXT_BUDGET.history;
@@ -514,8 +717,6 @@ export class ContextManager {
             historyChars += msg.content.length;
             return true;
         });
-        usedChars += historyChars;
-
         return result;
     }
 
