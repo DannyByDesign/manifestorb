@@ -1,45 +1,49 @@
--- Enable pgvector extension (run as superuser if needed)
--- This may already be enabled in your database
-CREATE EXTENSION IF NOT EXISTS vector;
-
--- Add embedding column to MemoryFact
-ALTER TABLE "MemoryFact" 
-ADD COLUMN IF NOT EXISTS "embedding" vector(1536);
-
--- Add embedding column to Knowledge
-ALTER TABLE "Knowledge" 
-ADD COLUMN IF NOT EXISTS "embedding" vector(1536);
-
--- Create indexes for fast similarity search
--- Using IVFFlat for approximate nearest neighbor (good balance of speed/accuracy)
--- Note: IVFFlat indexes need data to be built efficiently, so we create after data exists
--- For empty tables, HNSW might be better, but IVFFlat with lists=100 is a good default
-
--- Only create index if not exists (for re-running migrations)
+-- Enable pgvector if available; continue gracefully when unavailable.
 DO $$
 BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_indexes 
-        WHERE indexname = 'MemoryFact_embedding_idx'
-    ) THEN
-        -- Using cosine distance operator for semantic similarity
-        CREATE INDEX "MemoryFact_embedding_idx" 
-        ON "MemoryFact" 
-        USING ivfflat (embedding vector_cosine_ops)
-        WITH (lists = 100);
-    END IF;
+    BEGIN
+        CREATE EXTENSION IF NOT EXISTS vector;
+    EXCEPTION
+        WHEN undefined_file THEN
+            RAISE NOTICE 'pgvector extension is not installed on this Postgres instance; skipping vector columns/indexes.';
+    END;
 END $$;
 
 DO $$
+DECLARE
+    has_vector BOOLEAN;
 BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_indexes 
-        WHERE indexname = 'Knowledge_embedding_idx'
-    ) THEN
-        CREATE INDEX "Knowledge_embedding_idx" 
-        ON "Knowledge" 
-        USING ivfflat (embedding vector_cosine_ops)
-        WITH (lists = 100);
+    SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector')
+    INTO has_vector;
+
+    IF has_vector THEN
+        ALTER TABLE "MemoryFact"
+        ADD COLUMN IF NOT EXISTS "embedding" vector(1536);
+
+        ALTER TABLE "Knowledge"
+        ADD COLUMN IF NOT EXISTS "embedding" vector(1536);
+
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_indexes
+            WHERE indexname = 'MemoryFact_embedding_idx'
+        ) THEN
+            CREATE INDEX "MemoryFact_embedding_idx"
+            ON "MemoryFact"
+            USING ivfflat (embedding vector_cosine_ops)
+            WITH (lists = 100);
+        END IF;
+
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_indexes
+            WHERE indexname = 'Knowledge_embedding_idx'
+        ) THEN
+            CREATE INDEX "Knowledge_embedding_idx"
+            ON "Knowledge"
+            USING ivfflat (embedding vector_cosine_ops)
+            WITH (lists = 100);
+        END IF;
+    ELSE
+        RAISE NOTICE 'Skipping vector migration steps because pgvector is unavailable.';
     END IF;
 END $$;
 
