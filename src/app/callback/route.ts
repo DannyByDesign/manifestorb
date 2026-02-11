@@ -1,8 +1,11 @@
 import { handleAuth } from "@/server/auth";
 import { NextResponse, type NextRequest } from "next/server";
 import { createScopedLogger } from "@/server/lib/logger";
+import { env } from "@/env";
 
-const handler = handleAuth();
+// In container/proxy environments, request host resolution can be internal.
+// Force canonical app origin for post-auth redirects.
+const handler = handleAuth({ baseURL: env.NEXT_PUBLIC_BASE_URL });
 const logger = createScopedLogger("auth/callback");
 
 export const GET = async (request: NextRequest) => {
