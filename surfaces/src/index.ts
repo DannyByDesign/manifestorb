@@ -298,12 +298,14 @@ export async function startSidecar() {
         throw new Error("Bun runtime not available");
     }
 
+    const resolvedPort = Number.parseInt(process.env.PORT ?? "3001", 10);
+    const port = Number.isFinite(resolvedPort) ? resolvedPort : 3001;
     const server = bunRuntime.serve({
-        port: 3001,
+        port,
         fetch: handleRequest,
     });
 
-    console.log("🔔 HTTP Server listening on port 3001");
+    console.log(`🔔 HTTP Server listening on port ${port}`);
     console.log("   - POST /notify - Send notifications to platforms");
     console.log("   - POST /send-welcome - Send onboarding welcome to a user (e.g. Slack)");
     console.log("   - GET  /jobs/status - Get job queue status");
