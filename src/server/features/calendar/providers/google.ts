@@ -2,7 +2,7 @@ import { env } from "@/env";
 import prisma from "@/server/db/client";
 import type { Logger } from "@/server/lib/logger";
 import {
-  getCalendarOAuth2Client,
+  getCalendarOAuth2ClientForBaseUrl,
   fetchGoogleCalendars,
   getCalendarClientWithRefresh,
 } from "@/features/calendar/client";
@@ -15,12 +15,13 @@ import {
 
 export function createGoogleCalendarProvider(
   logger: Logger,
+  baseUrl: string,
 ): CalendarOAuthProvider {
   return {
     name: "google",
 
     async exchangeCodeForTokens(code: string): Promise<CalendarTokens> {
-      const googleAuth = getCalendarOAuth2Client();
+      const googleAuth = getCalendarOAuth2ClientForBaseUrl(baseUrl);
 
       const { tokens } = await googleAuth.getToken(code);
       const { id_token, access_token, refresh_token, expiry_date } = tokens;

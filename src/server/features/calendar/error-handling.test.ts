@@ -7,6 +7,7 @@ import type { Logger } from "@/server/lib/logger";
 vi.mock("@/server/db/client");
 vi.mock("@/features/calendar/client", () => ({
   getCalendarOAuth2Client: vi.fn(),
+  getCalendarOAuth2ClientForBaseUrl: vi.fn(),
   fetchGoogleCalendars: vi.fn(),
   getCalendarClientWithRefresh: vi.fn(),
 }));
@@ -28,7 +29,7 @@ describe("calendar sync error handling", () => {
       new Error("sync failed"),
     );
 
-    const provider = createGoogleCalendarProvider(logger);
+    const provider = createGoogleCalendarProvider(logger, "http://localhost:3000");
 
     await expect(
       provider.syncCalendars(

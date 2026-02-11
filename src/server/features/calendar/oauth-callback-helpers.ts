@@ -4,8 +4,6 @@ import { z } from "zod";
 import prisma from "@/server/db/client";
 import { CALENDAR_STATE_COOKIE_NAME } from "@/features/calendar/constants";
 import { parseOAuthState } from "@/server/lib/oauth/state";
-import { prefixPath } from "@/server/lib/path";
-import { env } from "@/env";
 import type { Logger } from "@/server/lib/logger";
 import type {
   OAuthCallbackValidation,
@@ -26,13 +24,14 @@ const calendarOAuthStateSchema = z.object({
 export async function validateOAuthCallback(
   request: NextRequest,
   logger: Logger,
+  baseUrl: string,
 ): Promise<OAuthCallbackValidation> {
   const searchParams = request.nextUrl.searchParams;
   const code = searchParams.get("code");
   const receivedState = searchParams.get("state");
   const storedState = request.cookies.get(CALENDAR_STATE_COOKIE_NAME)?.value;
 
-  const redirectUrl = new URL("/connect", env.NEXT_PUBLIC_BASE_URL);
+  const redirectUrl = new URL("/connect", baseUrl);
   const response = NextResponse.redirect(redirectUrl);
 
   response.cookies.delete(CALENDAR_STATE_COOKIE_NAME);
@@ -88,8 +87,11 @@ export function parseAndValidateCalendarState(
 /**
  * Build redirect URL with emailAccountId
  */
-export function buildCalendarRedirectUrl(emailAccountId: string): URL {
-  return new URL("/connect", env.NEXT_PUBLIC_BASE_URL);
+export function buildCalendarRedirectUrl(
+  _emailAccountId: string,
+  baseUrl: string,
+): URL {
+  return new URL("/connect", baseUrl);
 }
 
 /**

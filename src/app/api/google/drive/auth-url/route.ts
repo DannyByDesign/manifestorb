@@ -13,7 +13,10 @@ export const GET = withEmailAccount(
   "google/drive/auth-url",
   async (request) => {
     const { emailAccountId } = request.auth;
-    const { url, state } = getAuthUrl({ emailAccountId });
+    const { url, state } = getAuthUrl({
+      emailAccountId,
+      baseUrl: request.nextUrl.origin,
+    });
 
     const res: GetDriveAuthUrlResponse = { url };
     const response = NextResponse.json(res);
@@ -28,13 +31,19 @@ export const GET = withEmailAccount(
   },
 );
 
-const getAuthUrl = ({ emailAccountId }: { emailAccountId: string }) => {
+const getAuthUrl = ({
+  emailAccountId,
+  baseUrl,
+}: {
+  emailAccountId: string;
+  baseUrl: string;
+}) => {
   const state = generateOAuthState({
     emailAccountId,
     type: "drive",
   });
 
-  const url = getGoogleDriveOAuth2Url(state);
+  const url = getGoogleDriveOAuth2Url(state, baseUrl);
 
   return { url, state };
 };

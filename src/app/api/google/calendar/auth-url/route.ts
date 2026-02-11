@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withEmailAccount } from "@/server/lib/middleware";
-import { getCalendarOAuth2Client } from "@/features/calendar/client";
+import { getCalendarOAuth2ClientForBaseUrl } from "@/features/calendar/client";
 import { CALENDAR_STATE_COOKIE_NAME } from "@/features/calendar/constants";
 import { CALENDAR_SCOPES } from "@/server/integrations/google/scopes";
 import {
@@ -10,8 +10,14 @@ import {
 
 export type GetCalendarAuthUrlResponse = { url: string };
 
-const getAuthUrl = ({ emailAccountId }: { emailAccountId: string }) => {
-  const oauth2Client = getCalendarOAuth2Client();
+const getAuthUrl = ({
+  emailAccountId,
+  baseUrl,
+}: {
+  emailAccountId: string;
+  baseUrl: string;
+}) => {
+  const oauth2Client = getCalendarOAuth2ClientForBaseUrl(baseUrl);
 
   const state = generateOAuthState({
     emailAccountId,
@@ -32,7 +38,10 @@ export const GET = withEmailAccount(
   "google/calendar/auth-url",
   async (request) => {
     const { emailAccountId } = request.auth;
-    const { url, state } = getAuthUrl({ emailAccountId });
+    const { url, state } = getAuthUrl({
+      emailAccountId,
+      baseUrl: request.nextUrl.origin,
+    });
 
     const res: GetCalendarAuthUrlResponse = { url };
     const response = NextResponse.json(res);

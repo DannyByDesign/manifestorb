@@ -15,6 +15,7 @@ vi.mock("@/server/lib/redis/oauth-code", () => ({
 }));
 vi.mock("@/server/integrations/google/client", () => ({
   getLinkingOAuth2Client: vi.fn(),
+  getLinkingOAuth2ClientForBaseUrl: vi.fn(),
 }));
 vi.mock("@/server/lib/oauth/account-linking", () => ({
   handleAccountLinking: vi.fn(),
@@ -84,7 +85,7 @@ describe("GET /api/google/linking/callback", () => {
 
     expect(res.status).toBe(307);
     expect(res.headers.get("location")).toContain(
-      "http://localhost:3000/accounts?success=tokens_updated",
+      "http://localhost/accounts?success=tokens_updated",
     );
     expect((res as any).cookies.get(GOOGLE_LINKING_STATE_COOKIE_NAME)?.value).toBe("");
   });

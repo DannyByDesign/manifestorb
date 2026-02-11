@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { env } from "@/env";
 import prisma from "@/server/db/client";
-import { getLinkingOAuth2Client } from "@/server/integrations/google/client";
+import { getLinkingOAuth2ClientForBaseUrl } from "@/server/integrations/google/client";
 import { GOOGLE_LINKING_STATE_COOKIE_NAME } from "@/server/integrations/google/constants";
 import { withError } from "@/server/lib/middleware";
 import { validateOAuthCallback } from "@/server/lib/oauth/callback-validation";
@@ -24,6 +24,7 @@ import { setupIntegrationsAfterOAuth } from "@/server/features/integrations/post
 
 export const GET = withError("google/linking/callback", async (request) => {
   const logger = request.logger;
+  const baseUrl = request.nextUrl.origin;
 
   const searchParams = request.nextUrl.searchParams;
   const storedState = request.cookies.get(
@@ -36,6 +37,7 @@ export const GET = withError("google/linking/callback", async (request) => {
     storedState,
     stateCookieName: GOOGLE_LINKING_STATE_COOKIE_NAME,
     logger,
+    baseUrl,
   });
 
   if (!validation.success) {
@@ -49,7 +51,7 @@ export const GET = withError("google/linking/callback", async (request) => {
     logger.info("OAuth code already processed, returning cached result", {
       targetUserId,
     });
-    const redirectUrl = new URL("/accounts", env.NEXT_PUBLIC_BASE_URL);
+    const redirectUrl = new URL("/accounts", baseUrl);
     for (const [key, value] of Object.entries(cachedResult.params)) {
       redirectUrl.searchParams.set(key, value);
     }
@@ -63,13 +65,13 @@ export const GET = withError("google/linking/callback", async (request) => {
     logger.info("OAuth code is being processed by another request", {
       targetUserId,
     });
-    const redirectUrl = new URL("/accounts", env.NEXT_PUBLIC_BASE_URL);
+    const redirectUrl = new URL("/accounts", baseUrl);
     const response = NextResponse.redirect(redirectUrl);
     response.cookies.delete(GOOGLE_LINKING_STATE_COOKIE_NAME);
     return response;
   }
 
-  const googleAuth = getLinkingOAuth2Client();
+  const googleAuth = getLinkingOAuth2ClientForBaseUrl(baseUrl);
 
   try {
     const { tokens } = await googleAuth.getToken(code);
@@ -214,7 +216,7 @@ export const GET = withError("google/linking/callback", async (request) => {
         provider: "google",
       }).catch((err) => logger.error("Post-OAuth setup failed", { error: err }));
 
-      const successUrl = new URL("/accounts", env.NEXT_PUBLIC_BASE_URL);
+      const successUrl = new URL("/accounts", baseUrl);
       successUrl.searchParams.set("success", "account_created_and_linked");
       const successResponse = NextResponse.redirect(successUrl);
       successResponse.cookies.delete(GOOGLE_LINKING_STATE_COOKIE_NAME);
@@ -249,7 +251,7 @@ export const GET = withError("google/linking/callback", async (request) => {
         provider: "google",
       }).catch((err) => logger.error("Post-OAuth setup failed", { error: err }));
 
-      const successUrl = new URL("/accounts", env.NEXT_PUBLIC_BASE_URL);
+      const successUrl = new URL("/accounts", baseUrl);
       successUrl.searchParams.set("success", "tokens_updated");
       const successResponse = NextResponse.redirect(successUrl);
       successResponse.cookies.delete(GOOGLE_LINKING_STATE_COOKIE_NAME);
@@ -298,7 +300,7 @@ export const GET = withError("google/linking/callback", async (request) => {
       provider: "google",
     }).catch((err) => logger.error("Post-OAuth setup failed", { error: err }));
 
-    const successUrl = new URL("/accounts", env.NEXT_PUBLIC_BASE_URL);
+    const successUrl = new URL("/accounts", baseUrl);
     successUrl.searchParams.set("success", successMessage);
     const successResponse = NextResponse.redirect(successUrl);
     successResponse.cookies.delete(GOOGLE_LINKING_STATE_COOKIE_NAME);
@@ -307,7 +309,7 @@ export const GET = withError("google/linking/callback", async (request) => {
   } catch (error) {
     await clearOAuthCode(code);
 
-    const errorUrl = new URL("/accounts", env.NEXT_PUBLIC_BASE_URL);
+    const errorUrl = new URL("/accounts", baseUrl);
     return handleOAuthCallbackError({
       error,
       redirectUrl: errorUrl,

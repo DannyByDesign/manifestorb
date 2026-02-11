@@ -1,5 +1,4 @@
 import type { NextRequest, NextResponse } from "next/server";
-import { env } from "@/env";
 import prisma from "@/server/db/client";
 import type { Logger } from "@/server/lib/logger";
 import type { CalendarOAuthProvider } from "./oauth-types";
@@ -33,12 +32,14 @@ export async function handleCalendarCallback(
   logger: Logger,
 ): Promise<NextResponse> {
   let redirectHeaders = new Headers();
+  const baseUrl = request.nextUrl.origin;
 
   try {
     // Step 1: Validate OAuth callback parameters
     const { code, redirectUrl, response } = await validateOAuthCallback(
       request,
       logger,
+      baseUrl,
     );
     redirectHeaders = response.headers;
 
@@ -46,7 +47,7 @@ export async function handleCalendarCallback(
     const cachedResult = await getOAuthCodeResult(code);
     if (cachedResult) {
       logger.info("OAuth code already processed, returning cached result");
-      const cachedRedirectUrl = new URL("/connect", env.NEXT_PUBLIC_BASE_URL);
+      const cachedRedirectUrl = new URL("/connect", baseUrl);
       for (const [key, value] of Object.entries(cachedResult.params)) {
         cachedRedirectUrl.searchParams.set(key, value);
       }
@@ -55,18 +56,20 @@ export async function handleCalendarCallback(
         cachedRedirectUrl,
         cachedResult.params.message || "calendar_connected",
         redirectHeaders,
+        { allowedOrigin: baseUrl, fallbackBaseUrl: baseUrl },
       );
     }
 
     const acquiredLock = await acquireOAuthCodeLock(code);
     if (!acquiredLock) {
       logger.info("OAuth code is being processed by another request");
-      const lockRedirectUrl = new URL("/connect", env.NEXT_PUBLIC_BASE_URL);
+      const lockRedirectUrl = new URL("/connect", baseUrl);
       response.cookies.delete(CALENDAR_STATE_COOKIE_NAME);
       return redirectWithMessage(
         lockRedirectUrl,
         "processing",
         redirectHeaders,
+        { allowedOrigin: baseUrl, fallbackBaseUrl: baseUrl },
       );
     }
 
@@ -87,7 +90,7 @@ export async function handleCalendarCallback(
     const { emailAccountId } = decodedState;
 
     // Step 3: Update redirect URL to include emailAccountId
-    const finalRedirectUrl = buildCalendarRedirectUrl(emailAccountId);
+    const finalRedirectUrl = buildCalendarRedirectUrl(emailAccountId, baseUrl);
 
     // Step 4: Verify user owns this email account
     await verifyEmailAccountAccess(
@@ -131,6 +134,7 @@ export async function handleCalendarCallback(
         finalRedirectUrl,
         "calendar_already_connected",
         redirectHeaders,
+        { allowedOrigin: baseUrl, fallbackBaseUrl: baseUrl },
       );
     }
 
@@ -167,6 +171,7 @@ export async function handleCalendarCallback(
       finalRedirectUrl,
       "calendar_connected",
       redirectHeaders,
+      { allowedOrigin: baseUrl, fallbackBaseUrl: baseUrl },
     );
   } catch (error) {
     // Clear the OAuth code lock on error
@@ -181,6 +186,7 @@ export async function handleCalendarCallback(
         error.redirectUrl,
         "connection_failed",
         error.responseHeaders,
+        { allowedOrigin: baseUrl, fallbackBaseUrl: baseUrl },
       );
     }
 
@@ -188,11 +194,12 @@ export async function handleCalendarCallback(
     logger.error("Error in calendar callback", { error });
 
     // Try to build a redirect URL, fallback to /calendars
-    const errorRedirectUrl = new URL("/connect", env.NEXT_PUBLIC_BASE_URL);
+    const errorRedirectUrl = new URL("/connect", baseUrl);
     return redirectWithError(
       errorRedirectUrl,
       "connection_failed",
       redirectHeaders,
+      { allowedOrigin: baseUrl, fallbackBaseUrl: baseUrl },
     );
   }
 }

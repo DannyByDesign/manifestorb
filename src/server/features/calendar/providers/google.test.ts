@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createGoogleCalendarProvider } from "@/server/features/calendar/providers/google";
 import prisma from "@/server/lib/__mocks__/prisma";
 import {
-  getCalendarOAuth2Client,
+  getCalendarOAuth2ClientForBaseUrl,
   fetchGoogleCalendars,
   getCalendarClientWithRefresh,
 } from "@/features/calendar/client";
@@ -21,6 +21,7 @@ import {
 vi.mock("@/server/db/client");
 vi.mock("@/features/calendar/client", () => ({
   getCalendarOAuth2Client: vi.fn(),
+  getCalendarOAuth2ClientForBaseUrl: vi.fn(),
   fetchGoogleCalendars: vi.fn(),
   getCalendarClientWithRefresh: vi.fn(),
 }));
@@ -51,7 +52,7 @@ describe("createGoogleCalendarProvider", () => {
   });
 
   it("exchanges code for tokens and email", async () => {
-    vi.mocked(getCalendarOAuth2Client).mockReturnValue({
+    vi.mocked(getCalendarOAuth2ClientForBaseUrl).mockReturnValue({
       getToken: vi.fn().mockResolvedValue({
         tokens: {
           id_token: "id",
@@ -65,7 +66,7 @@ describe("createGoogleCalendarProvider", () => {
       }),
     } as any);
 
-    const provider = createGoogleCalendarProvider(logger);
+    const provider = createGoogleCalendarProvider(logger, "http://localhost:3000");
     const tokens = await provider.exchangeCodeForTokens("code");
 
     expect(tokens.email).toBe("user@test.com");
@@ -87,7 +88,7 @@ describe("createGoogleCalendarProvider", () => {
       googleChannelExpiresAt: null,
     } as any);
 
-    const provider = createGoogleCalendarProvider(logger);
+    const provider = createGoogleCalendarProvider(logger, "http://localhost:3000");
     await provider.syncCalendars("conn-1", "a", "r", "email-1", null);
 
     expect(ensureGoogleCalendarWatch).toHaveBeenCalled();

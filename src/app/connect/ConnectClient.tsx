@@ -13,6 +13,41 @@ type ConnectClientProps = {
 
 type ConnectStatus = "idle" | "loading" | "error";
 
+const extractErrorMessage = (payload: unknown, status: number): string => {
+  if (typeof payload === "string" && payload.trim().length > 0) {
+    return payload;
+  }
+
+  if (payload && typeof payload === "object") {
+    const record = payload as Record<string, unknown>;
+    const nestedError = record.error;
+    if (typeof nestedError === "string" && nestedError.trim().length > 0) {
+      const requestId =
+        typeof record.requestId === "string" ? record.requestId : null;
+      return requestId
+        ? `${nestedError} (requestId: ${requestId})`
+        : nestedError;
+    }
+    if (nestedError && typeof nestedError === "object") {
+      const nested = nestedError as Record<string, unknown>;
+      if (typeof nested.message === "string" && nested.message.trim().length > 0) {
+        return nested.message;
+      }
+    }
+    if (
+      typeof record.error_description === "string" &&
+      record.error_description.trim().length > 0
+    ) {
+      return record.error_description;
+    }
+    if (typeof record.details === "string" && record.details.trim().length > 0) {
+      return record.details;
+    }
+  }
+
+  return `Failed to start OAuth flow (status ${status})`;
+};
+
 const requestAuthUrl = async (
   endpoint: string,
   emailAccountId: string | null,
@@ -24,10 +59,8 @@ const requestAuthUrl = async (
 
   const response = await fetch(endpoint, { headers });
   if (!response.ok) {
-    const payload = (await response.json().catch(() => ({}))) as {
-      error?: string;
-    };
-    throw new Error(payload.error || "Failed to start OAuth flow");
+    const payload = await response.json().catch(() => null);
+    throw new Error(extractErrorMessage(payload, response.status));
   }
 
   const data = (await response.json()) as { url?: string };

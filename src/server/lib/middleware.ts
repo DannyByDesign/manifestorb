@@ -182,7 +182,18 @@ function withMiddleware<T extends NextRequest>(
       captureException(error, { extra: { url: req.url } });
 
       return NextResponse.json(
-        { error: "An unexpected error occurred" },
+        {
+          error:
+            "Unexpected server error. Please retry. If this continues, share requestId with support.",
+          errorCode: "INTERNAL_ERROR",
+          requestId,
+          ...(env.NODE_ENV === "development" || env.ENABLE_DEBUG_LOGS
+            ? {
+                details:
+                  error instanceof Error ? error.message : String(error),
+              }
+            : {}),
+        },
         { status: 500 },
       );
     }

@@ -27,10 +27,15 @@ const getAuth = ({ accessToken, refreshToken, expiresAt }: AuthOptions) => {
 };
 
 export function getCalendarOAuth2Client() {
+  return getCalendarOAuth2ClientForBaseUrl(env.NEXT_PUBLIC_BASE_URL);
+}
+
+export function getCalendarOAuth2ClientForBaseUrl(baseUrl: string) {
+  const normalizedBaseUrl = baseUrl.replace(/\/$/, "");
   return new auth.OAuth2({
     clientId: env.GOOGLE_CLIENT_ID,
     clientSecret: env.GOOGLE_CLIENT_SECRET,
-    redirectUri: `${env.NEXT_PUBLIC_BASE_URL}/api/google/calendar/callback`,
+    redirectUri: `${normalizedBaseUrl}/api/google/calendar/callback`,
   });
 }
 

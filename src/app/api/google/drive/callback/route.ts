@@ -7,7 +7,8 @@ export const GET = withError("google/drive/callback", async (request) => {
     request,
     {
       name: "google",
-      exchangeCodeForTokens: exchangeGoogleDriveCode,
+      exchangeCodeForTokens: (code: string) =>
+        exchangeGoogleDriveCode(code, request.nextUrl.origin),
     },
     request.logger,
   );

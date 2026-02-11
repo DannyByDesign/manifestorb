@@ -5,7 +5,7 @@ import { createGoogleCalendarProvider } from "@/features/calendar/providers/goog
 export const GET = withError("google/calendar/callback", async (request) => {
   return handleCalendarCallback(
     request,
-    createGoogleCalendarProvider(request.logger),
+    createGoogleCalendarProvider(request.logger, request.nextUrl.origin),
     request.logger,
   );
 });

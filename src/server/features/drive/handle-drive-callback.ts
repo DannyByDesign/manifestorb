@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { type NextRequest, NextResponse } from "next/server";
-import { env } from "@/env";
 import type { Logger } from "@/server/lib/logger";
 import type { DriveTokens } from "./types";
 import {
@@ -18,7 +17,6 @@ import {
 import { DRIVE_STATE_COOKIE_NAME } from "./constants";
 import prisma from "@/server/db/client";
 import { parseOAuthState } from "@/server/lib/oauth/state";
-import { prefixPath } from "@/server/lib/path";
 import { ensureGoogleDriveWatch } from "@/features/drive/sync/google";
 
 const driveOAuthStateSchema = z.object({
@@ -39,12 +37,14 @@ export async function handleDriveCallback(
   logger: Logger,
 ): Promise<NextResponse> {
   let redirectHeaders = new Headers();
+  const baseUrl = request.nextUrl.origin;
 
   try {
     // Step 1: Validate OAuth callback parameters
     const { code, redirectUrl, response } = await validateOAuthCallback(
       request,
       logger,
+      baseUrl,
     );
     redirectHeaders = response.headers;
 
@@ -52,7 +52,7 @@ export async function handleDriveCallback(
     const cachedResult = await getOAuthCodeResult(code);
     if (cachedResult) {
       logger.info("OAuth code already processed, returning cached result");
-      const cachedRedirectUrl = new URL("/connect", env.NEXT_PUBLIC_BASE_URL);
+      const cachedRedirectUrl = new URL("/connect", baseUrl);
       for (const [key, value] of Object.entries(cachedResult.params)) {
         cachedRedirectUrl.searchParams.set(key, value);
       }
@@ -61,18 +61,20 @@ export async function handleDriveCallback(
         cachedRedirectUrl,
         cachedResult.params.message || "drive_connected",
         redirectHeaders,
+        { allowedOrigin: baseUrl, fallbackBaseUrl: baseUrl },
       );
     }
 
     const acquiredLock = await acquireOAuthCodeLock(code);
     if (!acquiredLock) {
       logger.info("OAuth code is being processed by another request");
-      const lockRedirectUrl = new URL("/connect", env.NEXT_PUBLIC_BASE_URL);
+      const lockRedirectUrl = new URL("/connect", baseUrl);
       response.cookies.delete(DRIVE_STATE_COOKIE_NAME);
       return redirectWithMessage(
         lockRedirectUrl,
         "processing",
         redirectHeaders,
+        { allowedOrigin: baseUrl, fallbackBaseUrl: baseUrl },
       );
     }
 
@@ -93,7 +95,7 @@ export async function handleDriveCallback(
     const { emailAccountId } = decodedState;
 
     // Step 3: Update redirect URL to include emailAccountId
-    const finalRedirectUrl = buildDriveRedirectUrl(emailAccountId);
+    const finalRedirectUrl = buildDriveRedirectUrl(emailAccountId, baseUrl);
 
     // Step 4: Verify user owns this email account
     await verifyEmailAccountAccess(
@@ -155,6 +157,7 @@ export async function handleDriveCallback(
       finalRedirectUrl,
       "drive_connected",
       redirectHeaders,
+      { allowedOrigin: baseUrl, fallbackBaseUrl: baseUrl },
     );
   } catch (error) {
     // Clear the OAuth code lock on error (best-effort, don't mask original error)
@@ -174,6 +177,7 @@ export async function handleDriveCallback(
         error.redirectUrl,
         "connection_failed",
         error.responseHeaders,
+        { allowedOrigin: baseUrl, fallbackBaseUrl: baseUrl },
       );
     }
 
@@ -181,11 +185,12 @@ export async function handleDriveCallback(
     logger.error("Error in drive callback", { error });
 
     // Try to build a redirect URL, fallback to /drive
-    const errorRedirectUrl = new URL("/connect", env.NEXT_PUBLIC_BASE_URL);
+    const errorRedirectUrl = new URL("/connect", baseUrl);
     return redirectWithError(
       errorRedirectUrl,
       "connection_failed",
       redirectHeaders,
+      { allowedOrigin: baseUrl, fallbackBaseUrl: baseUrl },
     );
   }
 }
@@ -196,6 +201,7 @@ export async function handleDriveCallback(
 async function validateOAuthCallback(
   request: NextRequest,
   logger: Logger,
+  baseUrl: string,
 ): Promise<{
   code: string;
   redirectUrl: URL;
@@ -206,7 +212,7 @@ async function validateOAuthCallback(
   const receivedState = searchParams.get("state");
   const storedState = request.cookies.get(DRIVE_STATE_COOKIE_NAME)?.value;
 
-  const redirectUrl = new URL("/connect", env.NEXT_PUBLIC_BASE_URL);
+  const redirectUrl = new URL("/connect", baseUrl);
   const response = NextResponse.redirect(redirectUrl);
 
   response.cookies.delete(DRIVE_STATE_COOKIE_NAME);
@@ -263,8 +269,8 @@ function parseAndValidateDriveState(
   return validationResult.data;
 }
 
-function buildDriveRedirectUrl(emailAccountId: string): URL {
-  return new URL("/connect", env.NEXT_PUBLIC_BASE_URL);
+function buildDriveRedirectUrl(_emailAccountId: string, baseUrl: string): URL {
+  return new URL("/connect", baseUrl);
 }
 
 async function upsertDriveConnection(params: {

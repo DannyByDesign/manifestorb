@@ -10,18 +10,25 @@ import { GOOGLE_DRIVE_SCOPES, MICROSOFT_DRIVE_SCOPES } from "./scopes";
  * Creates an OAuth2 client for Google Drive authentication
  */
 export function getGoogleDriveOAuth2Client() {
+  return getGoogleDriveOAuth2ClientForBaseUrl(env.NEXT_PUBLIC_BASE_URL);
+}
+
+export function getGoogleDriveOAuth2ClientForBaseUrl(baseUrl: string) {
+  const normalizedBaseUrl = baseUrl.replace(/\/$/, "");
   return new auth.OAuth2({
     clientId: env.GOOGLE_CLIENT_ID,
     clientSecret: env.GOOGLE_CLIENT_SECRET,
-    redirectUri: `${env.NEXT_PUBLIC_BASE_URL}/api/google/drive/callback`,
+    redirectUri: `${normalizedBaseUrl}/api/google/drive/callback`,
   });
 }
 
 /**
  * Generates the OAuth2 URL for Google Drive
  */
-export function getGoogleDriveOAuth2Url(state: string): string {
-  const oauth2Client = getGoogleDriveOAuth2Client();
+export function getGoogleDriveOAuth2Url(state: string, baseUrl?: string): string {
+  const oauth2Client = baseUrl
+    ? getGoogleDriveOAuth2ClientForBaseUrl(baseUrl)
+    : getGoogleDriveOAuth2Client();
   return oauth2Client.generateAuthUrl({
     access_type: "offline",
     scope: [...GOOGLE_DRIVE_SCOPES],
@@ -33,8 +40,10 @@ export function getGoogleDriveOAuth2Url(state: string): string {
 /**
  * Exchange Google OAuth code for tokens
  */
-export async function exchangeGoogleDriveCode(code: string) {
-  const oauth2Client = getGoogleDriveOAuth2Client();
+export async function exchangeGoogleDriveCode(code: string, baseUrl?: string) {
+  const oauth2Client = baseUrl
+    ? getGoogleDriveOAuth2ClientForBaseUrl(baseUrl)
+    : getGoogleDriveOAuth2Client();
   const { tokens } = await oauth2Client.getToken(code);
 
   if (!tokens.access_token || !tokens.refresh_token) {

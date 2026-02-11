@@ -10,6 +10,7 @@ interface ValidateCallbackParams {
   storedState: string | undefined;
   stateCookieName: string;
   logger: Logger;
+  baseUrl?: string;
 }
 
 type ValidationResult =
@@ -48,8 +49,10 @@ export function validateOAuthCallback({
   storedState,
   stateCookieName,
   logger,
+  baseUrl,
 }: ValidateCallbackParams): ValidationResult {
-  const redirectUrl = new URL("/accounts", env.NEXT_PUBLIC_BASE_URL);
+  const resolvedBaseUrl = baseUrl?.trim() || env.NEXT_PUBLIC_BASE_URL;
+  const redirectUrl = new URL("/accounts", resolvedBaseUrl);
   const response = NextResponse.redirect(redirectUrl);
 
   // Separate null checks from comparison to use timing-safe comparison

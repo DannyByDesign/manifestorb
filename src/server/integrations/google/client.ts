@@ -37,10 +37,15 @@ const getAuth = ({
 };
 
 export function getLinkingOAuth2Client() {
+  return getLinkingOAuth2ClientForBaseUrl(env.NEXT_PUBLIC_BASE_URL);
+}
+
+export function getLinkingOAuth2ClientForBaseUrl(baseUrl: string) {
+  const normalizedBaseUrl = baseUrl.replace(/\/$/, "");
   return new auth.OAuth2({
     clientId: env.GOOGLE_CLIENT_ID,
     clientSecret: env.GOOGLE_CLIENT_SECRET,
-    redirectUri: `${env.NEXT_PUBLIC_BASE_URL}/api/google/linking/callback`,
+    redirectUri: `${normalizedBaseUrl}/api/google/linking/callback`,
   });
 }
 
@@ -199,8 +204,10 @@ export const getContactsClientWithRefresh = async ({
 };
 
 export const getAccessTokenFromClient = (client: gmail_v1.Gmail): string => {
-  const accessToken = (client.context._options.auth as any).credentials
-    .access_token;
+  const auth = client.context._options.auth as
+    | { credentials?: { access_token?: string | null } }
+    | undefined;
+  const accessToken = auth?.credentials?.access_token;
   if (!accessToken) throw new Error("No access token");
   return accessToken;
 };

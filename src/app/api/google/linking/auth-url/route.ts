@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/server/lib/middleware";
-import { getLinkingOAuth2Client } from "@/server/integrations/google/client";
+import { getLinkingOAuth2ClientForBaseUrl } from "@/server/integrations/google/client";
 import { GOOGLE_LINKING_STATE_COOKIE_NAME } from "@/server/integrations/google/constants";
 import { SCOPES } from "@/server/integrations/google/scopes";
 import {
@@ -10,8 +10,14 @@ import {
 
 export type GetAuthLinkUrlResponse = { url: string };
 
-const getAuthUrl = ({ userId }: { userId: string }) => {
-  const googleAuth = getLinkingOAuth2Client();
+const getAuthUrl = ({
+  userId,
+  baseUrl,
+}: {
+  userId: string;
+  baseUrl: string;
+}) => {
+  const googleAuth = getLinkingOAuth2ClientForBaseUrl(baseUrl);
 
   const state = generateOAuthState({ userId });
 
@@ -27,7 +33,10 @@ const getAuthUrl = ({ userId }: { userId: string }) => {
 
 export const GET = withAuth("google/linking/auth-url", async (request) => {
   const userId = request.auth.userId;
-  const { url: authUrl, state } = getAuthUrl({ userId });
+  const { url: authUrl, state } = getAuthUrl({
+    userId,
+    baseUrl: request.nextUrl.origin,
+  });
 
   const response = NextResponse.json({ url: authUrl });
 
