@@ -3,7 +3,7 @@ builder = "RAILPACK"
 buildCommand = "bun run build"
 
 [deploy]
-preDeployCommand = "npx prisma migrate deploy --schema prisma/schema.prisma"
+preDeployCommand = "bun run prisma:migrate:deploy"
 startCommand = "bun run start"
 healthcheckPath = "/api/health/liveness"
 healthcheckTimeout = 120

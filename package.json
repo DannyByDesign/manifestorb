@@ -11,6 +11,7 @@
     "dev:turbo": "next dev",
     "build": "next build --webpack",
     "start": "next start",
+    "prisma:migrate:deploy": "prisma migrate deploy --schema prisma/schema.prisma",
     "lint": "eslint",
     "test-ai": "vitest run --config vitest.config.ts",
     "test:integration": "vitest run --config vitest.config.ts tests/integration/**/*.integration.test.ts",

@@ -27,6 +27,21 @@ export async function handleRequest(req: Request) {
         return timingSafeEqual(Buffer.from(token), Buffer.from(expectedSecret));
     };
 
+    const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
+        return await new Promise<T>((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error("timeout")), timeoutMs);
+            promise
+                .then((value) => {
+                    clearTimeout(timer);
+                    resolve(value);
+                })
+                .catch((error) => {
+                    clearTimeout(timer);
+                    reject(error);
+                });
+        });
+    };
+
     // Push notifications to platforms
     if (req.method === "POST" && url.pathname === "/notify") {
         try {
@@ -219,15 +234,30 @@ export async function handleRequest(req: Request) {
                 }
             }
 
-            // Health check
-            if (req.method === "GET" && url.pathname === "/health") {
+            // Liveness health check (for Railway healthcheck)
+            if (
+                req.method === "GET" &&
+                (url.pathname === "/health" || url.pathname === "/health/liveness")
+            ) {
+                return new Response(JSON.stringify({
+                    status: "ok",
+                    uptime: process.uptime(),
+                    platforms: getPlatformStatuses(),
+                }), {
+                    status: 200,
+                    headers: { "Content-Type": "application/json" }
+                });
+            }
+
+            // Readiness/dependency health check (for debugging/monitoring)
+            if (req.method === "GET" && url.pathname === "/health/readiness") {
                 let db = "ok";
                 let redisStatus = "not_configured";
                 let queueStats: { pending: number; processing: number; failed: number } | null = null;
                 const platforms = getPlatformStatuses();
 
                 try {
-                    await prisma.$queryRaw`SELECT 1`;
+                    await withTimeout(prisma.$queryRaw`SELECT 1`, 1200);
                 } catch (error) {
                     db = "error";
                     console.error("[Health] Database check failed", error);
@@ -235,24 +265,26 @@ export async function handleRequest(req: Request) {
 
                 if (redis) {
                     try {
-                        await redis.ping();
+                        await withTimeout(redis.ping(), 800);
                         redisStatus = "ok";
-                        queueStats = await getQueueStats();
+                        queueStats = await withTimeout(getQueueStats(), 800);
                     } catch (error) {
                         redisStatus = "error";
                         console.error("[Health] Redis check failed", error);
                     }
                 }
 
+                const statusCode = db === "ok" ? 200 : 503;
+
                 return new Response(JSON.stringify({ 
-                    status: platforms.slack.started ? "ok" : "degraded",
+                    status: statusCode === 200 ? "ok" : "degraded",
                     uptime: process.uptime(),
                     db,
                     redis: redisStatus,
                     queue: queueStats,
                     platforms
                 }), {
-                    status: 200,
+                    status: statusCode,
                     headers: { "Content-Type": "application/json" }
                 });
             }
