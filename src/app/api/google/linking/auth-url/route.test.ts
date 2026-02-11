@@ -5,14 +5,14 @@ vi.mock("@/server/lib/middleware", () => ({
   withAuth: (_scope: string, handler: any) => handler,
 }));
 vi.mock("@/server/integrations/google/client", () => ({
-  getLinkingOAuth2Client: vi.fn(),
+  getLinkingOAuth2ClientForBaseUrl: vi.fn(),
 }));
 vi.mock("@/server/lib/oauth/state", () => ({
   generateOAuthState: vi.fn(),
   oauthStateCookieOptions: { path: "/" },
 }));
 
-import { getLinkingOAuth2Client } from "@/server/integrations/google/client";
+import { getLinkingOAuth2ClientForBaseUrl } from "@/server/integrations/google/client";
 import { generateOAuthState } from "@/server/lib/oauth/state";
 import { GOOGLE_LINKING_STATE_COOKIE_NAME } from "@/server/integrations/google/constants";
 import { GET } from "./route";
@@ -21,7 +21,7 @@ describe("GET /api/google/linking/auth-url", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(generateOAuthState).mockReturnValue("state-1" as any);
-    vi.mocked(getLinkingOAuth2Client).mockReturnValue({
+    vi.mocked(getLinkingOAuth2ClientForBaseUrl).mockReturnValue({
       generateAuthUrl: vi.fn().mockReturnValue("http://google/auth"),
     } as any);
   });

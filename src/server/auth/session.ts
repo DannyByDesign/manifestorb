@@ -19,6 +19,42 @@ type AuthUser = {
   name: string | null;
 };
 
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function findUserByEmailWithRetry(
+  email: string,
+  attempts = 3,
+): Promise<AuthUser | null> {
+  const normalizedEmail = email.trim();
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const existingUser =
+      (await prisma.user.findUnique({
+        where: { email: normalizedEmail },
+        select: { id: true, email: true, name: true },
+      })) ??
+      (await prisma.user.findFirst({
+        where: {
+          email: {
+            equals: normalizedEmail,
+            mode: "insensitive",
+          },
+        },
+        select: { id: true, email: true, name: true },
+      }));
+    if (existingUser) {
+      return existingUser;
+    }
+
+    // Another concurrent request may have just created this user.
+    if (attempt < attempts - 1) {
+      await wait(40 * (attempt + 1));
+    }
+  }
+
+  return null;
+}
+
 const buildDisplayName = (
   firstName?: string | null,
   lastName?: string | null,
@@ -30,15 +66,21 @@ const buildDisplayName = (
 };
 
 export const auth = async (): Promise<{ user: AuthUser } | null> => {
-  const { user } = await withAuth();
+  let authResult: Awaited<ReturnType<typeof withAuth>>;
+  try {
+    authResult = await withAuth();
+  } catch (error) {
+    logger.warn("WorkOS auth lookup failed", { error });
+    return null;
+  }
+
+  const { user } = authResult;
   if (!user?.email) {
     return null;
   }
 
-  const existingUser = await prisma.user.findUnique({
-    where: { email: user.email },
-    select: { id: true, email: true, name: true },
-  });
+  const email = user.email.trim();
+  const existingUser = await findUserByEmailWithRetry(email, 2);
 
   if (existingUser) {
     return { user: existingUser };
@@ -49,7 +91,7 @@ export const auth = async (): Promise<{ user: AuthUser } | null> => {
   try {
     const createdUser = await prisma.user.create({
       data: {
-        email: user.email,
+        email,
         name,
         image: user.profilePictureUrl ?? null,
       },
@@ -66,10 +108,7 @@ export const auth = async (): Promise<{ user: AuthUser } | null> => {
     return { user: createdUser };
   } catch (error) {
     if (isDuplicateError(error)) {
-      const fallbackUser = await prisma.user.findUnique({
-        where: { email: user.email },
-        select: { id: true, email: true, name: true },
-      });
+      const fallbackUser = await findUserByEmailWithRetry(email, 5);
       if (fallbackUser) {
         return { user: fallbackUser };
       }
