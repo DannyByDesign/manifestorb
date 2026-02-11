@@ -1,7 +1,7 @@
 /**
  * Backfill embeddings for existing MemoryFact and Knowledge records
  * 
- * Run with: npx tsx src/server/scripts/backfill-embeddings.ts
+ * Run with: bunx tsx src/server/scripts/backfill-embeddings.ts
  * 
  * Part of the context and memory management system.
  */

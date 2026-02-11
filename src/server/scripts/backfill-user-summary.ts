@@ -9,7 +9,7 @@
  * 2. Takes the most recent one as the base
  * 3. Creates a UserSummary record
  * 
- * Run with: npx tsx src/server/scripts/backfill-user-summary.ts
+ * Run with: bunx tsx src/server/scripts/backfill-user-summary.ts
  */
 import prisma from "@/server/db/client";
 

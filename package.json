@@ -4,7 +4,7 @@
   "private": true,
   "packageManager": "bun@1.2.2",
   "scripts": {
-    "preinstall": "node -e 'if(!/bun/.test(process.env.npm_config_user_agent || \"\")) { console.error(\"\\u001b[31mError: This project uses Bun. Please use `bun install` or `bun add`.\\u001b[0m\"); process.exit(1); }'",
+    "preinstall": "bun --version >/dev/null 2>&1",
     "postinstall": "prisma generate && bunx prisma generate --schema surfaces/prisma/schema.prisma",
     "dev": "next dev --webpack",
     "dev:stack": "bun run scripts/dev-stack.ts",

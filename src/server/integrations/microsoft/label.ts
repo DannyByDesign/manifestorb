@@ -2,7 +2,7 @@ import type { OutlookClient } from "@/server/integrations/microsoft/client";
 import type { Logger } from "@/server/lib/logger";
 import { WELL_KNOWN_FOLDERS } from "./message";
 import { extractErrorInfo, withOutlookRetry } from "@/server/integrations/microsoft/retry";
-import { inboxZeroLabels, type AmodelLabel } from "@/server/lib/label";
+import { amodelLabels, type AmodelLabel } from "@/server/lib/label";
 import type {
   OutlookCategory,
   Message,
@@ -574,7 +574,7 @@ export async function getOrCreateAmodelLabel({
   key: AmodelLabel;
   logger: Logger;
 }) {
-  const { name } = inboxZeroLabels[key];
+  const { name } = amodelLabels[key];
   const labels = await getLabels(client);
 
   // Return label if it exists

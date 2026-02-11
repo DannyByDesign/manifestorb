@@ -1,7 +1,7 @@
 import type { gmail_v1 } from "@googleapis/gmail";
 import {
   getLabelColor,
-  inboxZeroLabels,
+  amodelLabels,
   PARENT_LABEL,
   type AmodelLabel,
 } from "@/server/lib/label";
@@ -311,7 +311,7 @@ export async function getOrCreateAmodelLabel({
   gmail: gmail_v1.Gmail;
   key: AmodelLabel;
 }) {
-  const { name, color, messageListVisibility } = inboxZeroLabels[key];
+  const { name, color, messageListVisibility } = amodelLabels[key];
   const labels = await getLabels(gmail);
 
   // Create parent label if it doesn't exist

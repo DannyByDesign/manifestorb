@@ -44,7 +44,7 @@
 | ✅ | **AI Assistant/Chat** | Interactive chat interface for email actions + refining rules | `server/features/web-chat/*` | **Chat-first** (core product) | N/A |
 | ✅ | **AI Reply Drafting** | Generate contextual replies based on thread + style | `server/features/reply-tracker/ai/draft-reply.ts` | **Hybrid** (chat + draft editor) | Yes (`create`) |
 | ✅ | **AI Follow-up Generation** | Draft follow-ups for threads awaiting response | `server/features/reply-tracker/ai/draft-follow-up.ts` | **UI-first** (queue) + Chat assist | Yes (`create`) |
-| ✅ | **AI Clean/Archive Suggestions** | Suggest safe archiving (Inbox Zero loop) | `server/features/clean/ai/ai-clean.ts` | **UI-first** (triage list) + Chat | Yes (`query`/`analyze`) |
+| ✅ | **AI Clean/Archive Suggestions** | Suggest safe archiving (amodel inbox loop) | `server/features/clean/ai/ai-clean.ts` | **UI-first** (triage list) + Chat | Yes (`query`/`analyze`) |
 | ✅ | **AI Email Summarization** | Summaries for threads/digests | `server/features/digest/ai/*` | **Hybrid** (inline + chat) | Yes (`analyze`) |
 | ✅ | **AI Rule Generation** | NL → structured automation rules | `server/features/rules/ai/prompt-to-rules.ts` | **Hybrid** (chat → rule preview/confirm) | Yes (`create`) |
 | 🕒 | **AI Rule Diffing** | Compare differences between rule versions | `server/features/rules/ai/diff-rules.ts` | **UI-first** (power user) | Yes (`analyze`) |
@@ -527,6 +527,5 @@ Your current tool set covers Email/Calendar/Automation in concept, but calendar/
 - Anything that expands into “full Notion/PM suite”
 - Overly complex team features before you have teams
 - Deep channel-based Slack workflows before DM is great
-
 
 
