@@ -15,9 +15,10 @@
     },
     "dependencies": {
         "@ai-sdk/google": "^0.0.30",
-        "ai": "^3.4.2",
+        "@prisma/adapter-pg": "^7.3.0",
         "@prisma/client": "^7.3.0",
         "@slack/bolt": "^3.12.2",
+        "ai": "^3.4.2",
         "croner": "^8.0.0",
         "discord.js": "^14.25.1",
         "dotenv": "^16.3.1",
