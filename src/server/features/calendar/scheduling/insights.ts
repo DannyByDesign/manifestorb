@@ -1,4 +1,5 @@
 import prisma from "@/server/db/client";
+import { Prisma } from "@/generated/prisma/client";
 
 /**
  * Analyze the user's calendar events from the past 30 days
@@ -12,7 +13,8 @@ export async function updateSchedulingInsights(userId: string): Promise<void> {
       userId,
       action: "create",
       createdAt: { gte: thirtyDaysAgo },
-      payload: { not: null },
+      // Prisma JSON filters use JsonNull; plain `null` is not assignable.
+      payload: { not: Prisma.JsonNull },
     },
     select: { payload: true, createdAt: true },
     orderBy: { createdAt: "desc" },

@@ -12,6 +12,7 @@ import { z } from "zod";
 import { type ToolDefinition } from "./types";
 import { ApprovalService } from "@/features/approvals/service";
 import prisma from "@/server/db/client";
+import { Prisma } from "@/generated/prisma/client";
 import { createEmailProvider } from "@/features/email/provider";
 import { updateThreadTrackers } from "@/features/reply-tracker/handle-conversation-status";
 import { getEmailAccountWithAi } from "@/server/lib/user/get";
@@ -114,6 +115,25 @@ function parseDateBound(value: string | undefined): Date | undefined {
     if (!value) return undefined;
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
+const TASK_STATUS_VALUES = new Set(["PENDING", "IN_PROGRESS", "COMPLETED", "CANCELLED"]);
+const TASK_PRIORITY_VALUES = new Set(["NONE", "LOW", "MEDIUM", "HIGH"]);
+const TASK_ENERGY_VALUES = new Set(["LOW", "MEDIUM", "HIGH"]);
+const TASK_PREFERRED_TIME_VALUES = new Set(["MORNING", "AFTERNOON", "EVENING"]);
+const TASK_RESCHEDULE_POLICY_VALUES = new Set([
+    "FIXED",
+    "FLEXIBLE",
+    "APPROVAL_REQUIRED",
+]);
+
+function normalizeEmailFrequency(
+    value: unknown,
+): "NEVER" | "DAILY" | "WEEKLY" | undefined {
+    if (value === "NEVER" || value === "DAILY" || value === "WEEKLY") {
+        return value;
+    }
+    return undefined;
 }
 
 const modifyParameters = z.discriminatedUnion("resource", [
@@ -590,22 +610,34 @@ Preferences changes:
                     return { success: false, error: "No Task IDs provided" };
                 }
 
-                const updateData = {
-                    title: typeof changes.title === "string" ? changes.title : undefined,
-                    description: typeof changes.description === "string" ? changes.description : undefined,
-                    durationMinutes: typeof changes.durationMinutes === "number" ? changes.durationMinutes : undefined,
-                    status: typeof changes.status === "string" ? changes.status : undefined,
-                    priority: typeof changes.priority === "string" ? changes.priority : undefined,
-                    energyLevel: typeof changes.energyLevel === "string" ? changes.energyLevel : undefined,
-                    preferredTime: typeof changes.preferredTime === "string" ? changes.preferredTime : undefined,
-                    dueDate: typeof changes.dueDate === "string" ? new Date(changes.dueDate) : undefined,
-                    startDate: typeof changes.startDate === "string" ? new Date(changes.startDate) : undefined,
-                    isAutoScheduled: typeof changes.isAutoScheduled === "boolean" ? changes.isAutoScheduled : undefined,
-                    scheduleLocked: typeof changes.scheduleLocked === "boolean" ? changes.scheduleLocked : undefined,
-                    reschedulePolicy: typeof changes.reschedulePolicy === "string" ? changes.reschedulePolicy : undefined,
-                    scheduledStart: typeof changes.scheduledStart === "string" ? new Date(changes.scheduledStart) : undefined,
-                    scheduledEnd: typeof changes.scheduledEnd === "string" ? new Date(changes.scheduledEnd) : undefined,
-                };
+                const updateData: Prisma.TaskUpdateManyMutationInput = {};
+                if (typeof changes.title === "string") updateData.title = changes.title;
+                if (typeof changes.description === "string") updateData.description = changes.description;
+                if (typeof changes.durationMinutes === "number") updateData.durationMinutes = changes.durationMinutes;
+                if (typeof changes.status === "string" && TASK_STATUS_VALUES.has(changes.status)) {
+                    updateData.status = changes.status as Prisma.TaskUpdateManyMutationInput["status"];
+                }
+                if (typeof changes.priority === "string" && TASK_PRIORITY_VALUES.has(changes.priority)) {
+                    updateData.priority = changes.priority as Prisma.TaskUpdateManyMutationInput["priority"];
+                }
+                if (typeof changes.energyLevel === "string" && TASK_ENERGY_VALUES.has(changes.energyLevel)) {
+                    updateData.energyLevel = changes.energyLevel as Prisma.TaskUpdateManyMutationInput["energyLevel"];
+                }
+                if (typeof changes.preferredTime === "string" && TASK_PREFERRED_TIME_VALUES.has(changes.preferredTime)) {
+                    updateData.preferredTime = changes.preferredTime as Prisma.TaskUpdateManyMutationInput["preferredTime"];
+                }
+                if (typeof changes.dueDate === "string") updateData.dueDate = new Date(changes.dueDate);
+                if (typeof changes.startDate === "string") updateData.startDate = new Date(changes.startDate);
+                if (typeof changes.isAutoScheduled === "boolean") updateData.isAutoScheduled = changes.isAutoScheduled;
+                if (typeof changes.scheduleLocked === "boolean") updateData.scheduleLocked = changes.scheduleLocked;
+                if (
+                    typeof changes.reschedulePolicy === "string" &&
+                    TASK_RESCHEDULE_POLICY_VALUES.has(changes.reschedulePolicy)
+                ) {
+                    updateData.reschedulePolicy = changes.reschedulePolicy as Prisma.TaskUpdateManyMutationInput["reschedulePolicy"];
+                }
+                if (typeof changes.scheduledStart === "string") updateData.scheduledStart = new Date(changes.scheduledStart);
+                if (typeof changes.scheduledEnd === "string") updateData.scheduledEnd = new Date(changes.scheduledEnd);
 
                 const updateResult = await prisma.task.updateMany({
                     where: { id: { in: ids }, userId },
@@ -961,16 +993,25 @@ Preferences changes:
                     const emailAccount = await getEmailAccountWithAi({ emailAccountId: accountId });
                     if (!emailAccount)
                         return { success: false, error: "Email account not found" };
+                    const notificationPrefs = await prisma.emailAccount.findUnique({
+                        where: { id: accountId },
+                        select: {
+                            statsEmailFrequency: true,
+                            summaryEmailFrequency: true,
+                        },
+                    });
+                    const statsEmailFrequency =
+                        normalizeEmailFrequency(changes.statsEmailFrequency) ??
+                        normalizeEmailFrequency(notificationPrefs?.statsEmailFrequency) ??
+                        "NEVER";
+                    const summaryEmailFrequency =
+                        normalizeEmailFrequency(changes.summaryEmailFrequency) ??
+                        normalizeEmailFrequency(notificationPrefs?.summaryEmailFrequency) ??
+                        "NEVER";
                     await applyEmailNotificationSettings({
                         emailAccountId: accountId,
-                        statsEmailFrequency:
-                            (changes.statsEmailFrequency as string) ??
-                            emailAccount.statsEmailFrequency ??
-                            "NEVER",
-                        summaryEmailFrequency:
-                            (changes.summaryEmailFrequency as string) ??
-                            emailAccount.summaryEmailFrequency ??
-                            "NEVER",
+                        statsEmailFrequency,
+                        summaryEmailFrequency,
                     });
                 return {
                     success: true,
@@ -999,9 +1040,12 @@ Preferences changes:
                         patch: {
                             weekStartDay:
                                 changes.weekStartDay === "SUNDAY" ||
-                                changes.weekStartDay === "MONDAY"
-                                    ? changes.weekStartDay
-                                    : undefined,
+                                changes.weekStartDay === "sunday"
+                                    ? "SUNDAY"
+                                    : changes.weekStartDay === "MONDAY" ||
+                                        changes.weekStartDay === "monday"
+                                        ? "MONDAY"
+                                        : undefined,
                             workHourStart:
                                 typeof changes.workHourStart === "number"
                                     ? changes.workHourStart
@@ -1013,11 +1057,6 @@ Preferences changes:
                             workDays: Array.isArray(changes.workDays)
                                 ? (changes.workDays as number[])
                                 : undefined,
-                            weekStartDay:
-                                changes.weekStartDay === "sunday" ||
-                                changes.weekStartDay === "monday"
-                                    ? changes.weekStartDay
-                                    : undefined,
                             bufferMinutes:
                                 typeof changes.bufferMinutes === "number"
                                     ? changes.bufferMinutes

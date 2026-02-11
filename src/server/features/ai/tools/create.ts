@@ -37,13 +37,17 @@ import {
 } from "./timezone";
 import { validateCalendarMutationSafety } from "@/features/calendar/safety-gate";
 import { upsertCalendarEventShadow } from "@/features/calendar/canonical-state";
-import {
-    resolveCalendarAttendees,
-    resolveContextualAttendees,
-} from "@/features/calendar/participant-resolver";
 
 const logger = createScopedLogger("tools/create");
 const approvalService = new ApprovalService(prisma);
+
+const PLACEHOLDER_DRAFT_BODIES = new Set([
+    "this is a test email sent from your ai assistant.",
+    "this is a test email.",
+    "this is a generic test email.",
+    "please review and add your content.",
+    "email body goes here.",
+]);
 
 const formatSlotLabel = (start: Date, end: Date | null | undefined, timeZone: string) => {
     const formatter = new Intl.DateTimeFormat("en-US", {
@@ -62,6 +66,15 @@ const formatSlotLabel = (start: Date, end: Date | null | undefined, timeZone: st
     const endLabel = formatter.format(end);
     return `${startLabel} - ${endLabel}`;
 };
+
+function isPlaceholderDraftBody(body: string | undefined): boolean {
+    if (!body || !body.trim()) return true;
+    const normalized = body.replace(/\s+/g, " ").trim().toLowerCase();
+    if (PLACEHOLDER_DRAFT_BODIES.has(normalized)) return true;
+    if (/^this is (a )?(generic )?test email\b/.test(normalized)) return true;
+    if (/^draft email\b/.test(normalized)) return true;
+    return false;
+}
 
 const TEAM_LIKE_TERMS = [
     "team",
@@ -556,10 +569,10 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
 	Category: Creates or resolves a category by name.`,
 
     parameters: createParameters,
-
-
-
-    execute: async ({ resource, type, parentId, data }, context) => {
+    execute: async (params, context) => {
+        const { resource, data } = params;
+        const type = "type" in params ? params.type : undefined;
+        const parentId = "parentId" in params ? params.parentId : undefined;
         const { emailAccountId, providers } = context;
         switch (resource) {
             case "email":
@@ -867,7 +880,8 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                     return { success: false, error: "Calendar scheduling is disabled" };
                 }
 
-                if (!data.title) {
+                const calendarTitle = data.title?.trim();
+                if (!calendarTitle) {
                     return { success: false, error: "Calendar title is required" };
                 }
 
@@ -896,7 +910,7 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
 
                 const attendeeResolution = await resolveCalendarAttendees({
                     requestedAttendees: data.attendees,
-                    title: data.title,
+                    title: calendarTitle,
                     description: data.description,
                     userEmail: ownerAccount.email,
                     contextualAttendees,
@@ -954,6 +968,7 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
 
                 const calendarData = {
                     ...data,
+                    title: calendarTitle,
                     attendees: attendeeResolution.attendees,
                 };
 
@@ -1435,14 +1450,21 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                     });
                     return { success: true, data: result };
                 }
+                if (!data.name?.trim()) {
+                    return { success: false, error: "Rule name is required." };
+                }
+                if (!Array.isArray(data.actions) || data.actions.length === 0) {
+                    return { success: false, error: "At least one rule action is required." };
+                }
+                const ruleInput = {
+                    name: data.name.trim(),
+                    conditions: data.conditions,
+                    actions: data.actions,
+                } as Parameters<typeof providers.automation.createRule>[0];
                 // Create Rule
                 return {
                     success: true,
-                    data: await providers.automation.createRule({
-                        name: data.name,
-                        conditions: data.conditions,
-                        actions: data.actions
-                    })
+                    data: await providers.automation.createRule(ruleInput)
                 };
 
             case "knowledge":

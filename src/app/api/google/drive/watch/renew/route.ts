@@ -3,11 +3,11 @@ import prisma from "@/server/db/client";
 import { ensureGoogleDriveWatch } from "@/features/drive/sync/google";
 import { createScopedLogger } from "@/server/lib/logger";
 import { env } from "@/env";
-import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
+import { withQStashSignatureAppRouter } from "@/server/lib/qstash";
 
 export const maxDuration = 300;
 
-export const POST = verifySignatureAppRouter(async (req: Request) => {
+export const POST = withQStashSignatureAppRouter(async (req: Request) => {
   const logger = createScopedLogger("cron/drive-watch-renewal");
   const authHeader = req.headers.get("authorization");
 

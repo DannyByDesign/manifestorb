@@ -106,13 +106,13 @@ function createOutlookAllDayDate(dateStr: string) {
 }
 
 function mapOutlookAttendees(
-  attendees: Array<{ email: string; name?: string }> | undefined,
+  attendees: string[] | undefined,
 ) {
   if (attendees === undefined) return undefined;
-  return attendees.map((attendee) => ({
+  return attendees.map((email) => ({
     emailAddress: {
-      address: attendee.email,
-      name: attendee.name ?? attendee.email,
+      address: email,
+      name: email,
     },
     type: "required" as const,
   }));
@@ -166,10 +166,6 @@ export async function createOutlookEvent(
       dateTime: endDate.toISOString(),
       timeZone,
     },
-    attendees: event.attendees?.map((email) => ({
-      emailAddress: { address: email },
-      type: "required",
-    })),
     location: event.location ? { displayName: event.location } : undefined,
     attendees: mapOutlookAttendees(event.attendees),
     isAllDay: event.allDay,

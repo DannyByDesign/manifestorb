@@ -117,12 +117,12 @@ const actionSchema = (provider: string) =>
           .describe(
             "Structured payload for task preferences (e.g. workHourStart/workHourEnd/workDays/weekStartDay), task creation, or calendar event creation actions.",
           ),
-        ...(isMicrosoftProvider(provider) && {
-          folderName: z
-            .string()
-            .nullish()
-            .describe("The folder to move the email to"),
-        }),
+        folderName: z
+          .string()
+          .nullish()
+          .describe(
+            "The folder to move the email to (used for Microsoft MOVE_FOLDER actions).",
+          ),
       })
       .nullish()
       .describe(

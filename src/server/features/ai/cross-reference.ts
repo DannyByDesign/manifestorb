@@ -20,7 +20,7 @@ export interface CrossReferenceContext {
     id: string;
     title: string;
     status: string;
-    dueDate?: Date;
+    dueDate?: Date | null;
   }>;
   relatedFilings?: Array<{
     filename: string;

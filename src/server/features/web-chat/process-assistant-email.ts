@@ -9,7 +9,7 @@ import type { EmailProvider } from "@/features/email/types";
 import { labelMessageAndSync } from "@/server/lib/label.server";
 import { runOneShotAgent } from "@/features/channels/executor";
 import { ConversationService } from "@/features/conversations/service";
-import type { EmailAccount as ToolsEmailAccount } from "@/features/ai/tools/providers/email";
+import type { EmailAccount as PrismaEmailAccount } from "@/generated/prisma/client";
 
 type ProcessAssistantEmailArgs = {
   emailAccountId: string;
@@ -217,10 +217,9 @@ async function processAssistantEmailInternal({
     return;
   }
 
-  const emailAccountForAgent = {
-    ...emailAccount,
-    provider: providerValue,
-  } as ToolsEmailAccount;
+  // runOneShotAgent only needs `id` and `email` (it looks up provider internally),
+  // but its signature expects a Prisma EmailAccount model.
+  const emailAccountForAgent = emailAccount as unknown as PrismaEmailAccount;
 
   // Get conversation for context
   const conversation = await ConversationService.getPrimaryWebConversation(

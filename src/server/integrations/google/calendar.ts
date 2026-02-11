@@ -58,31 +58,6 @@ export async function createGoogleEvent(
   calendarId: string,
   event: GoogleCalendarEventInput,
 ) {
-  const dryRun = options?.dryRun ?? env.CALENDAR_ACTIONS_DRY_RUN;
-  if (dryRun && params.userId) {
-    params.logger.warn("Google calendar create running in dry-run mode", {
-      userId: params.userId,
-      emailAccountId: params.emailAccountId,
-      calendarId,
-      title: event.title,
-    });
-    await logCalendarAction({
-      userId: params.userId,
-      provider: "google",
-      action: "create",
-      calendarId,
-      dryRun: true,
-      emailAccountId: params.emailAccountId,
-      payload: event,
-    });
-    return {
-      id: "dry-run",
-      summary: event.title,
-      start: { dateTime: event.start.toISOString() },
-      end: { dateTime: event.end.toISOString() },
-    } as calendar_v3.Schema$Event;
-  }
-
   const calendar = await getGoogleCalendarClient(params);
 
   const recurrence = event.isRecurring
@@ -149,10 +124,7 @@ export async function updateGoogleEvent(
   const attendees =
     event.attendees === undefined
       ? undefined
-      : event.attendees.map((attendee) => ({
-          email: attendee.email,
-          displayName: attendee.name,
-        }));
+      : event.attendees.map((email) => ({ email }));
 
   try {
     const existingEvent = await calendar.events.get({

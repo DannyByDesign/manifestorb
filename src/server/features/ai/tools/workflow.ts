@@ -43,7 +43,7 @@ const workflowParameters = z.object({
         .describe("Internal approval identifier used when preApproved=true."),
 });
 
-export const workflowTool: ToolDefinition<z.infer<typeof workflowParameters>> = {
+export const workflowTool: ToolDefinition<typeof workflowParameters> = {
     name: "workflow",
     description: `Execute a multi-step workflow. Use when you need related actions across different resources in a single step.
 
@@ -281,7 +281,11 @@ type WorkflowStepResult = {
                     });
                     break;
                 }
-                const result = await executeTool(tool, args, context);
+                const result = await executeTool(
+                    tool as any,
+                    args as any,
+                    context,
+                );
                 const resultIds = extractIdsFromToolResult(result);
                 const fallbackIds =
                     resultIds.length > 0

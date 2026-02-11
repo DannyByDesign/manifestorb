@@ -64,7 +64,12 @@ Drive: Deletes file or folder`,
 
     parameters: deleteParameters,
 
-    execute: async ({ resource, ids, calendarId, mode, driveItemType }, { providers, userId, emailAccountId }) => {
+    execute: async (params, { providers, userId, emailAccountId }) => {
+        const { resource, ids } = params;
+        const calendarId = "calendarId" in params ? params.calendarId : undefined;
+        const mode = "mode" in params ? params.mode : undefined;
+        const driveItemType =
+            "driveItemType" in params ? params.driveItemType : undefined;
         switch (resource) {
             case "email":
                 return {

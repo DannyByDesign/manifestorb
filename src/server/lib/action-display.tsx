@@ -87,6 +87,8 @@ export function getActionDisplay(
       return "Create Task";
     case ActionType.CREATE_CALENDAR_EVENT:
       return "Create Calendar Event";
+    case ActionType.SCHEDULE_MEETING:
+      return "Schedule Meeting";
     default: {
       const exhaustiveCheck: never = action.type;
       return exhaustiveCheck;
@@ -127,6 +129,8 @@ export function getActionIcon(actionType: ActionType) {
     case ActionType.CREATE_TASK:
       return FileTextIcon;
     case ActionType.CREATE_CALENDAR_EVENT:
+      return BellIcon;
+    case ActionType.SCHEDULE_MEETING:
       return BellIcon;
     default: {
       const exhaustiveCheck: never = actionType;

@@ -133,7 +133,7 @@ export async function aiCollectReplyContext({
         );
         allResults.push(...termItems);
       } catch (err) {
-        logger.debug("Key-terms search failed, skipping", {
+        logger.trace("Key-terms search failed, skipping", {
           termsQuery,
           error: err instanceof Error ? err.message : String(err),
         });

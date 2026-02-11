@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import prisma from "@/server/db/client";
+import { Prisma } from "@/generated/prisma/client";
 
 type ReschedulePolicy = "FIXED" | "FLEXIBLE" | "APPROVAL_REQUIRED";
 
@@ -270,6 +271,9 @@ export async function upsertCalendarPolicyRule(params: {
     ? parseFutureDateOrNull(params.rule.disabledUntil) ?? new Date(Date.now() + 24 * 60 * 60 * 1000)
     : parseFutureDateOrNull(params.rule.disabledUntil);
   const expiresAt = parseFutureDateOrNull(params.rule.expiresAt);
+  const criteriaJson = params.rule.criteria
+    ? (params.rule.criteria as Prisma.InputJsonValue)
+    : Prisma.JsonNull;
 
   const rule = params.rule.id
     ? await prisma.calendarEventPolicy.update({
@@ -284,7 +288,7 @@ export async function upsertCalendarPolicyRule(params: {
           priority: params.rule.priority ?? 0,
           disabledUntil: disabledUntil ?? null,
           expiresAt: expiresAt ?? null,
-          criteria: (params.rule.criteria ?? null) as object | null,
+          criteria: criteriaJson,
         },
         include: {
           shadowEvent: {
@@ -311,7 +315,7 @@ export async function upsertCalendarPolicyRule(params: {
           priority: params.rule.priority ?? 0,
           disabledUntil: disabledUntil ?? null,
           expiresAt: expiresAt ?? null,
-          criteria: (params.rule.criteria ?? null) as object | null,
+          criteria: criteriaJson,
         },
         include: {
           shadowEvent: {

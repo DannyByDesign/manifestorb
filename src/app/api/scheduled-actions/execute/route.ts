@@ -5,11 +5,11 @@ import { createScopedLogger } from "@/server/lib/logger";
 import prisma from "@/server/db/client";
 import { createEmailProvider } from "@/features/email/provider";
 import { env } from "@/env";
-import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
+import { withQStashSignatureAppRouter } from "@/server/lib/qstash";
 
 export const maxDuration = 300; // 5 minutes
 
-export const POST = verifySignatureAppRouter(async (req: Request) => {
+export const POST = withQStashSignatureAppRouter(async (req: Request) => {
     const logger = createScopedLogger("scheduled-actions/execute");
 
     // 1. Security Check (QStash or Cron Secret)

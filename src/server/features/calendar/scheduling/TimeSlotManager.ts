@@ -110,7 +110,6 @@ export class TimeSlotManagerImpl implements TimeSlotManager {
       duration,
       effectiveStartDate,
       endDate,
-      bufferMin,
     );
 
     const workHourSlots = this.filterByWorkHours(potentialSlots);

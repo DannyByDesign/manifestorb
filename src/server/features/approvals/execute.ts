@@ -157,11 +157,15 @@ export async function executeApprovalRequest(params: {
       userId: request.userId,
     });
 
-    const toolMap = tools as Record<string, { execute: (args: Record<string, unknown>) => Promise<unknown> }>;
+    const toolMap = tools as unknown as Record<
+      string,
+      { execute?: (args: Record<string, unknown>) => Promise<unknown> }
+    >;
     const toolInstance = toolMap[toolName];
-    if (!toolInstance) {
+    if (!toolInstance || typeof toolInstance.execute !== "function") {
       throw new Error(`Tool ${toolName} not found in agent tools`);
     }
+    const executeToolCall = (args: Record<string, unknown>) => toolInstance.execute!(args);
 
     const executionArgs = { ...args };
     if (toolName === "workflow") {
@@ -208,7 +212,7 @@ export async function executeApprovalRequest(params: {
 
           for (let i = 0; i < argsIds.length; i += maxIdsPerRun) {
             const chunk = argsIds.slice(i, i + maxIdsPerRun);
-            const chunkResult = await toolInstance.execute({
+            const chunkResult = await executeToolCall({
               ...baseArgs,
               ids: chunk,
             });
@@ -246,7 +250,7 @@ export async function executeApprovalRequest(params: {
                 : `Executed ${chunkResults.length - failedChunks}/${chunkResults.length} approval chunk(s).`,
           };
         })()
-        : await toolInstance.execute(executionArgs as Record<string, unknown>);
+        : await executeToolCall(executionArgs as Record<string, unknown>);
 
     if (
       executionResult &&

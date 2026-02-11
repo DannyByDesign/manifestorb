@@ -68,10 +68,13 @@ export async function executeAct({
         "id" in actionResult
       ) {
         const emailAccount = await getEmailAccountWithAi({ emailAccountId });
-        const rule = await prisma.rule.findUnique({
-          where: { id: executedRule.ruleId },
-          select: { name: true },
-        });
+        const rule =
+          executedRule.ruleId
+            ? await prisma.rule.findUnique({
+                where: { id: executedRule.ruleId },
+                select: { name: true },
+              })
+            : null;
         if (emailAccount) {
           sendNotification({
             context: {

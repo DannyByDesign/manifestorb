@@ -1,4 +1,3 @@
-import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
 import { z } from "zod";
 import { NextResponse } from "next/server";
 import { withError, type RequestWithLogger } from "@/server/lib/middleware";
@@ -24,6 +23,7 @@ import { internalDateToDate } from "@/server/lib/date";
 import { CleanAction } from "@/generated/prisma/enums";
 import type { ParsedMessage } from "@/server/types";
 import { isActivePremium } from "@/features/premium";
+import { withQStashSignatureAppRouter } from "@/server/lib/qstash";
 
 const cleanThreadBody = z.object({
   emailAccountId: z.string(),
@@ -45,7 +45,7 @@ const cleanThreadBody = z.object({
 });
 export type CleanThreadBody = z.infer<typeof cleanThreadBody>;
 
-export async function cleanThread({
+async function cleanThread({
   emailAccountId,
   threadId,
   markedDoneLabelId,
@@ -294,7 +294,7 @@ function getPublish({
 }
 
 export const POST = withError(
-  verifySignatureAppRouter(async (request: Request) => {
+  withQStashSignatureAppRouter(async (request: Request) => {
     const json = await request.json();
     const body = cleanThreadBody.parse(json);
 
@@ -304,5 +304,5 @@ export const POST = withError(
     });
 
     return NextResponse.json({ success: true });
-  }),
+  }) as unknown as import("@/server/lib/middleware").NextHandler,
 );

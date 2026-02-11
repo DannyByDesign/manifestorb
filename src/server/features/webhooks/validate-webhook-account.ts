@@ -24,6 +24,7 @@ export async function getWebhookEmailAccount(
       autoCategorizeSenders: true,
       filingEnabled: true,
       filingPrompt: true,
+      aiRuleTimeoutMs: true,
       watchEmailsSubscriptionId: true,
       watchEmailsSubscriptionHistory: true,
       account: {

@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import prisma from "@/server/db/client";
+import type { Prisma } from "@/generated/prisma/client";
 
 export type ApprovalPolicy = "always" | "never" | "conditional";
 
@@ -727,19 +728,20 @@ function persistConfig(
   toolName: string,
   config: ApprovalRuleConfig,
 ) {
+  const serializedConfig = config as unknown as Prisma.InputJsonValue;
   return prisma.approvalPreference.upsert({
     where: {
       userId_toolName: { userId, toolName },
     },
     update: {
       policy: config.defaultPolicy,
-      conditions: config as unknown as Record<string, unknown>,
+      conditions: serializedConfig,
     },
     create: {
       userId,
       toolName,
       policy: config.defaultPolicy,
-      conditions: config as unknown as Record<string, unknown>,
+      conditions: serializedConfig,
     },
   });
 }

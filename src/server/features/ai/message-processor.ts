@@ -725,20 +725,32 @@ function collectExecutedToolNames(result: {
   return names;
 }
 
-function toToolOutputObject(output: unknown): { success?: unknown; error?: unknown } | null {
+type ParsedToolOutput = {
+  success?: unknown;
+  error?: unknown;
+  clarification?: {
+    kind?: string;
+    prompt?: string;
+    missingFields?: string[];
+  };
+  message?: unknown;
+  interactive?: unknown;
+};
+
+function toToolOutputObject(output: unknown): ParsedToolOutput | null {
   if (!output) return null;
   if (typeof output === "object") {
     const record = output as Record<string, unknown>;
     if (record.type === "json" && record.value && typeof record.value === "object") {
-      return record.value as { success?: unknown; error?: unknown };
+      return record.value as ParsedToolOutput;
     }
-    return record as { success?: unknown; error?: unknown };
+    return record as ParsedToolOutput;
   }
   if (typeof output === "string") {
     try {
       const parsed = JSON.parse(output) as unknown;
       return parsed && typeof parsed === "object"
-        ? (parsed as { success?: unknown; error?: unknown })
+        ? (parsed as ParsedToolOutput)
         : null;
     } catch {
       return null;

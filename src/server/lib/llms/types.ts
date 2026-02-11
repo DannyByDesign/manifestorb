@@ -19,4 +19,8 @@ export type EmailAccountWithAI = Prisma.EmailAccountGetPayload<{
       };
     };
   };
-}>;
+}> & {
+  // This field exists in Prisma, but many call-sites intentionally don't select it.
+  // Treat it as optional so helpers can use it when present without forcing wider selects.
+  aiRuleTimeoutMs?: number | null;
+};

@@ -1,5 +1,6 @@
 import prisma from "@/server/db/client";
 import type { CalendarEvent } from "@/features/calendar/event-types";
+import { Prisma } from "@/generated/prisma/client";
 
 export type CalendarMutationSource = "ai" | "approval" | "webhook" | "reconcile" | "manual" | "system";
 
@@ -33,6 +34,14 @@ function isPolicyActive(policy: {
   if (policy.disabledUntil && policy.disabledUntil.getTime() > now) return false;
   if (policy.expiresAt && policy.expiresAt.getTime() < now) return false;
   return true;
+}
+
+function toNullableJson(
+  value: unknown,
+): Prisma.InputJsonValue | typeof Prisma.JsonNull | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return Prisma.JsonNull;
+  return value as Prisma.InputJsonValue;
 }
 
 function matchesPolicyCriteria(params: {
@@ -176,7 +185,9 @@ export async function upsertCalendarEventShadow(params: {
     lastSeenAt: new Date(),
     lastSyncedAt: new Date(),
     lastMutationSource: source,
-    metadata: metadata ?? null,
+    metadata: metadata
+      ? (metadata as Prisma.InputJsonValue)
+      : Prisma.JsonNull,
   };
 
   const shadow = targetShadowId
@@ -369,8 +380,8 @@ export async function startCalendarPlanRun(params: {
       emailAccountId: params.emailAccountId,
       source: params.source,
       status: "STARTED",
-      trigger: params.trigger as object | null | undefined,
-      input: params.input as object | null | undefined,
+      trigger: toNullableJson(params.trigger),
+      input: toNullableJson(params.input),
       correlationId: params.correlationId,
     },
     select: { id: true, createdAt: true },
@@ -390,8 +401,8 @@ export async function finishCalendarPlanRun(params: {
     where: { id: params.runId },
     data: {
       status: params.status,
-      decisions: params.decisions as object | null | undefined,
-      result: params.result as object | null | undefined,
+      decisions: toNullableJson(params.decisions),
+      result: toNullableJson(params.result),
       error: params.error,
       durationMs,
     },

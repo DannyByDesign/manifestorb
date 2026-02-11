@@ -2,12 +2,12 @@
 import { NextResponse } from "next/server";
 import prisma from "@/server/db/client";
 import { createScopedLogger } from "@/server/lib/logger";
-import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
+import { withQStashSignatureAppRouter } from "@/server/lib/qstash";
 
 export const dynamic = 'force-dynamic';
 
 // QStash signature verification ensures only QStash can call this endpoint
-export const POST = verifySignatureAppRouter(async (req: Request) => {
+export const POST = withQStashSignatureAppRouter(async (req: Request) => {
     const logger = createScopedLogger("api/notifications/fallback");
 
     try {

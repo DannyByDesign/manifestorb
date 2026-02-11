@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 import { authkitMiddleware } from "@/server/auth";
 import { matchQuarantinedPath } from "@/lib/quarantine";
 
@@ -11,7 +11,7 @@ const AUTH_BYPASS_API_PREFIXES = [
   "/api/health",
 ];
 
-export default function proxy(req: NextRequest) {
+export default function proxy(req: NextRequest, event: NextFetchEvent) {
   const { pathname } = req.nextUrl;
 
   if (AUTH_BYPASS_API_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
@@ -34,7 +34,7 @@ export default function proxy(req: NextRequest) {
     return new NextResponse("This route is quarantined.", { status: 410 });
   }
 
-  return authMiddleware(req);
+  return authMiddleware(req, event);
 }
 
 export const config = {

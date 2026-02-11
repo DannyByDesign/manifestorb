@@ -77,6 +77,52 @@ function extractPayloadData(record: Record<string, unknown>): unknown {
     return Object.fromEntries(payloadEntries);
 }
 
+function pickInteractive(value: unknown): ToolResult["interactive"] | undefined {
+    if (!isRecord(value)) return undefined;
+    const type = value.type;
+    const summary = value.summary;
+    const actions = value.actions;
+    if (
+        (type !== "approval_request" &&
+            type !== "draft_created" &&
+            type !== "action_request" &&
+            type !== "ambiguous_time") ||
+        typeof summary !== "string" ||
+        !Array.isArray(actions)
+    ) {
+        return undefined;
+    }
+    const normalizedActions = actions
+        .filter((action): action is Record<string, unknown> => isRecord(action))
+        .map((action) => {
+            const label = typeof action.label === "string" ? action.label : "";
+            const style: "primary" | "danger" =
+                action.style === "danger" ? "danger" : "primary";
+            const value = typeof action.value === "string" ? action.value : "";
+            const url = typeof action.url === "string" ? action.url : undefined;
+            return {
+                label,
+                style,
+                value,
+                ...(url ? { url } : {}),
+            };
+        })
+        .filter((action) => action.label.length > 0 && action.value.length > 0);
+    if (normalizedActions.length === 0) return undefined;
+    return {
+        type,
+        summary,
+        actions: normalizedActions,
+        ...(typeof value.approvalId === "string" ? { approvalId: value.approvalId } : {}),
+        ...(typeof value.draftId === "string" ? { draftId: value.draftId } : {}),
+        ...(typeof value.emailAccountId === "string" ? { emailAccountId: value.emailAccountId } : {}),
+        ...(typeof value.userId === "string" ? { userId: value.userId } : {}),
+        ...(typeof value.ambiguousRequestId === "string" ? { ambiguousRequestId: value.ambiguousRequestId } : {}),
+        ...(isRecord(value.preview) ? { preview: value.preview as any } : {}),
+        ...(isRecord(value.context) ? { context: value.context as any } : {}),
+    };
+}
+
 function normalizeToolOutput(raw: unknown, toolName: string): ToolResult {
     if (!isRecord(raw)) {
         return { success: true, data: raw };
@@ -98,7 +144,7 @@ function normalizeToolOutput(raw: unknown, toolName: string): ToolResult {
             : undefined);
     const paging = isRecord(raw.paging) ? raw.paging : undefined;
     const meta = isRecord(raw.meta) ? raw.meta as ToolResult["meta"] : undefined;
-    const interactive = isRecord(raw.interactive) ? raw.interactive as ToolResult["interactive"] : undefined;
+    const interactive = pickInteractive(raw.interactive);
     const data = extractPayloadData(raw);
 
     return {
@@ -133,13 +179,16 @@ export async function executeTool<T extends ZodType>(
         });
 
         // 3. Apply scope limits
-        const limited = applyScopeLimits(toolName, validated);
+        const limited = applyScopeLimits(
+            toolName,
+            validated as Record<string, unknown>,
+        );
 
         // 4. Check rate limits after validation and guardrails
         await checkRateLimit(context.userId, toolName);
 
         // 5. Execute tool
-        const rawResult = await tool.execute(limited, context);
+        const rawResult = await tool.execute(limited as z.infer<T>, context);
         const result = normalizeToolOutput(rawResult, toolName);
         const durationMs = Date.now() - startTime;
         const resource = typeof (limited as { resource?: unknown }).resource === "string"

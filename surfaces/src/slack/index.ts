@@ -44,6 +44,10 @@ function threadContextKey(channelId: string, userId: string): string {
     return `${channelId}:${userId}`;
 }
 
+function normalizeSlackThreadTs(value: unknown): string | undefined {
+    return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
 function toMessageMeta(message: unknown): MessageMeta {
     if (!message || typeof message !== "object") return {};
     const record = message as Record<string, unknown>;
@@ -58,6 +62,95 @@ function toMessageMeta(message: unknown): MessageMeta {
         botId: typeof record.bot_id === "string" ? record.bot_id : undefined,
         appId: typeof record.app_id === "string" ? record.app_id : undefined,
     };
+}
+
+async function clearInteractionButtons(params: { app: App; body: unknown }) {
+    const { app, body } = params;
+    if (!body || typeof body !== "object") return;
+    const record = body as Record<string, unknown>;
+    const container = (record.container && typeof record.container === "object")
+        ? (record.container as Record<string, unknown>)
+        : null;
+    const message = (record.message && typeof record.message === "object")
+        ? (record.message as Record<string, unknown>)
+        : null;
+
+    const channel =
+        (record.channel && typeof record.channel === "object" && typeof (record.channel as any).id === "string")
+            ? (record.channel as any).id
+            : (container && typeof container.channel_id === "string")
+                ? container.channel_id
+                : undefined;
+    const ts =
+        (message && typeof message.ts === "string")
+            ? message.ts
+            : (container && typeof container.message_ts === "string")
+                ? container.message_ts
+                : undefined;
+
+    const blocks = message?.blocks;
+    if (!channel || !ts || !Array.isArray(blocks)) return;
+
+    // Remove all action blocks so buttons disappear immediately after click.
+    const nextBlocks = (blocks as unknown[]).filter((b) => {
+        if (!b || typeof b !== "object") return true;
+        return (b as any).type !== "actions";
+    });
+
+    try {
+        await app.client.chat.update({
+            channel,
+            ts,
+            // Slack requires a non-empty text fallback.
+            text: (typeof message?.text === "string" && message.text.length > 0) ? message.text : " ",
+            blocks: nextBlocks as any,
+        });
+    } catch (err) {
+        console.warn("[Surfaces][Slack] Failed to clear interaction buttons", {
+            channel,
+            ts,
+            error: err instanceof Error ? err.message : String(err),
+        });
+    }
+}
+
+async function replyToInteractionThread(params: { app: App; body: unknown; text: string }) {
+    const { app, body, text } = params;
+    if (!body || typeof body !== "object") return;
+    const record = body as Record<string, unknown>;
+    const container = (record.container && typeof record.container === "object")
+        ? (record.container as Record<string, unknown>)
+        : null;
+    const message = (record.message && typeof record.message === "object")
+        ? (record.message as Record<string, unknown>)
+        : null;
+
+    const channel =
+        (record.channel && typeof record.channel === "object" && typeof (record.channel as any).id === "string")
+            ? (record.channel as any).id
+            : (container && typeof container.channel_id === "string")
+                ? container.channel_id
+                : undefined;
+
+    // Prefer actual thread_ts if present; fall back to the original message ts.
+    const thread_ts =
+        (message && typeof (message as any).thread_ts === "string")
+            ? (message as any).thread_ts
+            : (container && typeof (container as any).thread_ts === "string")
+                ? (container as any).thread_ts
+                : (container && typeof (container as any).message_ts === "string")
+                    ? (container as any).message_ts
+                    : (message && typeof message.ts === "string")
+                        ? message.ts
+                        : undefined;
+
+    if (!channel || !thread_ts) return;
+
+    await app.client.chat.postMessage({
+        channel,
+        thread_ts,
+        text,
+    });
 }
 
 function extractAssistantThreadTs(body: unknown): string | undefined {
@@ -604,39 +697,9 @@ export async function startSlack() {
             const userId = meta.user;
             const messageTs = meta.ts;
             const messageText = meta.text;
+            const isDirectMessage = meta.channelType === "im" || meta.channelType === "mpim";
             const cacheKey = threadContextKey(channelId, userId);
             const cachedThreadTs = slackThreadContext.get(cacheKey);
-            const persistedThreadTs =
-                !inboundThreadTs && !cachedThreadTs
-                    ? await resolvePersistedSlackThreadTs({
-                        providerAccountId: userId,
-                        channelId,
-                    })
-                    : undefined;
-            const resolvedThreadTs = inboundThreadTs || cachedThreadTs || persistedThreadTs;
-            const replyThreadTs = resolvedThreadTs || messageTs;
-            if (resolvedThreadTs) {
-                slackThreadContext.set(cacheKey, resolvedThreadTs);
-            }
-            const statusThreadTs = resolvedThreadTs || messageTs;
-
-            console.log("[Surfaces][Slack] Thread context resolution", {
-                channel: channelId,
-                user: userId,
-                ts: messageTs,
-                inboundThreadTs: inboundThreadTs ?? null,
-                cachedThreadTs: cachedThreadTs ?? null,
-                persistedThreadTs: persistedThreadTs ?? null,
-                resolvedThreadTs: resolvedThreadTs ?? null,
-            });
-
-            await setSlackAssistantThinkingStatus({
-                app,
-                channelId,
-                userId,
-                incomingThreadTs: meta.threadTs,
-                messageTs,
-            });
             const backendCanonicalThreadTs = await fetchCanonicalSidecarThread({
                 provider: "slack",
                 providerAccountId: userId,
@@ -645,16 +708,16 @@ export async function startSlack() {
                 incomingThreadId: meta.threadTs,
                 messageId: messageTs,
             });
-            const resolvedThreadTs =
+
+            const canonicalThreadTs =
                 normalizeSlackThreadTs(backendCanonicalThreadTs) ??
-                normalizeSlackThreadTs(locallyResolvedThreadTs) ??
+                normalizeSlackThreadTs(inboundThreadTs) ??
+                normalizeSlackThreadTs(cachedThreadTs) ??
                 messageTs;
-            rememberCanonicalThread({
-                channelId,
-                userId,
-                threadTs: resolvedThreadTs,
-            });
-            const statusThreadTs = resolvedThreadTs;
+
+            slackThreadContext.set(cacheKey, canonicalThreadTs);
+            const replyThreadTs = canonicalThreadTs;
+            const statusThreadTs = canonicalThreadTs;
 
             console.log("[Surfaces][Slack] Resolved canonical thread", {
                 channel: channelId,
@@ -662,36 +725,28 @@ export async function startSlack() {
                 messageTs,
                 incomingThreadTs: meta.threadTs ?? null,
                 backendThreadTs: backendCanonicalThreadTs ?? null,
-                localThreadTs: locallyResolvedThreadTs ?? null,
-                resolvedThreadTs: resolvedThreadTs ?? null,
+                inboundThreadTs: inboundThreadTs ?? null,
+                cachedThreadTs: cachedThreadTs ?? null,
+                resolvedThreadTs: canonicalThreadTs ?? null,
                 isDirectMessage,
             });
 
-            if (statusThreadTs) {
-                await setSlackAssistantThinkingStatus({
-                    app,
-                    channelId,
-                    threadTs: statusThreadTs,
-                });
-            }
+            await setSlackAssistantThinkingStatus({
+                app,
+                channelId,
+                threadTs: statusThreadTs,
+            });
 
             try {
                 let history: { role: "user" | "assistant"; content: string }[] = [];
                 try {
-                    const result = resolvedThreadTs
-                        ? await app.client.conversations.replies({
-                            channel: channelId,
-                            ts: resolvedThreadTs,
-                            limit: 30,
-                            latest: messageTs,
-                            inclusive: false,
-                        })
-                        : await app.client.conversations.history({
-                            channel: channelId,
-                            limit: 30,
-                            latest: messageTs,
-                            inclusive: false,
-                        });
+                    const result = await app.client.conversations.replies({
+                        channel: channelId,
+                        ts: replyThreadTs,
+                        limit: 30,
+                        latest: messageTs,
+                        inclusive: false,
+                    });
 
                     if (result.messages) {
                         history = result.messages
@@ -707,7 +762,7 @@ export async function startSlack() {
                         channel: channelId,
                         user: userId,
                         ts: messageTs,
-                        threadTs: resolvedThreadTs,
+                        threadTs: replyThreadTs,
                         error: err instanceof Error ? err.message : String(err),
                     });
                 }
@@ -718,9 +773,8 @@ export async function startSlack() {
                     context: {
                         channelId,
                         userId,
-                        threadId: replyThreadTs,
                         messageId: messageTs,
-                        threadId: resolvedThreadTs,
+                        threadId: replyThreadTs,
                         isDirectMessage,
                     },
                     history,
@@ -745,16 +799,9 @@ export async function startSlack() {
 
                 for (const [index, resp] of brainResponse.responses.entries()) {
                     try {
-                        const responseThreadTs = normalizeSlackThreadTs(
-                            typeof (resp as { targetThreadId?: unknown }).targetThreadId === "string"
-                                ? ((resp as { targetThreadId?: string }).targetThreadId ?? undefined)
-                                : resolvedThreadTs,
-                        );
-                        rememberCanonicalThread({
-                            channelId,
-                            userId,
-                            threadTs: responseThreadTs,
-                        });
+                        // Enforce a single long-running thread per user/channel.
+                        // We intentionally ignore per-response thread routing to avoid "history tab" UX issues.
+                        const responseThreadTs = replyThreadTs;
                         const plainResponseContent = toPlainSidecarText(
                             typeof resp.content === "string" ? resp.content : "",
                         );

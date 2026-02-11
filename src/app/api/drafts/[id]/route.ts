@@ -36,6 +36,9 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
         if (!result.success && result.error === "DRAFT_NOT_FOUND") {
             return NextResponse.json({ error: "Draft not found" }, { status: 404 });
         }
+        if (!result.success) {
+            return NextResponse.json({ error: "Failed to load draft" }, { status: 400 });
+        }
 
         return NextResponse.json({ draft: result.draft });
     } catch (err) {

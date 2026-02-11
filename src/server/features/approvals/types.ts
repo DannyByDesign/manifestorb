@@ -4,14 +4,15 @@ export type ApprovalRequestStatus = "PENDING" | "APPROVED" | "DENIED" | "EXPIRED
 export type CreateApprovalParams = {
     userId: string;
     provider: string; // "slack" | "discord" | "telegram" | "web"
-    externalContext: Record<string, unknown>;
+    externalContext: unknown;
     requestPayload: {
         actionType: string;
-        description: string;
+        description?: string;
         args: Record<string, unknown>;
         tool?: string;
-        options?: Record<string, unknown>;
+        options?: unknown;
         message?: string;
+        [key: string]: unknown;
     };
     idempotencyKey: string;
     expiresInSeconds?: number;

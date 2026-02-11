@@ -9,7 +9,7 @@
     "dev": "next dev --webpack",
     "dev:stack": "bun run scripts/dev-stack.ts",
     "dev:turbo": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "test-ai": "vitest run --config vitest.config.ts",

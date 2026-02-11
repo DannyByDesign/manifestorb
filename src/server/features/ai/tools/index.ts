@@ -56,6 +56,7 @@ export async function createAgentTools({
         conversationId?: string;
         sourceEmailMessageId?: string;
         sourceEmailThreadId?: string;
+        currentMessage?: string;
     };
 }) {
     // Initialize Providers
@@ -99,6 +100,7 @@ export async function createAgentTools({
         emailMessageId: toolContext?.sourceEmailMessageId,
         emailThreadId: toolContext?.sourceEmailThreadId,
         conversationId: toolContext?.conversationId,
+        currentMessage: toolContext?.currentMessage,
         logger,
         providers: {
             email: emailProvider,
@@ -114,7 +116,7 @@ export async function createAgentTools({
     // Our `executeTool` takes the definition and params.
     // We should return implementations that call `executeTool`.
 
-    const wrap = (def: ToolDefinition<unknown>) => {
+    const wrap = <T extends z.ZodTypeAny>(def: ToolDefinition<T>) => {
         const schema = zodSchema(def.parameters);
         return tool({
             description: def.description,
@@ -128,7 +130,11 @@ export async function createAgentTools({
 
     const modelOptions = getModel("economy");
     const webSearchGenerateText = createGenerateText({
-        emailAccount,
+        emailAccount: {
+            id: emailAccount.id,
+            email: emailAccount.email,
+            userId,
+        },
         label: "Web Search",
         modelOptions,
     });
@@ -138,6 +144,7 @@ export async function createAgentTools({
         parameters: zodSchema(z.object({
             query: z.string().describe("The search query"),
         })),
+        // @ts-expect-error AI SDK tool overload typing mismatch with local zod schema helper
         execute: async ({ query }: { query: string }) => {
             const searchTools = google.tools.googleSearch({});
             const result = await webSearchGenerateText({

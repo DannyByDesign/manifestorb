@@ -46,7 +46,11 @@ When to use:
 
     parameters: getParameters,
 
-    execute: async ({ resource, ids, calendarId, includeReason }, { providers, userId }) => {
+    execute: async (params, { providers, userId }) => {
+        const { resource, ids } = params;
+        const calendarId = "calendarId" in params ? params.calendarId : undefined;
+        const includeReason =
+            "includeReason" in params ? params.includeReason : undefined;
         switch (resource) {
             case "email":
                 return {

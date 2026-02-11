@@ -8,6 +8,7 @@ import { processMessage } from "@/features/ai/message-processor";
 import { createScopedLogger } from "@/server/lib/logger";
 import prisma from "@/server/db/client";
 import type { EmailAccount, User } from "@/generated/prisma/client";
+import type { InteractivePayload } from "@/features/channels/types";
 
 const logger = createScopedLogger("AgentExecutor");
 
@@ -61,9 +62,21 @@ export async function runOneShotAgent({
     logger,
   });
 
+  const interactivePayloads = Array.isArray(result.interactivePayloads)
+    ? (result.interactivePayloads as unknown[]).filter(
+        (payload): payload is InteractivePayload =>
+          Boolean(payload) && typeof payload === "object" && "type" in (payload as any),
+      )
+    : [];
+
   return {
     text: result.text,
-    approvals: result.approvals,
-    interactivePayloads: result.interactivePayloads,
+    approvals: Array.isArray(result.approvals)
+      ? (result.approvals as Array<{ id?: unknown; requestPayload?: unknown }>).filter(
+          (item): item is { id: string; requestPayload?: unknown } =>
+            Boolean(item) && typeof item.id === "string" && item.id.length > 0,
+        )
+      : [],
+    interactivePayloads,
   };
 }

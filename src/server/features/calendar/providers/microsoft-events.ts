@@ -257,7 +257,7 @@ export class MicrosoftCalendarEventProvider implements CalendarEventProvider {
     );
   }
 
-  private parseEvent(event: MicrosoftEvent, calendarId?: string) {
+  private parseEvent(event: MicrosoftEvent, calendarId?: string): CalendarEvent {
     const organizerEmail = event.organizer?.emailAddress?.address ?? undefined;
     return {
       id: event.id || "",

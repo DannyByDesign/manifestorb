@@ -44,7 +44,6 @@ export async function runSerializedConversationTurn<T>(params: {
       },
       {
         timeout: TASK_TIMEOUT_MS,
-        throwOnTimeout: true,
       },
     );
     return result as T;

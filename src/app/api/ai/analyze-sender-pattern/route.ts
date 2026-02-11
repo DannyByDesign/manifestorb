@@ -340,6 +340,7 @@ async function getEmailAccountWithRules({
       multiRuleSelectionEnabled: true,
       timezone: true,
       calendarBookingLink: true,
+      aiRuleTimeoutMs: true,
       account: {
         select: {
           provider: true,

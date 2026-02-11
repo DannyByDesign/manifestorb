@@ -160,7 +160,8 @@ function buildApprovalInteractivePayload(params: {
         (resource === "calendar" || resource === "task")
     ) {
         const action = toolName === "delete" ? "delete" : "modify";
-        const title = changes.title || changes.subject || changes.name || changes.summary;
+        const rawTitle = changes.title || changes.subject || changes.name || changes.summary;
+        const title = typeof rawTitle === "string" ? rawTitle : undefined;
         const timeRange = buildTimeRangeFromChanges(changes);
         const itemLabel = resource === "calendar" ? "calendar event" : "task";
         const subject = title ? `“${title}”` : `this ${itemLabel}`;
@@ -285,13 +286,16 @@ export class ChannelRouter {
             }];
         }
 
-        if (emailAccount.account?.disconnectedAt) {
+        const accountRowForEmailAccount = user.emailAccounts.find(
+            (candidate) => candidate.id === emailAccount.id,
+        );
+        if (accountRowForEmailAccount?.account?.disconnectedAt) {
             logger.warn("Linked email account is disconnected", {
                 resolvedUserId: user.id,
                 emailAccountId: emailAccount.id,
                 provider: message.provider,
                 channelId: message.context.channelId,
-                disconnectedAt: emailAccount.account.disconnectedAt,
+                disconnectedAt: accountRowForEmailAccount.account.disconnectedAt,
             });
             return [{
                 targetChannelId: message.context.channelId,

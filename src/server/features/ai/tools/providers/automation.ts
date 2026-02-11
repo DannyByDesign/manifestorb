@@ -1,7 +1,7 @@
 
 import { type Logger } from "@/server/lib/logger";
 import prisma from "@/server/db/client";
-import { type Rule, type Knowledge } from "@/generated/prisma/client";
+import { type Rule, type Knowledge, Prisma } from "@/generated/prisma/client";
 import { ActionType, LogicalOperator, SystemType } from "@/generated/prisma/enums";
 import { ONBOARDING_PROCESS_EMAILS_COUNT } from "@/server/lib/config";
 import { bulkProcessInboxEmails } from "@/features/rules/ai/bulk-process-emails";
@@ -165,17 +165,26 @@ export async function createAutomationProvider(
         },
 
         async updateRule(id: string, data: RuleUpdateInput) {
-            // Simplified update: only specific fields
-            // Just enabling Prisma update for now
+            const updateData: Prisma.RuleUpdateInput = {
+                ...(data.name !== undefined ? { name: data.name } : {}),
+                ...(data.enabled !== undefined ? { enabled: data.enabled } : {}),
+                ...(data.instructions !== undefined ? { instructions: data.instructions } : {}),
+                ...(data.runOnThreads !== undefined ? { runOnThreads: data.runOnThreads } : {}),
+                ...(data.from !== undefined ? { from: data.from } : {}),
+                ...(data.to !== undefined ? { to: data.to } : {}),
+                ...(data.subject !== undefined ? { subject: data.subject } : {}),
+                ...(data.body !== undefined ? { body: data.body } : {}),
+                ...(data.conditionalOperator ? { conditionalOperator: data.conditionalOperator } : {}),
+                ...(data.systemType ? { systemType: data.systemType } : {}),
+                ...(data.isTemporary !== undefined ? { isTemporary: data.isTemporary } : {}),
+            };
+            if (data.expiresAt !== undefined) {
+                updateData.expiresAt = data.expiresAt ? new Date(data.expiresAt) : null;
+                updateData.isTemporary = Boolean(data.expiresAt);
+            }
             return prisma.rule.update({
                 where: { id, emailAccountId },
-                data: {
-                    ...data,
-                    ...(data.expiresAt !== undefined && {
-                        expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
-                        isTemporary: Boolean(data.expiresAt),
-                    }),
-                }
+                data: updateData
             });
         },
 

@@ -16,7 +16,7 @@ import {
 import { DigestStatus, SystemType } from "@/generated/prisma/enums";
 import { extractNameFromEmail } from "@/server/lib/email";
 import { getRuleName } from "@/features/rules/consts";
-import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
+import { withQStashSignatureAppRouter } from "@/server/lib/qstash";
 import { camelCase } from "lodash";
 import { createEmailProvider } from "@/features/email/provider";
 import { sleep } from "@/server/lib/sleep";
@@ -43,7 +43,7 @@ export const GET = withEmailAccount("resend/digest", async (request) => {
   return NextResponse.json(result);
 });
 
-export const POST = verifySignatureAppRouter(
+export const POST = withQStashSignatureAppRouter(
   withError("resend/digest", async (request) => {
     const json = await request.json();
     const { success, data, error } = sendDigestEmailBody.safeParse(json);
@@ -72,7 +72,7 @@ export const POST = verifySignatureAppRouter(
         { status: 500 },
       );
     }
-  }),
+  }) as unknown as (req: Request) => Promise<Response>,
 );
 
 async function getDigestSchedule({

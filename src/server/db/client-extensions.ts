@@ -32,26 +32,6 @@ export const encryptedTokens = Prisma.defineExtension((client) => {
           },
         },
       },
-      mcpConnection: {
-        accessToken: {
-          needs: { accessToken: true },
-          compute(connection) {
-            return decryptToken(connection.accessToken);
-          },
-        },
-        refreshToken: {
-          needs: { refreshToken: true },
-          compute(connection) {
-            return decryptToken(connection.refreshToken);
-          },
-        },
-        apiKey: {
-          needs: { apiKey: true },
-          compute(connection) {
-            return decryptToken(connection.apiKey);
-          },
-        },
-      },
       driveConnection: {
         accessToken: {
           needs: { accessToken: true },

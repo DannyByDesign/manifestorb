@@ -213,7 +213,10 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
     );
   }
 
-  private parseEvent(event: calendar_v3.Schema$Event, calendarId?: string) {
+  private parseEvent(
+    event: calendar_v3.Schema$Event,
+    calendarId?: string,
+  ): CalendarEvent {
     const startTime = new Date(
       event.start?.dateTime || event.start?.date || Date.now(),
     );

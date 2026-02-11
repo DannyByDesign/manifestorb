@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
 import { z } from "zod";
 import { withError, type RequestWithLogger } from "@/server/lib/middleware";
 import { getGmailClientWithRefresh } from "@/server/integrations/google/client";
@@ -139,15 +138,21 @@ async function saveToDatabase({
 
 export const POST = withError(
   "clean/gmail",
-  verifySignatureAppRouter(async (request: Request) => {
-    const json = await request.json();
-    const body = cleanGmailSchema.parse(json);
+  async (request: Request) => {
+    // Lazy-load QStash verification to avoid build-time crashes when keys are not set.
+    const { verifySignatureAppRouter } = await import("@upstash/qstash/nextjs");
+    const verifiedHandler = verifySignatureAppRouter(async (verifiedRequest: Request) => {
+      const json = await verifiedRequest.json();
+      const body = cleanGmailSchema.parse(json);
 
-    await performGmailAction({
-      ...body,
-      logger: (request as RequestWithLogger).logger,
+      await performGmailAction({
+        ...body,
+        logger: (verifiedRequest as RequestWithLogger).logger,
+      });
+
+      return NextResponse.json({ success: true });
     });
 
-    return NextResponse.json({ success: true });
-  }),
+    return verifiedHandler(request);
+  },
 );

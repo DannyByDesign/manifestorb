@@ -4,10 +4,31 @@
 -- - planner run audit model
 -- - task preference week-start day
 
-CREATE TYPE "WeekStartDay" AS ENUM ('SUNDAY', 'MONDAY');
+DO $$
+BEGIN
+  CREATE TYPE "WeekStartDay" AS ENUM ('SUNDAY', 'MONDAY');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END
+$$;
 
+-- `weekStartDay` was introduced earlier as TEXT ('sunday'|'monday'). Convert it to the enum.
+ALTER TABLE "TaskPreference" DROP CONSTRAINT IF EXISTS "TaskPreference_weekStartDay_check";
+ALTER TABLE "TaskPreference" ALTER COLUMN "weekStartDay" DROP DEFAULT;
 ALTER TABLE "TaskPreference"
-ADD COLUMN "weekStartDay" "WeekStartDay" NOT NULL DEFAULT 'SUNDAY';
+  ALTER COLUMN "weekStartDay" TYPE "WeekStartDay"
+  USING (
+    CASE
+      WHEN "weekStartDay" = 'sunday' THEN 'SUNDAY'
+      WHEN "weekStartDay" = 'monday' THEN 'MONDAY'
+      WHEN "weekStartDay" = 'SUNDAY' THEN 'SUNDAY'
+      WHEN "weekStartDay" = 'MONDAY' THEN 'MONDAY'
+      ELSE 'SUNDAY'
+    END
+  )::"WeekStartDay";
+ALTER TABLE "TaskPreference"
+  ALTER COLUMN "weekStartDay" SET DEFAULT 'SUNDAY',
+  ALTER COLUMN "weekStartDay" SET NOT NULL;
 
 CREATE TABLE "CalendarEventShadow" (
   "id" TEXT NOT NULL,

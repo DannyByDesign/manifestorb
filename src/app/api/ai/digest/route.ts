@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
+import { withQStashSignatureAppRouter } from "@/server/lib/qstash";
 import { digestBody } from "./validation";
 import { DigestStatus } from "@/generated/prisma/enums";
 import type { Logger } from "@/server/lib/logger";
@@ -11,7 +11,7 @@ import { withError } from "@/server/lib/middleware";
 import { isAssistantEmail } from "@/features/web-chat/is-assistant-email";
 import { env } from "@/env";
 
-export const POST = verifySignatureAppRouter(
+export const POST = withQStashSignatureAppRouter(
   withError("digest", async (request) => {
     let logger = request.logger;
 
@@ -80,7 +80,7 @@ export const POST = verifySignatureAppRouter(
       logger.error("Failed to process digest", { error });
       return new NextResponse("Internal Server Error", { status: 500 });
     }
-  }),
+  }) as unknown as (req: Request) => Promise<Response>,
 );
 
 async function findOrCreateDigest(

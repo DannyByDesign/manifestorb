@@ -35,8 +35,6 @@ export class ApprovalService {
             idempotencyKey,
             expiresInSeconds,
             correlationId,
-            sourceType,
-            sourceId,
         } = params;
 
         // Check for existing request (Idempotency)
@@ -64,8 +62,6 @@ export class ApprovalService {
                 idempotencyKey,
                 correlationId,
                 expiresAt,
-                sourceType,
-                sourceId,
             }
         });
 

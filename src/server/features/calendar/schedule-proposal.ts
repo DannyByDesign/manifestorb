@@ -111,20 +111,43 @@ export async function resolveScheduleProposalRequestById(params: {
   if (!provider) {
     return { ok: false, error: "Email account has no linked provider" };
   }
-  const emailAccount = {
-    ...emailAccountRow,
+  const emailAccountWithProvider = requestRecord.user.emailAccounts.find(
+    (candidate) => candidate.id === emailAccountRow.id,
+  );
+  if (!emailAccountWithProvider) {
+    return { ok: false, error: "Email account context missing for tool execution" };
+  }
+  const toolEmailAccount = {
+    id: emailAccountRow.id,
     provider,
+    access_token:
+      (emailAccountWithProvider as { account?: { access_token?: string | null } })
+        .account?.access_token ?? null,
+    refresh_token:
+      (emailAccountWithProvider as { account?: { refresh_token?: string | null } })
+        .account?.refresh_token ?? null,
+    expires_at: (() => {
+      const raw = (
+        emailAccountWithProvider as { account?: { expires_at?: Date | null } }
+      ).account?.expires_at;
+      return raw ? Math.floor(raw.getTime() / 1000) : null;
+    })(),
+    email: emailAccountRow.email,
   };
 
   try {
     const { createAgentTools } = await import("@/features/ai/tools");
     const tools = await createAgentTools({
-      emailAccount: emailAccount as import("@/features/ai/tools/providers/email").EmailAccount,
+      emailAccount: toolEmailAccount,
       logger,
       userId: requestRecord.userId,
     });
-    const toolInstance = (tools as Record<string, { execute: (a: Record<string, unknown>) => Promise<unknown> }>)[payload.tool];
-    if (!toolInstance) {
+    const toolMap = tools as unknown as Record<
+      string,
+      { execute?: (a: Record<string, unknown>) => Promise<unknown> }
+    >;
+    const toolInstance = toolMap[payload.tool];
+    if (!toolInstance || typeof toolInstance.execute !== "function") {
       return { ok: false, error: "Tool not found" };
     }
 
