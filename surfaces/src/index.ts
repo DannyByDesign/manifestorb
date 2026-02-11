@@ -281,18 +281,6 @@ export async function startSidecar() {
         console.error("[Surfaces] Uncaught exception", { error });
     });
 
-    // Start platform connectors safely so one bad integration does not take down the process.
-    await Promise.all([
-        startConnectorSafely("slack", startSlack),
-        startConnectorSafely("discord", startDiscord),
-        startConnectorSafely("telegram", startTelegram),
-    ]);
-
-    // Start background job scheduler
-    const scheduler = startScheduler();
-
-    console.log("🚀 Surfaces Sidecar fully initialized");
-
     const bunRuntime = (globalThis as { Bun?: { serve: (options: { port: number; fetch: typeof handleRequest }) => { stop: () => void } } }).Bun;
     if (!bunRuntime) {
         throw new Error("Bun runtime not available");
@@ -313,6 +301,27 @@ export async function startSidecar() {
     console.log("   - POST /jobs/decay - Trigger memory decay");
     console.log("   - POST /jobs/recording - Trigger memory recording");
     console.log("   - GET  /health - Health check");
+
+    // Start platform connectors in the background so health checks don't depend on Slack socket startup.
+    void Promise.all([
+        startConnectorSafely("slack", startSlack),
+        startConnectorSafely("discord", startDiscord),
+        startConnectorSafely("telegram", startTelegram),
+    ]).then(() => {
+        console.log("🚀 Surfaces connectors initialized");
+    });
+
+    // Start background job scheduler without blocking HTTP startup.
+    let scheduler:
+        | ReturnType<typeof startScheduler>
+        | undefined;
+    try {
+        scheduler = startScheduler();
+    } catch (error) {
+        console.error("[Surfaces] Failed to start scheduler", { error });
+    }
+
+    console.log("🚀 Surfaces Sidecar fully initialized");
     const shutdown = async (signal: string) => {
         console.log(`[Surfaces] Received ${signal}. Shutting down...`);
         try {

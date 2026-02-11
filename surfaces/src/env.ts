@@ -4,9 +4,9 @@ const envSchema = z
   .object({
     NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
     DATABASE_URL: z.string().min(1),
-    REDIS_URL: z.string().min(1),
-    OPENAI_API_KEY: z.string().min(1),
-    GOOGLE_API_KEY: z.string().min(1),
+    REDIS_URL: z.string().optional(),
+    OPENAI_API_KEY: z.string().optional(),
+    GOOGLE_API_KEY: z.string().optional(),
     JOBS_SHARED_SECRET: z.string().min(1),
     SURFACES_SHARED_SECRET: z.string().min(1),
     INTERNAL_API_KEY: z.string().min(1),
