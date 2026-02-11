@@ -3,7 +3,7 @@ builder = "RAILPACK"
 buildCommand = "bun install && bun run build"
 
 [deploy]
-preDeployCommand = "bunx prisma migrate resolve --rolled-back 20250204120000_remove_mcp || true; bunx prisma migrate resolve --rolled-back 20260202000000_add_embeddings || true; bunx prisma migrate resolve --rolled-back 20260208130000_add_conversation_message_embedding || true; bunx prisma migrate resolve --rolled-back 20260209100000_ensure_embedding_columns || true; bunx prisma migrate deploy"
+preDeployCommand = "bunx prisma migrate deploy"
 startCommand = "bun run start"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 120
