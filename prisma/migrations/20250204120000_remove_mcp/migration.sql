@@ -1,17 +1,17 @@
 -- DropForeignKey
-ALTER TABLE "McpTool" DROP CONSTRAINT "McpTool_connectionId_fkey";
+ALTER TABLE IF EXISTS "McpTool" DROP CONSTRAINT IF EXISTS "McpTool_connectionId_fkey";
 
 -- DropForeignKey
-ALTER TABLE "McpConnection" DROP CONSTRAINT "McpConnection_integrationId_fkey";
+ALTER TABLE IF EXISTS "McpConnection" DROP CONSTRAINT IF EXISTS "McpConnection_integrationId_fkey";
 
 -- DropForeignKey
-ALTER TABLE "McpConnection" DROP CONSTRAINT "McpConnection_emailAccountId_fkey";
+ALTER TABLE IF EXISTS "McpConnection" DROP CONSTRAINT IF EXISTS "McpConnection_emailAccountId_fkey";
 
 -- DropTable
-DROP TABLE "McpTool";
+DROP TABLE IF EXISTS "McpTool";
 
 -- DropTable
-DROP TABLE "McpConnection";
+DROP TABLE IF EXISTS "McpConnection";
 
 -- DropTable
-DROP TABLE "McpIntegration";
+DROP TABLE IF EXISTS "McpIntegration";
