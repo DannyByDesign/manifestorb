@@ -281,7 +281,15 @@ export async function startSidecar() {
         console.error("[Surfaces] Uncaught exception", { error });
     });
 
-    const bunRuntime = (globalThis as { Bun?: { serve: (options: { port: number; fetch: typeof handleRequest }) => { stop: () => void } } }).Bun;
+    const bunRuntime = (globalThis as {
+        Bun?: {
+            serve: (options: {
+                hostname?: string;
+                port: number;
+                fetch: typeof handleRequest;
+            }) => { stop: () => void };
+        };
+    }).Bun;
     if (!bunRuntime) {
         throw new Error("Bun runtime not available");
     }
@@ -289,6 +297,7 @@ export async function startSidecar() {
     const resolvedPort = Number.parseInt(process.env.PORT ?? "3001", 10);
     const port = Number.isFinite(resolvedPort) ? resolvedPort : 3001;
     const server = bunRuntime.serve({
+        hostname: "0.0.0.0",
         port,
         fetch: handleRequest,
     });

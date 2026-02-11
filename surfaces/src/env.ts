@@ -7,9 +7,9 @@ const envSchema = z
     REDIS_URL: z.string().optional(),
     OPENAI_API_KEY: z.string().optional(),
     GOOGLE_API_KEY: z.string().optional(),
-    JOBS_SHARED_SECRET: z.string().min(1),
+    JOBS_SHARED_SECRET: z.string().min(1).optional(),
     SURFACES_SHARED_SECRET: z.string().min(1),
-    INTERNAL_API_KEY: z.string().min(1),
+    INTERNAL_API_KEY: z.string().min(1).optional(),
     BRAIN_API_URL: z
       .string()
       .url()
@@ -19,8 +19,7 @@ const envSchema = z
     SLACK_APP_TOKEN: z.string().optional(),
     DISCORD_BOT_TOKEN: z.string().optional(),
     TELEGRAM_BOT_TOKEN: z.string().optional(),
-  })
-  .superRefine(() => undefined);
+  });
 
 const parsed = envSchema.safeParse(process.env);
 
