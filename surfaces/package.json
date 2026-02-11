@@ -10,8 +10,8 @@
         "dev": "bun run --watch src/index.ts",
         "start": "bun run src/index.ts",
         "typecheck": "tsc --noEmit",
-        "prisma:generate": "bunx prisma generate",
-        "postinstall": "bunx prisma generate"
+        "prisma:generate": "bunx prisma generate --schema ./prisma/schema.prisma",
+        "postinstall": "bunx prisma generate --schema ./prisma/schema.prisma"
     },
     "dependencies": {
         "@ai-sdk/google": "^0.0.30",
