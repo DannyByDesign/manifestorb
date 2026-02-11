@@ -19,11 +19,10 @@ The centralized system for all in-app and push notifications.
 │              └──► QStash: Schedule fallback (15s delay)              │
 │                                                                      │
 │   ┌─────────────────────────────────────────────────────────────┐   │
-│   │              Race: Who claims first?                         │   │
+│   │              Delivery Path                                   │   │
 │   │                                                              │   │
-│   │   Web App (polls every 3s)    vs    Fallback (fires at 15s) │   │
-│   │   If visible: claims it              If unclaimed: push to   │   │
-│   │   Shows toast in UI                  Slack/Discord/Telegram  │   │
+│   │   Fallback worker (fires at 15s) pushes to Slack/Discord/   │   │
+│   │   Telegram when notification is still unclaimed.             │   │
 │   └─────────────────────────────────────────────────────────────┘   │
 │                                                                      │
 └─────────────────────────────────────────────────────────────────────┘
@@ -89,13 +88,6 @@ Returns the last 50 notifications for the authenticated user.
     ]
 }
 ```
-
-### Poll for New Notifications
-```
-GET /api/notifications/poll
-```
-Claims and returns unclaimed notifications. Used by the web app for real-time updates.
-Only polls when the browser tab is visible (prevents claiming while user is AFK).
 
 ### Unread Count
 ```
@@ -164,31 +156,13 @@ model InAppNotification {
 
 ## Deduplication Strategy
 
-The race between web app and fallback worker is handled atomically:
+Fallback delivery claim is handled atomically:
 
-1. **Web app claims**: Sets `claimedAt` timestamp
-2. **Fallback checks**: Only pushes if `claimedAt IS NULL AND pushedToSurface = false`
-3. **Atomic update**: Uses `updateMany` with conditions to prevent race
+1. **Fallback checks**: Only pushes if `claimedAt IS NULL AND pushedToSurface = false`
+2. **Atomic update**: Uses `updateMany` with conditions to prevent double-push
 
-This ensures notifications go to **either** web OR surfaces, never both.
+This ensures only one fallback worker instance claims and delivers a notification.
 
-## Visibility Detection
+## Notes
 
-The web app only polls when the browser tab is visible:
-
-```typescript
-// From use-notification-poll.ts
-const [isVisible, setIsVisible] = useState(true);
-
-useEffect(() => {
-    const handleVisibilityChange = () => {
-        setIsVisible(document.visibilityState === "visible");
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-}, []);
-
-// Only poll when visible
-useSWR(isVisible ? "/api/notifications/poll" : null, fetcher);
-```
-
-If the user switches tabs, polling stops, and the fallback will push to Slack/Discord after 15 seconds.
+Web polling is currently disabled. Real-time in-app updates should be implemented with a push channel (SSE/WebSocket) in a future pass.
