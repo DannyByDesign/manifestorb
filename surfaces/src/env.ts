@@ -1,5 +1,29 @@
 import { z } from "zod";
 
+const normalizeHttpUrl = (value: string): string => {
+  const trimmed = value.trim();
+  if (!trimmed) return trimmed;
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+  const url = new URL(withProtocol);
+  url.hash = "";
+  return url.toString().replace(/\/$/, "");
+};
+
+const normalizeCoreBaseUrl = (value: string): string => {
+  const normalized = normalizeHttpUrl(value);
+  const url = new URL(normalized);
+  return url.origin;
+};
+
+const normalizeBrainApiUrl = (value: string): string => {
+  const normalized = normalizeHttpUrl(value);
+  const url = new URL(normalized);
+  if (!url.pathname || url.pathname === "/") {
+    url.pathname = "/api/surfaces/inbound";
+  }
+  return url.toString();
+};
+
 const envSchema = z
   .object({
     NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
@@ -12,9 +36,34 @@ const envSchema = z
     INTERNAL_API_KEY: z.string().min(1).optional(),
     BRAIN_API_URL: z
       .string()
-      .url()
-      .default("http://localhost:3000/api/surfaces/inbound"),
-    CORE_BASE_URL: z.string().url().default("http://localhost:3000"),
+      .min(1)
+      .default("http://localhost:3000/api/surfaces/inbound")
+      .transform((value, ctx) => {
+        try {
+          return normalizeBrainApiUrl(value);
+        } catch {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Invalid BRAIN_API_URL",
+          });
+          return z.NEVER;
+        }
+      }),
+    CORE_BASE_URL: z
+      .string()
+      .min(1)
+      .default("http://localhost:3000")
+      .transform((value, ctx) => {
+        try {
+          return normalizeCoreBaseUrl(value);
+        } catch {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Invalid CORE_BASE_URL",
+          });
+          return z.NEVER;
+        }
+      }),
     SLACK_BOT_TOKEN: z.string().optional(),
     SLACK_APP_TOKEN: z.string().optional(),
     DISCORD_BOT_TOKEN: z.string().optional(),

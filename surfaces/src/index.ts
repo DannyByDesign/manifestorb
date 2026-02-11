@@ -294,8 +294,13 @@ export async function startSidecar() {
         throw new Error("Bun runtime not available");
     }
 
-    const resolvedPort = Number.parseInt(process.env.PORT ?? "3001", 10);
-    const port = Number.isFinite(resolvedPort) ? resolvedPort : 3001;
+    const resolvedPort = Number.parseInt(process.env.PORT ?? "3000", 10);
+    const port = Number.isFinite(resolvedPort) ? resolvedPort : 3000;
+    console.log("[Surfaces] Boot config", {
+        nodeEnv: process.env.NODE_ENV ?? "unknown",
+        portFromEnv: process.env.PORT ?? null,
+        resolvedPort: port,
+    });
     const server = bunRuntime.serve({
         hostname: "0.0.0.0",
         port,
