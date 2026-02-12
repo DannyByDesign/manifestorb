@@ -245,19 +245,32 @@ export async function handleRequest(req: Request) {
                 }
             }
 
-            // Liveness health check (for Railway healthcheck)
-            if (
-                req.method === "GET" &&
-                (url.pathname === "/health" || url.pathname === "/health/liveness")
-            ) {
+            // Liveness health checks (for Railway/container probes) must only
+            // indicate whether the process can serve requests.
+            if (req.method === "GET" && url.pathname === "/health/liveness") {
                 const readiness = getPlatformReadiness();
                 return new Response(JSON.stringify({
-                    status: readiness.ready ? "ok" : "degraded",
+                    status: "alive",
                     uptime: process.uptime(),
+                    ready: readiness.ready,
+                    failingPlatforms: readiness.failing,
+                }), {
+                    status: 200,
+                    headers: { "Content-Type": "application/json" }
+                });
+            }
+
+            // Back-compat health endpoint used by docs/manual checks.
+            if (req.method === "GET" && url.pathname === "/health") {
+                const readiness = getPlatformReadiness();
+                return new Response(JSON.stringify({
+                    status: "ok",
+                    uptime: process.uptime(),
+                    ready: readiness.ready,
                     platforms: readiness.platforms,
                     failingPlatforms: readiness.failing,
                 }), {
-                    status: readiness.ready ? 200 : 503,
+                    status: 200,
                     headers: { "Content-Type": "application/json" }
                 });
             }
