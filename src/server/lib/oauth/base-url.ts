@@ -31,7 +31,7 @@ function normalizeToOrigin(value?: string | null): string | null {
 function getForwardedOrigin(headers?: Headers): string | null {
   if (!headers) return null;
 
-  const forwardedHost = headers.get("x-forwarded-host");
+  const forwardedHost = headers.get("x-forwarded-host") || headers.get("host");
   if (!forwardedHost) return null;
   const forwardedProto = headers.get("x-forwarded-proto") || "https";
 

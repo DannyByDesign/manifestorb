@@ -32,8 +32,6 @@ export function getEmailAccount(
     userId: "user1",
     email: overrides.email || "user@test.com",
     about: overrides.about ?? null,
-    filingEnabled: false,
-    filingPrompt: null,
     multiRuleSelectionEnabled: overrides.multiRuleSelectionEnabled ?? false,
     timezone: null,
     calendarBookingLink: null,

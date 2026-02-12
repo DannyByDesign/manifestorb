@@ -438,7 +438,7 @@ DigestEmail.PreviewProps = {
     {
       from: "Airbnb",
       subject: "Weekend getaway ideas near you",
-      content: "Discover unique stays within a 2-hour drive from your location",
+      content: "Discover unique stays within a 2-hour trip from your location",
     },
   ],
   calendar: [

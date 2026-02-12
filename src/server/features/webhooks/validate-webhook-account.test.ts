@@ -79,8 +79,6 @@ describe("validateWebhookAccount", () => {
           tier: PremiumTier.PRO_MONTHLY,
         },
       },
-      filingEnabled: false,
-      filingPrompt: null,
       ...overrides,
     };
   }

@@ -4,7 +4,7 @@
  * Wraps server actions where applicable:
  * - automation: providers.automation.deleteRule
  * - knowledge: deleteKnowledgeAction (per id)
- * - email/calendar/drive/task: provider or prisma
+ * - email/calendar/task: provider or prisma
  */
 
 import { z } from "zod";
@@ -42,11 +42,6 @@ const deleteParameters = z.discriminatedUnion("resource", [
         resource: z.literal("task"),
         ids: deleteIdsSchema,
     }).strict(),
-    z.object({
-        resource: z.literal("drive"),
-        ids: deleteIdsSchema,
-        driveItemType: z.enum(["file", "folder"]),
-    }).strict(),
 ]);
 
 export const deleteTool: ToolDefinition<typeof deleteParameters> = {
@@ -60,7 +55,7 @@ When to use:
 Email: Moves to trash (recoverable 30 days)
 Calendar: Cancels event
 Automation: Deletes rule
-Drive: Deletes file or folder`,
+`,
 
     parameters: deleteParameters,
 
@@ -68,8 +63,6 @@ Drive: Deletes file or folder`,
         const { resource, ids } = params;
         const calendarId = "calendarId" in params ? params.calendarId : undefined;
         const mode = "mode" in params ? params.mode : undefined;
-        const driveItemType =
-            "driveItemType" in params ? params.driveItemType : undefined;
         switch (resource) {
             case "email":
                 return {
@@ -137,20 +130,6 @@ Drive: Deletes file or folder`,
                     where: { id: { in: ids }, userId }
                 });
                 return { success: true, data: { count: deleted.count } };
-
-            case "drive":
-                if (!providers.drive) {
-                    return { success: false, error: "Drive not connected" };
-                }
-                if (!driveItemType) {
-                    return { success: false, error: "driveItemType is required for drive deletes" };
-                }
-                if (driveItemType === "file") {
-                    await Promise.all(ids.map((id) => providers.drive!.deleteFile(id)));
-                } else {
-                    await Promise.all(ids.map((id) => providers.drive!.deleteFolder(id)));
-                }
-                return { success: true, data: { count: ids.length } };
 
             default:
                 return { success: false, error: `Resource ${resource} not supported` };

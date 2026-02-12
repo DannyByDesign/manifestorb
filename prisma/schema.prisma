@@ -161,9 +161,6 @@ model EmailAccount {
   meetingBriefingsEnabled       Boolean @default(false)
   meetingBriefingsMinutesBefore Int     @default(240) // 4 hours in minutes
 
-  filingEnabled Boolean @default(false)
-  filingPrompt  String?
-
   followUpAwaitingReplyDays Float?
   followUpNeedsReplyDays    Float?
   followUpAutoDraftEnabled  Boolean @default(true)
@@ -203,10 +200,6 @@ model EmailAccount {
   calendarEventShadows CalendarEventShadow[]
   calendarEventPolicies CalendarEventPolicy[]
   calendarPlanRuns      CalendarPlanRun[]
-  driveConnections    DriveConnection[]
-  documentFilings     DocumentFiling[]
-  filingFolders       FilingFolder[]
-
   @@index([userId])
   @@index([lastSummaryEmailAt])
 }
@@ -1066,7 +1059,6 @@ model Task {
 
   schedule         TaskSchedule?
   schedulingReason TaskSchedulingReason?
-  documentFilings  DocumentFiling[]
 
   @@index([userId])
   @@index([status])
@@ -1287,99 +1279,6 @@ model MeetingBriefing {
   @@index([emailAccountId])
 }
 
-// Drive connection for document auto-organization (Google Drive or OneDrive/SharePoint)
-// One connection per provider. But we can remove unique constraint in the future if we want
-model DriveConnection {
-  id        String   @id @default(cuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  provider     String // "google" or "microsoft"
-  email        String // can differ from emailAccount - e.g. connect work Drive to personal email
-  accessToken  String?
-  refreshToken String?
-  expiresAt    DateTime?
-  isConnected  Boolean   @default(true)
-
-  googleChannelId        String?
-  googleResourceId       String?
-  googleChannelToken     String?
-  googleChannelExpiresAt DateTime?
-  googleStartPageToken   String?
-
-  emailAccountId String
-  emailAccount   EmailAccount @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
-
-  documentFilings DocumentFiling[]
-  filingFolders   FilingFolder[]
-
-  @@unique([emailAccountId, provider])
-  @@index([emailAccountId])
-}
-
-model FilingFolder {
-  id        String   @id @default(cuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  folderId   String
-  folderName String
-  folderPath String
-
-  driveConnectionId String
-  driveConnection   DriveConnection @relation(fields: [driveConnectionId], references: [id], onDelete: Cascade)
-  emailAccountId    String
-  emailAccount      EmailAccount    @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
-
-  @@unique([emailAccountId, folderId])
-  @@index([driveConnectionId])
-}
-
-model DocumentFiling {
-  id        String   @id @default(cuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Source email attachment
-  messageId    String
-  attachmentId String
-  filename     String
-
-  // Result (after filing or prediction)
-  folderId   String? // null if AI suggests creating a new folder
-  folderPath String
-  fileId     String?
-  reasoning  String?
-  confidence Float?
-
-  status DocumentFilingStatus @default(FILED)
-
-  wasAsked     Boolean   @default(false)
-  wasCorrected Boolean   @default(false)
-  originalPath String?
-  correctedAt  DateTime?
-
-  // Feedback (for preview and corrections)
-  feedbackPositive Boolean?
-  feedbackAt       DateTime?
-
-  notificationMessageId String?   @unique
-  notificationSentAt    DateTime?
-
-  driveConnectionId String
-  driveConnection   DriveConnection @relation(fields: [driveConnectionId], references: [id], onDelete: Cascade)
-  emailAccountId    String
-  emailAccount      EmailAccount    @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
-
-  // Cross-feature: related task or calendar event
-  relatedTaskId String?
-  relatedTask   Task?   @relation(fields: [relatedTaskId], references: [id], onDelete: SetNull)
-
-  @@index([emailAccountId, status])
-  @@index([driveConnectionId])
-  @@index([messageId])
-}
-
 model Referral {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
@@ -1450,14 +1349,6 @@ enum NewsletterStatus {
 enum ColdEmailStatus {
   AI_LABELED_COLD
   USER_REJECTED_COLD
-}
-
-enum DocumentFilingStatus {
-  PENDING // Waiting for user input
-  FILED // Document is filed (auto or after user confirmation)
-  REJECTED // User said skip
-  ERROR // Filing failed
-  PREVIEW // Preview feedback only (not filed)
 }
 
 // @deprecated - No longer used

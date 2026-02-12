@@ -111,7 +111,7 @@ export async function runGoogleSetup(options: GoogleSetupOptions) {
 
   // Step 5: Enable required APIs
   spinner.start(
-    "Enabling Google Cloud APIs (Gmail, People, Calendar, Drive, Pub/Sub)...",
+    "Enabling Google Cloud APIs (Gmail, People, Calendar, Pub/Sub)...",
   );
 
   const apiResult = enableGoogleApis(projectId);
@@ -172,12 +172,10 @@ The console will open in your browser.`,
     const redirectUris = domain
       ? `   - https://${domain}/api/auth/callback/google
    - https://${domain}/api/google/linking/callback
-   - https://${domain}/api/google/calendar/callback
-   - https://${domain}/api/google/drive/callback`
+   - https://${domain}/api/google/calendar/callback`
       : `   - http://localhost:3000/api/auth/callback/google
    - http://localhost:3000/api/google/linking/callback
-   - http://localhost:3000/api/google/calendar/callback
-   - http://localhost:3000/api/google/drive/callback`;
+   - http://localhost:3000/api/google/calendar/callback`;
 
     p.note(
       `Now create OAuth 2.0 credentials:
@@ -303,7 +301,7 @@ The console will open in your browser.`,
 
   // Summary
   const summary = [
-    "✓ APIs enabled (Gmail, People, Calendar, Drive, Pub/Sub)",
+    "✓ APIs enabled (Gmail, People, Calendar, Pub/Sub)",
     options.skipOauth
       ? "✗ OAuth setup skipped"
       : clientId
@@ -367,7 +365,6 @@ function enableGoogleApis(projectId: string): SetupResult {
     "gmail.googleapis.com",
     "people.googleapis.com",
     "calendar-json.googleapis.com",
-    "drive.googleapis.com",
     "pubsub.googleapis.com",
   ];
 

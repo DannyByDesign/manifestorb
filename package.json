@@ -30,7 +30,6 @@
     "@clack/prompts": "^1.0.0",
     "@date-fns/tz": "^1.4.1",
     "@googleapis/calendar": "^14.2.0",
-    "@googleapis/drive": "^20.0.0",
     "@googleapis/gmail": "^16.1.1",
     "@googleapis/people": "^7.0.1",
     "@microsoft/microsoft-graph-client": "^3.0.7",

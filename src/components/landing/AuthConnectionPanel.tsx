@@ -24,16 +24,11 @@ type IntegrationStatusResponse = {
     connected: boolean;
     reason: string | null;
   };
-  drive?: {
-    connected: boolean;
-    reason: string | null;
-  };
   oauth?: {
     baseUrl?: string;
     callbackUris?: {
       gmail: string;
       calendar: string;
-      drive: string;
     };
     config?: {
       googleClientIdConfigured: boolean;
@@ -112,16 +107,14 @@ export function AuthConnectionPanel() {
   );
 
   const startConnect = useCallback(
-    async (kind: "gmail" | "calendar" | "drive") => {
+    async (kind: "gmail" | "calendar") => {
       if (!status?.authenticated) return;
       setConnecting(kind);
       setError(null);
       const endpoint =
         kind === "gmail"
           ? "/api/google/linking/auth-url"
-          : kind === "calendar"
-            ? "/api/google/calendar/auth-url"
-            : "/api/google/drive/auth-url";
+          : "/api/google/calendar/auth-url";
       try {
         const authUrl = await requestAuthUrl(endpoint, status.emailAccount?.id);
         window.location.href = authUrl;
@@ -207,25 +200,6 @@ export function AuthConnectionPanel() {
                 {status?.calendar?.connected
                   ? "Reconnect Calendar"
                   : "Connect Calendar"}
-              </button>
-            )}
-          </div>
-
-          <div className="rounded-lg border border-white/20 bg-white/5 p-2">
-            <div className="font-medium">Drive</div>
-            <p>
-              {status?.drive?.connected
-                ? "Connected"
-                : `Not connected${status?.drive?.reason ? `: ${status.drive.reason}` : ""}`}
-            </p>
-            {status?.authenticated && (
-              <button
-                type="button"
-                onClick={() => void startConnect("drive")}
-                disabled={connecting !== null || !status?.emailAccount?.id}
-                className="mt-2 rounded bg-white px-3 py-1.5 text-black disabled:opacity-60"
-              >
-                {status?.drive?.connected ? "Reconnect Drive" : "Connect Drive"}
               </button>
             )}
           </div>

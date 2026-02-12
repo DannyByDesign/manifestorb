@@ -22,16 +22,11 @@ export type IntegrationStatus = {
     connected: boolean;
     reason: string | null;
   };
-  drive: {
-    connected: boolean;
-    reason: string | null;
-  };
   oauth: {
     baseUrl: string;
     callbackUris: {
       gmail: string;
       calendar: string;
-      drive: string;
     };
     config: {
       googleClientIdConfigured: boolean;
@@ -112,30 +107,17 @@ export async function getIntegrationStatusForUser(
         connected: false,
         reason: "Connect Gmail first.",
       },
-      drive: {
-        connected: false,
-        reason: "Connect Gmail first.",
-      },
       oauth,
     };
   }
 
-  const [calendarConnection, driveConnection] = await Promise.all([
-    prisma.calendarConnection.findFirst({
-      where: {
-        emailAccountId: emailAccount.id,
-        isConnected: true,
-      },
-      select: { id: true },
-    }),
-    prisma.driveConnection.findFirst({
-      where: {
-        emailAccountId: emailAccount.id,
-        isConnected: true,
-      },
-      select: { id: true },
-    }),
-  ]);
+  const calendarConnection = await prisma.calendarConnection.findFirst({
+    where: {
+      emailAccountId: emailAccount.id,
+      isConnected: true,
+    },
+    select: { id: true },
+  });
 
   const disconnected = Boolean(emailAccount.account.disconnectedAt);
 
@@ -157,10 +139,6 @@ export async function getIntegrationStatusForUser(
     calendar: {
       connected: Boolean(calendarConnection),
       reason: calendarConnection ? null : "Calendar is not connected.",
-    },
-    drive: {
-      connected: Boolean(driveConnection),
-      reason: driveConnection ? null : "Drive is not connected.",
     },
     oauth,
   };

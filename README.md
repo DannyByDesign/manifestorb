@@ -41,8 +41,6 @@ You decide what deserves a push. Actionable approvals use **secure signed action
 | **Google Calendar** | Event read/write (draft-first), free/busy, watch/webhooks, watch renewal cron, conflict resolution (schedule proposals + verbal selection) |
 | **Tasks** | Task model, time-blocking, reschedule engine, **task triage** ("what should I do next?" with rationale + approval-backed actions), panel API |
 | **Smart Rules** | Single polymorphic rules tool + rules portal APIs (`/api/rules`, `/api/rules/[id]`) |
-| **Drive** | Connect, auto-filing, **watch/webhooks**, **watch renewal**, **delete file/folder** via AI (download explicitly excluded) |
-| **Document Filing** | Auto-file attachments to Google Drive with AI categorization |
 | **Cold Email Detection** | Identify and handle unsolicited emails |
 | **Newsletter Management** | Categorize and control subscription emails |
 | **Thread Tracking** | Monitor conversations for replies |
@@ -79,8 +77,8 @@ You decide what deserves a push. Actionable approvals use **secure signed action
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                     INTEGRATIONS                            │
-│   Gmail · Google Drive · Google Calendar (implemented)      │
-│   Outlook · OneDrive · Microsoft Calendar (roadmap)         │
+│   Gmail · Google Calendar (implemented)                      │
+│   Outlook · Microsoft Calendar (roadmap)                    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -123,7 +121,7 @@ You decide what deserves a push. Actionable approvals use **secure signed action
 amodel/
 ├── src/
 │   ├── app/                    # Next.js App Router
-│   │   ├── api/                # API routes (chat, drafts, rules, tasks/triage, google/calendar|drive/watch, etc.)
+│   │   ├── api/                # API routes (chat, drafts, rules, tasks/triage, google/calendar/watch, etc.)
 │   │   ├── (dashboard)/        # Dashboard pages
 │   │   └── page.tsx            # Main page
 │   │
@@ -145,7 +143,6 @@ amodel/
 │   │   │   ├── calendar/       # Calendar integration (Google; watch, conflict resolution)
 │   │   │   ├── tasks/          # Task triage, scheduling, context
 │   │   │   ├── email/          # Email provider abstraction
-│   │   │   ├── drive/          # Drive integration (watch, delete, filing)
 │   │   │   ├── rules/          # Automation rules + AI matching
 │   │   │   ├── approvals/      # Human-in-the-loop + secure action tokens
 │   │   │   ├── notifications/  # In-app notifications, generator

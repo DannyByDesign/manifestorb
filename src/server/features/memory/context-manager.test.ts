@@ -28,7 +28,6 @@ describe("ContextManager upcoming events", () => {
     prisma.userSummary.findUnique.mockResolvedValue(null);
     prisma.emailMessage.findMany.mockResolvedValue([]);
     prisma.task.findMany.mockResolvedValue([]);
-    prisma.documentFiling.findMany.mockResolvedValue([]);
   });
 
   it("populates real upcoming events when providers are available", async () => {

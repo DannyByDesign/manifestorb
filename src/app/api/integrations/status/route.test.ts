@@ -42,13 +42,11 @@ describe("GET /api/integrations/status", () => {
       authenticated: true,
       gmail: { connected: true, reason: null },
       calendar: { connected: false, reason: "Calendar is not connected." },
-      drive: { connected: false, reason: "Drive is not connected." },
       oauth: {
         baseUrl: "https://web-production-d642.up.railway.app",
         callbackUris: {
           gmail: "https://web-production-d642.up.railway.app/api/google/linking/callback",
           calendar: "https://web-production-d642.up.railway.app/api/google/calendar/callback",
-          drive: "https://web-production-d642.up.railway.app/api/google/drive/callback",
         },
         config: {
           googleClientIdConfigured: true,

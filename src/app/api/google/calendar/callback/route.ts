@@ -4,12 +4,11 @@ import { createGoogleCalendarProvider } from "@/features/calendar/providers/goog
 import { resolveOAuthBaseUrl } from "@/server/lib/oauth/base-url";
 
 export const GET = withError("google/calendar/callback", async (request) => {
+  const baseUrl = resolveOAuthBaseUrl(request.nextUrl.origin, request.headers);
   return handleCalendarCallback(
     request,
-    createGoogleCalendarProvider(
-      request.logger,
-      resolveOAuthBaseUrl(request.nextUrl.origin, request.headers),
-    ),
+    createGoogleCalendarProvider(request.logger, baseUrl),
     request.logger,
+    baseUrl,
   );
 });

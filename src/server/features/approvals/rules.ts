@@ -60,7 +60,6 @@ const APPROVAL_OPERATION_LABELS: Record<string, string> = {
   delete_email: "Delete emails",
   delete_calendar_event: "Delete calendar events",
   delete_task: "Delete tasks",
-  delete_drive_item: "Delete Drive files/folders",
   delete_automation: "Delete automation rules",
   delete_knowledge: "Delete knowledge entries",
   update_email: "Update email state",
@@ -75,7 +74,6 @@ const APPROVAL_OPERATION_LABELS: Record<string, string> = {
   update_preferences: "Update preferences",
   approval_rules: "Update approval rules",
   update_automation: "Update automation rule",
-  update_drive_item: "Move Drive item",
   approval_decision: "Approve/deny request",
   run_workflow: "Run workflow",
   manage_rules: "Manage rules",
@@ -146,14 +144,6 @@ const DEFAULT_TOOL_CONFIG: Record<string, ApprovalRuleConfig> = {
         policy: "always",
         resource: "calendar",
         operation: "delete_calendar_event",
-        priority: 100,
-      },
-      {
-        id: "default-delete-drive",
-        name: "Delete drive files/folders requires approval",
-        policy: "always",
-        resource: "drive",
-        operation: "delete_drive_item",
         priority: 100,
       },
       {
@@ -480,7 +470,6 @@ function deriveOperation(
     if (resource === "email") return "delete_email";
     if (resource === "calendar") return "delete_calendar_event";
     if (resource === "task") return "delete_task";
-    if (resource === "drive") return "delete_drive_item";
     if (resource === "automation") return "delete_automation";
     if (resource === "knowledge") return "delete_knowledge";
     return "delete_item";
@@ -520,7 +509,6 @@ function deriveOperation(
       return "update_preferences";
     }
     if (resource === "automation") return "update_automation";
-    if (resource === "drive") return "update_drive_item";
     return "modify_item";
   }
 

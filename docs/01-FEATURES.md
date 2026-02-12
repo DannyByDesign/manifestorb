@@ -25,7 +25,7 @@
 3. [Email Provider Integration](#3-email-provider-integration-32-features)
 4. [Rules & Automation Engine](#4-rules--automation-engine-12-features)
 5. [Organization & User Management](#5-organization--user-management-8-features)
-6. [Calendar & Drive Integration](#6-calendar--drive-integration-6-features)
+6. [Calendar Integration](#6-calendar-integration)
 7. [Analytics & Reporting](#7-analytics--reporting-5-features)
 8. [Premium & Billing](#8-premium--billing-6-features)
 9. [Communication & Notifications](#9-communication--notifications-4-features)
@@ -58,7 +58,6 @@
 | 🕒 | **AI Email Reports** | Executive summaries + behavior recs | `server/features/reports/ai/*` | **UI-first** (dashboard) | Yes (`analyze`) |
 | 🕒 | **AI Label Optimization** | Suggest label cleanup/consolidation | `server/features/reports/ai/analyze-label-optimization.ts` | **UI-first** | Yes (`analyze`) |
 | 🕒 | **AI Response Patterns** | Analyze response patterns + template suggestions | `server/features/reports/ai/response-patterns.ts` | **UI-first** | Yes (`analyze`) |
-| 🕒 | **AI Document Filing** | Auto-file attachments to Drive folders | `server/features/document-filing/ai/*` | **UI-first** (preview/confirm) | Yes (`analyze`/`modify`) |
 | 🗑️ | **AI Compose Autocomplete** | Real-time compose autocomplete | `src/app/api/ai/compose-autocomplete/route.ts` | **UI-first** but high-latency risk | No |
 
 ### Backend-Only AI Features (8)
@@ -89,7 +88,7 @@
 | ✅ | **Analyze Tool** | AI analysis of content | `server/features/ai/tools/analyze.ts` | SAFE | **Chat-first** |
 | ✅ | **Create Tool** | Create drafts (reply/forward/new) + events | `server/features/ai/tools/create.ts` | CAUTION | **Hybrid** (preview/confirm) |
 | ✅ | **Modify Tool** | Archive/label/mark read etc. | `server/features/ai/tools/modify.ts` | CAUTION | **Hybrid** (fast actions UI) |
-| ✅ | **Delete Tool** | Trash items; Drive file/folder delete | `server/features/ai/tools/delete.ts` | CAUTION | **Hybrid** (confirmations) |
+| ✅ | **Delete Tool** | Trash items | `server/features/ai/tools/delete.ts` | CAUTION | **Hybrid** (confirmations) |
 | ✅ | **Send Tool** | Send email (draft→sent); requires explicit user approval | `server/features/ai/tools/send.ts` | **DANGEROUS** | **Hybrid** (in-app or verbal approval) |
 | ✅ | **Rules Tool** | Single polymorphic tool: list/create/update/delete/enable/disable rules | `server/features/ai/tools/rules.ts` | CAUTION | **Chat-first** + rules portal APIs |
 | ✅ | **Triage Tool** | "What should I do next?"—rank tasks with rationale; approval-backed actions | `server/features/ai/tools/triage.ts` | CAUTION | **Chat-first** + panel API |
@@ -189,21 +188,15 @@
 
 ---
 
-## 6. Calendar & Drive Integration (6 features)
+## 6. Calendar Integration
 
-**Launch stance:** Calendar/Drive are strong “v2” expansion unless calendar is your headline.
+**Launch stance:** Calendar is a core scope item.
 
 | Status | Feature | Description | Key Files | Primary UX Surface | Agentic Supported? |
 |---|---|---|---|---|---|
 | ✅ | **Calendar Connection** | Connect calendars | `app/api/google/calendar/*`, `features/calendar/handle-calendar-callback.ts` | UI-first | No |
 | ✅ | **Calendar Availability** | Free/busy checks | `server/features/calendar/ai/availability.ts`, `server/features/calendar/unified-availability.ts` | Chat-first | Yes (`query`) |
 | 🕒 | **Meeting Briefings** | Pre-meeting context | `MeetingBriefing` | UI-first | Yes |
-| ✅ | **Drive Connection** | Connect Drive/OneDrive | `app/api/google/drive/*`, `features/drive/providers/*` | UI-first | No |
-| ✅ | **Drive Watch/Webhooks** | Real-time Drive change notifications | `app/api/google/drive/watch/*`, drive webhook handlers | Backend-only | No |
-| ✅ | **Drive Watch Renewal** | Cron renews Drive watch channels | Backend-only | `app/api/google/drive/watch/renew` (CRON_SECRET) |
-| ✅ | **Drive Delete (File/Folder)** | Delete files/folders via AI `delete` tool | `server/features/drive/providers/*` (deleteFile/deleteFolder) | **Hybrid** (confirmations) | Yes (`delete` tool). **Download excluded.** |
-| ✅ | **Document Auto-Filing** | File attachments | `server/features/document-filing/*`, `features/drive/*` | UI-first | Yes |
-| ✅ | **Filing Folders** | Manage folder structure | `server/features/drive/folder-utils.ts` | UI-first | Yes |
 
 ---
 
@@ -336,7 +329,6 @@
 ### 🕒 Post-launch (expansion)
 - Outlook integration
 - Calendar + meeting briefings
-- Drive auto-filing
 - Advanced rules (diff/history/testing/scheduling)
 - Analytics dashboards + exec reports
 - Stripe paywall + credits (if not needed day-1)
@@ -518,7 +510,6 @@ Your current tool set covers Email/Calendar/Automation in concept, but calendar/
 - Microsoft Calendar + Discord + Telegram
 - Recurring events deep handling
 - Meeting RSVP/attendee management
-- Drive filing expansion tied to calendar
 - Analytics dashboards for tasks/calendar
 - Mobile push (native app)
 - Advanced policy engine
@@ -527,5 +518,3 @@ Your current tool set covers Email/Calendar/Automation in concept, but calendar/
 - Anything that expands into “full Notion/PM suite”
 - Overly complex team features before you have teams
 - Deep channel-based Slack workflows before DM is great
-
-

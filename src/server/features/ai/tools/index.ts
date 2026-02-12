@@ -7,7 +7,6 @@ import { createEmailProvider } from "./providers/email";
 import { createCalendarProvider } from "./providers/calendar";
 import { createAutomationProvider } from "./providers/automation";
 import { type AutomationProvider } from "./providers/automation";
-import { createToolDriveProvider } from "./providers/drive";
 import { type ToolContext, type ToolDefinition } from "./types";
 import { executeTool } from "./executor";
 import { createGenerateText } from "@/server/lib/llms";
@@ -77,21 +76,10 @@ export async function createAgentTools({
         automationProvider = createUnavailableAutomationProvider(message);
     }
 
-    // Drive might fail if not connected
-    let driveProvider;
-    let driveAvailable = true;
-    try {
-        driveProvider = await createToolDriveProvider(emailAccount.id, logger);
-    } catch (e) {
-        driveAvailable = false;
-        logger.warn("Drive not connected or failed to initialize", { error: e });
-    }
-
     logger.info("AI tool provider capabilities", {
         email: true,
         calendar: true,
         automation: automationAvailable,
-        drive: driveAvailable,
     });
 
     const context: ToolContext = {
@@ -106,7 +94,6 @@ export async function createAgentTools({
             email: emailProvider,
             calendar: calendarProvider,
             automation: automationProvider,
-            drive: driveProvider
         }
     };
 

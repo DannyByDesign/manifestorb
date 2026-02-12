@@ -175,7 +175,6 @@ export const env = createEnv({
     NEXT_PUBLIC_MEETING_BRIEFS_ENABLED: booleanString.default(false),
     NEXT_PUBLIC_FOLLOW_UP_REMINDERS_ENABLED: booleanString.default(false),
     NEXT_PUBLIC_INTEGRATIONS_ENABLED: booleanString.default(true),
-    NEXT_PUBLIC_SMART_FILING_ENABLED: booleanString.default(false),
     NEXT_PUBLIC_CLEANER_ENABLED: booleanString.default(false),
     NEXT_PUBLIC_IS_RESEND_CONFIGURED: booleanString.default(false),
     NEXT_PUBLIC_CALENDAR_SCHEDULING_ENABLED: booleanString.default(true),
@@ -223,8 +222,6 @@ export const env = createEnv({
       process.env.NEXT_PUBLIC_FOLLOW_UP_REMINDERS_ENABLED,
     NEXT_PUBLIC_INTEGRATIONS_ENABLED:
       process.env.NEXT_PUBLIC_INTEGRATIONS_ENABLED,
-    NEXT_PUBLIC_SMART_FILING_ENABLED:
-      process.env.NEXT_PUBLIC_SMART_FILING_ENABLED,
     NEXT_PUBLIC_CLEANER_ENABLED: process.env.NEXT_PUBLIC_CLEANER_ENABLED,
     NEXT_PUBLIC_IS_RESEND_CONFIGURED:
       process.env.NEXT_PUBLIC_IS_RESEND_CONFIGURED,

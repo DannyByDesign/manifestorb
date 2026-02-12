@@ -1,5 +1,5 @@
 const SUPPORTED_RESOURCE_LIST =
-  "email, calendar, task, rules, preferences, contacts, drive, draft, notification, or approval";
+  "email, calendar, task, rules, preferences, contacts, draft, notification, or approval";
 
 export function resourceClarificationPrompt(toolName: string): string {
   return `I can continue, but I need to know which resource this ${toolName} action is for (${SUPPORTED_RESOURCE_LIST}).`;

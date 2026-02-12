@@ -10,7 +10,6 @@
         "@clack/prompts": "^1.0.0",
         "@date-fns/tz": "^1.4.1",
         "@googleapis/calendar": "^14.2.0",
-        "@googleapis/drive": "^20.0.0",
         "@googleapis/gmail": "^16.1.1",
         "@googleapis/people": "^7.0.1",
         "@microsoft/microsoft-graph-client": "^3.0.7",
@@ -285,8 +284,6 @@
     "@floating-ui/utils": ["@floating-ui/utils@0.2.10", "", {}, "sha512-aGTxbpbg8/b5JfU1HXSrbH3wXZuLPJcNEcZQFMxLs3oSzgtVu6nFPkbbGGUvBcUjKV2YyB9Wxxabo+HEH9tcRQ=="],
 
     "@googleapis/calendar": ["@googleapis/calendar@14.2.0", "", { "dependencies": { "googleapis-common": "^8.0.0" } }, "sha512-oo6bikN3dl7n43vvknpPzJlCD8FZbs82h4bZLfDAx1wWRUkIusg6++RFQvOKF46rNXsUePqyVwnFx+8oOOyK1A=="],
-
-    "@googleapis/drive": ["@googleapis/drive@20.0.0", "", { "dependencies": { "googleapis-common": "^8.0.0" } }, "sha512-qLi5ypZn0zYY2FcGjdlHQsv1DAFNRwCWFiE5kq23J0yTdUSZynh/mDph9NBaiQ9ybajrmttySR/rSaNfm8S/bA=="],
 
     "@googleapis/gmail": ["@googleapis/gmail@16.1.1", "", { "dependencies": { "googleapis-common": "^8.0.0" } }, "sha512-XFMMJvhpEoKzwBOHYrcbBu/jHS+8Aer5YmbMUsrZeJgXAbTD6K7K6+/1RJczXIqDoBzVDdECm4WtjAcvEHPLVg=="],
 

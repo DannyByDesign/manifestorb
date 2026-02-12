@@ -3,10 +3,9 @@ import { type z } from "zod";
 import { type EmailProvider } from "./providers/email";
 import { type CalendarProvider } from "./providers/calendar";
 import { type AutomationProvider } from "./providers/automation";
-import { type DriveProvider } from "./providers/drive";
 import { type Logger } from "@/server/lib/logger";
 
-export type Resource = "email" | "calendar" | "drive" | "contacts" | "automation" | "knowledge" | "preferences" | "patterns" | "report" | "notification" | "approval" | "summary" | "task";
+export type Resource = "email" | "calendar" | "contacts" | "automation" | "knowledge" | "preferences" | "patterns" | "report" | "notification" | "approval" | "summary" | "task";
 
 export interface Filter {
     query?: string;
@@ -37,7 +36,6 @@ export interface ToolContext {
         email: EmailProvider;
         calendar: CalendarProvider;
         automation: AutomationProvider;
-        drive?: DriveProvider;
         // Add others as needed
     };
 }

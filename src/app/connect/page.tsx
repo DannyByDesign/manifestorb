@@ -17,7 +17,7 @@ export default async function ConnectPage() {
       <div className="mx-auto max-w-2xl space-y-4">
         <h1 className="text-2xl font-semibold">Connect Integrations</h1>
         <p className="text-sm text-gray-600">
-          Use this page to connect or reconnect Gmail, Calendar, and Drive.
+          Use this page to connect or reconnect Gmail and Calendar.
         </p>
         <div className="rounded-xl bg-black p-4">
           <AuthConnectionPanel />

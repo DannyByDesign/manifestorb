@@ -1,15 +1,8 @@
-import { after } from "next/server";
 import prisma from "@/server/db/client";
 import { runRules } from "@/features/rules/ai/run-rules";
 import { categorizeSender } from "@/features/categorize/senders/categorize";
 import { isAssistantEmail } from "@/features/web-chat/is-assistant-email";
 import { processAssistantEmail } from "@/features/web-chat/process-assistant-email";
-import { isFilebotEmail } from "@/features/document-filing/is-filebot-email";
-import { processFilingReply } from "@/features/drive/handle-filing-reply";
-import {
-  processAttachment,
-  getExtractableAttachments,
-} from "@/features/drive/filing-engine";
 import { handleOutboundMessage } from "@/features/reply-tracker/handle-outbound";
 import { clearFollowUpLabel } from "@/features/follow-up/labels";
 import { ActionType, NewsletterStatus } from "@/generated/prisma/enums";
@@ -30,7 +23,7 @@ export type SharedProcessHistoryOptions = {
   emailAccount: EmailAccountWithAI &
   Pick<
     EmailAccount,
-    "autoCategorizeSenders" | "filingEnabled" | "filingPrompt" | "email"
+    "autoCategorizeSenders" | "email"
   >;
   logger: Logger;
 };
@@ -113,23 +106,6 @@ export async function processHistoryItem(
     if (isFromAssistant) {
       logger.info("Skipping. Assistant email.");
       return;
-    }
-
-    const isForFilebot = isFilebotEmail({
-      userEmail,
-      emailToCheck: parsedMessage.headers.to,
-    });
-
-    if (isForFilebot) {
-      logger.info("Processing filebot reply.");
-      return processFilingReply({
-        message: parsedMessage,
-        emailAccountId,
-        userEmail,
-        emailProvider: provider,
-        emailAccount,
-        logger,
-      });
     }
 
     const isOutbound = provider.isSentMessage(parsedMessage);
@@ -227,44 +203,6 @@ export async function processHistoryItem(
         logger.info("Suppressing notification due to rule outcome (Archive/Delete/Read)");
         return;
       }
-    }
-
-    // Process attachments for document filing (runs in parallel with rules if both enabled)
-    if (
-      emailAccount.filingEnabled &&
-      emailAccount.filingPrompt &&
-      hasAiAccess
-    ) {
-      after(async () => {
-        const extractableAttachments = getExtractableAttachments(parsedMessage);
-
-        if (extractableAttachments.length > 0) {
-          logger.info("Processing attachments for filing", {
-            count: extractableAttachments.length,
-          });
-
-          // Process each attachment (don't await all - let them run in background)
-          for (const attachment of extractableAttachments) {
-            await processAttachment({
-              emailAccount: {
-                ...emailAccount,
-                filingEnabled: emailAccount.filingEnabled,
-                filingPrompt: emailAccount.filingPrompt,
-                email: emailAccount.email,
-              },
-              message: parsedMessage,
-              attachment,
-              emailProvider: provider,
-              logger,
-            }).catch((error) => {
-              logger.error("Failed to process attachment", {
-                filename: attachment.filename,
-                error,
-              });
-            });
-          }
-        }
-      });
     }
 
     // Remove follow-up label if present (they replied, so follow-up no longer needed)

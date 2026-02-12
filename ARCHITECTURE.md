@@ -8,7 +8,7 @@ This document is the source of truth for codebase organization. The app runs as 
 src/
 ├── app/                      # Next.js App Router (routes, API endpoints)
 │   └── api/                  # API routes: chat, drafts, rules, tasks/triage,
-│                             # google/calendar|drive/watch, etc.
+│                             # google/calendar/watch, etc.
 ├── components/               # React components (UI, experience/Orb, etc.)
 ├── lib/                      # Frontend utilities (stores, audio, capabilities)
 ├── hooks/                    # React hooks (e.g. use-notification-poll)
@@ -49,8 +49,6 @@ src/
     │   ├── cold-email/       # Cold email detection & blocking
     │   ├── conversations/    # Conversation state (RLM context)
     │   ├── digest/           # Email digest (+ ai/)
-    │   ├── document-filing/  # Document filing to Drive (+ ai/)
-    │   ├── drive/            # Drive integration (watch, delete, filing; providers/)
     │   ├── email/            # Core email service (providers/, threading, etc.)
     │   ├── follow-up/        # Follow-up tracking & drafts
     │   ├── groups/           # Email grouping (+ ai/)
@@ -133,7 +131,6 @@ Key features include:
 - **channels/** - Multi-channel executor (Slack, Discord, Telegram); one-shot agent runtime
 - **calendar/** - Google Calendar (events, watch, renewal cron, conflict resolution, schedule proposals)
 - **tasks/** - Task triage service, context assembler, audit; panel API and approval-backed actions
-- **drive/** - Drive providers (Google/Microsoft), watch/webhooks, renewal cron, delete file/folder (no download)
 - **conversations/** - Conversation state and history (RLM context)
 - **memory/** - RLM memory, embeddings, rolling summaries
 - **privacy/** - User privacy settings and data retention
@@ -142,7 +139,7 @@ Key features include:
 
 ### `/server/integrations/`
 External API clients ONLY. No business logic here - just API wrappers:
-- `google/` - Gmail, Drive, Calendar, People APIs
+- `google/` - Gmail, Calendar, People APIs
 - `microsoft/` - Microsoft Graph API
 - `qstash/` - Queue service
 
@@ -209,7 +206,6 @@ When adding a new feature:
 
 ### Integrations
 - `calendar/` - Google Calendar (events, watch, renewal, conflict resolution)
-- `drive/` - Drive (watch, renewal, delete file/folder; document filing)
 - `meeting-briefs/` - Meeting briefings
 
 ---
@@ -234,7 +230,7 @@ const prompt = buildAgentSystemPrompt({
 | Tool | Security | Description |
 |------|----------|-------------|
 | query, get, analyze | SAFE | Read-only search and analysis |
-| create, modify, delete | CAUTION | Drafts, events, archive/label/trash; Drive delete file/folder |
+| create, modify, delete | CAUTION | Drafts, events, archive/label/trash |
 | **send** | **DANGEROUS** | Send email (draft→sent); requires explicit per-email approval (in-app or verbal) |
 | **rules** | CAUTION | Polymorphic: list/create/update/delete/enable/disable rules |
 | **triage** | CAUTION | "What should I do next?"—rank tasks with rationale; approval-backed actions |
@@ -266,7 +262,7 @@ User Request → AI creates draft → Interactive preview + Send/Edit/Discard �
 - `GET /api/drafts`, `GET /api/drafts/:id`, `POST /api/drafts/:id/send`, `DELETE /api/drafts/:id`
 - `GET /api/rules`, `POST /api/rules`, `GET /api/rules/:id`, `PATCH /api/rules/:id`, `DELETE /api/rules/:id`
 - `GET /api/tasks/triage`, `POST /api/tasks/triage/action`, `GET /api/tasks/triage/audit`
-- `POST /api/google/calendar/watch/renew`, `POST /api/google/drive/watch/renew` (cron; use CRON_SECRET)
+- `POST /api/google/calendar/watch/renew` (cron; use CRON_SECRET)
 
 ### Surfaces Interactive Payload
 
@@ -323,11 +319,11 @@ Notifications: when a background pipeline completes (draft created, calendar eve
 
 | Tool | Security | Description |
 |------|----------|-------------|
-| query | SAFE | Search across resources: email, calendar, drive, automation, knowledge, report, patterns, contacts, task |
+| query | SAFE | Search across resources: email, calendar, automation, knowledge, report, patterns, contacts, task |
 | get | SAFE | Get full details by ID (email, calendar, automation, approval, task) |
 | create | CAUTION | Create drafts, events, tasks, rules, notifications, knowledge, contacts, automation |
-| modify | CAUTION | Change state: email (archive, labels, tracking), calendar, task, drive, approval |
-| delete | CAUTION | Remove items: email (trash), calendar, automation, drive, task |
+| modify | CAUTION | Change state: email (archive, labels, tracking), calendar, task, approval |
+| delete | CAUTION | Remove items: email (trash), calendar, automation, task |
 | analyze | SAFE | AI analysis: summarize, extract actions, categorize, find conflicts, suggest times, etc. |
 | send | DANGEROUS | Send email draft; requires explicit approval |
 | triage | SAFE | Rank tasks and suggest next actions |
@@ -386,8 +382,6 @@ These are one-shot or small multi-step LLM calls used by tools or background job
 | Clean | `clean/ai/ai-clean.ts` | aiClean | Decide if email should be archived |
 | Clean | `clean/ai/ai-clean-select-labels.ts` | aiCleanSelectLabels | Extract labels from instructions |
 | Digest | `digest/ai/summarize-email-for-digest.ts` | aiSummarizeEmailForDigest | Summarize for digest |
-| Document filing | `document-filing/ai/analyze-document.ts` | analyzeDocument | Decide where to file document |
-| Document filing | `document-filing/ai/parse-filing-reply.ts` | aiParseFilingReply | Parse user filing reply |
 | Cold email | `cold-email/is-cold-email.ts` | aiIsColdEmail | Detect cold email |
 | Snippets | `snippets/ai/find-snippets.ts` | aiFindSnippets | Find common snippets |
 | Reports | `reports/ai/*.ts` | Various | Summarize emails, build persona, analyze behavior, labels, recommendations, executive summary, response patterns |

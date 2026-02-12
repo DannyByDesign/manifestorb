@@ -110,13 +110,13 @@ describe("checkPermissions", () => {
     ).resolves.toBeUndefined();
 
     await expect(
-      checkPermissions("user-1", "query", { resource: "drive" }),
-    ).rejects.toThrow("Resource 'drive' is not allowed for tool 'query'.");
+      checkPermissions("user-1", "query", { resource: "unknown_resource" }),
+    ).rejects.toThrow("Resource 'unknown_resource' is not allowed for tool 'query'.");
   });
 
   it("allows resources that are valid for the selected tool", async () => {
     await expect(
-      checkPermissions("user-1", "create", { resource: "drive" }),
+      checkPermissions("user-1", "create", { resource: "knowledge" }),
     ).resolves.toBeUndefined();
   });
 });

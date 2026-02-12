@@ -21,9 +21,9 @@ export const LIMITS = {
 const TOOL_ALLOWED_RESOURCES: Record<string, string[]> = {
     query: ["email", "calendar", "task", "approval", "notification", "draft", "conversation", "preferences", "contacts"],
     get: ["email", "calendar", "draft", "approval", "task", "automation"],
-    create: ["email", "calendar", "task", "notification", "contacts", "category", "automation", "knowledge", "drive"],
-    modify: ["email", "calendar", "preferences", "approval", "draft", "task", "automation", "drive"],
-    delete: ["email", "calendar", "draft", "task", "automation", "knowledge", "drive"],
+    create: ["email", "calendar", "task", "notification", "contacts", "category", "automation", "knowledge"],
+    modify: ["email", "calendar", "preferences", "approval", "draft", "task", "automation"],
+    delete: ["email", "calendar", "draft", "task", "automation", "knowledge"],
     analyze: ["email", "calendar", "patterns", "automation"],
 };
 
@@ -150,7 +150,7 @@ async function assertResourceOwnership({
     if (ids.length === 0) return;
 
     // Resource ownership checks for DB-backed resources. Provider-backed resources
-    // (email/calendar/draft/drive/contacts) are constrained by the owned account context.
+    // (email/calendar/draft/contacts) are constrained by the owned account context.
     if (resource === "task") {
         await assertOwnedIds({
             ids,

@@ -30,9 +30,10 @@ export async function handleCalendarCallback(
   request: NextRequest,
   provider: CalendarOAuthProvider,
   logger: Logger,
+  resolvedBaseUrl?: string,
 ): Promise<NextResponse> {
   let redirectHeaders = new Headers();
-  const baseUrl = request.nextUrl.origin;
+  const baseUrl = resolvedBaseUrl || request.nextUrl.origin;
 
   try {
     // Step 1: Validate OAuth callback parameters

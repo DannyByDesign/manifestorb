@@ -93,7 +93,6 @@ actions/
 | File | Purpose |
 |------|---------|
 | `calendar.ts` | Calendar operations |
-| `drive.ts` | Google Drive / OneDrive |
 
 ### Organization
 | File | Purpose |

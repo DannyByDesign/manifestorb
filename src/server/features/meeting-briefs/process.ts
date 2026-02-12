@@ -18,8 +18,6 @@ export type EmailAccountForBrief = {
   userId: string;
   email: string;
   about: string | null;
-  filingEnabled: boolean;
-  filingPrompt: string | null;
   multiRuleSelectionEnabled: boolean;
   timezone: string | null;
   calendarBookingLink: string | null;
@@ -92,8 +90,6 @@ export async function processMeetingBriefings({
       userId: true,
       email: true,
       about: true,
-      filingEnabled: true,
-      filingPrompt: true,
       multiRuleSelectionEnabled: true,
       timezone: true,
       calendarBookingLink: true,

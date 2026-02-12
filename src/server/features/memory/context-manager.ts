@@ -142,11 +142,6 @@ export interface ContextPack {
             priority?: string;
             status: string;
         }>;
-        recentFilings: Array<{
-            filename: string;
-            folderPath: string;
-            filedAt: Date;
-        }>;
     };
 }
 
@@ -412,24 +407,6 @@ export class ContextManager {
                 .catch(() => [])
             : Promise.resolve([]);
 
-        const recentFilingsPromise = includeDomainData
-            ? prisma.documentFiling
-                .findMany({
-                    where: {
-                        emailAccount: { userId: user.id },
-                        createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
-                    },
-                    orderBy: { createdAt: "desc" },
-                    take: 5,
-                    select: {
-                        filename: true,
-                        folderPath: true,
-                        createdAt: true,
-                    },
-                })
-                .catch(() => [])
-            : Promise.resolve([]);
-
         const attentionItemsPromise = includeAttentionItems
             ? scanForAttentionItems(user.id).catch(() => [])
             : Promise.resolve([]);
@@ -441,7 +418,6 @@ export class ContextManager {
             upcomingEvents,
             recentEmails,
             pendingTasks,
-            recentFilings,
             attentionItems,
         ] = await Promise.all([
             recentHistoryPromise,
@@ -450,7 +426,6 @@ export class ContextManager {
             upcomingEventsPromise,
             recentEmailsPromise,
             pendingTasksPromise,
-            recentFilingsPromise,
             attentionItemsPromise,
         ]);
 
@@ -627,11 +602,6 @@ export class ContextManager {
                     priority: t.priority ?? undefined,
                     status: t.status,
                 })),
-                recentFilings: recentFilings.map((f) => ({
-                    filename: f.filename,
-                    folderPath: f.folderPath,
-                    filedAt: f.createdAt,
-                })),
             } : undefined,
         });
 
@@ -766,9 +736,6 @@ export class ContextManager {
             }
             for (const t of contextPack.domain.pendingTasks) {
                 size += (t.title?.length ?? 0) + 20;
-            }
-            for (const f of contextPack.domain.recentFilings) {
-                size += (f.filename?.length ?? 0) + (f.folderPath?.length ?? 0) + 10;
             }
         }
         

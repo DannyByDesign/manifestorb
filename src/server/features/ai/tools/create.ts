@@ -13,7 +13,6 @@ import { type ToolDefinition } from "./types";
 import { isGoogleProvider } from "@/features/email/provider-types";
 import prisma from "@/server/db/client";
 import { getEmailAccountWithAi } from "@/server/lib/user/get";
-import { processAttachment } from "@/features/drive/filing-engine";
 import { generateNotification, type NotificationType } from "@/features/notifications/generator";
 import { aiCollectReplyContext } from "@/features/reply-tracker/ai/reply-context-collector";
 import { createScopedLogger } from "@/server/lib/logger";
@@ -471,12 +470,6 @@ const knowledgeCreateDataSchema = z.object({
     content: z.string().optional(),
 }).strict();
 
-const driveCreateDataSchema = z.object({
-    name: z.string().optional(),
-    messageId: z.string().optional(),
-    attachmentId: z.string().optional(),
-}).strict();
-
 const notificationCreateDataSchema = z.object({
     title: z.string().optional(),
     type: z.enum(["email", "calendar", "system", "task"]).optional(),
@@ -521,11 +514,6 @@ const createParameters = z.discriminatedUnion("resource", [
     z.object({
         resource: z.literal("knowledge"),
         data: knowledgeCreateDataSchema,
-    }).strict(),
-    z.object({
-        resource: z.literal("drive"),
-        parentId: z.string().optional(),
-        data: driveCreateDataSchema,
     }).strict(),
     z.object({
         resource: z.literal("notification"),
@@ -768,67 +756,6 @@ Task: Creates a task and optionally auto-schedules it. If flexibility is not spe
                         }
                     }
                 };
-
-            case "drive":
-                if (!providers.drive) {
-                    return { success: false, error: "Drive not connected" };
-                }
-
-                // 1. Create Folder
-                if (data.name) {
-                    const folder = await providers.drive.createFolder(data.name, parentId);
-                    return { success: true, data: folder };
-                }
-
-                // 2. Document Filing
-                if (!data.messageId || !data.attachmentId) {
-                    return { success: false, error: "Message ID and Attachment ID required for filing, or Name for folder creation." };
-                }
-
-                // Hydrate
-                const emailAccountFiling = await getEmailAccountWithAi({ emailAccountId: context.emailAccountId });
-                if (!emailAccountFiling) return { success: false, error: "Email account not found" };
-
-                if (!emailAccountFiling.filingEnabled || !emailAccountFiling.filingPrompt) {
-                    return { success: false, error: "Smart filing is not enabled for this account" };
-                }
-
-                // Fetch Message to get Attachment Metadata
-                // Provider.get returns ParsedMessage[]
-                const fileMessages = await providers.email.get([data.messageId]);
-                if (!fileMessages || fileMessages.length === 0) return { success: false, error: "Message not found" };
-                const fileMsg = fileMessages[0];
-
-                // Find Attachment
-                const attachment = fileMsg.attachments?.find(
-                    (item) => item.attachmentId === data.attachmentId
-                );
-                if (!attachment) return { success: false, error: "Attachment not found" };
-
-                // Create Service Provider for helper
-                const { createEmailProvider: createFilingProvider } = await import("@/features/email/provider");
-                const filingProvider = await createFilingProvider({
-                    emailAccountId: context.emailAccountId,
-                    provider: emailAccountFiling.account.provider,
-                    logger
-                });
-
-                // Call Engine
-                const filingResult = await processAttachment({
-                    emailAccount: {
-                        ...emailAccountFiling,
-                        filingEnabled: emailAccountFiling.filingEnabled,
-                        filingPrompt: emailAccountFiling.filingPrompt,
-                        email: emailAccountFiling.email,
-                    },
-                    message: fileMsg,
-                    attachment,
-                    emailProvider: filingProvider,
-                    logger,
-                    sendNotification: true
-                });
-
-                return { success: filingResult.success, data: filingResult, error: filingResult.error };
 
             case "notification":
                 // Push Notification

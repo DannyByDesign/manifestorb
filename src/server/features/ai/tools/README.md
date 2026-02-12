@@ -13,7 +13,7 @@ tools/
 ├── get.ts             # Get item details
 ├── modify.ts          # Change item state
 ├── create.ts          # Create drafts/items/events
-├── delete.ts          # Remove items (email, automation, drive file/folder)
+├── delete.ts          # Remove items (email, automation)
 ├── analyze.ts         # AI-powered analysis
 ├── send.ts            # Send email (DANGEROUS; approval-gated)
 ├── rules.ts           # Single polymorphic rules tool
@@ -21,7 +21,6 @@ tools/
 └── providers/
     ├── email.ts       # Email provider (Gmail/Outlook)
     ├── calendar.ts    # Calendar provider
-    ├── drive.ts       # Drive provider (includes deleteFile/deleteFolder; download excluded)
     └── automation.ts  # Rules/Knowledge/Reports
 ```
 
@@ -39,7 +38,6 @@ tools/
 Search for items across resources.
 - **Email**: Search messages (Gmail/Outlook query syntax)
 - **Calendar**: Search events by date range
-- **Drive**: Natural language search
 - **Contacts**: Search people
 - **Automation**: List rules
 - **Patterns**: Detected email patterns
@@ -53,14 +51,12 @@ Retrieve full details by ID.
 ### `modify` (CAUTION)
 Change item state.
 - **Email**: archive, trash, read, labels, unsubscribe, tracking
-- **Drive**: Move files
 - **Approval**: Execute decision (APPROVE/DENY)
 - **Automation**: Update rules
 
 ### `create` (CAUTION)
 Create new items.
 - **Email**: Create **DRAFTS** only (new, reply, forward)
-- **Drive**: Create folders, file attachments
 - **Notification**: Push notifications
 - **Knowledge**: Knowledge base entries
 - **Contacts**: New contacts
@@ -70,7 +66,6 @@ Create new items.
 Remove items (soft delete where applicable).
 - **Email**: Move to trash
 - **Automation**: Delete rule
-- **Drive**: Delete file or folder (download explicitly excluded)
 
 ### `analyze` (SAFE)
 AI-powered analysis.

@@ -23,12 +23,11 @@ vi.mock("@/server/lib/llms", () => ({
   createGenerateText: vi.fn(() => vi.fn().mockResolvedValue({ text: "ok" })),
 }));
 
-const { createEmailProviderMock, createCalendarProviderMock, createAutomationProviderMock, createToolDriveProviderMock } =
+const { createEmailProviderMock, createCalendarProviderMock, createAutomationProviderMock } =
   vi.hoisted(() => ({
     createEmailProviderMock: vi.fn().mockResolvedValue({}),
     createCalendarProviderMock: vi.fn().mockResolvedValue({}),
     createAutomationProviderMock: vi.fn().mockRejectedValue(new Error("no automation account")),
-    createToolDriveProviderMock: vi.fn().mockRejectedValue(new Error("drive unavailable")),
   }));
 
 vi.mock("./providers/email", () => ({
@@ -40,14 +39,11 @@ vi.mock("./providers/calendar", () => ({
 vi.mock("./providers/automation", () => ({
   createAutomationProvider: createAutomationProviderMock,
 }));
-vi.mock("./providers/drive", () => ({
-  createToolDriveProvider: createToolDriveProviderMock,
-}));
 
 import { createAgentTools } from "./index";
 
 describe("createAgentTools provider fallback behavior", () => {
-  it("returns tool map even when automation/drive providers are unavailable", async () => {
+  it("returns tool map even when automation provider is unavailable", async () => {
     const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as any;
 
     const tools = await createAgentTools({

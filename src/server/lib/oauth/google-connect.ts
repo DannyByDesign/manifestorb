@@ -1,9 +1,8 @@
 import { auth } from "@googleapis/gmail";
-import { GOOGLE_DRIVE_SCOPES } from "@/features/drive/scopes";
 import { CALENDAR_SCOPES } from "@/server/integrations/google/scopes";
 import { SafeError } from "@/server/lib/error";
 
-export type GoogleOAuthKind = "gmail" | "calendar" | "drive";
+export type GoogleOAuthKind = "gmail" | "calendar";
 
 const GOOGLE_LINKING_SCOPES_BASE = [
   "https://www.googleapis.com/auth/userinfo.profile",
@@ -15,7 +14,6 @@ const GOOGLE_LINKING_SCOPES_BASE = [
 const GOOGLE_OAUTH_REDIRECT_PATH: Record<GoogleOAuthKind, string> = {
   gmail: "/api/google/linking/callback",
   calendar: "/api/google/calendar/callback",
-  drive: "/api/google/drive/callback",
 };
 
 function parseBooleanEnv(value?: string | null): boolean {
@@ -26,7 +24,6 @@ function parseBooleanEnv(value?: string | null): boolean {
 
 function getGoogleOAuthScopes(kind: GoogleOAuthKind): string[] {
   if (kind === "calendar") return [...CALENDAR_SCOPES];
-  if (kind === "drive") return [...GOOGLE_DRIVE_SCOPES];
 
   const scopes: string[] = [...GOOGLE_LINKING_SCOPES_BASE];
   if (parseBooleanEnv(process.env.NEXT_PUBLIC_CONTACTS_ENABLED)) {
@@ -52,7 +49,6 @@ export function getGoogleOAuthConfigDiagnostics(baseUrl: string): {
   const callbackUris = {
     gmail: getGoogleOAuthRedirectUri("gmail", baseUrl),
     calendar: getGoogleOAuthRedirectUri("calendar", baseUrl),
-    drive: getGoogleOAuthRedirectUri("drive", baseUrl),
   };
 
   const warnings: string[] = [];

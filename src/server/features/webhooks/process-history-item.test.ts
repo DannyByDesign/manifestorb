@@ -56,8 +56,6 @@ describe("Provider Edge Cases", () => {
     return {
       ...getEmailAccount(),
       autoCategorizeSenders: false,
-      filingEnabled: false,
-      filingPrompt: null,
       email: "test@test.com",
     };
   }

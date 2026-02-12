@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { deleteTool } from "./delete";
 
 describe("deleteTool discriminated schema", () => {
-  it("requires driveItemType for drive deletes", () => {
+  it("rejects unsupported resources", () => {
     const parsed = deleteTool.parameters.safeParse({
-      resource: "drive",
+      resource: "unknown",
       ids: ["file-1"],
     });
     expect(parsed.success).toBe(false);

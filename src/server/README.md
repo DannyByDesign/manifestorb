@@ -24,7 +24,6 @@ Next-safe-action handlers for authenticated mutations.
 - `rule.ts` - Rule CRUD operations
 - `mail.ts` - Email operations
 - `calendar.ts` - Calendar operations
-- `drive.ts` - Drive operations
 - `validation/` - Zod schemas for each action
 
 ### 2. `features/` (Feature Modules)
@@ -35,7 +34,7 @@ Self-contained domain logic organized by feature.
 - **`email/`** - Email provider abstraction
 - **`rules/`** - Automation rule engine
 - **`approvals/`** - Human-in-the-loop workflow; secure action tokens for approval links
-- **`calendar/`**, **`drive/`** - Calendar/Drive (watch, renewal cron, conflict resolution; drive delete file/folder)
+- **`calendar/`** - Calendar sync, watch renewal cron, and conflict resolution
 - **`tasks/`** - Task triage, panel API, approval-backed actions
 - **`notifications/`** - In-app and push notifications
 - **`memory/`** - RLM memory, embeddings, summaries
@@ -43,7 +42,7 @@ Self-contained domain logic organized by feature.
 
 ### 3. `integrations/` (External API Clients)
 Pure API wrappers with no business logic.
-- **`google/`** - Gmail, Calendar, Drive, People APIs
+- **`google/`** - Gmail, Calendar, People APIs
 - **`microsoft/`** - Microsoft Graph API
 - **`qstash/`** - Upstash queue service
 

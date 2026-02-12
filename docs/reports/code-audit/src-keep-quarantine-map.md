@@ -24,7 +24,7 @@ Generated from runtime code paths in `src/app/api/**`, tool execution in `src/se
   - `/api/jobs/purge-history`
   - `/api/jobs/summarize-conversation`
 - Tool-resource quarantine (default ON unless `AMODEL_ENABLE_QUARANTINED_RESOURCES=true`):
-  - `drive`, `automation`, `knowledge`, `patterns`, `report`
+  - `automation`, `knowledge`, `patterns`, `report`
   - enforced in `src/server/features/ai/tools/security.ts`
 
 ## `src/app` Map
@@ -76,12 +76,10 @@ Generated from runtime code paths in `src/app/api/**`, tool execution in `src/se
   - `src/server/features/scheduled/**`
   - `src/server/features/webhooks/**`
 - Keep (future-guarded / expansion path):
-  - `src/server/features/drive/**` (currently tool-quarantined by default)
-  - Microsoft providers under calendar/drive/email integrations (runtime-route quarantined via `/api/outlook`)
+  - Microsoft providers under calendar/email integrations (runtime-route quarantined via `/api/outlook`)
 - Quarantine Candidate (non-core for inbox/calendar assistant launch):
   - `src/server/features/clean/**`
   - `src/server/features/digest/**`
-  - `src/server/features/document-filing/**`
   - `src/server/features/categorize/**`
   - `src/server/features/categories/**`
   - `src/server/features/cold-email/**`

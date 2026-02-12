@@ -183,11 +183,6 @@ const modifyParameters = z.discriminatedUnion("resource", [
         changes: modifyChangesSchema,
     }).strict(),
     z.object({
-        resource: z.literal("drive"),
-        ids: modifyIdsSchema,
-        changes: modifyChangesSchema,
-    }).strict(),
-    z.object({
         resource: z.literal("draft"),
         ids: modifyIdsSchema,
         changes: modifyChangesSchema,
@@ -936,22 +931,6 @@ Preferences changes:
                 ));
                 return { success: true, data: automationResults };
             }
-
-            case "drive":
-                if (!providers.drive) {
-                    return { success: false, error: "Drive not connected" };
-                }
-                if (!ids || ids.length === 0) return { success: false, error: "No File IDs provided" };
-
-                // Move File
-                if (changes.targetFolderId) {
-                    const moveResults = await Promise.all(ids.map((id: string) =>
-                        providers.drive!.moveFile(id, changes.targetFolderId!)
-                    ));
-                    return { success: true, data: moveResults };
-                }
-
-                return { success: false, error: "Only move (targetFolderId) supported for Drive" };
 
             case "preferences": {
                 const accountId = emailAccountId;

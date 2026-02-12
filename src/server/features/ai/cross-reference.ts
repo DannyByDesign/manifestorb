@@ -1,5 +1,5 @@
 /**
- * Cross-reference service: find related items across email, calendar, tasks, drive.
+ * Cross-reference service: find related items across email, calendar, and tasks.
  */
 import prisma from "@/server/db/client";
 import type { Logger } from "@/server/lib/logger";
@@ -21,10 +21,6 @@ export interface CrossReferenceContext {
     title: string;
     status: string;
     dueDate?: Date | null;
-  }>;
-  relatedFilings?: Array<{
-    filename: string;
-    folderPath: string;
   }>;
 }
 
@@ -97,24 +93,6 @@ export async function findCrossReferences({
       }
     } catch (error) {
       logger.warn("Cross-ref: failed to find related tasks", { error });
-    }
-  }
-
-  if (emailAddress) {
-    try {
-      const filings = await prisma.documentFiling.findMany({
-        where: {
-          emailAccount: { userId },
-        },
-        select: { filename: true, folderPath: true },
-        take: 3,
-      });
-      context.relatedFilings = filings.map((f) => ({
-        filename: f.filename,
-        folderPath: f.folderPath,
-      }));
-    } catch (error) {
-      logger.warn("Cross-ref: failed to find related filings", { error });
     }
   }
 

@@ -12,14 +12,14 @@ ai/
 │   ├── get.ts          # Retrieve item details
 │   ├── create.ts       # Create drafts/items/events
 │   ├── modify.ts       # Modify item state
-│   ├── delete.ts       # Remove items (email, automation, drive file/folder)
+│   ├── delete.ts       # Remove items (email, automation)
 │   ├── analyze.ts      # AI-powered analysis
 │   ├── send.ts         # Send email (DANGEROUS; approval-gated)
 │   ├── rules.ts        # Single polymorphic rules tool (list/create/update/delete/enable/disable)
 │   ├── triage.ts       # Task triage ("what should I do next?"; approval-backed actions)
 │   ├── types.ts        # Tool type definitions
 │   ├── security.ts     # Permission checks (SAFE/CAUTION/DANGEROUS)
-│   └── providers/      # Resource providers (email, calendar, drive, automation)
+│   └── providers/      # Resource providers (email, calendar, automation)
 ├── system-prompt.ts    # Unified system prompt (single source of truth)
 ├── rule-tools.ts       # Web-chat wiring for rule management (main tool: tools/rules.ts)
 ├── memory-tools.ts     # Memory management tools (remember/recall/forget)
@@ -35,11 +35,11 @@ We use a set of agent tools to interact with backend resources. **DANGEROUS** to
 
 | Tool | Security | Purpose | Key Resources |
 |------|----------|---------|---------------|
-| `query` | SAFE | Search and list items | `email`, `calendar`, `automation`, `patterns`, `approval`, `drive`, `contacts` |
+| `query` | SAFE | Search and list items | `email`, `calendar`, `automation`, `patterns`, `approval`, `contacts` |
 | `get` | SAFE | Retrieve item details | `email`, `approval` |
-| `create` | CAUTION | Create drafts/items/events | `email`, `automation`, `knowledge`, `drive`, `notification`, `contacts` |
+| `create` | CAUTION | Create drafts/items/events | `email`, `automation`, `knowledge`, `notification`, `contacts` |
 | `modify` | CAUTION | Update item state | `email`, `automation`, `approval` |
-| `delete` | CAUTION | Remove items | `email`, `automation`, **drive** (file/folder; download excluded) |
+| `delete` | CAUTION | Remove items | `email`, `automation` |
 | `analyze` | SAFE | AI analysis/extraction | `email` (clean/categorize), `calendar` (briefing), `patterns` |
 | `send` | **DANGEROUS** | Send email (draft→sent) | Requires explicit user approval (in-app or verbal) |
 | `rules` | CAUTION | Rule management (polymorphic) | List/create/update/delete/enable/disable rules |
@@ -84,7 +84,6 @@ Tools delegate execution to providers for resource-specific implementations:
 - `automation.ts` - Rules, Knowledge, Unsubscriber, Reports
 - `email.ts` - Email provider abstraction
 - `calendar.ts` - Calendar provider abstraction
-- `drive.ts` - Drive provider abstraction
 
 ## 5. Security (`security.ts`)
 

@@ -58,9 +58,9 @@ describe("modifyTool discriminated schema", () => {
     expect(parsed.success).toBe(false);
   });
 
-  it("rejects drive updates without ids", () => {
+  it("rejects unsupported resources", () => {
     const parsed = modifyTool.parameters.safeParse({
-      resource: "drive",
+      resource: "unknown",
       changes: { targetFolderId: "folder-1" },
     });
     expect(parsed.success).toBe(false);

@@ -21,7 +21,7 @@ export type ProcessHistoryOptions = {
   hasAiAccess: boolean;
   emailAccount: Pick<
     EmailAccount,
-    "autoCategorizeSenders" | "filingEnabled" | "filingPrompt"
+    "autoCategorizeSenders"
   > &
     EmailAccountWithAI;
 };

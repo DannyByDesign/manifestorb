@@ -159,12 +159,8 @@ describeLive("nothing else matters (full production E2E)", () => {
       ...emailAccountRow,
       provider: providerValue,
       autoCategorizeSenders: emailAccountRow.autoCategorizeSenders ?? false,
-      filingEnabled: emailAccountRow.filingEnabled ?? false,
-      filingPrompt: emailAccountRow.filingPrompt ?? null,
     } as unknown as EmailAccountWithAI & {
       autoCategorizeSenders: boolean;
-      filingEnabled: boolean;
-      filingPrompt: string | null;
       email: string;
       provider: string;
     };
