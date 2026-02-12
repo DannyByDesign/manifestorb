@@ -625,3 +625,638 @@ Done means all are true:
 14. Microsoft Work Trend Index (meeting/email overload signal): https://www.microsoft.com/en-us/worklab/work-trend-index
 15. Atlassian workplace/meeting overload signal: https://www.atlassian.com/blog/productivity/workplace-woes-survey-data
 
+---
+
+## 17) Detailed Execution Work Breakdown (Implementation-Grade)
+
+This section is the operational build plan for multi-hour implementation sessions.
+
+### 17.1 Workstreams
+
+1. Runtime foundation (`skills/contracts`, `skills/registry`, `skills/router`, `skills/executor`)
+2. Capability facades (`ai/capabilities/*`)
+3. Baseline skills (`skills/baseline/*`)
+4. Message processor integration (`message-processor.ts`)
+5. Prompt minimization (`system-prompt.ts`)
+6. Telemetry + observability (`skills/telemetry/*`)
+7. Rollout controls (env flags, shadow/on gating)
+8. Legacy cleanup (dead-path deletion + docs updates)
+
+### 17.2 Milestone Slices (Ship Order)
+
+M0:
+- add new module skeleton
+- add env flags
+- add contract schema
+- no behavioral change
+
+M1:
+- router + slot resolver + executor skeleton
+- 2 pilot skills wired but behind `AI_SKILLS_MODE=off`
+
+M2:
+- shadow mode integration in message processor
+- telemetry events and comparison logging
+
+M3:
+- first 8 baseline skills production-ready
+- canary rollout readiness
+
+M4:
+- all 16 baseline skills
+- prompt minimization completed
+
+M5:
+- rollout complete, legacy branch deletion pass
+
+### 17.3 Artifact Checklist Per Milestone
+
+M0 artifacts:
+- `src/server/features/ai/skills/contracts/skill-contract.ts`
+- `src/server/features/ai/skills/contracts/slot-types.ts`
+- `src/server/features/ai/skills/registry/baseline-registry.ts`
+- `src/env.ts` updated with skills flags
+
+M1 artifacts:
+- `src/server/features/ai/skills/router/route-skill.ts`
+- `src/server/features/ai/skills/slots/resolve-slots.ts`
+- `src/server/features/ai/skills/executor/execute-skill.ts`
+- `src/server/features/ai/capabilities/index.ts`
+
+M2 artifacts:
+- message processor wiring for `off|shadow|on`
+- telemetry schema and emitters
+- shadow diff logger with mismatch categories
+
+M3 artifacts:
+- 8 skill contract files
+- allowed-tools/capability enforcement logs
+- postcondition evaluator coverage for first 8 skills
+
+M4 artifacts:
+- all 16 skill files
+- prompt-reduction PR
+- docs updates for operators
+
+M5 artifacts:
+- deleted legacy blocks
+- fallback disabled for baseline intents
+- final migration report
+
+---
+
+## 18) File-Level Change Plan (Granular)
+
+### 18.1 New Files to Add
+
+`src/server/features/ai/skills/contracts/skill-contract.ts`
+- export zod schema for canonical SkillContract
+- export `type SkillContract`
+- export validation helper `parseSkillContract()`
+
+`src/server/features/ai/skills/contracts/slot-types.ts`
+- slot primitives: date range, participant list, thread reference, send-window, urgency band
+- slot coercion helpers
+
+`src/server/features/ai/skills/registry/baseline-registry.ts`
+- map `skillId -> SkillContract`
+- export immutable registry
+- export lookup helper with explicit error
+
+`src/server/features/ai/skills/router/route-skill.ts`
+- closed-set route function
+- confidence threshold
+- fallback result with single-clarification prompt
+
+`src/server/features/ai/skills/router/router-prompts.ts`
+- compact router instruction template
+- no business logic
+
+`src/server/features/ai/skills/slots/resolve-slots.ts`
+- extract slots from user message + context pack
+- return `resolved`, `missingRequired`, `ambiguous`
+
+`src/server/features/ai/skills/slots/slot-clarifications.ts`
+- deterministic clarification question templates
+
+`src/server/features/ai/skills/executor/execute-skill.ts`
+- execute deterministic plan steps
+- enforce allowed capabilities
+- call postcondition validator
+
+`src/server/features/ai/skills/executor/step-runner.ts`
+- step primitives: `search`, `transform`, `propose`, `apply`
+- step result envelope
+
+`src/server/features/ai/skills/executor/postconditions.ts`
+- per-skill postcondition checks
+- standardized failure reasons
+
+`src/server/features/ai/skills/executor/failure-normalizer.ts`
+- map raw failures to user-safe, operator-rich errors
+
+`src/server/features/ai/skills/telemetry/events.ts`
+- typed event schema
+- event names and payload contracts
+
+`src/server/features/ai/skills/telemetry/emit.ts`
+- telemetry emitters + safe no-op fallback
+
+`src/server/features/ai/capabilities/email.ts`
+- facade wrappers around existing tool/provider behavior
+
+`src/server/features/ai/capabilities/calendar.ts`
+- facade wrappers around calendar operations
+
+`src/server/features/ai/capabilities/planner.ts`
+- cross-resource read-only plan synthesis helpers
+
+`src/server/features/ai/skills/baseline/*.ts`
+- 16 files, one skill contract per file
+
+### 18.2 Existing Files to Update
+
+`src/server/features/ai/message-processor.ts`
+- inject skills flow entry point
+- honor env mode flags
+- shadow comparator hooks
+- fallback behavior control
+
+`src/env.ts`
+- parse and validate skills env flags
+
+`src/server/features/ai/system-prompt.ts`
+- remove operational intent logic
+- retain global safety and style policy only
+
+`src/server/features/ai/README.md`
+- keep updated links to source-of-truth and current rollout status
+
+### 18.3 Existing Files to Leave Untouched in Early Phases
+
+`src/server/features/ai/tools/*`
+- keep stable during M0-M2
+- wrap via capabilities instead of rewriting immediately
+
+---
+
+## 19) Runtime Interfaces (Canonical Contracts)
+
+Use these signatures as implementation constraints.
+
+```ts
+export type SkillId =
+  | "inbox_triage_today"
+  | "inbox_bulk_newsletter_cleanup"
+  | "inbox_subscription_control"
+  | "inbox_snooze_or_defer"
+  | "inbox_thread_summarize_actions"
+  | "inbox_draft_reply"
+  | "inbox_schedule_send"
+  | "inbox_followup_guard"
+  | "calendar_find_availability"
+  | "calendar_schedule_from_context"
+  | "calendar_reschedule_with_constraints"
+  | "calendar_focus_time_defense"
+  | "calendar_working_hours_ooo"
+  | "calendar_booking_page_setup"
+  | "calendar_meeting_load_rebalance"
+  | "daily_plan_inbox_calendar";
+
+export type CapabilityName =
+  | "email.searchThreads"
+  | "email.batchArchive"
+  | "email.unsubscribeSender"
+  | "email.snoozeThread"
+  | "email.createDraft"
+  | "email.scheduleSend"
+  | "calendar.findAvailability"
+  | "calendar.createEvent"
+  | "calendar.rescheduleEvent"
+  | "calendar.setWorkingHours"
+  | "calendar.setOutOfOffice"
+  | "calendar.createFocusBlock"
+  | "calendar.createBookingSchedule"
+  | "planner.composeDayPlan";
+
+export interface SkillContract {
+  id: SkillId;
+  intent_examples: string[];
+  required_slots: string[];
+  optional_slots: string[];
+  allowed_tools: CapabilityName[];
+  plan: SkillPlanStep[];
+  success_checks: SkillSuccessCheck[];
+  failure_modes: SkillFailureMode[];
+  user_response_templates: SkillResponseTemplates;
+  risk_level: "safe" | "caution" | "dangerous";
+  requires_approval: boolean;
+  idempotency_scope: "message" | "thread" | "conversation";
+  supports_dry_run: boolean;
+  owner: string;
+  version: string;
+}
+
+export interface SkillRouteResult {
+  skillId: SkillId | null;
+  confidence: number;
+  reason: string;
+  clarificationPrompt?: string;
+}
+
+export interface SlotResolutionResult {
+  resolved: Record<string, unknown>;
+  missingRequired: string[];
+  ambiguous: string[];
+  clarificationPrompt?: string;
+}
+
+export interface SkillExecutionResult {
+  status: "success" | "partial" | "blocked" | "failed";
+  responseText: string;
+  postconditionsPassed: boolean;
+  stepsExecuted: number;
+  toolChain: CapabilityName[];
+  failureReason?: string;
+}
+```
+
+---
+
+## 20) Router and Slot-Filling Algorithm (Deterministic)
+
+Router algorithm:
+
+1. Build candidate set from baseline registry IDs only.
+2. Run structured classification against closed-set IDs.
+3. Reject unknown IDs unconditionally.
+4. If confidence below threshold (default `0.72`), ask one targeted clarification.
+5. If above threshold, proceed to slot resolution.
+
+Slot resolution algorithm:
+
+1. Resolve required slots from message text.
+2. Fill from context pack only when deterministic and user-owned.
+3. Mark unresolved required slots in `missingRequired`.
+4. If any required slot missing, emit one clarification question only.
+5. Do not execute skill until required slots complete.
+
+---
+
+## 21) Capability Facade Mapping From Existing Tools
+
+Map existing broad tools to narrow capabilities first, then migrate callers.
+
+`query(resource=email)` -> `email.searchThreads`
+`modify(resource=email, action=archive)` -> `email.batchArchive`
+`modify(resource=email, action=unsubscribe)` -> `email.unsubscribeSender`
+`modify(resource=email, action=snooze)` -> `email.snoozeThread`
+`create(resource=email, action=draft)` -> `email.createDraft`
+`send(scheduleSend)` -> `email.scheduleSend`
+`query(resource=calendar)` -> `calendar.findAvailability`
+`create(resource=calendar)` -> `calendar.createEvent`
+`modify(resource=calendar)` -> `calendar.rescheduleEvent`
+`modify(resource=preferences)` -> `calendar.setWorkingHours`
+
+Constraint:
+- no skill may call `query`, `create`, or `modify` directly once facade exists.
+
+---
+
+## 22) Baseline Skill Specifications (Execution Detail)
+
+### 22.1 `inbox_triage_today`
+
+Required slots: `time_window=today`.
+Optional slots: `priority_bias`, `sender_focus`.
+Allowed tools: `email.searchThreads`.
+Plan: search actionable threads for today; score urgency; return top queue with rationale.
+Success checks: returns ranked list size >=1 when actionable items exist.
+Failure modes: no items found; provider unavailable.
+User response: concise ranked items with next action.
+
+### 22.2 `inbox_bulk_newsletter_cleanup`
+
+Required slots: `target_scope`.
+Optional slots: `sender_allowlist`, `age_threshold`.
+Allowed tools: `email.searchThreads`, `email.batchArchive`.
+Plan: identify newsletter/promotions candidates; present dry-run count; apply archive if confirmed/policy allows.
+Success checks: applied count equals selected count.
+Failure modes: ambiguous candidate set; ownership mismatch.
+User response: items archived + rollback guidance.
+
+### 22.3 `inbox_subscription_control`
+
+Required slots: `sender_or_domain`.
+Optional slots: `action=unsubscribe|block`.
+Allowed tools: `email.searchThreads`, `email.unsubscribeSender`.
+Plan: locate subscription sender; execute unsubscribe control.
+Success checks: unsubscribe action status success.
+Failure modes: no unsubscribe metadata.
+User response: status and next step.
+
+### 22.4 `inbox_snooze_or_defer`
+
+Required slots: `thread_ids`, `defer_until`.
+Optional slots: `reason`.
+Allowed tools: `email.snoozeThread`.
+Plan: apply snooze/defer to selected threads.
+Success checks: all target threads updated.
+Failure modes: invalid time.
+User response: deferred items + wake time.
+
+### 22.5 `inbox_thread_summarize_actions`
+
+Required slots: `thread_id`.
+Optional slots: `summary_style`.
+Allowed tools: `email.searchThreads`.
+Plan: fetch thread context; summarize decisions, action items, deadlines.
+Success checks: output contains decisions, tasks, deadlines sections.
+Failure modes: thread unavailable.
+User response: structured summary.
+
+### 22.6 `inbox_draft_reply`
+
+Required slots: `thread_id` or `recipient`, `reply_intent`.
+Optional slots: `tone`, `length`.
+Allowed tools: `email.createDraft`.
+Plan: generate draft content from context; save draft.
+Success checks: draft id created.
+Failure modes: missing recipient.
+User response: draft created with concise preview.
+
+### 22.7 `inbox_schedule_send`
+
+Required slots: `draft_id`, `send_time`.
+Optional slots: `timezone`.
+Allowed tools: `email.scheduleSend`.
+Plan: validate send window; schedule send.
+Success checks: provider confirms schedule set.
+Failure modes: invalid send window.
+User response: scheduled confirmation.
+
+### 22.8 `inbox_followup_guard`
+
+Required slots: `time_window`.
+Optional slots: `high_priority_only`.
+Allowed tools: `email.searchThreads`.
+Plan: find awaiting-reply risks and overdue follow-ups; propose nudge list.
+Success checks: returns at-risk set or explicit none-found.
+Failure modes: none critical.
+User response: follow-up recommendations.
+
+### 22.9 `calendar_find_availability`
+
+Required slots: `participants`, `date_window`, `duration`.
+Optional slots: `timezone`.
+Allowed tools: `calendar.findAvailability`.
+Plan: compute candidate free slots.
+Success checks: at least 3 candidate slots when availability exists.
+Failure modes: no common free time.
+User response: proposed slots.
+
+### 22.10 `calendar_schedule_from_context`
+
+Required slots: `title`, `participants`, `start`, `duration`.
+Optional slots: `location`, `agenda`.
+Allowed tools: `calendar.createEvent`.
+Plan: create event from extracted context.
+Success checks: event id returned.
+Failure modes: attendee ambiguity.
+User response: created event details.
+
+### 22.11 `calendar_reschedule_with_constraints`
+
+Required slots: `event_id`, `reschedule_window`.
+Optional slots: `must_keep_attendees`, `must_keep_duration`.
+Allowed tools: `calendar.findAvailability`, `calendar.rescheduleEvent`.
+Plan: find valid alternative; apply reschedule.
+Success checks: event moved and constraints satisfied.
+Failure modes: no valid slot.
+User response: old vs new schedule.
+
+### 22.12 `calendar_focus_time_defense`
+
+Required slots: `focus_block_window`.
+Optional slots: `auto_decline=true|false`.
+Allowed tools: `calendar.createFocusBlock`.
+Plan: create/update focus blocks.
+Success checks: focus blocks persisted.
+Failure modes: conflicts with hard events.
+User response: protected focus windows.
+
+### 22.13 `calendar_working_hours_ooo`
+
+Required slots: `working_hours` or `ooo_window`.
+Optional slots: `location`, `timezone`.
+Allowed tools: `calendar.setWorkingHours`, `calendar.setOutOfOffice`.
+Plan: apply boundaries.
+Success checks: settings updated.
+Failure modes: invalid hour ranges.
+User response: policy summary.
+
+### 22.14 `calendar_booking_page_setup`
+
+Required slots: `schedule_window`, `slot_duration`.
+Optional slots: `buffers`, `daily_cap`.
+Allowed tools: `calendar.createBookingSchedule`.
+Plan: configure appointment schedule.
+Success checks: booking schedule active.
+Failure modes: unsupported settings.
+User response: booking setup summary.
+
+### 22.15 `calendar_meeting_load_rebalance`
+
+Required slots: `analysis_window`.
+Optional slots: `max_meetings_per_day`.
+Allowed tools: `calendar.findAvailability`, `calendar.rescheduleEvent`.
+Plan: identify movable non-critical meetings; propose compression/rebalance actions.
+Success checks: reclaim focus window minutes above threshold.
+Failure modes: no movable meetings.
+User response: reclaimed time summary.
+
+### 22.16 `daily_plan_inbox_calendar`
+
+Required slots: `planning_day`.
+Optional slots: `priority_focus`.
+Allowed tools: `email.searchThreads`, `calendar.findAvailability`, `planner.composeDayPlan`.
+Plan: synthesize top email tasks + meetings + focus blocks.
+Success checks: produces integrated day plan.
+Failure modes: missing calendar or inbox context.
+User response: ordered daily execution plan.
+
+---
+
+## 23) Prompt Decomposition Map (What Gets Removed)
+
+Move out of `system-prompt.ts` into skills/capabilities:
+
+- per-intent operational instructions
+- draft flow procedural logic
+- calendar scheduling procedural logic
+- rule-based conditional workflows that are now skill plan steps
+
+Keep in `system-prompt.ts`:
+
+- universal safety policy
+- anti-injection policy
+- communication style/tone
+- approval policy summaries
+
+---
+
+## 24) Telemetry Spec (Event-Level)
+
+Event names:
+
+- `skill.route.started`
+- `skill.route.completed`
+- `skill.slot_resolution.completed`
+- `skill.execution.started`
+- `skill.step.completed`
+- `skill.postcondition.completed`
+- `skill.execution.completed`
+- `skill.user_correction.observed`
+
+Required fields on all events:
+
+- `request_id`
+- `user_id_hash`
+- `conversation_id`
+- `provider`
+- `timestamp`
+- `skills_mode`
+
+Execution-completed fields:
+
+- `skill_id`
+- `status`
+- `route_confidence`
+- `steps_executed`
+- `allowed_tools_violations`
+- `postconditions_passed`
+- `approval_required`
+- `duration_ms`
+
+---
+
+## 25) Shadow Mode Comparison and Mismatch Taxonomy
+
+Shadow comparator outputs:
+
+- `legacy_outcome`
+- `skills_outcome`
+- `mismatch_category`
+- `operator_summary`
+
+Mismatch categories:
+
+1. `ROUTE_DIFFERENCE`
+2. `SLOT_INSUFFICIENT`
+3. `ACTION_DIFFERENCE`
+4. `POSTCONDITION_DIFFERENCE`
+5. `SAFETY_BLOCK_DIFFERENCE`
+6. `OUTPUT_QUALITY_DIFFERENCE`
+
+Promotion rule:
+- canary cannot progress while `ACTION_DIFFERENCE` or `SAFETY_BLOCK_DIFFERENCE` exceeds threshold.
+
+---
+
+## 26) Rollout Operations Runbook
+
+Pre-rollout checklist:
+
+1. Set `AI_SKILLS_MODE=shadow`
+2. Set `AI_SKILLS_BASELINE_ONLY=true`
+3. Verify telemetry dashboards receive events
+4. Verify kill switch path (`AI_SKILLS_MODE=off`) on live env
+
+Canary checklist:
+
+1. Enable `AI_SKILLS_MODE=on`
+2. Set `AI_SKILLS_CANARY_PERCENT=5`
+3. Monitor gates for 24h
+4. Increase only if all gates pass
+
+Incident rollback:
+
+1. Set `AI_SKILLS_MODE=off` immediately
+2. Preserve logs and mismatch events
+3. Open root-cause issue with skill id + request ids
+4. Patch and re-enter shadow before next on attempt
+
+---
+
+## 27) Legacy Cleanup Manifest (Deletion Targets)
+
+Deletion targets are executed only after M4 stabilization.
+
+Candidate cleanup areas:
+
+- preflight logic branches no longer used for baseline skills
+- prompt sections replaced by skill contracts
+- message-processor fallback branches for covered intents
+- any ad-hoc intent mapping logic duplicated by router
+
+Deletion process:
+
+1. Mark candidate code with `@legacy-skill-migration` comments.
+2. Confirm no callsites in `on` mode.
+3. Delete in small slices with rollback-safe commits.
+
+---
+
+## 28) Session Context Retention Protocol
+
+For long implementation runs, update this plan at end of each session with:
+
+- current milestone (`M0-M5`)
+- completed artifacts
+- blocked artifacts
+- exact next file to edit
+- flags status per environment
+
+Session log template:
+
+```md
+### Session Log - YYYY-MM-DD HH:MM UTC
+- Milestone: Mx
+- Completed:
+- In progress:
+- Blockers:
+- Next file:
+- Notes:
+```
+
+---
+
+## 29) Immediate Execution Queue (Next 10 Concrete Steps)
+
+1. Add env flags in `src/env.ts`.
+2. Add `skills/contracts/skill-contract.ts`.
+3. Add `skills/contracts/slot-types.ts`.
+4. Add `skills/registry/baseline-registry.ts` with empty stubs.
+5. Add `skills/router/route-skill.ts` with closed-set return type.
+6. Add `skills/slots/resolve-slots.ts` with required-slot output contract.
+7. Add `skills/executor/execute-skill.ts` with allowed-tools guard.
+8. Add `ai/capabilities/email.ts` wrappers for triage/cleanup/draft primitives.
+9. Add 2 pilot skills: `inbox_triage_today`, `calendar_find_availability`.
+10. Integrate `AI_SKILLS_MODE=shadow` path in `message-processor.ts`.
+
+---
+
+## 30) Build Outcome Clarification
+
+When this full plan is executed end-to-end, the intended outcome is:
+
+1. Production runtime is skill-centric for core inbox/calendar actions.
+2. Prompt sprawl is minimized and no longer controls operational behavior.
+3. Legacy generic path is disabled for covered intents.
+4. Codebase complexity decreases by removing duplicated orchestration logic.
+5. Domain-specific packs become additive modules, not core rewrites.
+
+Current status at this moment:
+
+- This document now includes detailed audit + build execution detail.
+- Migration code is not yet implemented in this pass.
