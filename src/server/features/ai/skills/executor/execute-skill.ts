@@ -53,6 +53,14 @@ function getAvailabilityWindowFromSlot(value: unknown): { start?: string; end?: 
   return { start, end };
 }
 
+function extractQueryMessageIds(result: ToolResult | undefined): string[] {
+  const data = result?.data;
+  if (!Array.isArray(data)) return [];
+  return data
+    .map((item) => (item && typeof item === "object" ? (item as Record<string, unknown>).id : null))
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+}
+
 export async function executeSkill(params: {
   skill: SkillContract;
   slots: SlotResolutionResult;
@@ -76,6 +84,7 @@ export async function executeSkill(params: {
   let stepsExecuted = 0;
   const toolResults: Record<string, ToolResult> = {};
   const interactivePayloads: unknown[] = [];
+  let lastQueriedEmailIds: string[] = [];
 
   try {
     for (const step of skill.plan) {
@@ -88,16 +97,31 @@ export async function executeSkill(params: {
       switch (step.capability) {
         case "email.searchThreads": {
           const window = getDateRangeFromSlot(slots.resolved.time_window);
+          const scope = typeof slots.resolved.target_scope === "string" ? slots.resolved.target_scope : null;
+          const scopeWindow =
+            scope === "today"
+              ? { after: new Date().toISOString() }
+              : scope === "this_week"
+                ? { after: new Date().toISOString(), before: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() }
+                : null;
           const filter: Record<string, unknown> = {
             limit: 25,
             ...(window ? { dateRange: window } : {}),
+            ...(!window && scopeWindow ? { dateRange: scopeWindow } : {}),
             ...(typeof slots.resolved.sender_or_domain === "string" ? { from: slots.resolved.sender_or_domain } : {}),
           };
+          if (skill.id === "inbox_bulk_newsletter_cleanup" || skill.id === "inbox_subscription_control") {
+            filter.subscriptionsOnly = true;
+            filter.limit = 100;
+          }
           toolResults[step.id] = await capabilities.email.searchThreads(filter);
+          lastQueriedEmailIds = extractQueryMessageIds(toolResults[step.id]);
           break;
         }
         case "email.batchArchive": {
-          const ids = Array.isArray(slots.resolved.thread_ids) ? (slots.resolved.thread_ids as string[]) : [];
+          const ids = Array.isArray(slots.resolved.thread_ids)
+            ? (slots.resolved.thread_ids as string[])
+            : lastQueriedEmailIds;
           toolResults[step.id] = await capabilities.email.batchArchive(ids);
           break;
         }
@@ -109,7 +133,9 @@ export async function executeSkill(params: {
           break;
         }
         case "email.snoozeThread": {
-          const ids = Array.isArray(slots.resolved.thread_ids) ? (slots.resolved.thread_ids as string[]) : [];
+          const ids = Array.isArray(slots.resolved.thread_ids)
+            ? (slots.resolved.thread_ids as string[])
+            : lastQueriedEmailIds;
           const until = typeof slots.resolved.defer_until === "string" ? slots.resolved.defer_until : "";
           toolResults[step.id] = await capabilities.email.snoozeThread(ids, until);
           break;
