@@ -28,6 +28,7 @@ import { getPendingScheduleProposal } from "@/features/calendar/schedule-proposa
 import { env } from "@/env";
 import type { Logger } from "@/server/lib/logger";
 import { createDeterministicIdempotencyKey, stableSerialize } from "@/server/lib/idempotency";
+import { runBaselineSkillTurn } from "@/features/ai/skills/runtime";
 import {
   claimsDraftWasCreated,
 } from "@/features/ai/response-guards";
@@ -105,6 +106,14 @@ export async function processMessage(
 ): Promise<MessageProcessorResult> {
   const { user, emailAccount, context, streaming, logger } = input;
 
+  const shouldUseSkillsForUser = (userId: string): boolean => {
+    const percent = env.AI_SKILLS_CANARY_PERCENT;
+    if (percent >= 100) return true;
+    if (percent <= 0) return true; // Treat 0 as "no canary gate" when mode is explicitly on.
+    const bucket = Number.parseInt(createHash("sha256").update(userId).digest("hex").slice(0, 8), 16) % 100;
+    return bucket < percent;
+  };
+
   // ---- 1. Load per-user config (maxSteps, custom instructions, etc.) -----
   const [userAiConfig, taskPreference] = await Promise.all([
     prisma.userAIConfig.findUnique({
@@ -131,6 +140,63 @@ export async function processMessage(
   // ---- 3. Extract message content for orchestration ----------------------
   const messageContent =
     input.message ?? extractLatestUserMessage(input.messages ?? []);
+
+  const skillsMode = env.AI_SKILLS_MODE;
+
+  // ---- 3.5 Skills mode (deterministic baseline runtime) ------------------
+  // This path bypasses the LLM tool-calling loop entirely.
+  if (!streaming && skillsMode === "on" && shouldUseSkillsForUser(user.id)) {
+    const sourceEmailContext = await resolveSourceEmailContext({
+      userId: user.id,
+      emailAccountId: emailAccount.id,
+      providerMessageId: context.messageId,
+      providerThreadId: context.threadId,
+    });
+
+    const resolvedProvider =
+      (emailAccount as Record<string, unknown>).provider as string | undefined ??
+      emailAccount.account?.provider;
+
+    if (!resolvedProvider) {
+      const text =
+        "Your email account isn't fully connected. Please connect Gmail or Outlook in the Amodel web app, then try again.";
+      return { text, approvals: [], interactivePayloads: [] };
+    }
+
+    const skillsResult = await runBaselineSkillTurn({
+      skillsMode,
+      provider: context.provider,
+      userId: user.id,
+      emailAccountId: emailAccount.id,
+      email: emailAccount.email,
+      providerName: resolvedProvider,
+      message: messageContent,
+      logger,
+      conversationId: context.conversationId,
+      sourceEmailMessageId: sourceEmailContext.messageId,
+      sourceEmailThreadId: sourceEmailContext.threadId,
+    });
+
+    const text = skillsResult.text ?? "";
+    const status = skillsResult.kind === "executed" ? skillsResult.debug.status : "blocked";
+    const canReturnSkillsResult = skillsResult.kind === "clarify" || status === "success";
+
+    if (canReturnSkillsResult || env.AI_SKILLS_FALLBACK_LEGACY === false) {
+      if (context.provider === "web" && text) {
+        const conversationId = context.conversationId
+          ? context.conversationId
+          : (await ConversationService.getPrimaryWebConversation(user.id)).id;
+        await persistAssistantMessage(user.id, conversationId, text, context.provider, logger);
+      }
+      return { text, approvals: [], interactivePayloads: [] };
+    }
+
+    logger.info("[skills] falling back to legacy pipeline", {
+      provider: context.provider,
+      status,
+      kind: skillsResult.kind,
+    });
+  }
 
   // ---- 4. Lightweight pending-state signals for preflight ----------------
   const [pendingApprovalSignal, pendingScheduleSignal] = await Promise.all([
@@ -618,6 +684,49 @@ async function executeNonStreaming({
     (!responseText || looksLikeGenericInternalError(responseText))
   ) {
     responseText = latestClarificationPrompt;
+  }
+
+  // Skills shadow mode: execute baseline skills in parallel and log mismatch.
+  if (env.AI_SKILLS_MODE === "shadow") {
+    try {
+      const accountRow = await prisma.emailAccount.findUnique({
+        where: { id: emailAccountId },
+        select: { account: { select: { provider: true } }, email: true, userId: true },
+      });
+      const resolvedProvider = accountRow?.account?.provider;
+      if (resolvedProvider) {
+        const skillsResult = await runBaselineSkillTurn({
+          skillsMode: "shadow",
+          provider: context.provider,
+          userId,
+          emailAccountId,
+          email: userEmail,
+          providerName: resolvedProvider,
+          message,
+          logger,
+          conversationId,
+        });
+        const skillsText = skillsResult.text?.trim() ?? "";
+        const legacyText = responseText?.trim() ?? "";
+        const mismatch =
+          Boolean(skillsText) && Boolean(legacyText) && skillsText !== legacyText;
+
+        const hash = (value: string) =>
+          createHash("sha256").update(value).digest("hex").slice(0, 16);
+
+        logger.info("[skills-shadow] comparison", {
+          provider: context.provider,
+          mismatch,
+          legacyLen: legacyText.length,
+          skillsLen: skillsText.length,
+          legacyHash: legacyText ? hash(legacyText) : "",
+          skillsHash: skillsText ? hash(skillsText) : "",
+          skillsKind: skillsResult.kind,
+        });
+      }
+    } catch (error) {
+      logger.warn("[skills-shadow] failed", { error });
+    }
   }
 
   // Fallback when model and tools produced no user-facing text. Observed in E2E: Tier 1 Test 2

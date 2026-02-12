@@ -146,6 +146,10 @@ export const env = createEnv({
     HEALTH_API_KEY: z.string().optional(),
     JOBS_SHARED_SECRET: z.string().optional(),
     CALENDAR_ACTIONS_DRY_RUN: booleanString.default(false),
+    AI_SKILLS_MODE: z.enum(["off", "shadow", "on"]).default("off"),
+    AI_SKILLS_FALLBACK_LEGACY: booleanString.default(true),
+    AI_SKILLS_CANARY_PERCENT: z.coerce.number().int().min(0).max(100).default(0),
+    AI_SKILLS_BASELINE_ONLY: booleanString.default(true),
     SIDECAR_URL: optionalUrlish(), // URL of the surfaces sidecar for background jobs
     SURFACES_API_URL: optionalUrlish(), // URL of the surfaces sidecar for push notifications
     OAUTH_PROXY_URL: z

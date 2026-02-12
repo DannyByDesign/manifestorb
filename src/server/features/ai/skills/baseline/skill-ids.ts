@@ -1,0 +1,20 @@
+export const BASELINE_SKILL_IDS = [
+  "inbox_triage_today",
+  "inbox_bulk_newsletter_cleanup",
+  "inbox_subscription_control",
+  "inbox_snooze_or_defer",
+  "inbox_thread_summarize_actions",
+  "inbox_draft_reply",
+  "inbox_schedule_send",
+  "inbox_followup_guard",
+  "calendar_find_availability",
+  "calendar_schedule_from_context",
+  "calendar_reschedule_with_constraints",
+  "calendar_focus_time_defense",
+  "calendar_working_hours_ooo",
+  "calendar_booking_page_setup",
+  "calendar_meeting_load_rebalance",
+  "daily_plan_inbox_calendar",
+] as const;
+
+export type SkillId = (typeof BASELINE_SKILL_IDS)[number];
