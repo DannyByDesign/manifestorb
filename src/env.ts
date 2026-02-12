@@ -18,7 +18,10 @@ function normalizeUrlish(input: unknown): unknown {
     /^127\.0\.0\.1(:\d+)?$/i.test(hostish) ||
     /^0\.0\.0\.0(:\d+)?$/i.test(hostish) ||
     /^\[::1\](:\d+)?$/i.test(hostish);
-  const scheme = isLocal ? "http" : "https";
+  const isPrivateInternalHost =
+    /\.railway\.internal(?::\d+)?$/i.test(hostish) ||
+    /\.internal(?::\d+)?$/i.test(hostish);
+  const scheme = isLocal || isPrivateInternalHost ? "http" : "https";
   return `${scheme}://${hostish}`;
 }
 

@@ -51,7 +51,12 @@ export async function sendSurfaceOnboardingLinked(params: {
   } catch (error) {
     logger.warn("Error pushing onboarding-linked to surfaces", {
       provider: params.provider,
+      surfacesUrl,
       error: error instanceof Error ? error.message : String(error),
+      cause:
+        error instanceof Error && error.cause
+          ? String(error.cause)
+          : undefined,
     });
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
