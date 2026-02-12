@@ -22,7 +22,12 @@ export async function runBaselineSkillTurn(params: {
   sourceEmailThreadId?: string;
 }): Promise<
   | { kind: "clarify"; text: string }
-  | { kind: "executed"; text: string; debug: { skillId: string; status: string } }
+  | {
+      kind: "executed";
+      text: string;
+      interactivePayloads: unknown[];
+      debug: { skillId: string; status: string };
+    }
 > {
   const requestId = createHash("sha256")
     .update(`${params.userId}:${params.provider}:${Date.now()}:${params.message}`)
@@ -108,6 +113,7 @@ export async function runBaselineSkillTurn(params: {
   return {
     kind: "executed",
     text: result.responseText,
+    interactivePayloads: result.interactivePayloads,
     debug: { skillId: route.skillId, status: result.status },
   };
 }

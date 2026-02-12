@@ -163,7 +163,7 @@ export async function processMessage(
       return { text, approvals: [], interactivePayloads: [] };
     }
 
-    const skillsResult = await runBaselineSkillTurn({
+	    const skillsResult = await runBaselineSkillTurn({
       skillsMode,
       provider: context.provider,
       userId: user.id,
@@ -175,21 +175,23 @@ export async function processMessage(
       conversationId: context.conversationId,
       sourceEmailMessageId: sourceEmailContext.messageId,
       sourceEmailThreadId: sourceEmailContext.threadId,
-    });
+	    });
 
-    const text = skillsResult.text ?? "";
-    const status = skillsResult.kind === "executed" ? skillsResult.debug.status : "blocked";
-    const canReturnSkillsResult = skillsResult.kind === "clarify" || status === "success";
+	    const text = skillsResult.text ?? "";
+	    const interactivePayloads =
+	      skillsResult.kind === "executed" ? skillsResult.interactivePayloads : [];
+	    const status = skillsResult.kind === "executed" ? skillsResult.debug.status : "blocked";
+	    const canReturnSkillsResult = skillsResult.kind === "clarify" || status === "success";
 
     if (canReturnSkillsResult || env.AI_SKILLS_FALLBACK_LEGACY === false) {
-      if (context.provider === "web" && text) {
+	      if (context.provider === "web" && text) {
         const conversationId = context.conversationId
           ? context.conversationId
           : (await ConversationService.getPrimaryWebConversation(user.id)).id;
-        await persistAssistantMessage(user.id, conversationId, text, context.provider, logger);
-      }
-      return { text, approvals: [], interactivePayloads: [] };
-    }
+	        await persistAssistantMessage(user.id, conversationId, text, context.provider, logger);
+	      }
+	      return { text, approvals: [], interactivePayloads };
+	    }
 
     logger.info("[skills] falling back to legacy pipeline", {
       provider: context.provider,

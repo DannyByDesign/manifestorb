@@ -9,6 +9,7 @@ export interface SkillExecutionResult {
   postconditionsPassed: boolean;
   stepsExecuted: number;
   toolChain: CapabilityName[];
+  interactivePayloads: unknown[];
   failureReason?: string;
 }
 
@@ -66,6 +67,7 @@ export async function executeSkill(params: {
       postconditionsPassed: false,
       stepsExecuted: 0,
       toolChain: [],
+      interactivePayloads: [],
       failureReason: "missing_required_slots",
     };
   }
@@ -73,6 +75,7 @@ export async function executeSkill(params: {
   const toolChain: CapabilityName[] = [];
   let stepsExecuted = 0;
   const toolResults: Record<string, ToolResult> = {};
+  const interactivePayloads: unknown[] = [];
 
   try {
     for (const step of skill.plan) {
@@ -157,6 +160,9 @@ export async function executeSkill(params: {
       }
 
       const result = toolResults[step.id];
+      if (result?.interactive) {
+        interactivePayloads.push(result.interactive);
+      }
       if (result && isFailure(result)) {
         const clarification = toolClarificationPrompt(result);
         if (clarification) {
@@ -166,6 +172,7 @@ export async function executeSkill(params: {
             postconditionsPassed: false,
             stepsExecuted,
             toolChain,
+            interactivePayloads,
             failureReason: result.error ?? "tool_clarification",
           };
         }
@@ -174,12 +181,15 @@ export async function executeSkill(params: {
     }
 
     // Minimal postcondition validator: if all tool steps succeeded, consider postconditions passed.
+    const lastStepId = skill.plan.at(-1)?.id ?? "";
+    const lastMessage = lastStepId ? toolResults[lastStepId]?.message : undefined;
     return {
       status: "success",
-      responseText: toolResults[skill.plan.at(-1)?.id ?? ""]?.message ?? renderTemplate(skill, "success"),
+      responseText: lastMessage ?? renderTemplate(skill, "success"),
       postconditionsPassed: true,
       stepsExecuted,
       toolChain,
+      interactivePayloads,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -196,6 +206,7 @@ export async function executeSkill(params: {
       postconditionsPassed: false,
       stepsExecuted,
       toolChain,
+      interactivePayloads,
       failureReason: message,
     };
   }
