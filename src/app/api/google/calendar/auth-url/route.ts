@@ -41,7 +41,7 @@ export const GET = withEmailAccount(
     const { emailAccountId } = request.auth;
     const { url, state } = getAuthUrl({
       emailAccountId,
-      baseUrl: resolveOAuthBaseUrl(request.nextUrl.origin),
+      baseUrl: resolveOAuthBaseUrl(request.nextUrl.origin, request.headers),
     });
 
     const res: GetCalendarAuthUrlResponse = { url };

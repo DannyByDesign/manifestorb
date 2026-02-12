@@ -8,7 +8,7 @@ export const GET = withError("google/calendar/callback", async (request) => {
     request,
     createGoogleCalendarProvider(
       request.logger,
-      resolveOAuthBaseUrl(request.nextUrl.origin),
+      resolveOAuthBaseUrl(request.nextUrl.origin, request.headers),
     ),
     request.logger,
   );

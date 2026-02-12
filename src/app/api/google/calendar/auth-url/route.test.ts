@@ -5,14 +5,14 @@ vi.mock("@/server/lib/middleware", () => ({
   withEmailAccount: (_scope: string, handler: any) => handler,
 }));
 vi.mock("@/features/calendar/client", () => ({
-  getCalendarOAuth2Client: vi.fn(),
+  getCalendarOAuth2ClientForBaseUrl: vi.fn(),
 }));
 vi.mock("@/server/lib/oauth/state", () => ({
   generateOAuthState: vi.fn(),
   oauthStateCookieOptions: { path: "/" },
 }));
 
-import { getCalendarOAuth2Client } from "@/features/calendar/client";
+import { getCalendarOAuth2ClientForBaseUrl } from "@/features/calendar/client";
 import { generateOAuthState } from "@/server/lib/oauth/state";
 import { CALENDAR_STATE_COOKIE_NAME } from "@/features/calendar/constants";
 import { GET } from "./route";
@@ -21,7 +21,7 @@ describe("GET /api/google/calendar/auth-url", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(generateOAuthState).mockReturnValue("state-1" as any);
-    vi.mocked(getCalendarOAuth2Client).mockReturnValue({
+    vi.mocked(getCalendarOAuth2ClientForBaseUrl).mockReturnValue({
       generateAuthUrl: vi.fn().mockReturnValue("http://google/calendar"),
     } as any);
   });

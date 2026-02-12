@@ -34,7 +34,7 @@ const getAuthUrl = ({
 
 export const GET = withAuth("google/linking/auth-url", async (request) => {
   const userId = request.auth.userId;
-  const baseUrl = resolveOAuthBaseUrl(request.nextUrl.origin);
+  const baseUrl = resolveOAuthBaseUrl(request.nextUrl.origin, request.headers);
   request.logger?.info?.("Generating Gmail linking auth URL", {
     userId,
     baseUrl,
