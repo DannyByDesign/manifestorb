@@ -47,7 +47,7 @@ export const GET = withError("google/linking/callback", async (request) => {
 
   const { targetUserId, code } = validation;
 
-  const cachedResult = await getOAuthCodeResult(code);
+  const cachedResult = await getOAuthCodeResultSafely(code, logger);
   if (cachedResult) {
     logger.info("OAuth code already processed, returning cached result", {
       targetUserId,
@@ -61,7 +61,7 @@ export const GET = withError("google/linking/callback", async (request) => {
     return response;
   }
 
-  const acquiredLock = await acquireOAuthCodeLock(code);
+  const acquiredLock = await acquireOAuthCodeLockSafely(code, logger);
   if (!acquiredLock) {
     logger.info("OAuth code is being processed by another request", {
       targetUserId,
@@ -210,7 +210,11 @@ export const GET = withError("google/linking/callback", async (request) => {
         }
       }
 
-      await setOAuthCodeResult(code, { success: "account_created_and_linked" });
+      await setOAuthCodeResultSafely(
+        code,
+        { success: "account_created_and_linked" },
+        logger,
+      );
 
       setupIntegrationsAfterOAuth({
         userId: targetUserId,
@@ -244,7 +248,11 @@ export const GET = withError("google/linking/callback", async (request) => {
         accountId: linkingResult.existingAccountId,
       });
 
-      await setOAuthCodeResult(code, { success: "tokens_updated" });
+      await setOAuthCodeResultSafely(
+        code,
+        { success: "tokens_updated" },
+        logger,
+      );
 
       setupIntegrationsAfterOAuth({
         userId: targetUserId,
@@ -294,7 +302,7 @@ export const GET = withError("google/linking/callback", async (request) => {
       mergeType,
     });
 
-    await setOAuthCodeResult(code, { success: successMessage });
+    await setOAuthCodeResultSafely(code, { success: successMessage }, logger);
 
     setupIntegrationsAfterOAuth({
       userId: targetUserId,
@@ -308,7 +316,7 @@ export const GET = withError("google/linking/callback", async (request) => {
 
     return successResponse;
   } catch (error) {
-    await clearOAuthCode(code);
+    await clearOAuthCodeSafely(code, logger);
 
     const errorUrl = new URL("/accounts", baseUrl);
     return handleOAuthCallbackError({
@@ -319,6 +327,58 @@ export const GET = withError("google/linking/callback", async (request) => {
     });
   }
 });
+
+async function getOAuthCodeResultSafely(
+  code: string,
+  logger: Logger,
+): Promise<Awaited<ReturnType<typeof getOAuthCodeResult>>> {
+  try {
+    return await getOAuthCodeResult(code);
+  } catch (error) {
+    logger.warn("OAuth idempotency read failed; continuing without cache", {
+      error,
+    });
+    return null;
+  }
+}
+
+async function acquireOAuthCodeLockSafely(
+  code: string,
+  logger: Logger,
+): Promise<boolean> {
+  try {
+    return await acquireOAuthCodeLock(code);
+  } catch (error) {
+    logger.warn("OAuth idempotency lock failed; continuing without lock", {
+      error,
+    });
+    return true;
+  }
+}
+
+async function setOAuthCodeResultSafely(
+  code: string,
+  params: Record<string, string>,
+  logger: Logger,
+): Promise<void> {
+  try {
+    await setOAuthCodeResult(code, params);
+  } catch (error) {
+    logger.warn("OAuth idempotency cache write failed; continuing", {
+      error,
+    });
+  }
+}
+
+async function clearOAuthCodeSafely(code: string, logger: Logger): Promise<void> {
+  try {
+    await clearOAuthCode(code);
+  } catch (error) {
+    logger.warn("OAuth idempotency cleanup failed; continuing", {
+      error,
+    });
+  }
+}
 
 interface GoogleTokens {
   access_token?: string | null;
