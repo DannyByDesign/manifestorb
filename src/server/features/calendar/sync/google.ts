@@ -93,19 +93,37 @@ export async function ensureGoogleCalendarWatch({
     env.NEXT_PUBLIC_BASE_URL,
   ).toString();
 
-  const response = await client.events.watch({
-    calendarId: calendar.calendarId,
-    requestBody: {
-      id: channelId,
-      type: "web_hook",
+  let response: calendar_v3.Schema$Channel | null = null;
+  try {
+    const watchResponse = await client.events.watch({
+      calendarId: calendar.calendarId,
+      requestBody: {
+        id: channelId,
+        type: "web_hook",
+        address,
+        token: channelToken,
+      },
+    });
+    response = watchResponse.data ?? null;
+  } catch (error) {
+    // Don't fail the entire connect flow if watch setup fails; initial sync can
+    // still proceed and the user can reconnect once the webhook URL/env is fixed.
+    // Common causes:
+    // - Webhook URL not HTTPS or invalid domain
+    // - Calendar API not enabled / permissions
+    logger.warn("Failed to create Google calendar watch channel", {
+      calendarId: calendar.calendarId,
       address,
-      token: channelToken,
-    },
-  });
+      error,
+      errorResponse: (error as any)?.response?.data,
+      errorStatus: (error as any)?.response?.status,
+    });
+    return;
+  }
 
-  const resourceId = response.data.resourceId ?? null;
-  const expiration = response.data.expiration
-    ? new Date(Number(response.data.expiration))
+  const resourceId = response?.resourceId ?? null;
+  const expiration = response?.expiration
+    ? new Date(Number(response.expiration))
     : null;
 
   await prisma.calendar.update({

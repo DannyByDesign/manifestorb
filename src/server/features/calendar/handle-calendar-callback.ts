@@ -23,6 +23,30 @@ import {
 } from "@/server/lib/redis/oauth-code";
 import { CALENDAR_STATE_COOKIE_NAME } from "./constants";
 
+function extractGoogleApiReason(error: unknown): string | null {
+  const reason =
+    (error as any)?.response?.data?.error?.errors?.[0]?.reason ??
+    (error as any)?.response?.data?.error?.status ??
+    null;
+  if (typeof reason !== "string" || !reason.trim()) return null;
+  return reason.trim();
+}
+
+function extractCalendarConnectError(error: unknown): string | null {
+  const reason = extractGoogleApiReason(error);
+  if (reason) {
+    // Keep it URL-safe and low-noise.
+    return `google_${reason.replace(/[^a-zA-Z0-9_\\-]/g, "_").slice(0, 80)}`;
+  }
+  if (error instanceof Error) {
+    const msg = error.message.toLowerCase();
+    if (msg.includes("invalid_grant")) return "invalid_grant";
+    if (msg.includes("no refresh_token")) return "missing_refresh_token";
+    if (msg.includes("failed to fetch calendars")) return "calendar_fetch_failed";
+  }
+  return null;
+}
+
 /**
  * Unified handler for calendar OAuth callbacks
  */
@@ -242,13 +266,19 @@ export async function handleCalendarCallback(
     }
 
     // Handle all other errors
-    logger.error("Error in calendar callback", { error });
+    const derivedError = extractCalendarConnectError(error);
+    logger.error("Error in calendar callback", {
+      error,
+      derivedError,
+      errorResponse: (error as any)?.response?.data,
+      errorStatus: (error as any)?.response?.status,
+    });
 
     // Try to build a redirect URL, fallback to /calendars
     const errorRedirectUrl = new URL("/connect", baseUrl);
     return redirectWithError(
       errorRedirectUrl,
-      "connection_failed",
+      derivedError ?? "connection_failed",
       redirectHeaders,
       { allowedOrigin: baseUrl, fallbackBaseUrl: baseUrl },
     );

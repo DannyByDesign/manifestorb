@@ -128,7 +128,11 @@ export async function fetchGoogleCalendars(
     const response = await calendarClient.calendarList.list();
     return response.data.items || [];
   } catch (error) {
-    logger.error("Error fetching Google calendars", { error });
+    logger.error("Error fetching Google calendars", {
+      error,
+      errorResponse: (error as any)?.response?.data,
+      errorStatus: (error as any)?.response?.status,
+    });
     throw new SafeError("Failed to fetch calendars");
   }
 }

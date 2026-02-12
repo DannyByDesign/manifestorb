@@ -16,18 +16,29 @@ interface OAuthCodeResult {
 }
 
 export async function acquireOAuthCodeLock(code: string): Promise<boolean> {
-  const result = await redis.set(getCodeKey(code), "processing", {
-    ex: 60,
-    nx: true, // Only set if key doesn't exist (atomic)
-  });
+  try {
+    const result = await redis.set(getCodeKey(code), "processing", {
+      ex: 60,
+      nx: true, // Only set if key doesn't exist (atomic)
+    });
 
-  return result === "OK";
+    return result === "OK";
+  } catch {
+    // Dedupe lock is an optimization. If Redis isn't configured or is down,
+    // allow the request to proceed rather than failing OAuth.
+    return true;
+  }
 }
 
 export async function getOAuthCodeResult(
   code: string,
 ): Promise<OAuthCodeResult | null> {
-  const value = await redis.get<string | OAuthCodeResult>(getCodeKey(code));
+  let value: string | OAuthCodeResult | null = null;
+  try {
+    value = await redis.get<string | OAuthCodeResult>(getCodeKey(code));
+  } catch {
+    return null;
+  }
 
   if (!value || value === "processing") {
     return null;
@@ -49,7 +60,11 @@ export async function setOAuthCodeResult(
     params,
   };
 
-  await redis.set(getCodeKey(code), result, { ex: 60 });
+  try {
+    await redis.set(getCodeKey(code), result, { ex: 60 });
+  } catch {
+    // Best-effort cache only.
+  }
 }
 
 /**
