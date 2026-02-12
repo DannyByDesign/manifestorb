@@ -164,6 +164,28 @@ export function AuthConnectionPanel() {
     }
   }, [status?.authenticated]);
 
+  const disconnectSlack = useCallback(async () => {
+    if (!status?.authenticated) return;
+    setConnecting("slack-disconnect");
+    setError(null);
+    try {
+      const response = await fetch("/api/slack/disconnect", {
+        method: "POST",
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(extractErrorMessage(payload, response.status));
+      }
+      await refresh();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to disconnect Slack.",
+      );
+    } finally {
+      setConnecting(null);
+    }
+  }, [refresh, status?.authenticated]);
+
   return (
     <div className="w-full max-w-md rounded-2xl border border-white/20 bg-black/40 p-4 text-sm text-white shadow-xl backdrop-blur-md">
       <div className="mb-3 flex items-center justify-between">
@@ -255,14 +277,28 @@ export function AuthConnectionPanel() {
               {status?.sidecars?.telegram?.linked ? "Linked" : "Not linked"}
             </p>
             {status?.authenticated && (
-              <button
-                type="button"
-                onClick={() => void startSlackConnect()}
-                disabled={connecting !== null || status?.sidecars?.slack?.linked}
-                className="mt-2 rounded bg-white px-3 py-1.5 text-black disabled:opacity-60"
-              >
-                {status?.sidecars?.slack?.linked ? "Slack Connected" : "Connect Slack"}
-              </button>
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void startSlackConnect()}
+                  disabled={connecting !== null || status?.sidecars?.slack?.linked}
+                  className="rounded bg-white px-3 py-1.5 text-black disabled:opacity-60"
+                >
+                  {status?.sidecars?.slack?.linked
+                    ? "Slack Connected"
+                    : "Connect Slack"}
+                </button>
+                {status?.sidecars?.slack?.linked && (
+                  <button
+                    type="button"
+                    onClick={() => void disconnectSlack()}
+                    disabled={connecting !== null}
+                    className="rounded border border-red-300 bg-red-500/20 px-3 py-1.5 text-red-100 disabled:opacity-60"
+                  >
+                    Disconnect Slack
+                  </button>
+                )}
+              </div>
             )}
             <p className="mt-2 text-white/70">
               Tip: DM the Amodel bot in your sidecar app. If you are not linked yet, it will send a one-time connect link.
