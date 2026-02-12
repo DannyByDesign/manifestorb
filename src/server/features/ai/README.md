@@ -2,6 +2,14 @@
 
 This module houses the core logic for the AI Agent, including tool definitions, rule management, system prompts, and model configuration.
 
+## Source of Truth Plan
+
+The production migration plan for the skills refactor lives at:
+
+`docs/plans/AI_SKILLS_REFACTOR_SOURCE_OF_TRUTH.md`
+
+Use that document as the canonical implementation reference for runtime boundaries, phased rollout, and baseline skill definitions.
+
 ## Directory Structure
 
 ```
