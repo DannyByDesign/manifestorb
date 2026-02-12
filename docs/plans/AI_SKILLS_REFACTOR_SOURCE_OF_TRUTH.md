@@ -1260,3 +1260,851 @@ Current status at this moment:
 
 - This document now includes detailed audit + build execution detail.
 - Migration code is not yet implemented in this pass.
+
+---
+
+## 31) Mandatory Task Spec Format (Use For Every Implementation Task)
+
+No task is allowed in execution unless it is written in this format.
+
+### 31.1 Task Spec Fields
+
+Every task must include:
+
+1. `Task ID`  
+2. `What we are building` (concrete artifact names + file paths)  
+3. `Why this exists` (user/problem impact)  
+4. `Inputs` (upstream data/functions/config)  
+5. `Outputs` (return shape, persisted effects, emitted events)  
+6. `Policy/Safety constraints` (what must never happen)  
+7. `Failure modes` (expected and explicit handling)  
+8. `Observability` (events, counters, logs)  
+9. `Acceptance criteria` (binary done checks)  
+10. `References` (online docs/research links)
+
+### 31.2 Quality Bar
+
+A task is incomplete if any of the following are missing:
+
+- clear artifact path
+- explicit acceptance criteria
+- at least one external reference
+- explicit failure behavior
+
+---
+
+## 32) Phase Task Specs (Execution Backlog, Non-Generic)
+
+This section converts the migration plan into concrete engineering tickets.
+
+### 32.1 Phase 0 Task Specs
+
+#### TASK-P0-001: Add skills runtime feature flags
+
+What we are building:
+- Add env parsing in `src/env.ts` for:
+  - `AI_SKILLS_MODE=off|shadow|on`
+  - `AI_SKILLS_FALLBACK_LEGACY=true|false`
+  - `AI_SKILLS_CANARY_PERCENT=0..100`
+  - `AI_SKILLS_BASELINE_ONLY=true|false`
+
+Why:
+- Controlled progressive delivery and instant rollback are required for safe production migration.
+
+Inputs:
+- existing env parsing conventions in `src/env.ts`
+
+Outputs:
+- typed `env` values available to runtime
+
+Policy/Safety constraints:
+- invalid env values must fail fast at startup
+
+Failure modes:
+- malformed env values -> startup error with explicit message
+
+Observability:
+- on boot, log resolved skills mode and canary percent (non-secret values only)
+
+Acceptance criteria:
+- app fails startup on invalid enum values
+- app boots with valid defaults and logs active mode
+
+References:
+- LaunchDarkly rollout and kill-switch guidance (Ref 23, 24)
+
+#### TASK-P0-002: Create canonical skill contract schema
+
+What we are building:
+- `src/server/features/ai/skills/contracts/skill-contract.ts`
+- `src/server/features/ai/skills/contracts/slot-types.ts`
+
+Why:
+- Deterministic skill runtime needs strict contract validation before registration and execution.
+
+Inputs:
+- baseline skill list and capability names in this document
+
+Outputs:
+- zod parser and TS types for all skill files
+
+Policy/Safety constraints:
+- reject contracts that do not declare allowed tools
+- reject contracts missing success checks/failure modes
+
+Failure modes:
+- invalid contract parse -> hard error at load time
+
+Observability:
+- emit contract-load success/failure metrics
+
+Acceptance criteria:
+- all skill files must parse through one schema
+- unregistered or malformed skill fails build/runtime init
+
+References:
+- OpenAI structured output schema discipline (Ref 3, 4)
+- Anthropic tool/skills structure guidance (Ref 1, 2)
+
+#### TASK-P0-003: Establish baseline registry
+
+What we are building:
+- `src/server/features/ai/skills/registry/baseline-registry.ts`
+
+Why:
+- Closed-set routing requires a single authoritative list.
+
+Inputs:
+- validated contracts from `skills/baseline/*.ts`
+
+Outputs:
+- immutable `Map<SkillId, SkillContract>`
+
+Policy/Safety constraints:
+- no dynamic runtime registration in production path
+
+Failure modes:
+- duplicate skill IDs -> initialization failure
+
+Observability:
+- emit `skills.registry.loaded` with count
+
+Acceptance criteria:
+- exactly configured skills are loadable
+- duplicate IDs are impossible without failing init
+
+References:
+- Anthropic skills modularity patterns (Ref 2)
+
+### 32.2 Phase 1A Task Specs
+
+#### TASK-P1A-001: Build closed-set skill router
+
+What we are building:
+- `src/server/features/ai/skills/router/route-skill.ts`
+- `src/server/features/ai/skills/router/router-prompts.ts`
+
+Why:
+- replace broad mode classification with explicit skill routing.
+
+Inputs:
+- user message
+- baseline skill IDs and intent examples
+
+Outputs:
+- `SkillRouteResult` with `skillId|null`, confidence, reason, optional clarification prompt
+
+Policy/Safety constraints:
+- router cannot emit unknown IDs
+- low-confidence route cannot execute actions
+
+Failure modes:
+- model unavailable -> conservative null-route + clarification
+
+Observability:
+- `skill.route.started/completed` events with confidence
+
+Acceptance criteria:
+- all router outputs use valid baseline IDs only
+- low confidence path asks one targeted question
+
+References:
+- Anthropic tool decision reliability patterns (Ref 1)
+- OpenAI schema-constrained routing objects (Ref 3)
+
+#### TASK-P1A-002: Build slot resolver + clarification generator
+
+What we are building:
+- `src/server/features/ai/skills/slots/resolve-slots.ts`
+- `src/server/features/ai/skills/slots/slot-clarifications.ts`
+
+Why:
+- skills require deterministic preconditions before execution.
+
+Inputs:
+- selected skill contract
+- message text
+- context pack
+
+Outputs:
+- resolved slots, missing required slots, ambiguity list
+
+Policy/Safety constraints:
+- no mutation step may run when required slots missing
+
+Failure modes:
+- ambiguous slots -> clarification prompt, no execution
+
+Observability:
+- `skill.slot_resolution.completed` with missing/ambiguous counts
+
+Acceptance criteria:
+- missing required slots always block execution
+- resolver output is deterministic for identical inputs
+
+References:
+- Structured planning/slot-filling reliability in tool-based agents (Ref 1, 3)
+
+#### TASK-P1A-003: Build deterministic executor with allowed-tools enforcement
+
+What we are building:
+- `src/server/features/ai/skills/executor/execute-skill.ts`
+- `src/server/features/ai/skills/executor/step-runner.ts`
+
+Why:
+- enforce execution boundary: no arbitrary tool calling in production path.
+
+Inputs:
+- selected skill contract
+- resolved slots
+- capability facade map
+
+Outputs:
+- `SkillExecutionResult`
+
+Policy/Safety constraints:
+- hard-block any step not in `allowed_tools`
+- approval-required skills must pass approval gate before mutating calls
+
+Failure modes:
+- capability error -> normalized skill failure, no fake success
+
+Observability:
+- per-step emit: tool name, duration, result status
+
+Acceptance criteria:
+- executor cannot call undeclared capability
+- execution stops on policy violation
+
+References:
+- MCP least-privilege / safe tool mediation (Ref 5)
+- OpenAI/Anthropic tool-control guidance (Ref 1, 3)
+
+#### TASK-P1A-004: Build postcondition validator
+
+What we are building:
+- `src/server/features/ai/skills/executor/postconditions.ts`
+
+Why:
+- prevent fabricated “success” responses.
+
+Inputs:
+- skill result payload
+- expected success checks from contract
+
+Outputs:
+- pass/fail + reason code
+
+Policy/Safety constraints:
+- user success message cannot be emitted when postconditions fail
+
+Failure modes:
+- postcondition mismatch -> explicit failed/partial status
+
+Observability:
+- `skill.postcondition.completed` with reason
+
+Acceptance criteria:
+- mutation skills require confirmation evidence (e.g., created event id, modified count)
+
+References:
+- Eval-driven reliability and output validation patterns (Ref 4)
+
+#### TASK-P1A-005: Build capability facades
+
+What we are building:
+- `src/server/features/ai/capabilities/email.ts`
+- `src/server/features/ai/capabilities/calendar.ts`
+- `src/server/features/ai/capabilities/planner.ts`
+- `src/server/features/ai/capabilities/index.ts`
+
+Why:
+- decouple skill logic from polymorphic tool interfaces.
+
+Inputs:
+- existing tool/provider implementation paths
+
+Outputs:
+- narrow typed methods used by skills only
+
+Policy/Safety constraints:
+- no facade should expose raw polymorphic `resource/action` interface
+
+Failure modes:
+- underlying provider errors mapped to stable capability errors
+
+Observability:
+- capability call counters + latency histograms
+
+Acceptance criteria:
+- each facade method has a single responsibility and typed IO
+
+References:
+- API design best practice: narrow contracts improve reliability (Ref 1, 3)
+- Google API method-specific contracts (Ref 6, 17, 18)
+
+### 32.3 Phase 1B Task Specs
+
+#### TASK-P1B-001..016: Implement 16 baseline skills
+
+What we are building:
+- `src/server/features/ai/skills/baseline/<skill-id>.ts` for all 16 skills
+
+Why:
+- convert high-frequency inbox/calendar workflows into deterministic skill plans.
+
+Inputs:
+- skill contract schema
+- capability facades
+
+Outputs:
+- validated contracts with explicit slots/plans/checks/failures/templates
+
+Policy/Safety constraints:
+- each skill declares allowed capabilities
+- mutation skills define approval behavior
+
+Failure modes:
+- all skill files must include failure modes with user-safe fallback copy
+
+Observability:
+- skill-level success/failure metrics
+
+Acceptance criteria:
+- each skill compiles, validates, and registers
+- each skill has contract-complete metadata
+
+References:
+- Gmail and Calendar primitive docs for relevant actions (Ref 6, 8-13, 17, 18)
+
+### 32.4 Phase 2 Task Specs
+
+#### TASK-P2-001: Integrate skills path in message processor
+
+What we are building:
+- update `src/server/features/ai/message-processor.ts` to dispatch:
+  - `off`: legacy only
+  - `shadow`: run both, return legacy
+  - `on`: run skills, optional legacy fallback
+
+Why:
+- production-safe migration with no blind cutover.
+
+Inputs:
+- skills runtime modules
+- env flags
+
+Outputs:
+- mode-controlled runtime path
+
+Policy/Safety constraints:
+- shadow mode must never user-impact output path
+
+Failure modes:
+- skills crash in shadow should not break legacy response
+
+Observability:
+- shadow mismatch event emission
+
+Acceptance criteria:
+- explicit mode behavior verified in runtime logs
+
+References:
+- feature-flag progressive rollout patterns (Ref 23, 24)
+
+#### TASK-P2-002: Implement shadow mismatch taxonomy
+
+What we are building:
+- comparison logic and mismatch categorization in message processor/or telemetry module
+
+Why:
+- identify exactly why skills and legacy diverge before cutover.
+
+Inputs:
+- legacy result + skills result
+
+Outputs:
+- mismatch category event
+
+Policy/Safety constraints:
+- no PII leakage in mismatch logs
+
+Failure modes:
+- comparator errors must not block response path
+
+Observability:
+- mismatch count by category dashboard inputs
+
+Acceptance criteria:
+- each mismatch is categorized into known taxonomy
+
+References:
+- eval + structured comparison practices (Ref 4)
+
+### 32.5 Phase 3 Task Specs
+
+#### TASK-P3-001: Minimize system prompt to policy/style shell
+
+What we are building:
+- refactor `src/server/features/ai/system-prompt.ts`
+
+Why:
+- remove operational logic from prompt and prevent prompt sprawl.
+
+Inputs:
+- existing prompt and skills contracts
+
+Outputs:
+- slim prompt with only global policy/style/injection constraints
+
+Policy/Safety constraints:
+- preserve anti-injection and approval policy statements
+
+Failure modes:
+- accidental removal of core safety policy
+
+Observability:
+- prompt length and sections tracked in PR notes
+
+Acceptance criteria:
+- operational procedures now live in skills, not prompt prose
+
+References:
+- tool-mediated vs prompt-only reliability guidance (Ref 1, 3)
+
+### 32.6 Phase 4 Task Specs
+
+#### TASK-P4-001: Canary rollout operations
+
+What we are building:
+- staged rollout procedure using env flags and dashboards
+
+Why:
+- reduce blast radius and enable fast rollback.
+
+Inputs:
+- canary percent flag
+- telemetry dashboards
+
+Outputs:
+- controlled progression: 5 -> 20 -> 50 -> 100
+
+Policy/Safety constraints:
+- auto-halt progression on gate failures
+
+Failure modes:
+- increased errors -> immediate mode off
+
+Observability:
+- gate metrics sampled at each stage
+
+Acceptance criteria:
+- progression only after 24h stable at each stage
+
+References:
+- progressive rollout and kill-switch best practices (Ref 23, 24)
+
+### 32.7 Phase 5 Task Specs
+
+#### TASK-P5-001: Delete legacy covered paths
+
+What we are building:
+- remove legacy branches for baseline-covered intents
+
+Why:
+- reduce maintenance cost and prevent dual-runtime drift.
+
+Inputs:
+- stability evidence from canary and full rollout
+
+Outputs:
+- deleted legacy code + simpler runtime graph
+
+Policy/Safety constraints:
+- no deletion before gates pass
+
+Failure modes:
+- accidental removal of needed fallback path before stable rollout
+
+Observability:
+- change in codepath selection counters
+
+Acceptance criteria:
+- no runtime reference to removed path for covered intents
+
+References:
+- release-flag lifecycle and cleanup debt prevention (Ref 23, 24)
+
+---
+
+## 33) Per-Skill Acceptance Matrix (Why + Done Criteria + References)
+
+Use this matrix during implementation reviews. A skill is not “done” unless all criteria pass.
+
+| Skill | Why it exists | Hard acceptance criteria | Key references |
+|---|---|---|---|
+| `inbox_triage_today` | Users need immediate actionable priority queue | Returns ranked actionable list; excludes low-signal noise; no destructive action | Ref 14, 15 |
+| `inbox_bulk_newsletter_cleanup` | Inbox overload from promos/newsletters | Candidate detection + explicit count + safe archive execution with ownership checks | Ref 17, 8, 10 |
+| `inbox_subscription_control` | Reduce recurring inbox noise permanently | Unsubscribe/block action uses sender evidence and returns explicit status | Ref 10, 17 |
+| `inbox_snooze_or_defer` | Preserve focus without losing threads | Valid future defer time required; all target threads confirm deferred state | Ref 17 |
+| `inbox_thread_summarize_actions` | Long thread digestion | Output has decisions/actions/deadlines sections with no hallucinated actions | Ref 1, 3 |
+| `inbox_draft_reply` | Fast response drafting | Creates draft ID with recipient + intent completeness; no send side effects | Ref 17, 3 |
+| `inbox_schedule_send` | Better send timing | Valid schedule window, provider confirmation, timezone handling | Ref 9, 17 |
+| `inbox_followup_guard` | Prevent dropped conversations | Identifies awaiting-reply risk set; proposes concrete nudges | Ref 14, 15 |
+| `calendar_find_availability` | Scheduling speed | Returns conflict-aware candidate slots from freebusy data | Ref 6, 18 |
+| `calendar_schedule_from_context` | Convert context to event quickly | Event created with attendees/title/time, returns event ID | Ref 6, 11 |
+| `calendar_reschedule_with_constraints` | Reduce schedule friction | Maintains duration + attendee constraints when moving event | Ref 6 |
+| `calendar_focus_time_defense` | Defend deep work blocks | Focus blocks created/updated and conflict policy enforced | Ref 11 |
+| `calendar_working_hours_ooo` | Enforce boundaries | Working hours/OOO persisted with explicit user-visible summary | Ref 12 |
+| `calendar_booking_page_setup` | External scheduling automation | Appointment schedule created with duration/buffer/cap constraints | Ref 13 |
+| `calendar_meeting_load_rebalance` | Reduce meeting overload | Identifies movable meetings and reports reclaimed focus time | Ref 14, 15 |
+| `daily_plan_inbox_calendar` | Unified daily execution plan | Produces integrated plan combining email priorities + meetings + focus windows | Ref 14, 15 |
+
+---
+
+## 34) Additional References for Engineering Constraints
+
+16. OpenTelemetry HTTP semantic conventions: https://opentelemetry.io/docs/specs/semconv/http/http-spans/
+17. Gmail API `users.messages.batchModify`: https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/batchModify
+18. Google Calendar API `freeBusy.query`: https://developers.google.com/workspace/calendar/api/v3/reference/freebusy/query
+19. RFC 7231 idempotent methods (HTTP semantics): https://www.rfc-editor.org/rfc/rfc7231.html
+20. Google Cloud retry strategy (truncated exponential backoff + jitter): https://cloud.google.com/iam/docs/retry-strategy
+21. Google Memorystore exponential backoff guidance: https://docs.cloud.google.com/memorystore/docs/redis/exponential-backoff
+22. Google API retry recommendation (`RetryInfo`): https://developers.google.com/data-manager/api/reference/rest/v1/RetryInfo
+23. LaunchDarkly release management best practices: https://launchdarkly.com/guides/9-best-practices-for-release-management/release-management-best-practices/
+24. LaunchDarkly release flag rollout patterns: https://launchdarkly.com/blog/release-management-flags-best-practices/
+
+---
+
+## 35) Edge-Case Catalog (Mandatory Handling Before Cutover)
+
+This catalog is binding. Each item must have explicit handling in code and telemetry.
+
+### 35.1 Router Edge Cases
+
+1. Empty input (`""`, whitespace, emoji-only)
+- Handling: return `skillId=null`, ask concise clarification.
+- Must not execute capabilities.
+
+2. Multi-intent input (“archive newsletters and schedule with Alex tomorrow”)
+- Handling: choose single primary skill + ask disambiguation for second intent.
+- Must not silently drop secondary intent; log `ROUTE_DIFFERENCE` in shadow.
+
+3. Ambiguous intent with high lexical overlap (`inbox_followup_guard` vs `inbox_triage_today`)
+- Handling: confidence tie-breaker by slot resolvability and risk level.
+- If tie persists, clarify.
+
+4. Adversarial/tool-injection text in user message
+- Handling: router treats as plain text intent, never as executable instructions.
+- Preserve existing anti-injection policy in system prompt.
+
+5. Very long input near token boundaries
+- Handling: truncate for routing summary only; preserve full text for downstream context if needed.
+- Emit `route_input_truncated=true`.
+
+6. Non-English or mixed-language phrasing
+- Handling: attempt route, lower confidence threshold not allowed; clarify if below threshold.
+
+### 35.2 Slot Resolver Edge Cases
+
+1. Relative datetime ambiguity (“next Friday afternoon”, “this Thursday” across timezone boundaries)
+- Handling: resolve with account timezone; if ambiguous (DST/locale), ask one clarifying question.
+- Reference: date/time semantics and timezone handling best practices (Ref 6, 18, 19).
+
+2. DST gap/overlap times
+- Handling: detect invalid local time and offer closest valid alternatives.
+- Emit `slot_ambiguous_reason=dst_overlap_or_gap`.
+
+3. Pronoun attendees (“with them”, “with the team”)
+- Handling: use deterministic context resolution only if single high-confidence match; otherwise clarify.
+
+4. Missing required slot after context fallback
+- Handling: block execution and ask targeted question (exact missing field names).
+
+5. Conflicting slot evidence (thread says one attendee, user message says another)
+- Handling: prefer explicit current user message and log conflict.
+
+6. Untrusted derived slot from external content
+- Handling: do not treat external content as authoritative instruction source.
+
+### 35.3 Executor Edge Cases
+
+1. Duplicate request replay (same user prompt retried)
+- Handling: idempotency key on `message|thread|conversation` scope based on skill contract.
+- Must return prior result when safe.
+
+2. Partial success in multi-step plan
+- Handling: return `partial` status with explicit completed vs skipped actions.
+- Never return full success on partial mutation.
+
+3. Capability timeout mid-plan
+- Handling: bounded retries with jitter only for idempotent steps; fail safely otherwise.
+- References: backoff and retry guidance (Ref 20, 21, 22).
+
+4. Rate-limit responses from providers
+- Handling: normalize to retriable/non-retriable and expose user-safe guidance.
+
+5. Approval required but missing approval context
+- Handling: block with approval-required response template; no mutation.
+
+6. Out-of-contract capability request from skill plan
+- Handling: hard fail + security event (`allowed_tools_violation`).
+
+### 35.4 Gmail Capability Edge Cases
+
+1. Pagination incomplete reads
+- Handling: explicit page-token loop for operations requiring full scope.
+
+2. Incremental sync invalid/expired `startHistoryId` (`HTTP 404`)
+- Handling: full sync fallback path.
+- Reference: Gmail history docs (Ref 25/0search0 equivalent).
+
+3. Batch archive over allowed limits
+- Handling: chunk request sizes and aggregate result.
+
+4. Missing unsubscribe metadata
+- Handling: soft-fail with recommended manual sender block path.
+
+5. Draft exists but send scheduling fails
+- Handling: preserve draft state, return schedule failure, no draft deletion.
+
+### 35.5 Calendar Capability Edge Cases
+
+1. Push watch for unsupported resources/calendars
+- Handling: do not attempt watch on non-watchable resources; skip and log at info/warn.
+- Reference: push watchable resources docs (Ref 26/turn0search2).
+
+2. Holiday/resource calendars returning `pushNotSupportedForRequestedResource`
+- Handling: classify as expected non-actionable warning, no error escalation.
+
+3. Recurring event updates (`this event` vs `series` vs `this and following`)
+- Handling: require explicit scope; use two-step split pattern for “this and following”.
+- Reference: recurring event docs (Ref 27/turn0search1).
+
+4. Event type constraints (`focusTime`, `outOfOffice`, `workingLocation`)
+- Handling: validate required fields and allowed operations before mutation.
+- Reference: status events guide and events API constraints (Ref 16, 6, 7).
+
+5. Moving event types that cannot be moved
+- Handling: block with explicit policy error; suggest alternative.
+- Reference: events method constraints (Ref 7).
+
+6. Free/busy no overlap
+- Handling: return alternatives (wider window, shorter duration) instead of generic failure.
+
+### 35.6 Telemetry Edge Cases
+
+1. High-cardinality attributes (raw user IDs, thread IDs, free-form text)
+- Handling: hash IDs, never emit message text, cap label cardinality.
+- Reference: OpenTelemetry cardinality and attribute requirement guidance (Ref 28, 29, 30).
+
+2. Telemetry emitter outage
+- Handling: fail-open (runtime unaffected), buffered/no-op fallback.
+
+3. Sensitive payload leakage
+- Handling: strict field allowlist for events.
+
+### 35.7 Rollout and Operations Edge Cases
+
+1. Shadow/legacy output mismatch spikes
+- Handling: hold rollout, classify mismatch category, open blocking issue.
+
+2. Canary degradation of success/SLO metrics
+- Handling: immediate kill-switch to `AI_SKILLS_MODE=off`.
+
+3. Cross-deploy stale clients (e.g., older action ids)
+- Handling: return deterministic stale-action response and refresh guidance.
+
+4. Env drift across regions/services
+- Handling: startup log of effective skills flags and config checksum.
+
+---
+
+## 36) Edge Cases by Baseline Skill (Atomic Checklist)
+
+Each skill implementation PR must check all relevant edge cases below.
+
+### 36.1 Inbox Skills
+
+`inbox_triage_today`
+- edge cases:
+  - no actionable messages today
+  - conflicting urgency signals
+  - duplicate threads in results
+
+`inbox_bulk_newsletter_cleanup`
+- edge cases:
+  - important transactional email misclassified as newsletter
+  - large result set > provider page/chunk limits
+  - unsubscribe-only threads with no archive candidate
+
+`inbox_subscription_control`
+- edge cases:
+  - sender has no unsubscribe header/link
+  - multiple sender variants for same list
+  - sender belongs to allowlist
+
+`inbox_snooze_or_defer`
+- edge cases:
+  - defer time in the past
+  - timezone unknown
+  - mixed thread ownership or missing thread ids
+
+`inbox_thread_summarize_actions`
+- edge cases:
+  - thread too long/truncated upstream
+  - no explicit action items in thread
+  - contradictory statements across replies
+
+`inbox_draft_reply`
+- edge cases:
+  - recipient unresolved
+  - missing intent/body
+  - conflicting tone instructions
+
+`inbox_schedule_send`
+- edge cases:
+  - draft id missing/not owned
+  - send time outside provider constraints
+  - daylight-saving transition at send time
+
+`inbox_followup_guard`
+- edge cases:
+  - replied threads misdetected as awaiting reply
+  - very old threads causing noise
+  - duplicate follow-up candidates
+
+### 36.2 Calendar Skills
+
+`calendar_find_availability`
+- edge cases:
+  - participants without calendars/access
+  - no overlap window
+  - duration too long for requested window
+
+`calendar_schedule_from_context`
+- edge cases:
+  - pronoun attendee ambiguity
+  - invalid start/duration combination
+  - duplicate event creation request
+
+`calendar_reschedule_with_constraints`
+- edge cases:
+  - immutable/non-movable event type
+  - recurring instance scope ambiguity
+  - no valid slots under constraints
+
+`calendar_focus_time_defense`
+- edge cases:
+  - all-day request invalid for focusTime
+  - overlaps with hard commitments
+  - auto-decline mode unsupported
+
+`calendar_working_hours_ooo`
+- edge cases:
+  - invalid working-hours range
+  - overlapping out-of-office windows
+  - location visibility constraints
+
+`calendar_booking_page_setup`
+- edge cases:
+  - invalid buffer/cap configuration
+  - timezone missing
+  - conflicting existing booking policies
+
+`calendar_meeting_load_rebalance`
+- edge cases:
+  - meetings with immovable attendees
+  - recurring series over-modification risk
+  - reclaimed-time below threshold
+
+`daily_plan_inbox_calendar`
+- edge cases:
+  - one source unavailable (email/calendar outage)
+  - too many candidate actions for readable output
+  - conflicting priorities from user prefs vs urgency model
+
+---
+
+## 37) Reference Coverage Matrix (Every Area -> External Docs)
+
+This matrix enforces that every implementation area is grounded in online references.
+
+| Area | Required refs |
+|---|---|
+| Tool-mediated agent boundaries | Ref 1, 2, 3, 5 |
+| Structured outputs / schema contracts | Ref 3, 4 |
+| Retry / idempotency / backoff | Ref 19, 20, 21, 22 |
+| Gmail operations and sync behavior | Ref 17, 25 |
+| Calendar event mutation behavior | Ref 6, 7, 16, 18, 27 |
+| Calendar push/watch behavior | Ref 26 |
+| OAuth installation and scope errors (Slack sidecar onboarding reliability) | Ref 31 |
+| Canary and release safety | Ref 23, 24, 32 |
+| Telemetry semantic + cardinality safety | Ref 28, 29, 30 |
+| HTTP error envelope conventions | Ref 33 |
+
+Rule:
+- Every implementation PR must cite at least one reference from this matrix for each area touched.
+
+---
+
+## 38) PR-Level Atomic Acceptance Template
+
+Each implementation PR in this migration must include:
+
+1. Scope
+- exact files changed
+- exact tasks (Task IDs)
+
+2. Behavioral delta
+- what changed in runtime behavior
+- what did not change
+
+3. Edge cases handled
+- explicit list from Section 35/36
+
+4. Observability updates
+- events added/changed
+- dashboards impacted
+
+5. Documentation basis
+- references used (IDs + URLs)
+
+6. Rollback strategy
+- config or commit-level rollback steps
+
+A PR that does not include this template is not ready for merge.
+
+---
+
+## 39) Additional References (Edge-Case and Ops Grounding)
+
+25. Gmail `users.history.list` (invalid/outdated `startHistoryId` and full sync guidance): https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.history/list
+26. Google Calendar push notifications/watchable resources: https://developers.google.com/workspace/calendar/api/guides/push
+27. Google Calendar recurring event mutation guidance: https://developers.google.com/calendar/api/guides/recurringevents
+28. OpenTelemetry semantic conventions overview: https://opentelemetry.io/docs/concepts/semantic-conventions/
+29. OpenTelemetry attribute requirement levels and cardinality implications: https://opentelemetry.io/docs/specs/semconv/general/attribute-requirement-level/
+30. OpenTelemetry convention writing guidance (PII and attribute discipline): https://opentelemetry.io/docs/specs/semconv/how-to-write-conventions/
+31. Slack OAuth install errors (`invalid_scope`, `bad_redirect_uri`): https://docs.slack.dev/authentication/installing-with-oauth
+32. Google SRE canarying releases: https://sre.google/workbook/canarying-releases/
+33. RFC 9457 Problem Details for HTTP APIs: https://datatracker.ietf.org/doc/html/rfc9457
