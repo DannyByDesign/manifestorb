@@ -9,7 +9,6 @@ import { generateSlackOAuthState } from "@/server/integrations/slack/oauth";
 const SLACK_BOT_SCOPES = [
   "chat:write",
   "im:write",
-  "app_home:read",
 ].join(",");
 
 export const GET = withError("slack/install-url", async (request) => {
@@ -52,4 +51,3 @@ export const GET = withError("slack/install-url", async (request) => {
   });
   return res;
 });
-
