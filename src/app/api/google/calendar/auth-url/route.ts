@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
-import { withEmailAccount } from "@/server/lib/middleware";
-import { getCalendarOAuth2ClientForBaseUrl } from "@/features/calendar/client";
+import { auth } from "@/server/auth";
+import prisma from "@/server/db/client";
+import { withError } from "@/server/lib/middleware";
+import { EMAIL_ACCOUNT_HEADER } from "@/server/lib/config";
 import { CALENDAR_STATE_COOKIE_NAME } from "@/features/calendar/constants";
-import { CALENDAR_SCOPES } from "@/server/integrations/google/scopes";
 import {
   generateOAuthState,
   oauthStateCookieOptions,
 } from "@/server/lib/oauth/state";
 import { resolveOAuthBaseUrl } from "@/server/lib/oauth/base-url";
+import { generateGoogleOAuthUrl } from "@/server/lib/oauth/google-connect";
 
 export type GetCalendarAuthUrlResponse = { url: string };
 
@@ -18,41 +20,76 @@ const getAuthUrl = ({
   emailAccountId: string;
   baseUrl: string;
 }) => {
-  const oauth2Client = getCalendarOAuth2ClientForBaseUrl(baseUrl);
-
   const state = generateOAuthState({
     emailAccountId,
     type: "calendar",
   });
 
-  const url = oauth2Client.generateAuthUrl({
-    access_type: "offline",
-    scope: CALENDAR_SCOPES,
+  const url = generateGoogleOAuthUrl({
+    kind: "calendar",
+    baseUrl,
     state,
-    prompt: "consent",
   });
 
   return { url, state };
 };
 
-export const GET = withEmailAccount(
-  "google/calendar/auth-url",
-  async (request) => {
-    const { emailAccountId } = request.auth;
-    const { url, state } = getAuthUrl({
-      emailAccountId,
-      baseUrl: resolveOAuthBaseUrl(request.nextUrl.origin, request.headers),
+async function resolveEmailAccountId(
+  userId: string,
+  requestedId: string | null,
+): Promise<string | null> {
+  if (requestedId) {
+    const match = await prisma.emailAccount.findFirst({
+      where: { id: requestedId, userId },
+      select: { id: true },
     });
+    if (match) return match.id;
+  }
 
-    const res: GetCalendarAuthUrlResponse = { url };
-    const response = NextResponse.json(res);
+  const fallback = await prisma.emailAccount.findFirst({
+    where: { userId },
+    select: { id: true },
+    orderBy: { createdAt: "asc" },
+  });
+  return fallback?.id ?? null;
+}
 
-    response.cookies.set(
-      CALENDAR_STATE_COOKIE_NAME,
-      state,
-      oauthStateCookieOptions,
+export const GET = withError("google/calendar/auth-url", async (request) => {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    return NextResponse.json(
+      { error: "Unauthorized", isKnownError: true },
+      { status: 401 },
     );
+  }
 
-    return response;
-  },
-);
+  const requestedEmailAccountId = request.headers.get(EMAIL_ACCOUNT_HEADER);
+  const emailAccountId = await resolveEmailAccountId(
+    userId,
+    requestedEmailAccountId,
+  );
+
+  if (!emailAccountId) {
+    return NextResponse.json(
+      { error: "Connect Gmail first before connecting Calendar." },
+      { status: 400 },
+    );
+  }
+
+  const { url, state } = getAuthUrl({
+    emailAccountId,
+    baseUrl: resolveOAuthBaseUrl(request.nextUrl.origin, request.headers),
+  });
+
+  const res: GetCalendarAuthUrlResponse = { url };
+  const response = NextResponse.json(res);
+
+  response.cookies.set(
+    CALENDAR_STATE_COOKIE_NAME,
+    state,
+    oauthStateCookieOptions,
+  );
+
+  return response;
+});

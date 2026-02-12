@@ -1,5 +1,3 @@
-import { env } from "@/env";
-
 const LOCAL_ORIGIN_RE =
   /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/i;
 
@@ -47,7 +45,7 @@ function getForwardedOrigin(headers?: Headers): string | null {
 
 function isUsableOrigin(origin: string | null): origin is string {
   if (!origin) return false;
-  if (env.NODE_ENV !== "production") return true;
+  if (process.env.NODE_ENV !== "production") return true;
   return !LOCAL_ORIGIN_RE.test(origin);
 }
 
@@ -57,7 +55,7 @@ export function resolveOAuthBaseUrl(
 ): string {
   const forwardedOrigin = getForwardedOrigin(headers);
   const origin = normalizeToOrigin(requestOrigin);
-  const appOrigin = normalizeToOrigin(env.NEXT_PUBLIC_BASE_URL);
+  const appOrigin = normalizeToOrigin(process.env.NEXT_PUBLIC_BASE_URL);
 
   if (isUsableOrigin(forwardedOrigin)) return forwardedOrigin;
   if (isUsableOrigin(origin)) return origin;

@@ -1,4 +1,8 @@
-import { env } from "@/env";
+function parseBooleanEnv(value?: string | null): boolean {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === "true" || normalized === "1" || normalized === "yes";
+}
 
 export const SCOPES = [
   "https://www.googleapis.com/auth/userinfo.profile",
@@ -6,7 +10,7 @@ export const SCOPES = [
 
   "https://www.googleapis.com/auth/gmail.modify",
   "https://www.googleapis.com/auth/gmail.settings.basic",
-  ...(env.NEXT_PUBLIC_CONTACTS_ENABLED
+  ...(parseBooleanEnv(process.env.NEXT_PUBLIC_CONTACTS_ENABLED)
     ? ["https://www.googleapis.com/auth/contacts"]
     : []),
 ];

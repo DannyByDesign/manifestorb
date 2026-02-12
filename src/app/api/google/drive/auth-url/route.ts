@@ -1,36 +1,77 @@
 import { NextResponse } from "next/server";
-import { withEmailAccount } from "@/server/lib/middleware";
-import { getGoogleDriveOAuth2Url } from "@/features/drive/client";
+import { auth } from "@/server/auth";
+import prisma from "@/server/db/client";
+import { withError } from "@/server/lib/middleware";
+import { EMAIL_ACCOUNT_HEADER } from "@/server/lib/config";
 import { DRIVE_STATE_COOKIE_NAME } from "@/features/drive/constants";
 import {
   generateOAuthState,
   oauthStateCookieOptions,
 } from "@/server/lib/oauth/state";
 import { resolveOAuthBaseUrl } from "@/server/lib/oauth/base-url";
+import { generateGoogleOAuthUrl } from "@/server/lib/oauth/google-connect";
 
 export type GetDriveAuthUrlResponse = { url: string };
 
-export const GET = withEmailAccount(
-  "google/drive/auth-url",
-  async (request) => {
-    const { emailAccountId } = request.auth;
-    const { url, state } = getAuthUrl({
-      emailAccountId,
-      baseUrl: resolveOAuthBaseUrl(request.nextUrl.origin, request.headers),
+async function resolveEmailAccountId(
+  userId: string,
+  requestedId: string | null,
+): Promise<string | null> {
+  if (requestedId) {
+    const match = await prisma.emailAccount.findFirst({
+      where: { id: requestedId, userId },
+      select: { id: true },
     });
+    if (match) return match.id;
+  }
 
-    const res: GetDriveAuthUrlResponse = { url };
-    const response = NextResponse.json(res);
+  const fallback = await prisma.emailAccount.findFirst({
+    where: { userId },
+    select: { id: true },
+    orderBy: { createdAt: "asc" },
+  });
+  return fallback?.id ?? null;
+}
 
-    response.cookies.set(
-      DRIVE_STATE_COOKIE_NAME,
-      state,
-      oauthStateCookieOptions,
+export const GET = withError("google/drive/auth-url", async (request) => {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    return NextResponse.json(
+      { error: "Unauthorized", isKnownError: true },
+      { status: 401 },
     );
+  }
 
-    return response;
-  },
-);
+  const requestedEmailAccountId = request.headers.get(EMAIL_ACCOUNT_HEADER);
+  const emailAccountId = await resolveEmailAccountId(
+    userId,
+    requestedEmailAccountId,
+  );
+
+  if (!emailAccountId) {
+    return NextResponse.json(
+      { error: "Connect Gmail first before connecting Drive." },
+      { status: 400 },
+    );
+  }
+
+  const { url, state } = getAuthUrl({
+    emailAccountId,
+    baseUrl: resolveOAuthBaseUrl(request.nextUrl.origin, request.headers),
+  });
+
+  const res: GetDriveAuthUrlResponse = { url };
+  const response = NextResponse.json(res);
+
+  response.cookies.set(
+    DRIVE_STATE_COOKIE_NAME,
+    state,
+    oauthStateCookieOptions,
+  );
+
+  return response;
+});
 
 const getAuthUrl = ({
   emailAccountId,
@@ -44,7 +85,11 @@ const getAuthUrl = ({
     type: "drive",
   });
 
-  const url = getGoogleDriveOAuth2Url(state, baseUrl);
+  const url = generateGoogleOAuthUrl({
+    kind: "drive",
+    baseUrl,
+    state,
+  });
 
   return { url, state };
 };

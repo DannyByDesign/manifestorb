@@ -1,4 +1,3 @@
-import { env } from "@/env";
 import crypto from "node:crypto";
 
 /**
@@ -28,7 +27,7 @@ export function parseOAuthState<T extends Record<string, unknown>>(
   try {
     const decoded = Buffer.from(state, "base64url").toString("utf8");
     return JSON.parse(decoded);
-  } catch (error) {
+  } catch {
     throw new Error("Invalid OAuth state format");
   }
 }
@@ -38,7 +37,7 @@ export function parseOAuthState<T extends Record<string, unknown>>(
  */
 export const oauthStateCookieOptions = {
   httpOnly: true,
-  secure: env.NODE_ENV !== "development",
+  secure: process.env.NODE_ENV !== "development",
   maxAge: 60 * 10, // 10 minutes
   path: "/",
   sameSite: "lax",

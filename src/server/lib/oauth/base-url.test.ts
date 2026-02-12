@@ -8,12 +8,8 @@ async function loadResolver({
   baseUrl?: string;
 }) {
   vi.resetModules();
-  vi.doMock("@/env", () => ({
-    env: {
-      NODE_ENV: nodeEnv,
-      NEXT_PUBLIC_BASE_URL: baseUrl,
-    },
-  }));
+  process.env.NODE_ENV = nodeEnv;
+  process.env.NEXT_PUBLIC_BASE_URL = baseUrl;
   return import("./base-url");
 }
 
