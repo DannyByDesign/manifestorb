@@ -112,6 +112,24 @@ export async function handleCalendarCallback(
       email,
     );
 
+    // Google may not re-issue refresh_token. For new connections, fall back to the
+    // underlying Google account refresh token (from the Gmail linking flow).
+    let refreshTokenToUse = refreshToken;
+    if (!refreshTokenToUse) {
+      const emailAccount = await prisma.emailAccount.findUnique({
+        where: { id: emailAccountId },
+        select: { account: { select: { refresh_token: true } } },
+      });
+      const accountRefresh = emailAccount?.account?.refresh_token ?? null;
+      if (accountRefresh) {
+        logger.info(
+          "Using existing Google account refresh token for calendar connection",
+          { emailAccountId, provider: provider.name },
+        );
+        refreshTokenToUse = accountRefresh;
+      }
+    }
+
     if (existingConnection) {
       logger.info("Calendar connection already exists, updating tokens", {
         emailAccountId,
@@ -124,7 +142,9 @@ export async function handleCalendarCallback(
         where: { id: existingConnection.id },
         data: {
           accessToken,
-          refreshToken,
+          // Preserve existing refresh token if Google did not re-issue one.
+          refreshToken:
+            refreshTokenToUse ?? existingConnection.refreshToken,
           expiresAt: expiresAt ? new Date(expiresAt) : null,
         },
       });
@@ -139,13 +159,32 @@ export async function handleCalendarCallback(
       );
     }
 
+    if (!refreshTokenToUse) {
+      const missingRefreshRedirect = buildCalendarRedirectUrl(
+        emailAccountId,
+        baseUrl,
+      );
+      missingRefreshRedirect.searchParams.set("error", "missing_refresh_token");
+      logger.error(
+        "Calendar connect failed: missing refresh token for new connection",
+        { emailAccountId, email, provider: provider.name },
+      );
+      await setOAuthCodeResult(code, { error: "missing_refresh_token" });
+      return redirectWithError(
+        missingRefreshRedirect,
+        "missing_refresh_token",
+        redirectHeaders,
+        { allowedOrigin: baseUrl, fallbackBaseUrl: baseUrl },
+      );
+    }
+
     // Step 7: Create calendar connection
     const connection = await createCalendarConnection({
       provider: provider.name,
       email,
       emailAccountId,
       accessToken,
-      refreshToken,
+      refreshToken: refreshTokenToUse,
       expiresAt,
     });
 
@@ -153,7 +192,7 @@ export async function handleCalendarCallback(
     await provider.syncCalendars(
       connection.id,
       accessToken,
-      refreshToken,
+      refreshTokenToUse,
       emailAccountId,
       expiresAt,
     );
@@ -183,6 +222,17 @@ export async function handleCalendarCallback(
     }
     // Handle redirect errors
     if (error instanceof RedirectError) {
+      const rawError = error.redirectUrl.searchParams.get("error");
+      if (rawError) {
+        // Preserve the specific error for UI/debugging (e.g. invalid_state).
+        error.redirectUrl.searchParams.set("error", rawError);
+        return redirectWithError(
+          error.redirectUrl,
+          rawError,
+          error.responseHeaders,
+          { allowedOrigin: baseUrl, fallbackBaseUrl: baseUrl },
+        );
+      }
       return redirectWithError(
         error.redirectUrl,
         "connection_failed",

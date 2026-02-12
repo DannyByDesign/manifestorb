@@ -4,6 +4,27 @@ import { booleanString } from "@/server/lib/zod";
 
 const llmProviderEnum = z.enum(["google", "openai"]);
 
+function normalizeUrlish(input: unknown): unknown {
+  if (typeof input !== "string") return input;
+  const trimmed = input.trim();
+  if (!trimmed) return undefined;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+
+  // Common in Railway private networking and local env files: host[:port] without a scheme.
+  // Default localhost-ish to http, everything else to https.
+  const hostish = trimmed.replace(/^\/+/, "");
+  const isLocal =
+    /^localhost(:\d+)?$/i.test(hostish) ||
+    /^127\.0\.0\.1(:\d+)?$/i.test(hostish) ||
+    /^0\.0\.0\.0(:\d+)?$/i.test(hostish) ||
+    /^\[::1\](:\d+)?$/i.test(hostish);
+  const scheme = isLocal ? "http" : "https";
+  return `${scheme}://${hostish}`;
+}
+
+const optionalUrlish = () =>
+  z.preprocess(normalizeUrlish, z.string().url().optional());
+
 /** For Vercel preview deployments, auto-detect from VERCEL_URL. */
 const getBaseUrl = (): string | undefined => {
   // Don't override for the OAuth proxy server (staging) - it needs its custom domain
@@ -99,15 +120,15 @@ export const env = createEnv({
       .optional()
       .transform((value) => value?.split(",")),
     WEBHOOK_URL: z.string().optional(),
-    INTERNAL_API_URL: z.string().optional(),
+    INTERNAL_API_URL: optionalUrlish(),
     INTERNAL_API_KEY: z.string(),
     WHITELIST_FROM: z.string().optional(),
     USE_BACKUP_MODEL: booleanString.default(false),
     HEALTH_API_KEY: z.string().optional(),
     JOBS_SHARED_SECRET: z.string().optional(),
     CALENDAR_ACTIONS_DRY_RUN: booleanString.default(false),
-    SIDECAR_URL: z.string().url().optional(), // URL of the surfaces sidecar for background jobs
-    SURFACES_API_URL: z.string().url().optional(), // URL of the surfaces sidecar for push notifications
+    SIDECAR_URL: optionalUrlish(), // URL of the surfaces sidecar for background jobs
+    SURFACES_API_URL: optionalUrlish(), // URL of the surfaces sidecar for push notifications
     OAUTH_PROXY_URL: z
       .preprocess(
         (value) =>

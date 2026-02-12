@@ -23,7 +23,11 @@ function parseBooleanEnv(value?: string | null): boolean {
 }
 
 function getGoogleOAuthScopes(kind: GoogleOAuthKind): string[] {
-  if (kind === "calendar") return [...CALENDAR_SCOPES];
+  if (kind === "calendar") {
+    // OpenID is required for id_token on callback (we use it to read identity claims).
+    // Google may omit id_token if openid/email scopes are not requested.
+    return [...new Set([...CALENDAR_SCOPES, "openid", "email"])];
+  }
 
   const scopes: string[] = [...GOOGLE_LINKING_SCOPES_BASE];
   if (parseBooleanEnv(process.env.NEXT_PUBLIC_CONTACTS_ENABLED)) {

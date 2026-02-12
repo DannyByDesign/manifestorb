@@ -2,7 +2,9 @@ import type { NextResponse } from "next/server";
 
 export interface CalendarTokens {
   accessToken: string;
-  refreshToken: string;
+  // Google can omit refresh_token on re-consent. We should preserve the
+  // existing refresh token in that case rather than failing the connect.
+  refreshToken: string | null;
   expiresAt: Date | null;
   email: string;
 }

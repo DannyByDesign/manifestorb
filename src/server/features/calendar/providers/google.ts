@@ -30,8 +30,17 @@ export function createGoogleCalendarProvider(
         throw new Error("Missing id_token from Google response");
       }
 
-      if (!access_token || !refresh_token) {
-        throw new Error("No refresh_token returned from Google");
+      if (!access_token) {
+        throw new Error("Missing access_token from Google response");
+      }
+
+      // Google can omit refresh_token on subsequent consents. We'll preserve an
+      // existing refresh token if we are reconnecting.
+      if (!refresh_token) {
+        logger.warn("Google did not return refresh_token for calendar OAuth; will attempt to preserve existing token", {
+          hasAccessToken: !!access_token,
+          scope: tokens.scope,
+        });
       }
 
       const ticket = await googleAuth.verifyIdToken({
@@ -46,7 +55,7 @@ export function createGoogleCalendarProvider(
 
       return {
         accessToken: access_token,
-        refreshToken: refresh_token,
+        refreshToken: refresh_token ?? null,
         expiresAt: expiry_date ? new Date(expiry_date) : null,
         email: payload.email,
       };

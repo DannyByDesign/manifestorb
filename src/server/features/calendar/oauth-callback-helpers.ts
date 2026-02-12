@@ -10,6 +10,8 @@ import type {
   CalendarOAuthState,
 } from "./oauth-types";
 
+import { createHash, timingSafeEqual } from "node:crypto";
+
 import { RedirectError } from "@/server/lib/oauth/redirect";
 
 const calendarOAuthStateSchema = z.object({
@@ -36,16 +38,52 @@ export async function validateOAuthCallback(
 
   response.cookies.delete(CALENDAR_STATE_COOKIE_NAME);
 
+  logger.info("Calendar OAuth callback received", {
+    hasCode: !!code,
+    hasReceivedState: !!receivedState,
+    hasStoredState: !!storedState,
+    host: request.headers.get("host"),
+    forwardedHost: request.headers.get("x-forwarded-host"),
+    forwardedProto: request.headers.get("x-forwarded-proto"),
+  });
+
   if (!code || code.length < 10) {
     logger.warn("Missing or invalid code in calendar callback");
     redirectUrl.searchParams.set("error", "missing_code");
     throw new RedirectError(redirectUrl, response.headers);
   }
 
-  if (!storedState || !receivedState || storedState !== receivedState) {
+  const stateHash = (value?: string | null) => {
+    if (!value) return null;
+    return createHash("sha256").update(value).digest("hex").slice(0, 10);
+  };
+
+  const stateMatches = (() => {
+    if (!storedState || !receivedState) return false;
+    const a = Buffer.from(storedState, "utf8");
+    const b = Buffer.from(receivedState, "utf8");
+    if (a.length !== b.length) {
+      // Maintain constant-time-ish behavior even on mismatched lengths.
+      try {
+        timingSafeEqual(a, a);
+      } catch {
+        // ignore
+      }
+      return false;
+    }
+    try {
+      return timingSafeEqual(a, b);
+    } catch {
+      return false;
+    }
+  })();
+
+  if (!stateMatches) {
     logger.warn("Invalid state during calendar callback", {
-      receivedState,
       hasStoredState: !!storedState,
+      hasReceivedState: !!receivedState,
+      storedStateHash: stateHash(storedState),
+      receivedStateHash: stateHash(receivedState),
     });
     redirectUrl.searchParams.set("error", "invalid_state");
     throw new RedirectError(redirectUrl, response.headers);
