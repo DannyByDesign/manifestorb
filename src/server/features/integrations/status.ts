@@ -37,6 +37,8 @@ export type IntegrationStatus = {
       googleClientIdConfigured: boolean;
       googleClientSecretConfigured: boolean;
       workosRedirectConfigured: boolean;
+      slackClientIdConfigured: boolean;
+      slackClientSecretConfigured: boolean;
     };
     warnings: string[];
   };
@@ -71,6 +73,10 @@ function buildOAuthDiagnostics(baseUrl: string) {
       ),
       workosRedirectConfigured: Boolean(
         process.env.NEXT_PUBLIC_WORKOS_REDIRECT_URI?.trim(),
+      ),
+      slackClientIdConfigured: Boolean(process.env.SLACK_CLIENT_ID?.trim()),
+      slackClientSecretConfigured: Boolean(
+        process.env.SLACK_CLIENT_SECRET?.trim(),
       ),
     },
     warnings,

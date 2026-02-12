@@ -1139,7 +1139,7 @@ export async function sendSlackMessage(
  * Send the onboarding welcome message to a Slack user (opens DM if needed).
  */
 
-export async function sendLinkedToSlackUser(providerAccountId: string): Promise<{ ok: boolean; error?: string }> {
+export async function sendLinkedToSlackUser(providerAccountId: string): Promise<{ ok: boolean; channelId?: string; error?: string }> {
     if (!slackApp) {
         return { ok: false, error: "Slack app not initialized" };
     }
@@ -1174,7 +1174,7 @@ export async function sendLinkedToSlackUser(providerAccountId: string): Promise<
 
         // Ensure subsequent inbound messages don't get stuck behind a stale "unlinked" cache entry.
         slackIdentityCache.set(providerAccountId, { linked: true, checkedAt: Date.now() });
-        return { ok: true };
+        return { ok: true, channelId: channel };
     } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         console.error("[Surfaces] sendLinkedToSlackUser failed", error);

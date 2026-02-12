@@ -3,11 +3,15 @@ import { createScopedLogger } from "@/server/lib/logger";
 
 const logger = createScopedLogger("surfaces-client");
 
+export type SurfacesOnboardingLinkedResult =
+  | { ok: true; channelId?: string | null }
+  | { ok: false; error?: string };
+
 export async function sendSurfaceOnboardingLinked(params: {
   provider: "slack" | "discord" | "telegram";
   providerAccountId: string;
   providerTeamId?: string | null;
-}): Promise<void> {
+}): Promise<SurfacesOnboardingLinkedResult | null> {
   const surfacesUrl = env.SURFACES_API_URL;
   const secret = env.SURFACES_SHARED_SECRET;
   if (!surfacesUrl || !secret) {
@@ -16,7 +20,7 @@ export async function sendSurfaceOnboardingLinked(params: {
       hasSecret: Boolean(secret),
       provider: params.provider,
     });
-    return;
+    return null;
   }
 
   try {
@@ -36,12 +40,19 @@ export async function sendSurfaceOnboardingLinked(params: {
         status: res.status,
         body: text.slice(0, 500),
       });
+      return { ok: false, error: text.slice(0, 500) };
     }
+
+    const json = (await res.json().catch(() => null)) as any;
+    if (!json || typeof json !== "object") return { ok: true };
+    const channelId =
+      typeof json.channelId === "string" ? (json.channelId as string) : null;
+    return { ok: true, channelId };
   } catch (error) {
     logger.warn("Error pushing onboarding-linked to surfaces", {
       provider: params.provider,
       error: error instanceof Error ? error.message : String(error),
     });
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
-

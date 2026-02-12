@@ -52,6 +52,8 @@ describe("GET /api/integrations/status", () => {
           googleClientIdConfigured: true,
           googleClientSecretConfigured: true,
           workosRedirectConfigured: true,
+          slackClientIdConfigured: true,
+          slackClientSecretConfigured: true,
         },
         warnings: [],
       },

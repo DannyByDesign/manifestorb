@@ -28,6 +28,40 @@ type CalendarSyncRecord = {
   googleChannelExpiresAt: Date | null;
 };
 
+const GOOGLE_NON_PUSH_CALENDAR_PATTERNS = [
+  /#holiday@group\.v\.calendar\.google\.com$/i,
+  /#contacts@group\.v\.calendar\.google\.com$/i,
+];
+const GOOGLE_NON_PUSH_REASON = "pushNotSupportedForRequestedResource";
+const loggedWatchSkips = new Set<string>();
+
+function isKnownGoogleNonPushCalendar(calendarId: string): boolean {
+  return GOOGLE_NON_PUSH_CALENDAR_PATTERNS.some((pattern) =>
+    pattern.test(calendarId),
+  );
+}
+
+function getGoogleApiErrorReason(error: unknown): string | undefined {
+  const reasons = (error as any)?.response?.data?.error?.errors;
+  if (!Array.isArray(reasons) || reasons.length === 0) return undefined;
+  const reason = reasons[0]?.reason;
+  return typeof reason === "string" ? reason : undefined;
+}
+
+function logWatchSkipOnce(
+  logger: Logger,
+  calendarId: string,
+  reason: "known_non_push_calendar_id" | "push_not_supported",
+) {
+  const key = `${calendarId}:${reason}`;
+  if (loggedWatchSkips.has(key)) return;
+  loggedWatchSkips.add(key);
+  logger.info("Skipping Google calendar watch for unsupported resource", {
+    calendarId,
+    reason,
+  });
+}
+
 async function getGoogleClient(
   connection: CalendarConnectionTokens,
   logger: Logger,
@@ -52,6 +86,11 @@ export async function ensureGoogleCalendarWatch({
   logger: Logger;
   renewIfExpiresInMs?: number;
 }) {
+  if (isKnownGoogleNonPushCalendar(calendar.calendarId)) {
+    logWatchSkipOnce(logger, calendar.calendarId, "known_non_push_calendar_id");
+    return;
+  }
+
   if (!env.NEXT_PUBLIC_BASE_URL) {
     logger.warn("Missing NEXT_PUBLIC_BASE_URL; skipping Google calendar watch");
     return;
@@ -106,6 +145,12 @@ export async function ensureGoogleCalendarWatch({
     });
     response = watchResponse.data ?? null;
   } catch (error) {
+    const reason = getGoogleApiErrorReason(error);
+    if (reason === GOOGLE_NON_PUSH_REASON) {
+      logWatchSkipOnce(logger, calendar.calendarId, "push_not_supported");
+      return;
+    }
+
     // Don't fail the entire connect flow if watch setup fails; initial sync can
     // still proceed and the user can reconnect once the webhook URL/env is fixed.
     // Common causes:

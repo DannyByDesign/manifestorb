@@ -84,6 +84,88 @@ describe("calendar sync/google", () => {
     expect(prisma.calendar.update).toHaveBeenCalled();
   });
 
+  it("skips watch for known non-push calendars", async () => {
+    mockEnv.NEXT_PUBLIC_BASE_URL = "http://localhost:3000";
+
+    await ensureGoogleCalendarWatch({
+      calendar: {
+        id: "cal-1",
+        calendarId: "en.usa#holiday@group.v.calendar.google.com",
+        googleSyncToken: null,
+        googleChannelId: null,
+        googleResourceId: null,
+        googleChannelToken: null,
+        googleChannelExpiresAt: null,
+      },
+      connection: {
+        accessToken: "a",
+        refreshToken: "r",
+        expiresAt: null,
+        emailAccountId: "email-1",
+      },
+      logger,
+    });
+
+    expect(getCalendarClientWithRefresh).not.toHaveBeenCalled();
+    expect(prisma.calendar.update).not.toHaveBeenCalled();
+  });
+
+  it("treats pushNotSupportedForRequestedResource as a non-fatal watch skip", async () => {
+    mockEnv.NEXT_PUBLIC_BASE_URL = "http://localhost:3000";
+    vi.mocked(getCalendarClientWithRefresh).mockResolvedValue({
+      channels: { stop: vi.fn().mockResolvedValue(undefined) },
+      events: {
+        watch: vi.fn().mockRejectedValue({
+          response: {
+            status: 400,
+            data: {
+              error: {
+                errors: [
+                  {
+                    reason: "pushNotSupportedForRequestedResource",
+                    message:
+                      "Push notifications are not supported by this resource.",
+                  },
+                ],
+                code: 400,
+                message:
+                  "Push notifications are not supported by this resource.",
+              },
+            },
+          },
+        }),
+      },
+    } as any);
+
+    await ensureGoogleCalendarWatch({
+      calendar: {
+        id: "cal-1",
+        calendarId: "primary",
+        googleSyncToken: null,
+        googleChannelId: null,
+        googleResourceId: null,
+        googleChannelToken: null,
+        googleChannelExpiresAt: null,
+      },
+      connection: {
+        accessToken: "a",
+        refreshToken: "r",
+        expiresAt: null,
+        emailAccountId: "email-1",
+      },
+      logger,
+    });
+
+    expect(logger.info).toHaveBeenCalledWith(
+      "Skipping Google calendar watch for unsupported resource",
+      expect.objectContaining({
+        calendarId: "primary",
+        reason: "push_not_supported",
+      }),
+    );
+    expect(prisma.calendar.update).not.toHaveBeenCalled();
+  });
+
   it("syncs calendar changes and updates sync token", async () => {
     vi.mocked(getCalendarClientWithRefresh).mockResolvedValue({
       events: {

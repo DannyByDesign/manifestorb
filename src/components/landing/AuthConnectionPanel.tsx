@@ -39,6 +39,8 @@ type IntegrationStatusResponse = {
       googleClientIdConfigured: boolean;
       googleClientSecretConfigured: boolean;
       workosRedirectConfigured: boolean;
+      slackClientIdConfigured: boolean;
+      slackClientSecretConfigured: boolean;
     };
     warnings?: string[];
   };
@@ -76,6 +78,20 @@ async function requestAuthUrl(
   const data = (await response.json()) as { url?: string };
   if (!data.url) {
     throw new Error("OAuth URL was missing in response.");
+  }
+  return data.url;
+}
+
+async function requestSimpleAuthUrl(endpoint: string): Promise<string> {
+  const response = await fetch(endpoint);
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(extractErrorMessage(payload, response.status));
+  }
+
+  const data = (await response.json()) as { url?: string };
+  if (!data.url) {
+    throw new Error("Auth URL was missing in response.");
   }
   return data.url;
 }
@@ -132,6 +148,21 @@ export function AuthConnectionPanel() {
     },
     [status],
   );
+
+  const startSlackConnect = useCallback(async () => {
+    if (!status?.authenticated) return;
+    setConnecting("slack");
+    setError(null);
+    try {
+      const authUrl = await requestSimpleAuthUrl("/api/slack/install-url");
+      window.location.href = authUrl;
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to start Slack connect flow.",
+      );
+      setConnecting(null);
+    }
+  }, [status?.authenticated]);
 
   return (
     <div className="w-full max-w-md rounded-2xl border border-white/20 bg-black/40 p-4 text-sm text-white shadow-xl backdrop-blur-md">
@@ -223,6 +254,16 @@ export function AuthConnectionPanel() {
               Telegram:{" "}
               {status?.sidecars?.telegram?.linked ? "Linked" : "Not linked"}
             </p>
+            {status?.authenticated && (
+              <button
+                type="button"
+                onClick={() => void startSlackConnect()}
+                disabled={connecting !== null || status?.sidecars?.slack?.linked}
+                className="mt-2 rounded bg-white px-3 py-1.5 text-black disabled:opacity-60"
+              >
+                {status?.sidecars?.slack?.linked ? "Slack Connected" : "Connect Slack"}
+              </button>
+            )}
             <p className="mt-2 text-white/70">
               Tip: DM the Amodel bot in your sidecar app. If you are not linked yet, it will send a one-time connect link.
             </p>
@@ -255,6 +296,18 @@ export function AuthConnectionPanel() {
               <p>
                 WORKOS redirect URI:{" "}
                 {status.oauth.config.workosRedirectConfigured
+                  ? "configured"
+                  : "missing"}
+              </p>
+              <p>
+                SLACK_CLIENT_ID:{" "}
+                {status.oauth.config.slackClientIdConfigured
+                  ? "configured"
+                  : "missing"}
+              </p>
+              <p>
+                SLACK_CLIENT_SECRET:{" "}
+                {status.oauth.config.slackClientSecretConfigured
                   ? "configured"
                   : "missing"}
               </p>
