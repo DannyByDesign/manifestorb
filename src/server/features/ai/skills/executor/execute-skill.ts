@@ -2,6 +2,8 @@ import type { SkillContract, CapabilityName } from "@/server/features/ai/skills/
 import type { SlotResolutionResult } from "@/server/features/ai/skills/slots/resolve-slots";
 import type { SkillCapabilities } from "@/server/features/ai/capabilities";
 import type { ToolResult } from "@/server/features/ai/tools/types";
+import { validateSkillPostconditions } from "@/server/features/ai/skills/executor/postconditions";
+import { normalizeSkillFailure } from "@/server/features/ai/skills/executor/failure-normalizer";
 
 export interface SkillExecutionResult {
   status: "success" | "partial" | "blocked" | "failed";
@@ -206,34 +208,29 @@ export async function executeSkill(params: {
       }
     }
 
-    // Minimal postcondition validator: if all tool steps succeeded, consider postconditions passed.
+    const postconditionsPassed = validateSkillPostconditions({ skill, toolResults });
     const lastStepId = skill.plan.at(-1)?.id ?? "";
     const lastMessage = lastStepId ? toolResults[lastStepId]?.message : undefined;
     return {
       status: "success",
       responseText: lastMessage ?? renderTemplate(skill, "success"),
-      postconditionsPassed: true,
+      postconditionsPassed,
       stepsExecuted,
       toolChain,
       interactivePayloads,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const isPolicyViolation = message.startsWith("allowed_tools_violation");
-    const isNotImplemented = message.startsWith("capability_not_implemented");
+    const normalized = normalizeSkillFailure({ skill, errorMessage: message });
 
     return {
-      status: "failed",
-      responseText: isPolicyViolation
-        ? "I couldn't safely complete that request."
-        : isNotImplemented
-          ? "That action isn't available yet."
-          : renderTemplate(skill, "failed"),
+      status: normalized.status,
+      responseText: normalized.userMessage,
       postconditionsPassed: false,
       stepsExecuted,
       toolChain,
       interactivePayloads,
-      failureReason: message,
+      failureReason: normalized.reason,
     };
   }
 }

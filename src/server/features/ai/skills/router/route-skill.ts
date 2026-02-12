@@ -5,6 +5,7 @@ import { BASELINE_SKILL_IDS } from "@/server/features/ai/skills/baseline/skill-i
 import { baselineSkills } from "@/server/features/ai/skills/baseline";
 import { createGenerateObject } from "@/server/lib/llms";
 import { getModel } from "@/server/lib/llms/model";
+import { buildBaselineRouterPrompt, buildBaselineSkillMenu } from "@/server/features/ai/skills/router/router-prompts";
 
 export interface SkillRouteResult {
   skillId: SkillId | null;
@@ -115,34 +116,12 @@ export async function routeSkill(params: {
       modelOptions,
     });
 
-    const skillMenu = baselineSkills
-      .map((skill) => {
-        const examples = skill.intent_examples.slice(0, 4).map((e) => `- ${e}`).join("\n");
-        return `Skill: ${skill.id}\nExamples:\n${examples}`;
-      })
-      .join("\n\n");
+    const skillMenu = buildBaselineSkillMenu(baselineSkills);
 
     const { object } = await generateObject({
       ...modelOptions,
       schema: llmRouteSchema,
-      prompt: `You are a strict router for an inbox/calendar assistant.
-Pick the single best baseline skill for the user's message, or return null if unclear.
-
-Rules:
-- You MUST choose from the provided skill IDs only.
-- If multiple skills could apply, choose the one that best matches the user's primary goal.
-- If the message lacks required details to safely pick a skill, set skillId=null and write a single targeted clarificationPrompt.
-- confidence:
-  - 0.90-1.00 only if unambiguous
-  - 0.70-0.89 if likely but could be wrong
-  - <0.70 if unclear (prefer null)
-
-User message:
-${normalized}
-
-Baseline skills:
-${skillMenu}
-`,
+      prompt: buildBaselineRouterPrompt({ message: normalized, skillMenu }),
     });
 
     const candidate = object;
