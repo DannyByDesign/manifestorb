@@ -8,6 +8,7 @@ import { validateOAuthCallback } from "@/server/lib/oauth/callback-validation";
 import { handleAccountLinking } from "@/server/lib/oauth/account-linking";
 import { mergeAccount } from "@/server/lib/user/merge-account";
 import { handleOAuthCallbackError } from "@/server/lib/oauth/error-handler";
+import { resolveOAuthBaseUrl } from "@/server/lib/oauth/base-url";
 import {
   acquireOAuthCodeLock,
   getOAuthCodeResult,
@@ -24,7 +25,7 @@ import { setupIntegrationsAfterOAuth } from "@/server/features/integrations/post
 
 export const GET = withError("google/linking/callback", async (request) => {
   const logger = request.logger;
-  const baseUrl = request.nextUrl.origin;
+  const baseUrl = resolveOAuthBaseUrl(request.nextUrl.origin);
 
   const searchParams = request.nextUrl.searchParams;
   const storedState = request.cookies.get(

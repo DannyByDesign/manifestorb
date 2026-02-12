@@ -551,8 +551,13 @@ export class ChannelRouter {
                 return false;
             }
 
-            const surfaceUrl = env.SURFACES_API_URL || "http://localhost:3001";
+            const surfaceUrl = env.SURFACES_API_URL;
             const surfacesSecret = env.SURFACES_SHARED_SECRET;
+
+            if (!surfaceUrl) {
+                logger.warn("SURFACES_API_URL not set; skipping notify", { userId });
+                return false;
+            }
 
             if (!surfacesSecret) {
                 logger.warn("SURFACES_SHARED_SECRET not set; skipping notify", { userId });

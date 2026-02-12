@@ -3,9 +3,10 @@ import prisma from "@/server/db/client";
 import { createScopedLogger } from "@/server/lib/logger";
 import { z } from "zod";
 import { deriveCanonicalThreadId } from "@/features/channels/conversation-key";
+import { env } from "@/env";
 
 const logger = createScopedLogger("api/surfaces/context");
-const SHARED_SECRET = process.env.SURFACES_SHARED_SECRET;
+const SHARED_SECRET = env.SURFACES_SHARED_SECRET;
 
 const bodySchema = z.object({
     provider: z.enum(["slack", "discord", "telegram", "web"]),

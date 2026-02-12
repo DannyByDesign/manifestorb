@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createScopedLogger } from "@/server/lib/logger";
 import { auth } from "@/server/auth";
 import { sendUserDraftById } from "@/features/drafts/service";
+import { env } from "@/env";
 
 const logger = createScopedLogger("api/drafts/send");
 
 // Surfaces shared secret for authentication from external platforms
-const SURFACES_SECRET = process.env.SURFACES_SHARED_SECRET;
+const SURFACES_SECRET = env.SURFACES_SHARED_SECRET;
 
 /**
  * POST /api/drafts/:id/send

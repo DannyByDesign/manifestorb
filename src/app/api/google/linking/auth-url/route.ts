@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { env } from "@/env";
 import { withAuth } from "@/server/lib/middleware";
 import { getLinkingOAuth2ClientForBaseUrl } from "@/server/integrations/google/client";
 import { GOOGLE_LINKING_STATE_COOKIE_NAME } from "@/server/integrations/google/constants";
@@ -8,6 +7,7 @@ import {
   generateOAuthState,
   oauthStateCookieOptions,
 } from "@/server/lib/oauth/state";
+import { resolveOAuthBaseUrl } from "@/server/lib/oauth/base-url";
 
 export type GetAuthLinkUrlResponse = { url: string };
 
@@ -30,18 +30,6 @@ const getAuthUrl = ({
   });
 
   return { url, state };
-};
-
-const resolveOAuthBaseUrl = (requestOrigin: string): string => {
-  const isLocalOrigin = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/i.test(
-    requestOrigin,
-  );
-
-  if (env.NODE_ENV === "production" && isLocalOrigin) {
-    return env.NEXT_PUBLIC_BASE_URL;
-  }
-
-  return requestOrigin;
 };
 
 export const GET = withAuth("google/linking/auth-url", async (request) => {

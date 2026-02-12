@@ -1,6 +1,7 @@
 import prisma from "@/server/db/client";
 import type { Logger } from "@/server/lib/logger";
 import { verifyApprovalActionToken } from "@/features/approvals/action-token";
+import { env } from "@/env";
 
 type ApprovalAuthFailure = {
   ok: false;
@@ -94,7 +95,7 @@ export async function resolveSurfaceApprovalActor(params: {
     return null;
   }
 
-  const expectedSecret = process.env.SURFACES_SHARED_SECRET;
+  const expectedSecret = env.SURFACES_SHARED_SECRET;
   if (!expectedSecret || providedSecret !== expectedSecret) {
     logger.warn("Surface approval request failed secret validation", {
       provider: provider ?? null,

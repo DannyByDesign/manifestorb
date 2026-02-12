@@ -7,6 +7,7 @@ import {
   generateOAuthState,
   oauthStateCookieOptions,
 } from "@/server/lib/oauth/state";
+import { resolveOAuthBaseUrl } from "@/server/lib/oauth/base-url";
 
 export type GetCalendarAuthUrlResponse = { url: string };
 
@@ -40,7 +41,7 @@ export const GET = withEmailAccount(
     const { emailAccountId } = request.auth;
     const { url, state } = getAuthUrl({
       emailAccountId,
-      baseUrl: request.nextUrl.origin,
+      baseUrl: resolveOAuthBaseUrl(request.nextUrl.origin),
     });
 
     const res: GetCalendarAuthUrlResponse = { url };

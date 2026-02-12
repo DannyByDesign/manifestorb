@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import prisma from "@/server/db/client";
 import { createScopedLogger } from "@/server/lib/logger";
+import { env } from "@/env";
 
 const logger = createScopedLogger("api/surfaces/thread-context");
-const SHARED_SECRET = process.env.SURFACES_SHARED_SECRET;
+const SHARED_SECRET = env.SURFACES_SHARED_SECRET;
 
 const requestSchema = z.object({
   provider: z.enum(["slack", "discord", "telegram"]),

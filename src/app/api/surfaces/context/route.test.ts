@@ -1,17 +1,17 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import prisma, { resetPrismaMock } from "@/server/lib/__mocks__/prisma";
 
 vi.mock("@/server/db/client");
+vi.mock("@/env", () => ({
+    env: {
+        SURFACES_SHARED_SECRET: "secret",
+    },
+}));
 
 describe("POST /api/surfaces/context", () => {
     beforeEach(() => {
         resetPrismaMock();
-        process.env.SURFACES_SHARED_SECRET = "secret";
-    });
-
-    afterEach(() => {
-        delete process.env.SURFACES_SHARED_SECRET;
     });
 
     it("returns 401 when unauthorized", async () => {

@@ -21,9 +21,10 @@ import {
     setPlatformStarted,
     touchPlatformEvent
 } from "../platform-status";
+import { env } from "../env";
 
-const CORE_BASE_URL = process.env.CORE_BASE_URL || "http://localhost:3000";
-const SHARED_SECRET = process.env.SURFACES_SHARED_SECRET || "dev-secret";
+const CORE_BASE_URL = env.CORE_BASE_URL;
+const SHARED_SECRET = env.SURFACES_SHARED_SECRET;
 
 async function clearInteractionButtons(interaction: ButtonInteraction) {
     const currentContent = toPlainSidecarText(
@@ -50,7 +51,7 @@ async function clearInteractionButtons(interaction: ButtonInteraction) {
 }
 
 export function startDiscord() {
-    const token = process.env.DISCORD_BOT_TOKEN?.trim();
+    const token = env.DISCORD_BOT_TOKEN?.trim();
     const tokenLooksPlaceholder =
         !token ||
         token.toLowerCase().includes("replace") ||

@@ -11,6 +11,11 @@ vi.mock("@/server/auth", () => ({ auth: vi.fn() }));
 vi.mock("@/features/approvals/action-token", () => ({
   verifyApprovalActionToken: vi.fn(),
 }));
+vi.mock("@/env", () => ({
+  env: {
+    SURFACES_SHARED_SECRET: "surfaces-secret",
+  },
+}));
 class MockChannelRouter {
   pushMessage = vi.fn().mockResolvedValue(undefined);
 }
@@ -35,7 +40,6 @@ const mockDeleteUserDraftById = vi.mocked(deleteUserDraftById);
 describe("POST /api/approvals/[id]/deny", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.SURFACES_SHARED_SECRET = "surfaces-secret";
     mockDeleteUserDraftById.mockResolvedValue({ success: true, emailAccountId: "email-1" } as any);
     prisma.approvalRequest.findUnique.mockResolvedValue({
       userId: "user-1",

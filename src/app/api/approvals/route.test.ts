@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "./route";
 
@@ -11,6 +11,11 @@ vi.mock("@/features/approvals/service", () => ({
 }));
 
 vi.mock("@/server/db/client");
+vi.mock("@/env", () => ({
+  env: {
+    SURFACES_SHARED_SECRET: "secret",
+  },
+}));
 
 const validBody = {
   userId: "user-1",
@@ -27,11 +32,6 @@ const validBody = {
 describe("POST /api/approvals", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.SURFACES_SHARED_SECRET = "secret";
-  });
-
-  afterEach(() => {
-    delete process.env.SURFACES_SHARED_SECRET;
   });
 
   it("returns 401 when secret mismatch", async () => {

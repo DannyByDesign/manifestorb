@@ -16,6 +16,17 @@ config();
 
 export async function handleRequest(req: Request) {
     const url = new URL(req.url);
+    const getPlatformReadiness = () => {
+        const platforms = getPlatformStatuses();
+        const failing = Object.entries(platforms)
+            .filter(([, status]) => status.enabled && (!status.started || Boolean(status.lastError)))
+            .map(([name]) => name);
+        return {
+            platforms,
+            ready: failing.length === 0,
+            failing,
+        };
+    };
 
     const isAuthorized = (expectedSecret: string | undefined) => {
         if (!expectedSecret) return false;
@@ -239,12 +250,14 @@ export async function handleRequest(req: Request) {
                 req.method === "GET" &&
                 (url.pathname === "/health" || url.pathname === "/health/liveness")
             ) {
+                const readiness = getPlatformReadiness();
                 return new Response(JSON.stringify({
-                    status: "ok",
+                    status: readiness.ready ? "ok" : "degraded",
                     uptime: process.uptime(),
-                    platforms: getPlatformStatuses(),
+                    platforms: readiness.platforms,
+                    failingPlatforms: readiness.failing,
                 }), {
-                    status: 200,
+                    status: readiness.ready ? 200 : 503,
                     headers: { "Content-Type": "application/json" }
                 });
             }
@@ -254,7 +267,7 @@ export async function handleRequest(req: Request) {
                 let db = "ok";
                 let redisStatus = "not_configured";
                 let queueStats: { pending: number; processing: number; failed: number } | null = null;
-                const platforms = getPlatformStatuses();
+                const readiness = getPlatformReadiness();
 
                 try {
                     await withTimeout(prisma.$queryRaw`SELECT 1`, 1200);
@@ -274,7 +287,7 @@ export async function handleRequest(req: Request) {
                     }
                 }
 
-                const statusCode = db === "ok" ? 200 : 503;
+                const statusCode = db === "ok" && readiness.ready ? 200 : 503;
 
                 return new Response(JSON.stringify({ 
                     status: statusCode === 200 ? "ok" : "degraded",
@@ -282,7 +295,8 @@ export async function handleRequest(req: Request) {
                     db,
                     redis: redisStatus,
                     queue: queueStats,
-                    platforms
+                    platforms: readiness.platforms,
+                    failingPlatforms: readiness.failing,
                 }), {
                     status: statusCode,
                     headers: { "Content-Type": "application/json" }

@@ -12,25 +12,42 @@ import { aiDetectRecurringPattern } from "@/features/rules/ai/ai-detect-recurrin
 import { formatDateTimeForUser } from "./timezone";
 import { resolveCalendarTimeRange } from "./calendar-time";
 
-const analyzeParameters = z.object({
-    resource: z.enum(["email", "calendar", "patterns", "automation"]),
-    ids: z.array(z.string()).optional(),
-    analysisType: z.enum([
-        "summarize", "extract_actions", "categorize", "clean_suggestions", // Email
-        "find_conflicts", "suggest_times", "briefing", // Calendar
-        "detect_patterns", // Patterns
-        "assess_risk" // Automation
-    ]),
-    options: z.object({
-        dateRange: z.object({
-            after: z.string().optional(),
-            before: z.string().optional(),
-        }).optional(),
-        timeZone: z.string().optional().describe("IANA timezone for interpreting dateRange and formatting suggested times."),
-        durationMinutes: z.number().int().min(5).max(480).optional(),
-        limit: z.number().int().min(1).max(10).optional(),
+const analyzeOptionsSchema = z.object({
+    dateRange: z.object({
+        after: z.string().optional(),
+        before: z.string().optional(),
     }).optional(),
-});
+    timeZone: z.string().optional().describe("IANA timezone for interpreting dateRange and formatting suggested times."),
+    durationMinutes: z.number().int().min(5).max(480).optional(),
+    limit: z.number().int().min(1).max(10).optional(),
+}).optional();
+
+const analyzeParameters = z.discriminatedUnion("resource", [
+    z.object({
+        resource: z.literal("email"),
+        ids: z.array(z.string()).optional(),
+        analysisType: z.enum(["summarize", "extract_actions", "categorize", "clean_suggestions"]),
+        options: analyzeOptionsSchema,
+    }),
+    z.object({
+        resource: z.literal("calendar"),
+        ids: z.array(z.string()).optional(),
+        analysisType: z.enum(["find_conflicts", "suggest_times", "briefing"]),
+        options: analyzeOptionsSchema,
+    }),
+    z.object({
+        resource: z.literal("patterns"),
+        ids: z.array(z.string()).optional(),
+        analysisType: z.literal("detect_patterns"),
+        options: analyzeOptionsSchema,
+    }),
+    z.object({
+        resource: z.literal("automation"),
+        ids: z.array(z.string()).optional(),
+        analysisType: z.literal("assess_risk"),
+        options: analyzeOptionsSchema,
+    }),
+]);
 
 export const analyzeTool: ToolDefinition<typeof analyzeParameters> = {
     name: "analyze",
@@ -239,7 +256,7 @@ Pattern analysis:
                         },
                     };
                 }
-                return { success: false, error: "Calendar analysis type not implemented" };
+                return { success: false, error: "Unsupported calendar analysis request" };
 
             case "patterns":
                 if (analysisType === "detect_patterns") {
@@ -267,7 +284,7 @@ Pattern analysis:
 
                     return { success: true, data: result };
                 }
-                return { success: false, error: "Pattern detection type not implemented" };
+                return { success: false, error: "Unsupported pattern analysis request" };
 
             case "automation":
                 if (analysisType === "assess_risk") {
@@ -285,7 +302,7 @@ Pattern analysis:
 
                     return { success: true, data: risk };
                 }
-                return { success: false, error: "Automation analysis type not implemented" };
+                return { success: false, error: "Unsupported automation analysis request" };
 
             default:
                 return { success: false, error: `Resource ${resource} not supported` };

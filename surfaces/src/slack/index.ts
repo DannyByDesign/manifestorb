@@ -16,9 +16,10 @@ import {
     touchPlatformEvent
 } from "../platform-status";
 import { redis } from "../db/redis";
+import { env } from "../env";
 
-const CORE_BASE_URL = process.env.CORE_BASE_URL || "http://localhost:3000";
-const SHARED_SECRET = process.env.SURFACES_SHARED_SECRET || "dev-secret";
+const CORE_BASE_URL = env.CORE_BASE_URL;
+const SHARED_SECRET = env.SURFACES_SHARED_SECRET;
 const SLACK_LEADER_LOCK_KEY = process.env.SLACK_LEADER_LOCK_KEY || "surfaces:slack:socket-mode:leader";
 const SLACK_LEADER_LOCK_TTL_MS = Number(process.env.SLACK_LEADER_LOCK_TTL_MS || 30000);
 const SLACK_RECONNECT_WINDOW_MS = 60_000;
@@ -423,7 +424,7 @@ export async function startSlack() {
     }
 
     slackStartPromise = (async () => {
-    const token = process.env.SLACK_BOT_TOKEN;
+    const token = env.SLACK_BOT_TOKEN;
     if (!token) {
         setPlatformEnabled("slack", false);
         console.log("⚠️ Surfaces: Skipping Slack (SLACK_BOT_TOKEN missing)");
@@ -435,8 +436,8 @@ export async function startSlack() {
 
     // Initialize Slack App in Socket Mode
     const app = new App({
-        token: process.env.SLACK_BOT_TOKEN,
-        appToken: process.env.SLACK_APP_TOKEN,
+        token: env.SLACK_BOT_TOKEN,
+        appToken: env.SLACK_APP_TOKEN,
         socketMode: true,
     });
     slackApp = app;

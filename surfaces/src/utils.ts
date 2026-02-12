@@ -3,8 +3,7 @@ import { env } from "./env";
 config();
 
 const BRAIN_API_URL = env.BRAIN_API_URL;
-const SHARED_SECRET = env.SURFACES_SHARED_SECRET ?? "dev-secret";
-console.log(`[Surfaces] Using Secret: ${SHARED_SECRET.substring(0, 3)}...`);
+const SHARED_SECRET = env.SURFACES_SHARED_SECRET;
 
 export interface InteractiveAction {
     label: string;
@@ -41,7 +40,7 @@ export interface InteractivePayload {
     context?: ActionRequestContext; // For action_request - calendar/task context
 }
 
-const CORE_BASE_URL = process.env.CORE_BASE_URL || "http://localhost:3000";
+const CORE_BASE_URL = env.CORE_BASE_URL;
 
 /** Fetch a one-time link URL for onboarding (Slack/Discord/Telegram). Sidecar-only. */
 export async function fetchOnboardingLinkUrl(

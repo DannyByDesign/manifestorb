@@ -136,7 +136,7 @@ export class MemoryRecordingService {
         const sidecarUrl = env.SIDECAR_URL;
         const endpoint = sidecarUrl 
             ? `${sidecarUrl}/jobs/recording`
-            : `${env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/jobs/record-memory`;
+            : `${env.NEXT_PUBLIC_BASE_URL}/api/jobs/record-memory`;
 
         logger.info("Triggering memory recording", { 
             userId, 

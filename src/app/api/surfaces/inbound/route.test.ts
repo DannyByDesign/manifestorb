@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 class MockChannelRouter {
@@ -8,16 +8,13 @@ class MockChannelRouter {
 vi.mock("@/features/channels/router", () => ({
   ChannelRouter: MockChannelRouter,
 }));
+vi.mock("@/env", () => ({
+  env: {
+    SURFACES_SHARED_SECRET: "secret",
+  },
+}));
 
 describe("POST /api/surfaces/inbound", () => {
-  beforeEach(() => {
-    process.env.SURFACES_SHARED_SECRET = "secret";
-  });
-
-  afterEach(() => {
-    delete process.env.SURFACES_SHARED_SECRET;
-  });
-
   it("returns 401 when unauthorized", async () => {
     const { POST } = await import("./route");
     const req = new NextRequest("http://localhost/api/surfaces/inbound", {

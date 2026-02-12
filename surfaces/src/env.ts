@@ -37,7 +37,6 @@ const envSchema = z
     BRAIN_API_URL: z
       .string()
       .min(1)
-      .default("http://localhost:3000/api/surfaces/inbound")
       .transform((value, ctx) => {
         try {
           return normalizeBrainApiUrl(value);
@@ -52,7 +51,6 @@ const envSchema = z
     CORE_BASE_URL: z
       .string()
       .min(1)
-      .default("http://localhost:3000")
       .transform((value, ctx) => {
         try {
           return normalizeCoreBaseUrl(value);

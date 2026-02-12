@@ -19,7 +19,6 @@ import { serializeMatchReasons } from "@/features/rules/ai/types";
 import { sanitizeActionFields } from "@/server/lib/action-item";
 import { extractEmailAddress } from "@/server/integrations/google";
 import { filterNullProperties } from "@/server/lib";
-import { analyzeSenderPattern } from "@/app/api/ai/analyze-sender-pattern/call-analyze-pattern-api";
 import {
   scheduleDelayedActions,
   cancelScheduledActions,
@@ -476,15 +475,19 @@ async function analyzeSenderPatternIfAiMatch({
 }) {
   if (shouldAnalyzeSenderPattern({ isTest, result })) {
     const fromAddress = extractEmailAddress(message.headers.from);
-    if (fromAddress) {
+    const ruleId = result.rule?.id;
+    if (fromAddress && ruleId) {
       after(() =>
-        analyzeSenderPattern(
-          {
-            emailAccountId,
-            from: fromAddress,
-          },
+        saveLearnedPattern({
+          emailAccountId,
+          from: fromAddress,
+          ruleId,
           logger,
-        ),
+          reason: "ai_match",
+          messageId: message.id,
+          threadId: message.threadId,
+          source: GroupItemSource.AI,
+        }),
       );
     }
   }

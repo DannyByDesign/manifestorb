@@ -5,11 +5,12 @@ import {
     deleteUserDraftById,
     getUserDraftById,
 } from "@/features/drafts/service";
+import { env } from "@/env";
 
 const logger = createScopedLogger("api/drafts");
 
 // Surfaces shared secret for authentication from external platforms
-const SURFACES_SECRET = process.env.SURFACES_SHARED_SECRET;
+const SURFACES_SECRET = env.SURFACES_SHARED_SECRET;
 
 /**
  * GET /api/drafts/:id

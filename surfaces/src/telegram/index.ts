@@ -12,9 +12,10 @@ import {
     setPlatformStarted,
     touchPlatformEvent
 } from "../platform-status";
+import { env } from "../env";
 
-const CORE_BASE_URL = process.env.CORE_BASE_URL || "http://localhost:3000";
-const SHARED_SECRET = process.env.SURFACES_SHARED_SECRET || "dev-secret";
+const CORE_BASE_URL = env.CORE_BASE_URL;
+const SHARED_SECRET = env.SURFACES_SHARED_SECRET;
 
 type CallbackButtonContext = {
     editMessageReplyMarkup: (markup: { inline_keyboard: [] }) => Promise<unknown>;
@@ -31,7 +32,7 @@ async function clearCallbackButtons(ctx: CallbackButtonContext) {
 }
 
 export function startTelegram() {
-    const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
+    const token = env.TELEGRAM_BOT_TOKEN?.trim();
     const tokenLooksPlaceholder =
         !token ||
         token.toLowerCase().includes("replace") ||

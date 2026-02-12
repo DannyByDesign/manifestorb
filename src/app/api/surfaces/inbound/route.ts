@@ -3,11 +3,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { ChannelRouter } from "@/features/channels/router";
 import { z } from "zod";
 import { createScopedLogger } from "@/server/lib/logger";
+import { env } from "@/env";
 
 const logger = createScopedLogger("api/surfaces/inbound");
 
 // Ensure this environment variable is defined in your schema
-const SHARED_SECRET = process.env.SURFACES_SHARED_SECRET;
+const SHARED_SECRET = env.SURFACES_SHARED_SECRET;
 
 // Zod schema for runtime validation
 const inboundMessageContextSchema = z.object({

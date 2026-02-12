@@ -1,18 +1,14 @@
-import { publishToQstashQueue } from "@/server/integrations/qstash";
+import { env } from "@/env";
 import type { Logger } from "@/server/lib/logger";
-import { emailToContent } from "@/server/lib/mail";
-import { getInternalApiUrl } from "@/server/lib/internal-api";
 
 import type { ParsedMessage } from "@/server/lib/types";
 import type { EmailForAction } from "@/features/ai/types";
 
-type DigestBody = any;
-
 export async function enqueueDigestItem({
-  email,
+  email: _email,
   emailAccountId,
-  actionId,
-  coldEmailId,
+  actionId: _actionId,
+  coldEmailId: _coldEmailId,
   logger,
 }: {
   email: ParsedMessage | EmailForAction;
@@ -21,27 +17,16 @@ export async function enqueueDigestItem({
   coldEmailId?: string;
   logger: Logger;
 }) {
-  const url = `${getInternalApiUrl()}/api/ai/digest`;
-  try {
-    await publishToQstashQueue<DigestBody>({
-      queueName: "digest-item-summarize",
-      parallelism: 3, // Allow up to 3 concurrent jobs from this queue
-      url,
-      body: {
-        emailAccountId,
-        actionId,
-        coldEmailId,
-        message: {
-          id: email.id,
-          threadId: email.threadId,
-          from: email.headers.from,
-          to: email.headers.to || "",
-          subject: email.headers.subject,
-          content: emailToContent(email),
-        },
-      },
+  if (!env.NEXT_PUBLIC_DIGEST_ENABLED) {
+    logger.info("Skipping digest enqueue: digest feature disabled", {
+      emailAccountId,
     });
-  } catch (error) {
-    logger.error("Failed to publish to Qstash", { error });
+    return;
   }
+
+  // Legacy digest summarization endpoint was removed with quarantine cleanup.
+  // Keep this as an explicit no-op until the digest processor is rebuilt.
+  logger.warn("Skipping digest enqueue: digest processor endpoint not available", {
+    emailAccountId,
+  });
 }

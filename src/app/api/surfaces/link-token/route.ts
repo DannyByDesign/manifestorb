@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { createLinkToken } from "@/server/lib/linking";
 import { createScopedLogger } from "@/server/lib/logger";
 import { z } from "zod";
+import { env } from "@/env";
 
 const logger = createScopedLogger("api/surfaces/link-token");
 
-const SHARED_SECRET = process.env.SURFACES_SHARED_SECRET;
+const SHARED_SECRET = env.SURFACES_SHARED_SECRET;
 
 const bodySchema = z.object({
   provider: z.enum(["slack", "discord", "telegram"]),
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
       metadata: {},
     });
 
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000";
+    const baseUrl = env.NEXT_PUBLIC_BASE_URL;
     const linkUrl = `${baseUrl}/link?token=${rawToken}`;
 
     logger.info("Link token created for sidecar onboarding", {
