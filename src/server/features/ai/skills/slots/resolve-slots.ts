@@ -199,6 +199,8 @@ export async function resolveSlots(
     logger: Logger;
     emailAccount: { id: string; email: string; userId: string };
     timeZone: string;
+    sourceEmailThreadId?: string;
+    sourceEmailMessageId?: string;
   },
 ): Promise<SlotResolutionResult> {
   const resolved: ResolvedSlots = {};
@@ -207,6 +209,17 @@ export async function resolveSlots(
     if (value !== undefined) {
       resolved[slot] = value as never;
     }
+  }
+
+  // Thread/message defaults: when the user says "this" on a surface, we can bind to the source thread.
+  if (resolved.thread_ids === undefined && env.sourceEmailThreadId) {
+    resolved.thread_ids = [env.sourceEmailThreadId] as never;
+  }
+  if (resolved.thread_id === undefined && env.sourceEmailThreadId) {
+    resolved.thread_id = env.sourceEmailThreadId as never;
+  }
+  if (resolved.message_id === undefined && env.sourceEmailMessageId) {
+    resolved.message_id = env.sourceEmailMessageId as never;
   }
 
   const normalized = normalizeSlotShorthands(resolved, env.timeZone);

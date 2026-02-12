@@ -59,6 +59,8 @@ export async function runBaselineSkillTurn(params: {
     logger: params.logger,
     emailAccount: { id: params.emailAccountId, email: params.email, userId: params.userId },
     timeZone,
+    sourceEmailMessageId: params.sourceEmailMessageId,
+    sourceEmailThreadId: params.sourceEmailThreadId,
   });
   emitSkillTelemetry(params.logger, {
     name: "skill.slot_resolution.completed",
