@@ -1,6 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -69,6 +69,12 @@ export default defineConfig({
     environment: "node",
     passWithNoTests: true,
     setupFiles: ["tests/support/setup.ts"],
-    exclude: ["tests/e2e/**", "tests/evals/**"],
+    // Vitest has important default excludes (node_modules, dist, etc). If we override exclude,
+    // we must include the defaults or Vitest will start running dependency test suites.
+    exclude: [
+      ...configDefaults.exclude,
+      "tests/e2e/**",
+      "tests/evals/**",
+    ],
   },
 });

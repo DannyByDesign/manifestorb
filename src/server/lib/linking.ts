@@ -1,11 +1,13 @@
 import { createHash, randomBytes } from "crypto";
 import prisma from "@/server/db/client";
 import { createScopedLogger } from "@/server/lib/logger";
+import { decryptToken, encryptToken } from "@/server/lib/encryption";
 
 const logger = createScopedLogger("LinkingUtils");
 
 const LINK_TOKEN_TTL_MINUTES = 10;
 const LINK_TOKEN_BYTES = 32;
+const LINK_TOKEN_ENC_KEY = "tokenEnc";
 
 /**
  * Creates a secure, stateful linking token for an external provider account.
@@ -22,7 +24,9 @@ export async function createLinkToken({
     providerTeamId?: string;
     metadata?: Record<string, unknown>;
 }) {
-    // 1. Check for existing active token (Rate Limit / Spam Prevention)
+    // 1. Check for existing active token (Spam Prevention + Better UX)
+    // If we have an active token, reuse it. This prevents rotating tokens on every sidecar message
+    // (which would invalidate the link the user just received).
     const activeToken = await prisma.surfaceLinkToken.findFirst({
         where: {
             provider,
@@ -33,12 +37,17 @@ export async function createLinkToken({
     });
 
     if (activeToken) {
-        // Reuse existing token? No, we can't return the raw token because we only store the hash!
-        // So we must actually delete the old one and create a new one, 
-        // OR we just return "null" and say "check your DMs" if we want to be strict.
-        // But for better UX, let's revoke the old one and issue a new one 
-        // (assuming the user lost the old link).
+        const enc =
+            activeToken.metadata &&
+            typeof activeToken.metadata === "object" &&
+            (activeToken.metadata as Record<string, unknown>)[LINK_TOKEN_ENC_KEY];
+        const encToken = typeof enc === "string" ? enc : null;
+        const raw = decryptToken(encToken);
+        if (raw) {
+            return raw;
+        }
 
+        // Legacy tokens (or corrupted metadata) cannot be reused; revoke and issue a new token.
         await prisma.surfaceLinkToken.delete({ where: { id: activeToken.id } });
     }
 
@@ -46,6 +55,12 @@ export async function createLinkToken({
     const rawToken = randomBytes(LINK_TOKEN_BYTES).toString("hex");
     const tokenHash = createHash("sha256").update(rawToken).digest("hex");
     const expiresAt = new Date(Date.now() + LINK_TOKEN_TTL_MINUTES * 60 * 1000);
+
+    const tokenEnc = encryptToken(rawToken);
+    const mergedMetadata: Record<string, unknown> = {
+        ...(metadata ?? {}),
+        ...(tokenEnc ? { [LINK_TOKEN_ENC_KEY]: tokenEnc } : {}),
+    };
 
     // 3. Persist
     await prisma.surfaceLinkToken.create({
@@ -55,7 +70,7 @@ export async function createLinkToken({
             providerAccountId,
             providerTeamId,
             expiresAt,
-            metadata: (metadata ?? {}) as any,
+            metadata: mergedMetadata as any,
         }
     });
 
@@ -113,7 +128,13 @@ export async function consumeLinkToken(rawToken: string, userId: string) {
 
         if (existingAccount) {
             if (existingAccount.userId === userId) {
-                return { success: true, message: "Account was already linked." };
+                return {
+                    success: true,
+                    provider: linkToken.provider,
+                    providerAccountId: linkToken.providerAccountId,
+                    providerTeamId: linkToken.providerTeamId ?? null,
+                    message: "Account was already linked.",
+                };
             }
             // Move account to new user? Or throw?
             // Usually re-linking means moving.
@@ -140,6 +161,11 @@ export async function consumeLinkToken(rawToken: string, userId: string) {
             providerAccountId: linkToken.providerAccountId
         });
 
-        return { success: true, provider: linkToken.provider };
+        return {
+            success: true,
+            provider: linkToken.provider,
+            providerAccountId: linkToken.providerAccountId,
+            providerTeamId: linkToken.providerTeamId ?? null,
+        };
     });
 }

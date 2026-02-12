@@ -70,7 +70,13 @@ export const auth = async (): Promise<{ user: AuthUser } | null> => {
   try {
     authResult = await withAuth();
   } catch (error) {
-    logger.warn("WorkOS auth lookup failed", { error });
+    const message = error instanceof Error ? error.message : String(error);
+    // Next.js may attempt to pre-render pages during build; WorkOS auth relies on request headers/cookies.
+    // Avoid spamming logs for expected "dynamic server usage" errors in that context.
+    if (message.includes("Dynamic server usage")) {
+      return null;
+    }
+    logger.warn("WorkOS auth lookup failed", { error: message });
     return null;
   }
 

@@ -5,6 +5,11 @@ import path from "node:path";
 import { config as loadEnv } from "dotenv";
 import prismaMock, { resetPrismaMock } from "@/server/lib/__mocks__/prisma";
 
+// Some server-only modules include `import "server-only"` which relies on Next's bundler
+// conditional exports. In Vitest/Bun, that can resolve to the client stub and throw.
+// Mock it out so server modules can be imported normally in tests.
+vi.mock("server-only", () => ({}));
+
 const envFileCandidates = [".env.test.local", ".env.test"];
 const shouldLoadTestEnv =
   process.env.RUN_AI_TESTS === "true" || process.env.RUN_LIVE_E2E === "true";
@@ -38,6 +43,9 @@ setDefaultEnv(
 );
 setDefaultEnv("INTERNAL_API_KEY", "test-internal-api-key");
 setDefaultEnv("NEXT_PUBLIC_BASE_URL", "http://localhost:3000");
+setDefaultEnv("CORE_BASE_URL", "http://localhost:3000");
+setDefaultEnv("BRAIN_API_URL", "http://localhost:3000/api/surfaces/inbound");
+setDefaultEnv("SURFACES_SHARED_SECRET", "test-surfaces-shared-secret");
 setDefaultEnv("WORKOS_API_KEY", "test-workos-api-key");
 setDefaultEnv("WORKOS_CLIENT_ID", "test-workos-client-id");
 setDefaultEnv(

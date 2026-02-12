@@ -12,6 +12,7 @@ const bodySchema = z.object({
   provider: z.enum(["slack", "discord", "telegram"]),
   providerAccountId: z.string().min(1),
   providerTeamId: z.string().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 /**
@@ -36,12 +37,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { provider, providerAccountId, providerTeamId } = parse.data;
+    const { provider, providerAccountId: rawProviderAccountId, providerTeamId, metadata } = parse.data;
+    const providerAccountId =
+      provider === "slack" && providerTeamId && !rawProviderAccountId.includes(":")
+        ? `${providerTeamId}:${rawProviderAccountId}`
+        : rawProviderAccountId;
     const rawToken = await createLinkToken({
       provider,
       providerAccountId,
       providerTeamId,
-      metadata: {},
+      metadata: metadata ?? {},
     });
 
     const baseUrl = env.NEXT_PUBLIC_BASE_URL;

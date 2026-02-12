@@ -24,6 +24,11 @@ type IntegrationStatusResponse = {
     connected: boolean;
     reason: string | null;
   };
+  sidecars?: {
+    slack?: { linked: boolean };
+    discord?: { linked: boolean };
+    telegram?: { linked: boolean };
+  };
   oauth?: {
     baseUrl?: string;
     callbackUris?: {
@@ -202,6 +207,25 @@ export function AuthConnectionPanel() {
                   : "Connect Calendar"}
               </button>
             )}
+          </div>
+
+          <div className="rounded-lg border border-white/20 bg-white/5 p-2">
+            <div className="font-medium">Sidecars</div>
+            <p>
+              Slack:{" "}
+              {status?.sidecars?.slack?.linked ? "Linked" : "Not linked"}
+            </p>
+            <p>
+              Discord:{" "}
+              {status?.sidecars?.discord?.linked ? "Linked" : "Not linked"}
+            </p>
+            <p>
+              Telegram:{" "}
+              {status?.sidecars?.telegram?.linked ? "Linked" : "Not linked"}
+            </p>
+            <p className="mt-2 text-white/70">
+              Tip: DM the Amodel bot in your sidecar app. If you are not linked yet, it will send a one-time connect link.
+            </p>
           </div>
 
           {warnings.length > 0 && (

@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import {
     fetchCanonicalSidecarThread,
     forwardToBrain,
+    fetchSurfaceIdentity,
     fetchOnboardingLinkUrl,
     toPlainSidecarText,
     type InteractiveAction,
@@ -40,6 +41,8 @@ type MessageMeta = {
 };
 
 const slackThreadContext = new Map<string, string>();
+const slackIdentityCache = new Map<string, { linked: boolean; checkedAt: number }>();
+const SLACK_IDENTITY_CACHE_TTL_MS = 30_000;
 
 function threadContextKey(channelId: string, userId: string): string {
     return `${channelId}:${userId}`;
@@ -47,6 +50,120 @@ function threadContextKey(channelId: string, userId: string): string {
 
 function normalizeSlackThreadTs(value: unknown): string | undefined {
     return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function extractSlackTeamId(bodyOrContext: unknown): string | undefined {
+    if (!bodyOrContext || typeof bodyOrContext !== "object") return undefined;
+    const record = bodyOrContext as Record<string, unknown>;
+
+    const direct =
+        typeof record.team_id === "string"
+            ? record.team_id
+            : (record.team && typeof record.team === "object" && typeof (record.team as any).id === "string")
+                ? (record.team as any).id
+                : undefined;
+    if (direct) return direct;
+
+    // Bolt context sometimes carries teamId.
+    const ctxTeamId = typeof (record as any).teamId === "string" ? (record as any).teamId : undefined;
+    if (ctxTeamId) return ctxTeamId;
+
+    // Socket mode payloads often include authorizations.
+    const auths = Array.isArray((record as any).authorizations) ? (record as any).authorizations : null;
+    const fromAuth = auths && auths.length > 0 && typeof auths[0]?.team_id === "string" ? auths[0].team_id : undefined;
+    return fromAuth;
+}
+
+function toSlackProviderAccountId(params: { teamId?: string; userId: string }): { providerAccountId: string; providerTeamId?: string } {
+    const teamId = params.teamId?.trim();
+    if (teamId) {
+        return { providerAccountId: `${teamId}:${params.userId}`, providerTeamId: teamId };
+    }
+    return { providerAccountId: params.userId };
+}
+
+async function isSlackAccountLinked(params: { providerAccountId: string; providerTeamId?: string }): Promise<boolean> {
+    const now = Date.now();
+    const cached = slackIdentityCache.get(params.providerAccountId);
+    if (cached && now - cached.checkedAt < SLACK_IDENTITY_CACHE_TTL_MS) {
+        return cached.linked;
+    }
+    const identity = await fetchSurfaceIdentity({
+        provider: "slack",
+        providerAccountId: params.providerAccountId,
+        providerTeamId: params.providerTeamId,
+    });
+    const linked = Boolean(identity?.linked);
+    slackIdentityCache.set(params.providerAccountId, { linked, checkedAt: now });
+    return linked;
+}
+
+async function sendSlackOnboardingWelcome(params: {
+    client: App["client"];
+    channelId?: string;
+    slackUserId: string;
+    providerAccountId: string;
+    providerTeamId?: string;
+    origin: "app_home_opened" | "message";
+}) {
+    const linkUrl = await fetchOnboardingLinkUrl(
+        "slack",
+        params.providerAccountId,
+        params.providerTeamId,
+        {
+            origin: params.origin,
+            ...(params.channelId ? { channelId: params.channelId } : {}),
+        },
+    );
+
+    const channelId = params.channelId ?? (await params.client.conversations.open({ users: params.slackUserId })).channel?.id;
+    if (!channelId) {
+        console.error("[Surfaces][Slack] Failed to open DM channel for onboarding", {
+            slackUserId: params.slackUserId,
+            providerAccountId: params.providerAccountId,
+        });
+        return;
+    }
+
+    if (!linkUrl) {
+        await params.client.chat.postMessage({
+            channel: channelId,
+            text: toPlainSidecarText(
+                `${WELCOME_MESSAGE} Something went wrong generating your link — please try messaging me again in a moment.`,
+            ),
+        });
+        return;
+    }
+
+    const onboardingText = toPlainSidecarText(
+        `${WELCOME_MESSAGE}\n\nTo get started, open this link to connect your Slack account (one-time): ${linkUrl}\n\nThen you can ask me about your calendar, email, and more.`,
+    );
+
+    await params.client.chat.postMessage({
+        channel: channelId,
+        text: onboardingText,
+        blocks: [
+            { type: "section", text: { type: "plain_text", text: WELCOME_MESSAGE } },
+            {
+                type: "section",
+                text: {
+                    type: "plain_text",
+                    text: `To get started, open this link to connect your Slack account (one-time): ${linkUrl}`,
+                },
+            },
+            {
+                type: "actions",
+                elements: [
+                    {
+                        type: "button",
+                        text: { type: "plain_text", text: "Link your account" },
+                        url: linkUrl,
+                        action_id: "onboarding_link",
+                    },
+                ],
+            },
+        ],
+    });
 }
 
 function toMessageMeta(message: unknown): MessageMeta {
@@ -469,7 +586,10 @@ export async function startSlack() {
                 "x-surfaces-secret": SHARED_SECRET,
             },
             body: JSON.stringify({
-                userId: body.user.id,
+                userId: toSlackProviderAccountId({
+                    teamId: extractSlackTeamId(body),
+                    userId: body.user.id,
+                }).providerAccountId,
                 provider: "slack",
             })
         });
@@ -586,63 +706,24 @@ export async function startSlack() {
         }
     });
 
-    // Proactive onboarding: when a user opens a DM with the bot
-    app.event("im_open", async ({ event, client }) => {
-        const channel = event.channel;
-        const userId = event.user;
-        console.log(`[Surfaces] im_open: user ${userId} opened DM (channel ${channel})`);
-        const linkUrl = await fetchOnboardingLinkUrl("slack", userId);
-        if (!linkUrl) {
-            await client.chat.postMessage({
-                channel,
-                text: toPlainSidecarText(
-                    `${WELCOME_MESSAGE} Something went wrong generating your link — please try messaging me again in a moment.`,
-                ),
-            });
-            return;
-        }
-        const onboardingText = toPlainSidecarText(
-            `${WELCOME_MESSAGE}\n\nTo get started, open this link to connect your Slack account (one-time): ${linkUrl}\n\nThen you can ask me about your calendar, email, and more.`,
-        );
-        await client.chat.postMessage({
-            channel,
-            text: onboardingText,
-            blocks: [
-                {
-                    type: "section",
-                    text: { type: "plain_text", text: WELCOME_MESSAGE },
-                },
-                {
-                    type: "section",
-                    text: {
-                        type: "plain_text",
-                        text: `To get started, open this link to connect your Slack account (one-time): ${linkUrl}`,
-                    },
-                },
-                {
-                    type: "section",
-                    text: {
-                        type: "plain_text",
-                        text: "Then you can ask me about your calendar, email, and more.",
-                    },
-                },
-                {
-                    type: "actions",
-                    elements: [
-                        {
-                            type: "button",
-                            text: { type: "plain_text", text: "Link your account" },
-                            url: linkUrl,
-                            action_id: "onboarding_link",
-                        },
-                    ],
-                },
-            ],
+    // App Home onboarding: a reliable entrypoint when users click into the app.
+    app.event("app_home_opened", async ({ event, client, context }) => {
+        const slackUserId = event.user;
+        const teamId = extractSlackTeamId(context) ?? extractSlackTeamId(event);
+        const { providerAccountId, providerTeamId } = toSlackProviderAccountId({ teamId, userId: slackUserId });
+        const linked = await isSlackAccountLinked({ providerAccountId, providerTeamId });
+        if (linked) return;
+        await sendSlackOnboardingWelcome({
+            client,
+            slackUserId,
+            providerAccountId,
+            providerTeamId,
+            origin: "app_home_opened",
         });
     });
 
     // Listen for messages
-    app.message(async ({ message, say, body }) => {
+    app.message(async ({ message, body, context, say }) => {
         const meta = toMessageMeta(message);
         const assistantThreadTs = extractAssistantThreadTs(body);
         const inboundThreadTs = assistantThreadTs ?? meta.threadTs;
@@ -695,15 +776,40 @@ export async function startSlack() {
             }
 
             const channelId = meta.channel;
-            const userId = meta.user;
+            const slackUserId = meta.user;
             const messageTs = meta.ts;
             const messageText = meta.text;
-            const isDirectMessage = meta.channelType === "im" || meta.channelType === "mpim";
-            const cacheKey = threadContextKey(channelId, userId);
+            // Only treat 1:1 IMs as safe for onboarding links. Group DMs can contain other users.
+            const isDirectMessage = meta.channelType === "im";
+            const teamId = extractSlackTeamId(context) ?? extractSlackTeamId(body);
+            const { providerAccountId, providerTeamId } = toSlackProviderAccountId({ teamId, userId: slackUserId });
+            const cacheKey = threadContextKey(channelId, providerAccountId);
             const cachedThreadTs = slackThreadContext.get(cacheKey);
+            const linked = await isSlackAccountLinked({ providerAccountId, providerTeamId });
+            if (!linked) {
+                if (isDirectMessage) {
+                    await sendSlackOnboardingWelcome({
+                        client: app.client,
+                        channelId,
+                        slackUserId,
+                        providerAccountId,
+                        providerTeamId,
+                        origin: "message",
+                    });
+                } else {
+                    await app.client.chat.postMessage({
+                        channel: channelId,
+                        thread_ts: meta.threadTs ?? messageTs,
+                        text: toPlainSidecarText(
+                            "To connect your Amodel account, please DM me directly.",
+                        ),
+                    });
+                }
+                return;
+            }
             const backendCanonicalThreadTs = await fetchCanonicalSidecarThread({
                 provider: "slack",
-                providerAccountId: userId,
+                providerAccountId: providerAccountId,
                 channelId,
                 isDirectMessage,
                 incomingThreadId: meta.threadTs,
@@ -722,7 +828,7 @@ export async function startSlack() {
 
             console.log("[Surfaces][Slack] Resolved canonical thread", {
                 channel: channelId,
-                user: userId,
+                user: slackUserId,
                 messageTs,
                 incomingThreadTs: meta.threadTs ?? null,
                 backendThreadTs: backendCanonicalThreadTs ?? null,
@@ -761,7 +867,7 @@ export async function startSlack() {
                 } catch (err) {
                     console.error("[Surfaces][Slack] Failed to fetch thread history", {
                         channel: channelId,
-                        user: userId,
+                        user: slackUserId,
                         ts: messageTs,
                         threadTs: replyThreadTs,
                         error: err instanceof Error ? err.message : String(err),
@@ -773,7 +879,8 @@ export async function startSlack() {
                     content: messageText,
                     context: {
                         channelId,
-                        userId,
+                        userId: providerAccountId,
+                        workspaceId: providerTeamId,
                         messageId: messageTs,
                         threadId: replyThreadTs,
                         isDirectMessage,
@@ -783,17 +890,17 @@ export async function startSlack() {
 
                 if (!brainResponse || !Array.isArray(brainResponse.responses)) {
                     console.error("[Surfaces][Slack] Brain response missing/invalid", {
-                        channel: channelId,
-                        user: userId,
-                        ts: messageTs,
-                        hasResponse: Boolean(brainResponse),
-                    });
-                    return;
-                }
+                    channel: channelId,
+                    user: slackUserId,
+                    ts: messageTs,
+                    hasResponse: Boolean(brainResponse),
+                });
+                return;
+            }
 
                 console.log("[Surfaces][Slack] Brain responses ready", {
                     channel: channelId,
-                    user: userId,
+                    user: slackUserId,
                     ts: messageTs,
                     responseCount: brainResponse.responses.length,
                 });
@@ -927,7 +1034,7 @@ export async function startSlack() {
                             slackThreadContext.set(cacheKey, replyThreadTs);
                             console.log("[Surfaces][Slack] Sent interactive response", {
                                 channel: channelId,
-                                user: userId,
+                                user: slackUserId,
                                 ts: messageTs,
                                 threadTs: replyThreadTs,
                                 responseIndex: index,
@@ -942,7 +1049,7 @@ export async function startSlack() {
                             slackThreadContext.set(cacheKey, replyThreadTs);
                             console.log("[Surfaces][Slack] Sent text response", {
                                 channel: channelId,
-                                user: userId,
+                                user: slackUserId,
                                 ts: messageTs,
                                 threadTs: replyThreadTs,
                                 responseIndex: index,
@@ -951,7 +1058,7 @@ export async function startSlack() {
                         } else {
                             console.log("[Surfaces][Slack] Skipped empty outbound response", {
                                 channel: channelId,
-                                user: userId,
+                                user: slackUserId,
                                 ts: messageTs,
                                 responseIndex: index,
                             });
@@ -959,7 +1066,7 @@ export async function startSlack() {
                     } catch (err) {
                         console.error("[Surfaces][Slack] Failed to send response via Slack API", {
                             channel: channelId,
-                            user: userId,
+                            user: slackUserId,
                             ts: messageTs,
                             responseIndex: index,
                             hasInteractive: Boolean(resp?.interactive),
@@ -1030,62 +1137,47 @@ export async function sendSlackMessage(
 
 /**
  * Send the onboarding welcome message to a Slack user (opens DM if needed).
- * Used by POST /send-welcome so you can trigger the welcome to your account.
  */
-export async function sendWelcomeToSlackUser(slackUserId: string): Promise<{ ok: boolean; error?: string }> {
+
+export async function sendLinkedToSlackUser(providerAccountId: string): Promise<{ ok: boolean; error?: string }> {
     if (!slackApp) {
         return { ok: false, error: "Slack app not initialized" };
     }
+    const slackUserId = providerAccountId.includes(":")
+        ? providerAccountId.split(":")[providerAccountId.split(":").length - 1]
+        : providerAccountId;
     try {
         const open = await slackApp.client.conversations.open({ users: slackUserId });
         const channel = open.channel?.id;
         if (!channel) {
             return { ok: false, error: "Could not open DM channel" };
         }
-        const linkUrl = await fetchOnboardingLinkUrl("slack", slackUserId);
-        if (!linkUrl) {
-            await slackApp.client.chat.postMessage({
-                channel,
-                text: toPlainSidecarText(
-                    `${WELCOME_MESSAGE} Something went wrong generating your link — please try again in a moment.`,
-                ),
-            });
-            return { ok: true };
-        }
-        const onboardingText = toPlainSidecarText(
-            `${WELCOME_MESSAGE}\n\nTo get started, open this link to connect your Slack account (one-time): ${linkUrl}\n\nThen you can ask me about your calendar, email, and more.`,
+
+        const text = toPlainSidecarText(
+            "Connected. You're all set.\n\nSend me a message here anytime and I'll handle email + calendar for you.",
         );
+
         await slackApp.client.chat.postMessage({
             channel,
-            text: onboardingText,
+            text,
             blocks: [
-                { type: "section", text: { type: "plain_text", text: WELCOME_MESSAGE } },
+                { type: "section", text: { type: "plain_text", text: "Connected. You're all set." } },
                 {
                     type: "section",
                     text: {
                         type: "plain_text",
-                        text: `To get started, open this link to connect your Slack account (one-time): ${linkUrl}`,
+                        text: "Send me a message here anytime and I'll handle email + calendar for you.",
                     },
-                },
-                {
-                    type: "section",
-                    text: {
-                        type: "plain_text",
-                        text: "Then you can ask me about your calendar, email, and more.",
-                    },
-                },
-                {
-                    type: "actions",
-                    elements: [
-                        { type: "button", text: { type: "plain_text", text: "Link your account" }, url: linkUrl, action_id: "onboarding_link" },
-                    ],
                 },
             ],
         });
+
+        // Ensure subsequent inbound messages don't get stuck behind a stale "unlinked" cache entry.
+        slackIdentityCache.set(providerAccountId, { linked: true, checkedAt: Date.now() });
         return { ok: true };
     } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        console.error("[Surfaces] sendWelcomeToSlackUser failed", error);
+        console.error("[Surfaces] sendLinkedToSlackUser failed", error);
         return { ok: false, error: msg };
     }
 }

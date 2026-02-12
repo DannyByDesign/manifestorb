@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/server/auth";
 import { consumeLinkToken } from "@/server/lib/linking";
 import { createScopedLogger } from "@/server/lib/logger";
+import { sendSurfaceOnboardingLinked } from "@/server/lib/surfaces-client";
 
 const logger = createScopedLogger("API/Surfaces/Link");
 
@@ -24,8 +25,23 @@ export async function POST(req: NextRequest) {
 
         logger.info("Account linked successfully via API", {
             userId: session.user.id,
-            provider: result.provider
+            provider: result.provider,
         });
+
+        if (
+          result.success &&
+          (result.provider === "slack" ||
+            result.provider === "discord" ||
+            result.provider === "telegram") &&
+          typeof result.providerAccountId === "string" &&
+          result.providerAccountId.length > 0
+        ) {
+          await sendSurfaceOnboardingLinked({
+            provider: result.provider,
+            providerAccountId: result.providerAccountId,
+            providerTeamId: result.providerTeamId ?? null,
+          });
+        }
 
         return NextResponse.json({ success: true, provider: result.provider });
 

@@ -71,6 +71,7 @@ describe("create tool (calendar attendees)", () => {
           },
           calendar: {
             createEvent,
+            searchEvents: vi.fn().mockResolvedValue([]),
           },
         },
       } as unknown as CreateToolContext,
@@ -115,6 +116,7 @@ describe("create tool (calendar attendees)", () => {
           },
           calendar: {
             createEvent,
+            searchEvents: vi.fn().mockResolvedValue([]),
           },
         },
       } as unknown as CreateToolContext,
@@ -154,6 +156,7 @@ describe("create tool (calendar attendees)", () => {
           },
           calendar: {
             createEvent,
+            searchEvents: vi.fn().mockResolvedValue([]),
           },
         },
       } as unknown as CreateToolContext,
@@ -205,6 +208,7 @@ describe("create tool (calendar attendees)", () => {
           },
           calendar: {
             createEvent,
+            searchEvents: vi.fn().mockResolvedValue([]),
           },
         },
       } as unknown as CreateToolContext,

@@ -238,9 +238,9 @@ export class ChannelRouter {
                 provider: message.provider,
                 providerAccountId: message.context.userId,
                 providerTeamId:
-                    "teamId" in message.context && typeof message.context.teamId === "string"
-                        ? message.context.teamId
-                        : undefined, // If available
+                    typeof message.context.workspaceId === "string" && message.context.workspaceId.length > 0
+                        ? message.context.workspaceId
+                        : undefined,
                 metadata: {
                     channelId: message.context.channelId
                 }

@@ -88,36 +88,62 @@ export async function handleRequest(req: Request) {
     }
 
     // Send onboarding welcome to a user (e.g. Slack DM)
-    if (req.method === "POST" && url.pathname === "/send-welcome") {
+    if (req.method === "POST" && url.pathname === "/onboarding/linked") {
         try {
             if (!isAuthorized(env.SURFACES_SHARED_SECRET)) {
                 return new Response("Unauthorized", { status: 401 });
             }
-            const body = (await req.json()) as { platform?: string; slackUserId?: string };
-            const { platform, slackUserId } = body;
-            if (platform !== "slack" || !slackUserId) {
+
+            const body = (await req.json()) as {
+                provider?: string;
+                providerAccountId?: string;
+                providerTeamId?: string;
+            };
+
+            const provider = body.provider;
+            const providerAccountId = body.providerAccountId;
+            if (
+                (provider !== "slack" && provider !== "discord" && provider !== "telegram") ||
+                !providerAccountId
+            ) {
                 return new Response(
-                    JSON.stringify({ ok: false, error: "Requires platform: 'slack' and slackUserId" }),
-                    { status: 400, headers: { "Content-Type": "application/json" } }
+                    JSON.stringify({
+                        ok: false,
+                        error: "Requires provider ('slack'|'discord'|'telegram') and providerAccountId",
+                    }),
+                    { status: 400, headers: { "Content-Type": "application/json" } },
                 );
             }
-            const { sendWelcomeToSlackUser } = await import("./slack");
-            const result = await sendWelcomeToSlackUser(slackUserId);
-            if (!result.ok) {
+
+            if (provider === "slack") {
+                const { sendLinkedToSlackUser } = await import("./slack");
+                const result = await sendLinkedToSlackUser(providerAccountId);
                 return new Response(JSON.stringify(result), {
-                    status: 500,
+                    status: result.ok ? 200 : 500,
                     headers: { "Content-Type": "application/json" },
                 });
             }
-            return new Response(JSON.stringify({ ok: true }), {
-                status: 200,
+
+            if (provider === "discord") {
+                const { sendLinkedToDiscordUser } = await import("./discord");
+                const result = await sendLinkedToDiscordUser(providerAccountId);
+                return new Response(JSON.stringify(result), {
+                    status: result.ok ? 200 : 500,
+                    headers: { "Content-Type": "application/json" },
+                });
+            }
+
+            const { sendLinkedToTelegramUser } = await import("./telegram");
+            const result = await sendLinkedToTelegramUser(providerAccountId);
+            return new Response(JSON.stringify(result), {
+                status: result.ok ? 200 : 500,
                 headers: { "Content-Type": "application/json" },
             });
         } catch (err) {
-            console.error("Failed to send welcome", err);
+            console.error("Failed to send onboarding linked message", err);
             return new Response(
                 JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }),
-                { status: 500, headers: { "Content-Type": "application/json" } }
+                { status: 500, headers: { "Content-Type": "application/json" } },
             );
         }
     }
@@ -368,7 +394,7 @@ export async function startSidecar() {
 
     console.log(`🔔 HTTP Server listening on port ${port}`);
     console.log("   - POST /notify - Send notifications to platforms");
-    console.log("   - POST /send-welcome - Send onboarding welcome to a user (e.g. Slack)");
+    console.log("   - POST /onboarding/linked - Notify a user their sidecar account is linked");
     console.log("   - GET  /jobs/status - Get job queue status");
     console.log("   - POST /jobs/embeddings - Trigger embedding processing");
     console.log("   - POST /jobs/decay - Trigger memory decay");

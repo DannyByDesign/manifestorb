@@ -150,7 +150,15 @@ describe("Middleware", () => {
         extra: { url: mockReq.url },
       });
       expect(response.status).toBe(500);
-      expect(responseBody).toEqual({ error: "An unexpected error occurred" });
+      expect(responseBody).toEqual(
+        expect.objectContaining({
+          error:
+            "Unexpected server error. Please retry. If this continues, share requestId with support.",
+          errorCode: "INTERNAL_ERROR",
+        }),
+      );
+      expect(typeof responseBody.requestId).toBe("string");
+      expect(responseBody.requestId.length).toBeGreaterThan(0);
     });
   });
 

@@ -70,6 +70,6 @@ describe("surfaces handleRequest", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(sendSlackMessage).toHaveBeenCalledWith("c1", "hi");
+    expect(sendSlackMessage).toHaveBeenCalledWith("c1", "hi", undefined, undefined);
   });
 });

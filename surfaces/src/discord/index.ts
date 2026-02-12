@@ -10,6 +10,8 @@ import {
     Partials
 } from "discord.js";
 import {
+    fetchOnboardingLinkUrl,
+    fetchSurfaceIdentity,
     forwardToBrain,
     toPlainSidecarText,
     type InteractiveAction,
@@ -212,6 +214,29 @@ export function startDiscord() {
         // Normalize
         const isDM = message.channel.type === ChannelType.DM;
         try {
+            const providerAccountId = message.author.id;
+            const identity = await fetchSurfaceIdentity({
+                provider: "discord",
+                providerAccountId,
+            });
+            if (!identity?.linked) {
+                if (isDM) {
+                    const linkUrl = await fetchOnboardingLinkUrl(
+                        "discord",
+                        providerAccountId,
+                        undefined,
+                        { origin: "message", channelId: message.channelId },
+                    );
+                    const text = linkUrl
+                        ? `Welcome to Amodel.\n\nTo get started, connect your account here (one-time): ${linkUrl}`
+                        : "Welcome to Amodel.\n\nSomething went wrong generating your link. Please try again in a moment.";
+                    await message.reply(toPlainSidecarText(text));
+                } else {
+                    await message.reply(toPlainSidecarText("To connect your Amodel account, please DM me directly."));
+                }
+                return;
+            }
+
             await startTypingIndicator();
 
             // Determine channel ID format (e.g. "discord:channel_id" or just "channel_id")
@@ -349,5 +374,22 @@ export async function sendDiscordMessage(channelId: string, content: string) {
         }
     } catch (error) {
         console.error("Failed to send Discord message", error);
+    }
+}
+
+export async function sendLinkedToDiscordUser(providerAccountId: string): Promise<{ ok: boolean; error?: string }> {
+    if (!discordClient) {
+        return { ok: false, error: "Discord client not initialized" };
+    }
+    try {
+        const user = await discordClient.users.fetch(providerAccountId);
+        await user.send(
+            toPlainSidecarText(
+                "Connected. You're all set.\n\nSend me a message here anytime and I'll handle email + calendar for you.",
+            ),
+        );
+        return { ok: true };
+    } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
 }

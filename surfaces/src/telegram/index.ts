@@ -1,6 +1,8 @@
 
 import { Markup, Telegraf } from "telegraf";
 import {
+    fetchOnboardingLinkUrl,
+    fetchSurfaceIdentity,
     forwardToBrain,
     toPlainSidecarText,
     type InteractiveAction,
@@ -16,6 +18,7 @@ import { env } from "../env";
 
 const CORE_BASE_URL = env.CORE_BASE_URL;
 const SHARED_SECRET = env.SURFACES_SHARED_SECRET;
+let telegramBot: Telegraf | undefined;
 
 type CallbackButtonContext = {
     editMessageReplyMarkup: (markup: { inline_keyboard: [] }) => Promise<unknown>;
@@ -45,6 +48,7 @@ export function startTelegram() {
     setPlatformEnabled("telegram", true);
 
     const bot = new Telegraf(token);
+    telegramBot = bot;
 
     // Handle Callback Queries (Buttons)
     bot.on("callback_query", async (ctx) => {
@@ -188,6 +192,28 @@ export function startTelegram() {
         };
 
         try {
+            const identity = await fetchSurfaceIdentity({
+                provider: "telegram",
+                providerAccountId: userId,
+            });
+            if (!identity?.linked) {
+                if (isDM) {
+                    const linkUrl = await fetchOnboardingLinkUrl(
+                        "telegram",
+                        userId,
+                        undefined,
+                        { origin: "message", channelId: chatId },
+                    );
+                    const msg = linkUrl
+                        ? `Welcome to Amodel.\n\nTo get started, connect your account here (one-time): ${linkUrl}`
+                        : "Welcome to Amodel.\n\nSomething went wrong generating your link. Please try again in a moment.";
+                    await ctx.reply(toPlainSidecarText(msg));
+                } else {
+                    await ctx.reply(toPlainSidecarText("To connect your Amodel account, please DM me directly."));
+                }
+                return;
+            }
+
             await startTypingIndicator();
 
             const brainResponse = await forwardToBrain({
@@ -300,4 +326,21 @@ export function startTelegram() {
     // Enable graceful stop
     process.once('SIGINT', () => bot.stop('SIGINT'));
     process.once('SIGTERM', () => bot.stop('SIGTERM'));
+}
+
+export async function sendLinkedToTelegramUser(providerAccountId: string): Promise<{ ok: boolean; error?: string }> {
+    if (!telegramBot) {
+        return { ok: false, error: "Telegram bot not initialized" };
+    }
+    try {
+        await telegramBot.telegram.sendMessage(
+            providerAccountId,
+            toPlainSidecarText(
+                "Connected. You're all set.\n\nSend me a message here anytime and I'll handle email + calendar for you.",
+            ),
+        );
+        return { ok: true };
+    } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
 }

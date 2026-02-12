@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export function LinkPageClient({ token }: { token: string | null }) {
   const [status, setStatus] = useState<
@@ -33,6 +33,14 @@ export function LinkPageClient({ token }: { token: string | null }) {
     }
   };
 
+  // Frictionless: opening the one-time link is the confirmation.
+  // We auto-link once the user is authenticated, then show success and tell them to return to chat.
+  useEffect(() => {
+    if (!token) return;
+    void handleLink();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-4">
       <div className="w-full max-w-md p-6 bg-white rounded-lg shadow-md border border-gray-200">
@@ -41,18 +49,7 @@ export function LinkPageClient({ token }: { token: string | null }) {
         {!token && <div className="text-red-500">No token provided.</div>}
 
         {status === "IDLE" && token && (
-          <div className="flex flex-col gap-4">
-            <p>
-              Do you want to link your Slack/Discord account to your Amodel
-              profile?
-            </p>
-            <button
-              onClick={handleLink}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-semibold"
-            >
-              Yes, Link Account
-            </button>
-          </div>
+          <div className="text-blue-600 animate-pulse">Linking your account...</div>
         )}
 
         {status === "LINKING" && (

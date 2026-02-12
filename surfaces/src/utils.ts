@@ -47,6 +47,7 @@ export async function fetchOnboardingLinkUrl(
     provider: "slack" | "discord" | "telegram",
     providerAccountId: string,
     providerTeamId?: string,
+    metadata?: Record<string, unknown>,
 ): Promise<string | null> {
     try {
         const response = await fetch(`${CORE_BASE_URL}/api/surfaces/link-token`, {
@@ -59,6 +60,7 @@ export async function fetchOnboardingLinkUrl(
                 provider,
                 providerAccountId,
                 providerTeamId,
+                metadata,
             }),
         });
         if (!response.ok) {
@@ -69,6 +71,34 @@ export async function fetchOnboardingLinkUrl(
         return data.linkUrl ?? null;
     } catch (error) {
         console.error("[Surfaces] Failed to fetch onboarding link URL", error);
+        return null;
+    }
+}
+
+export async function fetchSurfaceIdentity(params: {
+    provider: "slack" | "discord" | "telegram";
+    providerAccountId: string;
+    providerTeamId?: string;
+}): Promise<{ linked: boolean; userId?: string } | null> {
+    try {
+        const response = await fetch(`${CORE_BASE_URL}/api/surfaces/identity`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${SHARED_SECRET}`,
+            },
+            body: JSON.stringify(params),
+        });
+        if (!response.ok) {
+            return null;
+        }
+        const data = (await response.json()) as { linked?: boolean; userId?: string };
+        return { linked: Boolean(data.linked), ...(data.userId ? { userId: data.userId } : {}) };
+    } catch (error) {
+        console.error("[Surfaces] Failed to resolve surface identity", {
+            provider: params.provider,
+            error: error instanceof Error ? error.message : String(error),
+        });
         return null;
     }
 }
