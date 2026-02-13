@@ -5,13 +5,13 @@ import type { SkillCapabilities } from "@/server/features/ai/capabilities";
 import type { PlannerExecutionResult, PlannerPlan } from "@/server/features/ai/planner/types";
 import type { CapabilityName } from "@/server/features/ai/skills/contracts/skill-contract";
 import { executeWithRepair } from "@/server/features/ai/skills/executor/repair";
-import { evaluateApprovalRequirement } from "@/server/features/approvals/rules";
 import { resolvePolicyConflict } from "@/server/features/ai/skills/policy/conflict-resolver";
 import { ApprovalService, getApprovalExpiry } from "@/server/features/approvals/service";
 import { createApprovalActionToken } from "@/server/features/approvals/action-token";
 import { invokeCapability } from "@/server/features/ai/planner/invoke-capability";
 import { mapPlannerCapabilityToApprovalContext } from "@/server/features/ai/planner/policy-context";
 import type { Logger } from "@/server/lib/logger";
+import { evaluatePolicyDecision } from "@/server/features/policy-plane/pdp";
 
 function topologicalSort(plan: PlannerPlan): string[] {
   const deps = new Map<string, Set<string>>();
@@ -200,12 +200,33 @@ export async function executePlannerPlan(params: {
         capability: step.capability,
         args,
       });
-      const approvalDecision = await evaluateApprovalRequirement({
+      const policyDecision = await evaluatePolicyDecision({
         userId: params.userId,
         toolName: policyContext.toolName,
         args: policyContext.args,
+        context: { source: "planner" },
       });
-      if (approvalDecision.requiresApproval) {
+      const approvalDecision = policyDecision.approval;
+      if (policyDecision.kind === "block") {
+        stepResults.push({
+          stepId,
+          capability: step.capability,
+          success: false,
+          policyBlocked: true,
+          errorCode: policyDecision.reasonCode,
+          message: policyDecision.message,
+        });
+        return {
+          status: "blocked",
+          responseText: policyDecision.message,
+          approvals,
+          interactivePayloads,
+          stepResults,
+          diagnosticsCode: policyDecision.reasonCode,
+          diagnosticsCategory: "policy",
+        };
+      }
+      if (policyDecision.kind === "require_approval" && approvalDecision?.requiresApproval) {
         const conflict = resolvePolicyConflict({
           capability: step.capability,
           approval: approvalDecision,

@@ -11,7 +11,7 @@ import { getModel } from "@/server/lib/llms/model";
 import type { Logger } from "@/server/lib/logger";
 import { compileSkillPlan } from "@/server/features/ai/skills/executor/compile-plan";
 import { executeWithRepair } from "@/server/features/ai/skills/executor/repair";
-import { evaluateApprovalRequirement } from "@/server/features/approvals/rules";
+import type { ApprovalEvaluation } from "@/server/features/approvals/rules";
 import { resolvePolicyConflict } from "@/server/features/ai/skills/policy/conflict-resolver";
 import type { SkillPolicyContext } from "@/server/features/ai/skills/policy/context";
 import { createCapabilityIdempotencyKey } from "@/server/features/ai/capabilities/idempotency";
@@ -20,6 +20,7 @@ import { createApprovalActionToken } from "@/server/features/approvals/action-to
 import prisma from "@/server/db/client";
 import { env } from "@/env";
 import type { CreateApprovalParams } from "@/server/features/approvals/types";
+import { evaluatePolicyDecision } from "@/server/features/policy-plane/pdp";
 
 interface SkillApprovalRecord {
   id: string;
@@ -582,7 +583,7 @@ export async function executeSkill(params: {
   let policyBlockCount = 0;
   let repairAttemptCount = 0;
   const compiledPlan = compileSkillPlan({ skill, slotResolution: slots });
-  const mutatingPolicyByCapability: Partial<Record<CapabilityName, Awaited<ReturnType<typeof evaluateApprovalRequirement>>>> =
+  const mutatingPolicyByCapability: Partial<Record<CapabilityName, ApprovalEvaluation>> =
     {};
   const resumeStepId = params.resume?.approvedStepId;
   let resumeActive = !resumeStepId;
@@ -657,13 +658,44 @@ export async function executeSkill(params: {
           capability: node.capability,
           slots: slots.resolved as Record<string, unknown>,
         });
-        const approval = await evaluateApprovalRequirement({
+        const policyDecision = await evaluatePolicyDecision({
           userId: runtime.emailAccount.userId,
           toolName: policyContext.toolName,
           args: policyContext.args,
+          context: { source: "skills" },
         });
-        mutatingPolicyByCapability[node.capability] = approval;
-        if (approval.requiresApproval) {
+        const approval = policyDecision.approval;
+        if (approval) {
+          mutatingPolicyByCapability[node.capability] = approval;
+        }
+        if (policyDecision.kind === "block") {
+          actionEvents.push({
+            stepId: deriveStepIdFromPolicyPrecheckNode(node.id),
+            capability: node.capability,
+            success: false,
+            itemCount: 0,
+            policyDecision: "blocked",
+            errorCode: policyDecision.reasonCode,
+          });
+          policyBlockCount += 1;
+          return {
+            status: "blocked",
+            responseText: policyDecision.message,
+            postconditionsPassed: false,
+            stepsExecuted,
+            stepGraphSize: compiledPlan.nodes.length,
+            toolChain,
+            stepDurationsMs,
+            interactivePayloads,
+            actionEvents,
+            policyBlockCount,
+            repairAttemptCount,
+            diagnostics: { code: policyDecision.reasonCode, category: "policy" },
+            failureReason: "policy_blocked",
+            approvals,
+          };
+        }
+        if (policyDecision.kind === "require_approval" && approval?.requiresApproval) {
           const conflict = resolvePolicyConflict({
             capability: node.capability,
             approval,
