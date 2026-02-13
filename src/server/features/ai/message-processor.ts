@@ -17,7 +17,6 @@ import { ApprovalService } from "@/features/approvals/service";
 import { executeApprovalRequest } from "@/features/approvals/execute";
 import { resolveScheduleProposalRequestById } from "@/features/calendar/schedule-proposal";
 import { resolveAmbiguousTimeRequestById } from "@/features/calendar/ambiguous-time";
-import { ensureProviderSchemaRegistryInitialized } from "@/server/features/ai/provider-schemas/bootstrap";
 
 export interface ProcessorContext {
   conversationId?: string;
@@ -768,7 +767,6 @@ export async function processMessage(
   input: MessageProcessorInput,
 ): Promise<MessageProcessorResult> {
   const { user, emailAccount, context, logger } = input;
-  ensureProviderSchemaRegistryInitialized();
 
   const conversationId = context.conversationId
     ? context.conversationId

@@ -4,48 +4,51 @@ import { finalizeRuntimeResult } from "@/server/features/ai/runtime/response";
 import type { OpenWorldTurnInput, OpenWorldTurnResult } from "@/server/features/ai/runtime/types";
 import { runRuntimePrecheck } from "@/server/features/ai/runtime/context/precheck";
 import { hydrateRuntimeContext } from "@/server/features/ai/runtime/context/hydrator";
+import { withUserRuntimeConcurrencyLimit } from "@/server/features/ai/runtime/concurrency";
 
 export async function runOpenWorldRuntimeTurn(
   input: OpenWorldTurnInput,
 ): Promise<OpenWorldTurnResult> {
-  const startedAt = Date.now();
-  const precheck = runRuntimePrecheck(input);
-  if (!precheck.ok) {
-    return {
-      text:
-        precheck.userMessage ??
-        "I’m missing required context to execute that request.",
-      approvals: [],
-      interactivePayloads: [],
-      selectedSkillIds: [],
-      toolSummaries: [],
-    };
-  }
+  return withUserRuntimeConcurrencyLimit(input.userId, async () => {
+    const startedAt = Date.now();
+    const precheck = runRuntimePrecheck(input);
+    if (!precheck.ok) {
+      return {
+        text:
+          precheck.userMessage ??
+          "I’m missing required context to execute that request.",
+        approvals: [],
+        interactivePayloads: [],
+        selectedSkillIds: [],
+        toolSummaries: [],
+      };
+    }
 
-  const hydrated = await hydrateRuntimeContext(input);
-  const session = await createRuntimeSession({
-    ...input,
-    message: hydrated.message,
+    const hydrated = await hydrateRuntimeContext(input);
+    const session = await createRuntimeSession({
+      ...input,
+      message: hydrated.message,
+    });
+    const execution = await runRuntimeLoop(session);
+    const result = finalizeRuntimeResult({
+      session,
+      text: execution.text,
+    });
+    const durationMs = Date.now() - startedAt;
+    const successes = result.toolSummaries.filter((summary) => summary.outcome === "success").length;
+    const blocked = result.toolSummaries.filter((summary) => summary.outcome === "blocked").length;
+    const failed = result.toolSummaries.filter((summary) => summary.outcome === "failed").length;
+    input.logger.info("openworld.turn.completed", {
+      userId: input.userId,
+      provider: input.provider,
+      durationMs,
+      stepCount: result.toolSummaries.length,
+      successes,
+      blocked,
+      failed,
+      approvalsCount: result.approvals.length,
+      interactivePayloadsCount: result.interactivePayloads.length,
+    });
+    return result;
   });
-  const execution = await runRuntimeLoop(session);
-  const result = finalizeRuntimeResult({
-    session,
-    text: execution.text,
-  });
-  const durationMs = Date.now() - startedAt;
-  const successes = result.toolSummaries.filter((summary) => summary.outcome === "success").length;
-  const blocked = result.toolSummaries.filter((summary) => summary.outcome === "blocked").length;
-  const failed = result.toolSummaries.filter((summary) => summary.outcome === "failed").length;
-  input.logger.info("openworld.turn.completed", {
-    userId: input.userId,
-    provider: input.provider,
-    durationMs,
-    stepCount: result.toolSummaries.length,
-    successes,
-    blocked,
-    failed,
-    approvalsCount: result.approvals.length,
-    interactivePayloadsCount: result.interactivePayloads.length,
-  });
-  return result;
 }

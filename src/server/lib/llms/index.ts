@@ -41,14 +41,6 @@ import { assertProviderFacingSchemaSafety } from "@/server/lib/llms/schema-safet
 const logger = createScopedLogger("llms");
 
 const MAX_LOG_LENGTH = 200;
-const SCHEMA_GUARD_LABEL_PATTERNS: RegExp[] = [
-  /^orchestration-preflight$/u,
-  /^Skills semantic parser$/u,
-  /^Skills router \(baseline closed set\)$/u,
-  /^Skills slot extraction/u,
-  /^Capability planner/u,
-];
-
 const commonOptions: {
   experimental_telemetry: { isEnabled: boolean };
   headers?: Record<string, string>;
@@ -56,7 +48,7 @@ const commonOptions: {
 } = { experimental_telemetry: { isEnabled: true } };
 
 function shouldValidateProviderSchema(label: string): boolean {
-  return SCHEMA_GUARD_LABEL_PATTERNS.some((pattern) => pattern.test(label));
+  return Boolean(label);
 }
 
 export function createGenerateText({

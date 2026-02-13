@@ -107,6 +107,8 @@ function summarizeListItem(item: unknown): string {
   const subject =
     typeof record.subject === "string"
       ? record.subject
+      : typeof record.title === "string"
+        ? record.title
       : typeof headers.subject === "string"
         ? headers.subject
         : undefined;
@@ -158,6 +160,26 @@ function deriveDeterministicListAnswer(session: RuntimeSession): string | null {
     return `The ${ordinal} item I found is ${details}.`;
   }
   return null;
+}
+
+function looksLikeExecutionStatusText(text: string): boolean {
+  const normalized = text.toLowerCase().trim();
+  if (!normalized) return false;
+  const executionMarkers = [
+    "[done]",
+    "matching email",
+    "matching emails",
+    "matching messages",
+    "executed",
+    "capability step",
+  ];
+  const hasMarker = executionMarkers.some((marker) => normalized.includes(marker));
+  const lineCount = normalized.split("\n").length;
+  const hasConversationCues =
+    normalized.includes("first item") ||
+    normalized.includes("subject") ||
+    normalized.includes("from ");
+  return hasMarker && lineCount <= 6 && !hasConversationCues;
 }
 
 async function synthesizeFinalAnswer(session: RuntimeSession): Promise<string | null> {
@@ -215,13 +237,24 @@ export async function runRuntimeAttempt(session: RuntimeSession): Promise<{ text
   });
 
   const text = result.text?.trim();
-  if (text && text.length > 0) {
+  if (text && text.length > 0 && !looksLikeExecutionStatusText(text)) {
     return { text };
   }
 
   const deterministic = deriveDeterministicListAnswer(session);
   if (deterministic) {
     return { text: deterministic };
+  }
+
+  if (text && text.length > 0) {
+    try {
+      const synthesizedFromStatusText = await synthesizeFinalAnswer(session);
+      if (synthesizedFromStatusText) {
+        return { text: synthesizedFromStatusText };
+      }
+    } catch (error) {
+      session.input.logger.warn("Runtime execution-status rewrite failed", { error });
+    }
   }
 
   try {
