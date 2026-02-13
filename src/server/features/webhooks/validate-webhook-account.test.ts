@@ -11,19 +11,39 @@ vi.mock("@/app/api/watch/controller");
 vi.mock("@/features/email/provider");
 vi.mock("@/features/email/watch-manager");
 vi.mock("@/server/db/client");
+vi.mock("@/server/features/policy-plane/repository", () => ({
+  listEffectiveCanonicalRules: vi.fn(),
+}));
 vi.mock("server-only", () => ({}));
 
 import { isPremium, hasAiAccess } from "@/features/premium";
 import { unwatchEmails } from "@/features/email/watch-manager";
 import { createEmailProvider } from "@/features/email/provider";
+import { listEffectiveCanonicalRules } from "@/server/features/policy-plane/repository";
 
 describe("validateWebhookAccount", () => {
   const mockEmailProvider = { type: "google" as const };
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(createEmailProvider).mockResolvedValue(mockEmailProvider as any);
+    vi.mocked(createEmailProvider).mockResolvedValue(mockEmailProvider as never);
     vi.mocked(unwatchEmails).mockResolvedValue(undefined);
+    vi.mocked(listEffectiveCanonicalRules).mockResolvedValue([
+      {
+        id: "rule-id",
+        version: 1,
+        type: "automation",
+        enabled: true,
+        priority: 0,
+        match: {
+          resource: "email",
+          conditions: [],
+        },
+        source: {
+          mode: "system",
+        },
+      },
+    ] as never);
   });
 
   function createMockEmailAccount(
@@ -49,31 +69,6 @@ describe("validateWebhookAccount", () => {
         expires_at: new Date(),
         disconnectedAt: null,
       },
-      rules: [
-        {
-          id: "rule-id",
-          name: "Test Rule",
-          instructions: "Test instructions",
-          actions: [],
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          expiresAt: null,
-          isTemporary: false,
-          enabled: true,
-          runOnThreads: false,
-          groupId: null,
-          from: null,
-          to: null,
-          subject: null,
-          body: null,
-          categoryFilterType: null,
-          conditionalOperator: "AND",
-          automate: true,
-          emailAccountId: "account-id",
-          systemType: null,
-          promptText: null,
-        },
-      ],
       user: {
         premium: {
           stripeSubscriptionStatus: "active",
@@ -172,12 +167,11 @@ describe("validateWebhookAccount", () => {
 
   describe("when account has no automation rules", () => {
     it("should return failure", async () => {
-      const emailAccount = createMockEmailAccount({
-        rules: [],
-      });
+      const emailAccount = createMockEmailAccount();
 
       vi.mocked(isPremium).mockReturnValue(true);
       vi.mocked(hasAiAccess).mockReturnValue(true);
+      vi.mocked(listEffectiveCanonicalRules).mockResolvedValue([] as never);
 
       const result = await validateWebhookAccount(emailAccount, logger);
 
@@ -242,7 +236,7 @@ describe("validateWebhookAccount", () => {
       const emailAccount = {
         ...createMockEmailAccount(),
         account: null,
-      } as any as ValidatedWebhookAccountData;
+      } as unknown as ValidatedWebhookAccountData;
 
       vi.mocked(isPremium).mockReturnValue(true);
       vi.mocked(hasAiAccess).mockReturnValue(true);

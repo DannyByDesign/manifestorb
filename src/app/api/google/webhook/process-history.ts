@@ -108,7 +108,6 @@ export async function processHistoryForUser(
           accessToken: accountAccessToken,
           hasAutomationRules,
           hasAiAccess: userHasAiAccess,
-          rules: validatedEmailAccount.rules,
           emailAccount: {
             ...validatedEmailAccount,
             account: {
@@ -269,15 +268,19 @@ const isInboxOrSentMessage = (message: {
 };
 
 function isHistoryIdExpiredError(error: unknown): boolean {
-  // biome-ignore lint/suspicious/noExplicitAny: simple
-  const err = error as any;
+  type HistoryErrorShape = {
+    response?: { data?: { error?: { code?: unknown } }; status?: unknown };
+    status?: unknown;
+    code?: unknown;
+  };
+  const err = error as HistoryErrorShape;
   const statusCode =
     err.response?.data?.error?.code ??
     err.response?.status ??
     err.status ??
     err.code;
 
-  return statusCode === 404;
+  return statusCode === 404 || statusCode === "404";
 }
 
 /**

@@ -102,6 +102,14 @@ Main synced: yes (`origin/main`)
     - `src/app/api/rules/[id]/route.ts`
   - Policy aggregation no longer pulls legacy `listEmailRules`:
     - `src/server/features/policies/service.ts`
+  - Webhook/account validation now checks canonical automation rules instead of legacy `rule` rows:
+    - `src/server/features/webhooks/validate-webhook-account.ts`
+  - Gmail webhook processing contracts removed legacy `rules` dependency and run through canonical automation execution path:
+    - `src/app/api/google/webhook/types.ts`
+    - `src/app/api/google/webhook/process-history-item.ts`
+    - `src/app/api/google/webhook/process-history.ts`
+    - `src/server/features/email/process-history.ts`
+    - `src/server/features/webhooks/process-history-item.ts`
 - Remaining:
   - Full elimination of legacy `src/server/features/rules/**` and related API surfaces after parity replacement.
   - Migrate remaining routes/services still importing `@/features/rules/*`.
