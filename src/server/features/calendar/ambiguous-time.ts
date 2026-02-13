@@ -1,5 +1,6 @@
 import prisma from "@/server/db/client";
 import { createScopedLogger } from "@/server/lib/logger";
+import { executeStructuredApprovalAction } from "@/features/approvals/structured-execution";
 
 const logger = createScopedLogger("ambiguous-time");
 
@@ -73,18 +74,16 @@ export async function resolveAmbiguousTimeRequestById(params: {
   }
 
   try {
-    const { createAgentTools } = await import("@/features/ai/tools");
-    const tools = await createAgentTools({
-      emailAccount: emailAccount as any,
-      logger,
+    const executionResult = await executeStructuredApprovalAction({
+      tool: payload.tool,
+      args,
       userId: requestRecord.userId,
+      emailAccountId: emailAccount.id,
+      logger,
     });
-    const toolInstance = (tools as any)[payload.tool];
-    if (!toolInstance) {
-      return { ok: false, error: "Tool not found" };
+    if (!executionResult.success) {
+      return { ok: false, error: executionResult.error ?? "Execution failed" };
     }
-
-    const executionResult = await toolInstance.execute(args);
 
     await prisma.approvalRequest.update({
       where: { id: requestId },

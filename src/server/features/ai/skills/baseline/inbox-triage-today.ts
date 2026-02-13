@@ -3,12 +3,12 @@ import { createBaselineSkill } from "./shared";
 export const inboxTriageTodaySkill = createBaselineSkill({
   id: "inbox_triage_today",
   intents: ["triage my inbox", "what should I reply to today", "prioritize my inbox"],
-  requiredSlots: ["time_window"],
+  requiredSlots: [],
   optionalSlots: ["priority_bias"],
-  allowedTools: ["email.searchThreads"],
+  allowedTools: ["email.searchThreads", "planner.composeDayPlan"],
   plan: [
     { id: "search", description: "Search today's actionable threads", capability: "email.searchThreads", requiredSlots: ["time_window"] },
-    { id: "rank", description: "Rank urgency and actionable state" },
+    { id: "rank", description: "Rank urgency and actionable state", capability: "planner.composeDayPlan" },
   ],
   successChecks: [{ id: "ranked_threads", description: "Returns ranked actionable threads or explicit no-results" }],
   failureModes: [{ code: "NO_ACTIONABLE", description: "No actionable emails found", recoveryPrompt: "I couldn't find urgent action items for today. Want me to broaden to this week?" }],

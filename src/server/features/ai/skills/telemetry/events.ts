@@ -17,6 +17,9 @@ export type SkillTelemetryEvent =
       skillId: SkillId;
       missingRequired: number;
       ambiguous: number;
+      missingRequiredSlots: string[];
+      ambiguousSlots: string[];
+      clarificationPrompt?: string;
     }
   | {
       name: "skill.execution.completed";
@@ -26,6 +29,7 @@ export type SkillTelemetryEvent =
       status: "success" | "partial" | "blocked" | "failed";
       stepsExecuted: number;
       toolChain: CapabilityName[];
+      stepDurationsMs: Record<string, number>;
       postconditionsPassed: boolean;
       failureReason?: string;
     };

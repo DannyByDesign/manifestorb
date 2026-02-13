@@ -3,8 +3,8 @@ import { createBaselineSkill } from "./shared";
 export const calendarRescheduleWithConstraintsSkill = createBaselineSkill({
   id: "calendar_reschedule_with_constraints",
   intents: ["reschedule this meeting", "move this event", "find a new time for this"],
-  requiredSlots: ["event_id", "reschedule_window"],
-  optionalSlots: ["must_keep_duration", "must_keep_attendees"],
+  requiredSlots: ["event_id"],
+  optionalSlots: ["reschedule_window", "must_keep_duration", "must_keep_attendees"],
   allowedTools: ["calendar.findAvailability", "calendar.rescheduleEvent"],
   plan: [
     { id: "find_candidate_slot", description: "Find candidate slot", capability: "calendar.findAvailability", requiredSlots: ["reschedule_window"] },
@@ -15,7 +15,7 @@ export const calendarRescheduleWithConstraintsSkill = createBaselineSkill({
   templates: {
     success: "Done. I rescheduled the event.",
     partial: "I found options but need one constraint clarified.",
-    blocked: "I need the event and the allowed reschedule window.",
+    blocked: "I need the target event to reschedule.",
     failed: "I couldn't reschedule that event right now.",
   },
 });

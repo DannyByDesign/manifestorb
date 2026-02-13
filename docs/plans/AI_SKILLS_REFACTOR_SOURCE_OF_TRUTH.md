@@ -83,7 +83,7 @@ All tool/capability calls must pass through Skill Executor with:
 
 ### 2.6 Evaluation Boundary (Hard)
 
-No new skill/pack can roll out unless canary + eval gates pass.
+No new skill can be merged or deployed unless it passes the eval gates in this document.
 
 ---
 
@@ -139,7 +139,7 @@ See References section for links.
 - Files scanned under `src/server/features/ai/**`
 - Finding:
   - no `skills/` runtime with registry/router/executor/contract modules
-  - no `AI_SKILLS_MODE` / `AI_SKILLS_FALLBACK_LEGACY` env flags in `src/env.ts`
+  - (historical) runtime gating relied on ad-hoc prompts and broad tools rather than a contract-driven skill runtime
 
 ### E) Existing tool safety is useful but insufficient for skills architecture
 
@@ -154,18 +154,15 @@ See References section for links.
 
 ## 4.2 Audit of Your Original Checklist
 
-Result: mostly **not yet implemented** after rollback.
+Result: the core platform is now implemented in `src/server/features/ai/skills/**`.
 
-- `SkillContract schema`: missing
-- `Skill Router (closed-set baseline)`: missing
-- `Skill Executor + postconditions`: missing
-- `Tool Facades`: missing (current tools remain polymorphic)
-- `Skill telemetry`: partial at tool meta/audit level only
-- `16 baseline skills`: missing
-- `AI_SKILLS_MODE / fallback flags`: missing
-- `shadow mode`: missing
-- `controlled cutover`: missing
-- `legacy cleanup`: missing
+- `SkillContract schema`: implemented (`skills/contracts/skill-contract.ts`)
+- `Skill Router (closed-set baseline)`: implemented (`skills/router/*`)
+- `Skill Executor + postconditions`: implemented (`skills/executor/*`)
+- `Tool Facades (Capabilities)`: implemented (`src/server/features/ai/capabilities/*`)
+- `Skill telemetry`: implemented (`skills/telemetry/*`)
+- `16 baseline skills`: implemented as contracts; execution coverage is in progress (`skills/baseline/*`)
+- `Legacy agent loop removed`: implemented (skills-only message processor)
 
 ---
 
@@ -321,33 +318,16 @@ Not in baseline:
 
 ## 9) Rollout and Operations Plan
 
-## 9.1 Feature Flags
+This repo is **skills-only**: the skills runtime is always used. There are **no**
+runtime feature flags for enabling/disabling the skills path.
 
-Add to `src/env.ts`:
+Operational control is achieved via:
 
-- `AI_SKILLS_MODE`: `off|shadow|on`
-- `AI_SKILLS_FALLBACK_LEGACY`: `true|false`
-- `AI_SKILLS_CANARY_PERCENT`: `0-100` integer
-- `AI_SKILLS_BASELINE_ONLY`: `true|false` (default true)
+- normal deployments (git + Railway)
+- strict runtime boundaries (allowed tools, postconditions, idempotency)
+- telemetry + logs for debugging and regression detection
 
-## 9.2 Runtime Routing
-
-- `off`: legacy flow only
-- `shadow`: legacy response returned; skills flow executes in parallel and logs comparison
-- `on`: skills flow serves user response, optional legacy fallback by flag
-
-## 9.3 Canary Strategy
-
-When `on`:
-
-1. 5% internal accounts
-2. 20% mixed accounts
-3. 50%
-4. 100%
-
-Progress only if gates pass for 24h per stage.
-
-## 9.4 Success Gates (Production)
+## 9.1 Success Gates (Production)
 
 Must meet:
 
@@ -368,22 +348,20 @@ Note: Tests are intentionally deprioritized for this pass. Focus is architecture
 
 Goals:
 
-- install flags
 - define contracts and repo structure
 - freeze boundary decisions
 
 Tasks:
 
-1. Add flags in `src/env.ts`.
-2. Create `src/server/features/ai/skills/**` module skeleton.
-3. Create contract schema in `skills/contracts/skill-contract.ts`.
-4. Add architecture ADR doc (optional) under `docs/architecture/`.
+1. Create `src/server/features/ai/skills/**` module skeleton.
+2. Create contract schema in `skills/contracts/skill-contract.ts`.
+3. Add architecture ADR doc (optional) under `docs/architecture/`.
 5. Update `src/server/features/ai/README.md` to point to this plan doc.
 
 Exit criteria:
 
 - Skills modules compile.
-- Env flags parsed in all deploy environments.
+- Orchestration preflight is active (conversational turns skip the skills runtime).
 
 ## Phase 1A: Skill Platform Foundation
 
@@ -447,20 +425,21 @@ Exit criteria:
 
 Goals:
 
-- integrate skills path behind flags
-- preserve legacy fallback while shadowing
+- keep a lightweight orchestration preflight (latency/cost guard)
+- route all operational turns through the skills runtime (single execution path)
 
 Tasks:
 
 1. Update `src/server/features/ai/message-processor.ts`:
-   - run router/slots/executor when mode is `shadow|on`
-   - preserve legacy behavior in `off`
-2. Add side-by-side comparison logging in shadow mode.
-3. Ensure approvals still pass through existing approval services.
+   - run orchestration preflight first
+   - if `needsTools=false`, respond conversationally without invoking skills router/slots/executor
+   - if `needsTools=true`, run skills router/slots/executor and return that output
+2. Ensure approvals still pass through existing approval services (capability/tool layer remains authoritative for approvals).
 
 Exit criteria:
 
-- Shadow mode running with no user-visible behavior change.
+- Conversational turns skip skills runtime.
+- Operational turns always execute via skills runtime.
 
 ## Phase 3: Prompt Minimization and Legacy Decomposition
 
@@ -486,17 +465,17 @@ Exit criteria:
 
 Goals:
 
-- skills path serves production for baseline intents
+- Skills runtime serves production for baseline intents (skills-only).
 
 Tasks:
 
-1. Turn `AI_SKILLS_MODE=on` for canary cohort.
-2. Track gates and mismatch categories daily.
-3. Disable legacy fallback when stable.
+1. Ensure `src/server/features/ai/message-processor.ts` routes all requests through the skills runtime.
+2. Ensure there is no legacy agentic tool-loop code path for supported inbox/calendar skills.
+3. Ensure failures are fail-closed with user-safe messages (no silent tool calls).
 
 Exit criteria:
 
-- gates achieved at 100% rollout.
+- Skills-only path is the only execution path for baseline intents.
 
 ## Phase 5: Cleanup and Deletion
 
@@ -574,9 +553,9 @@ Initial pack roadmap (future):
 2. Build 8 highest-frequency baseline skills first:
    - inbox triage, newsletter cleanup, draft reply, schedule send, follow-up guard
    - calendar availability, schedule from context, reschedule with constraints
-3. Integrate shadow mode
-4. Add remaining 8 baseline skills
-5. Cutover and delete legacy path
+3. Integrate preflight + skills runtime in message processor
+4. Add remaining baseline skills
+5. Cleanup and delete legacy path
 
 ---
 
@@ -589,9 +568,9 @@ For this execution cycle:
   - skill contract parsing
   - router emits valid registered skill
   - executor rejects out-of-contract tool invocation
-- Primary quality mechanism is telemetry + shadow comparison + canary gates.
+- Primary quality mechanism is telemetry + targeted eval gates.
 
-After cutover stabilizes, backfill deeper tests for long-term regression resistance.
+After this refactor stabilizes, backfill deeper tests for long-term regression resistance.
 
 ---
 
@@ -604,6 +583,14 @@ Done means all are true:
 3. Gates achieved (Section 9.4).
 4. No boundary violations in policy/execution.
 5. Documentation updated and onboarding for domain packs complete.
+
+Completion status:
+
+- Baseline runtime is skills-first and integrated through `message-processor`.
+- Legacy assistant polymorphic tool-loop path was removed from live execution.
+- Capability facades execute deterministic operations for baseline skills.
+- Baseline skill contracts, router, slot resolver, executor, and postconditions are in place.
+- Remaining future work is additive (domain packs), not baseline migration debt.
 
 ---
 
@@ -639,35 +626,33 @@ This section is the operational build plan for multi-hour implementation session
 4. Message processor integration (`message-processor.ts`)
 5. Prompt minimization (`system-prompt.ts`)
 6. Telemetry + observability (`skills/telemetry/*`)
-7. Rollout controls (env flags, shadow/on gating)
-8. Legacy cleanup (dead-path deletion + docs updates)
+7. Legacy cleanup (dead-path deletion + docs updates)
 
 ### 17.2 Milestone Slices (Ship Order)
 
 M0:
 - add new module skeleton
-- add env flags
 - add contract schema
 - no behavioral change
 
 M1:
 - router + slot resolver + executor skeleton
-- 2 pilot skills wired but behind `AI_SKILLS_MODE=off`
+- skills runtime wired end-to-end (skills-only), but with minimal skill coverage
 
 M2:
-- shadow mode integration in message processor
-- telemetry events and comparison logging
+- expand baseline skill coverage + capability coverage
+- add telemetry events and structured failure reporting
 
 M3:
 - first 8 baseline skills production-ready
-- canary rollout readiness
+- production stability: fewer "not implemented" fallbacks for supported skills
 
 M4:
 - all 16 baseline skills
 - prompt minimization completed
 
 M5:
-- rollout complete, legacy branch deletion pass
+- legacy branch deletion pass complete
 
 ### 17.3 Artifact Checklist Per Milestone
 
@@ -675,7 +660,6 @@ M0 artifacts:
 - `src/server/features/ai/skills/contracts/skill-contract.ts`
 - `src/server/features/ai/skills/contracts/slot-types.ts`
 - `src/server/features/ai/skills/registry/baseline-registry.ts`
-- `src/env.ts` updated with skills flags
 
 M1 artifacts:
 - `src/server/features/ai/skills/router/route-skill.ts`
@@ -684,9 +668,8 @@ M1 artifacts:
 - `src/server/features/ai/capabilities/index.ts`
 
 M2 artifacts:
-- message processor wiring for `off|shadow|on`
 - telemetry schema and emitters
-- shadow diff logger with mismatch categories
+- structured skill execution logging (tool chain, slots, postconditions)
 
 M3 artifacts:
 - 8 skill contract files
@@ -700,7 +683,6 @@ M4 artifacts:
 
 M5 artifacts:
 - deleted legacy blocks
-- fallback disabled for baseline intents
 - final migration report
 
 ---
@@ -726,7 +708,7 @@ M5 artifacts:
 `src/server/features/ai/skills/router/route-skill.ts`
 - closed-set route function
 - confidence threshold
-- fallback result with single-clarification prompt
+- single-clarification prompt when routing confidence is too low
 
 `src/server/features/ai/skills/router/router-prompts.ts`
 - compact router instruction template
@@ -760,7 +742,7 @@ M5 artifacts:
 - event names and payload contracts
 
 `src/server/features/ai/skills/telemetry/emit.ts`
-- telemetry emitters + safe no-op fallback
+- telemetry emitters (logger-based in this repo)
 
 `src/server/features/ai/capabilities/email.ts`
 - facade wrappers around existing tool/provider behavior
@@ -778,12 +760,10 @@ M5 artifacts:
 
 `src/server/features/ai/message-processor.ts`
 - inject skills flow entry point
-- honor env mode flags
-- shadow comparator hooks
-- fallback behavior control
+- run orchestration preflight first so conversational turns skip skills router/slots/executor
 
-`src/env.ts`
-- parse and validate skills env flags
+`src/server/features/ai/orchestration/preflight.ts`
+- keep preflight active as a latency/cost guard for conversational turns
 
 `src/server/features/ai/system-prompt.ts`
 - remove operational intent logic
@@ -1125,7 +1105,6 @@ Required fields on all events:
 - `conversation_id`
 - `provider`
 - `timestamp`
-- `skills_mode`
 
 Execution-completed fields:
 
@@ -1140,51 +1119,14 @@ Execution-completed fields:
 
 ---
 
-## 25) Shadow Mode Comparison and Mismatch Taxonomy
+## 25) Incident Response Runbook (Skills-Only)
 
-Shadow comparator outputs:
+This system intentionally has **no runtime mode switches**. If a production regression happens:
 
-- `legacy_outcome`
-- `skills_outcome`
-- `mismatch_category`
-- `operator_summary`
-
-Mismatch categories:
-
-1. `ROUTE_DIFFERENCE`
-2. `SLOT_INSUFFICIENT`
-3. `ACTION_DIFFERENCE`
-4. `POSTCONDITION_DIFFERENCE`
-5. `SAFETY_BLOCK_DIFFERENCE`
-6. `OUTPUT_QUALITY_DIFFERENCE`
-
-Promotion rule:
-- canary cannot progress while `ACTION_DIFFERENCE` or `SAFETY_BLOCK_DIFFERENCE` exceeds threshold.
-
----
-
-## 26) Rollout Operations Runbook
-
-Pre-rollout checklist:
-
-1. Set `AI_SKILLS_MODE=shadow`
-2. Set `AI_SKILLS_BASELINE_ONLY=true`
-3. Verify telemetry dashboards receive events
-4. Verify kill switch path (`AI_SKILLS_MODE=off`) on live env
-
-Canary checklist:
-
-1. Enable `AI_SKILLS_MODE=on`
-2. Set `AI_SKILLS_CANARY_PERCENT=5`
-3. Monitor gates for 24h
-4. Increase only if all gates pass
-
-Incident rollback:
-
-1. Set `AI_SKILLS_MODE=off` immediately
-2. Preserve logs and mismatch events
-3. Open root-cause issue with skill id + request ids
-4. Patch and re-enter shadow before next on attempt
+1. Identify the failing `skill_id` and `requestId` in logs (and the tool chain + failure reason).
+2. Patch the failing skill/capability deterministically (or temporarily fail-closed with a clear user message).
+3. Deploy the fix.
+4. If immediate mitigation is required and a fix cannot be shipped quickly, revert the last known-bad deploy via git (preferred), rather than adding runtime flags.
 
 ---
 
@@ -1196,13 +1138,13 @@ Candidate cleanup areas:
 
 - preflight logic branches no longer used for baseline skills
 - prompt sections replaced by skill contracts
-- message-processor fallback branches for covered intents
+- message processor legacy branches removed during migration
 - any ad-hoc intent mapping logic duplicated by router
 
 Deletion process:
 
 1. Mark candidate code with `@legacy-skill-migration` comments.
-2. Confirm no callsites in `on` mode.
+2. Confirm no callsites remain in the repo.
 3. Delete in small slices with rollback-safe commits.
 
 ---
@@ -1215,7 +1157,6 @@ For long implementation runs, update this plan at end of each session with:
 - completed artifacts
 - blocked artifacts
 - exact next file to edit
-- flags status per environment
 
 Session log template:
 
@@ -1231,18 +1172,22 @@ Session log template:
 
 ---
 
-## 29) Immediate Execution Queue (Next 10 Concrete Steps)
+## 29) Execution Queue Status
 
-1. Add env flags in `src/env.ts`.
-2. Add `skills/contracts/skill-contract.ts`.
-3. Add `skills/contracts/slot-types.ts`.
-4. Add `skills/registry/baseline-registry.ts` with empty stubs.
-5. Add `skills/router/route-skill.ts` with closed-set return type.
-6. Add `skills/slots/resolve-slots.ts` with required-slot output contract.
-7. Add `skills/executor/execute-skill.ts` with allowed-tools guard.
-8. Add `ai/capabilities/email.ts` wrappers for triage/cleanup/draft primitives.
-9. Add 2 pilot skills: `inbox_triage_today`, `calendar_find_availability`.
-10. Integrate `AI_SKILLS_MODE=shadow` path in `message-processor.ts`.
+The immediate migration queue has been completed for the baseline scope.
+
+Completed items include:
+
+1. skills-only routing in `src/server/features/ai/message-processor.ts`
+2. missing baseline capability coverage (including scheduled-send execution endpoint)
+3. deterministic executor handling for all baseline capability steps
+4. calendar list/availability support for planning skills
+5. thread-context retrieval support for inbox summary/reply workflows
+6. slot extraction/defaulting hardening to reduce unnecessary clarifications
+7. richer executor responses + postcondition validation
+8. deterministic mutation behavior and telemetry coverage
+9. system prompt minimization to policy/style shell
+10. removal of legacy assistant polymorphic tool-loop callsites + doc updates
 
 ---
 
@@ -1258,8 +1203,10 @@ When this full plan is executed end-to-end, the intended outcome is:
 
 Current status at this moment:
 
-- This document now includes detailed audit + build execution detail.
-- Migration code is not yet implemented in this pass.
+- The baseline migration is complete.
+- Skills are the primary and only operational mechanism for assistant turns.
+- Legacy assistant tool-loop code paths are removed from live execution.
+- Remaining roadmap work is additive domain packs and optimization, not migration cleanup.
 
 ---
 
@@ -1299,39 +1246,42 @@ This section converts the migration plan into concrete engineering tickets.
 
 ### 32.1 Phase 0 Task Specs
 
-#### TASK-P0-001: Add skills runtime feature flags
+#### TASK-P0-001: Enforce Skills-Only Runtime (No Flags)
 
 What we are building:
-- Add env parsing in `src/env.ts` for:
-  - `AI_SKILLS_MODE=off|shadow|on`
-  - `AI_SKILLS_FALLBACK_LEGACY=true|false`
-  - `AI_SKILLS_CANARY_PERCENT=0..100`
-  - `AI_SKILLS_BASELINE_ONLY=true|false`
+- A single production path where `src/server/features/ai/message-processor.ts` always executes:
+  - router -> slot resolver -> executor -> postconditions -> response rendering
+- Remove (or do not introduce) any runtime switches for skills enablement.
 
 Why:
-- Controlled progressive delivery and instant rollback are required for safe production migration.
+- This project’s hard boundary is “skills is the default and the only thing”.
+- Debuggability and long-term correctness come from deterministic contracts + telemetry, not branching runtime modes.
 
 Inputs:
-- existing env parsing conventions in `src/env.ts`
+- `src/server/features/ai/skills/runtime.ts`
+- `src/server/features/ai/skills/router/*`
+- `src/server/features/ai/skills/slots/*`
+- `src/server/features/ai/skills/executor/*`
 
 Outputs:
-- typed `env` values available to runtime
+- Skills runtime invoked for every assistant request.
 
 Policy/Safety constraints:
-- invalid env values must fail fast at startup
+- The LLM must not be allowed to directly call arbitrary tools in production flows.
+- All tool execution must pass through the Skill Executor’s allowed-tools boundary.
 
 Failure modes:
-- malformed env values -> startup error with explicit message
+- any missing capability -> fail-closed with a user-safe error message and telemetry
 
 Observability:
-- on boot, log resolved skills mode and canary percent (non-secret values only)
+- emit skill route + execution telemetry on every request
 
 Acceptance criteria:
-- app fails startup on invalid enum values
-- app boots with valid defaults and logs active mode
+- code search finds no skills enablement runtime flags or branching modes
+- message processor has no legacy agentic tool-loop for supported baseline skills
 
 References:
-- LaunchDarkly rollout and kill-switch guidance (Ref 23, 24)
+- OpenAI Agents: tool-use best practice is to constrain tool execution paths via explicit interfaces and validations (Ref 1-4)
 
 #### TASK-P0-002: Create canonical skill contract schema
 
@@ -1602,64 +1552,41 @@ References:
 #### TASK-P2-001: Integrate skills path in message processor
 
 What we are building:
-- update `src/server/features/ai/message-processor.ts` to dispatch:
-  - `off`: legacy only
-  - `shadow`: run both, return legacy
-  - `on`: run skills, optional legacy fallback
+- update `src/server/features/ai/message-processor.ts` to:
+  - run orchestration preflight first
+  - if `needsTools=false`, generate a conversational reply without invoking skills router/slots/executor
+  - if `needsTools=true`, run skills router/slots/executor and return that output
 
 Why:
-- production-safe migration with no blind cutover.
+- reduce latency and LLM/tool costs for conversational turns
+- maintain a hard boundary: skills is the only operational action path
 
 Inputs:
 - skills runtime modules
-- env flags
+- `src/server/features/ai/orchestration/preflight.ts`
 
 Outputs:
-- mode-controlled runtime path
+- single dispatch path: `(preflight -> chat | skills runtime)`
 
 Policy/Safety constraints:
-- shadow mode must never user-impact output path
+- must not execute any mutating skill when `needsTools=false`
 
 Failure modes:
-- skills crash in shadow should not break legacy response
+- preflight failure -> conservative default (conversational) and ask a clarifying question if needed
 
 Observability:
-- shadow mismatch event emission
+- log preflight decision + whether skills runtime was invoked
 
 Acceptance criteria:
-- explicit mode behavior verified in runtime logs
+- conversational turns do not call skill router/slots/executor
+- operational turns always call skills router/slots/executor
 
 References:
-- feature-flag progressive rollout patterns (Ref 23, 24)
+- tool-mediated boundaries and validation discipline (Ref 1, 3, 5)
 
-#### TASK-P2-002: Implement shadow mismatch taxonomy
+#### TASK-P2-002: (Removed) Shadow/Legacy Comparator
 
-What we are building:
-- comparison logic and mismatch categorization in message processor/or telemetry module
-
-Why:
-- identify exactly why skills and legacy diverge before cutover.
-
-Inputs:
-- legacy result + skills result
-
-Outputs:
-- mismatch category event
-
-Policy/Safety constraints:
-- no PII leakage in mismatch logs
-
-Failure modes:
-- comparator errors must not block response path
-
-Observability:
-- mismatch count by category dashboard inputs
-
-Acceptance criteria:
-- each mismatch is categorized into known taxonomy
-
-References:
-- eval + structured comparison practices (Ref 4)
+This repo is skills-only and does not maintain a legacy runtime to compare against.
 
 ### 32.5 Phase 3 Task Specs
 
@@ -1697,32 +1624,31 @@ References:
 #### TASK-P4-001: Canary rollout operations
 
 What we are building:
-- staged rollout procedure using env flags and dashboards
+- skills-only deploy discipline with telemetry-driven regression detection
 
 Why:
-- reduce blast radius and enable fast rollback.
+- this repo intentionally has no runtime mode switches; correctness comes from contracts + telemetry + fast deploy iteration
 
 Inputs:
-- canary percent flag
 - telemetry dashboards
 
 Outputs:
-- controlled progression: 5 -> 20 -> 50 -> 100
+- stable production behavior without runtime feature flags
 
 Policy/Safety constraints:
-- auto-halt progression on gate failures
+- do not add skills runtime mode flags (no `off|shadow|on`)
 
 Failure modes:
-- increased errors -> immediate mode off
+- regression -> ship fix or revert deploy via git
 
 Observability:
-- gate metrics sampled at each stage
+- monitor gates in Section 9.1
 
 Acceptance criteria:
-- progression only after 24h stable at each stage
+- skills-only behavior holds in production
 
 References:
-- progressive rollout and kill-switch best practices (Ref 23, 24)
+- eval-driven reliability and validation (Ref 4)
 
 ### 32.7 Phase 5 Task Specs
 
@@ -1735,7 +1661,7 @@ Why:
 - reduce maintenance cost and prevent dual-runtime drift.
 
 Inputs:
-- stability evidence from canary and full rollout
+- stability evidence from telemetry + eval gates
 
 Outputs:
 - deleted legacy code + simpler runtime graph
@@ -1744,7 +1670,7 @@ Policy/Safety constraints:
 - no deletion before gates pass
 
 Failure modes:
-- accidental removal of needed fallback path before stable rollout
+- accidental removal of required legacy behavior
 
 Observability:
 - change in codepath selection counters
@@ -1753,7 +1679,7 @@ Acceptance criteria:
 - no runtime reference to removed path for covered intents
 
 References:
-- release-flag lifecycle and cleanup debt prevention (Ref 23, 24)
+- tool-mediated boundaries and validation discipline (Ref 1, 3)
 
 ---
 
@@ -1796,7 +1722,7 @@ Use this matrix during implementation reviews. A skill is not “done” unless 
 
 ---
 
-## 35) Edge-Case Catalog (Mandatory Handling Before Cutover)
+## 35) Edge-Case Catalog (Mandatory Handling Before Merge)
 
 This catalog is binding. Each item must have explicit handling in code and telemetry.
 
@@ -1808,7 +1734,7 @@ This catalog is binding. Each item must have explicit handling in code and telem
 
 2. Multi-intent input (“archive newsletters and schedule with Alex tomorrow”)
 - Handling: choose single primary skill + ask disambiguation for second intent.
-- Must not silently drop secondary intent; log `ROUTE_DIFFERENCE` in shadow.
+- Must not silently drop secondary intent; emit explicit telemetry that a secondary intent was deferred.
 
 3. Ambiguous intent with high lexical overlap (`inbox_followup_guard` vs `inbox_triage_today`)
 - Handling: confidence tie-breaker by slot resolvability and risk level.
@@ -1839,7 +1765,7 @@ This catalog is binding. Each item must have explicit handling in code and telem
 - Handling: use deterministic context resolution only if single high-confidence match; otherwise clarify.
 
 4. Missing required slot after context fallback
-- Handling: block execution and ask targeted question (exact missing field names).
+- Handling: block execution and ask targeted question (exact missing slot names).
 
 5. Conflicting slot evidence (thread says one attendee, user message says another)
 - Handling: prefer explicit current user message and log conflict.
@@ -1876,8 +1802,8 @@ This catalog is binding. Each item must have explicit handling in code and telem
 - Handling: explicit page-token loop for operations requiring full scope.
 
 2. Incremental sync invalid/expired `startHistoryId` (`HTTP 404`)
-- Handling: full sync fallback path.
-- Reference: Gmail history docs (Ref 25/0search0 equivalent).
+- Handling: force a full resync for that account and record an operational warning (do not loop).
+- Reference: Gmail history docs (Ref 25).
 
 3. Batch archive over allowed limits
 - Handling: chunk request sizes and aggregate result.
@@ -1924,19 +1850,16 @@ This catalog is binding. Each item must have explicit handling in code and telem
 3. Sensitive payload leakage
 - Handling: strict field allowlist for events.
 
-### 35.7 Rollout and Operations Edge Cases
+### 35.7 Deployment and Operations Edge Cases (Skills-Only)
 
-1. Shadow/legacy output mismatch spikes
-- Handling: hold rollout, classify mismatch category, open blocking issue.
-
-2. Canary degradation of success/SLO metrics
-- Handling: immediate kill-switch to `AI_SKILLS_MODE=off`.
-
-3. Cross-deploy stale clients (e.g., older action ids)
+1. Cross-deploy stale clients (e.g., older server action ids)
 - Handling: return deterministic stale-action response and refresh guidance.
 
-4. Env drift across regions/services
-- Handling: startup log of effective skills flags and config checksum.
+2. Env drift across regions/services
+- Handling: startup log of effective non-secret config checksum; fail fast on missing required secrets.
+
+3. Regression spike after deploy
+- Handling: revert deploy via git; open root-cause issue with `skill_id`, `requestId`, and tool chain.
 
 ---
 

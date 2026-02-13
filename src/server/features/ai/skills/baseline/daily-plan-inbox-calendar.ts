@@ -3,13 +3,13 @@ import { createBaselineSkill } from "./shared";
 export const dailyPlanInboxCalendarSkill = createBaselineSkill({
   id: "daily_plan_inbox_calendar",
   intents: ["plan my day", "daily agenda", "what should I do today"],
-  requiredSlots: ["planning_day"],
+  requiredSlots: [],
   optionalSlots: ["priority_focus"],
-  allowedTools: ["email.searchThreads", "calendar.findAvailability", "planner.composeDayPlan"],
+  allowedTools: ["email.searchThreads", "calendar.listEvents", "planner.composeDayPlan"],
   risk: "safe",
   plan: [
-    { id: "email_priorities", description: "Collect top email priorities", capability: "email.searchThreads", requiredSlots: ["planning_day"] },
-    { id: "calendar_overview", description: "Collect calendar schedule", capability: "calendar.findAvailability", requiredSlots: ["planning_day"] },
+    { id: "email_priorities", description: "Collect top email priorities", capability: "email.searchThreads", requiredSlots: ["date_window"] },
+    { id: "calendar_overview", description: "Collect calendar schedule", capability: "calendar.listEvents", requiredSlots: ["date_window"] },
     { id: "compose_plan", description: "Compose unified daily plan", capability: "planner.composeDayPlan" },
   ],
   successChecks: [{ id: "unified_plan", description: "Unified daily plan returned" }],

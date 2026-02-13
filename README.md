@@ -181,7 +181,7 @@ amodel/
 | Add a React component | `src/components/` |
 | Add client-side state | `src/lib/stores/` |
 | Create an API endpoint | `src/app/api/` |
-| Add or change AI tools | `src/server/features/ai/tools/` |
+| Add or change AI skills/capabilities | `src/server/features/ai/skills/` and `src/server/features/ai/capabilities/` |
 | Modify system prompt | `src/server/features/ai/system-prompt.ts` |
 | Modify email integration | `src/server/integrations/google/` or `microsoft/` |
 | Add server action | `src/server/actions/` |
@@ -202,7 +202,7 @@ import { useQuality } from "@/lib/stores/qualityStore";
 
 // Backend
 import prisma from "@/server/db/client";
-import { createAgentTools } from "@/features/ai/tools";
+import { processMessage } from "@/features/ai/message-processor";
 
 // Features (server code under src/server/features)
 import { aiProcessAssistantChat } from "@/features/web-chat/ai/chat";

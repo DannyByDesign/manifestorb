@@ -3,8 +3,8 @@ import { createBaselineSkill } from "./shared";
 export const calendarFindAvailabilitySkill = createBaselineSkill({
   id: "calendar_find_availability",
   intents: ["find time to meet", "show availability", "when are we both free"],
-  requiredSlots: ["participants", "date_window", "duration"],
-  optionalSlots: ["timezone"],
+  requiredSlots: ["date_window", "duration"],
+  optionalSlots: ["participants", "timezone"],
   allowedTools: ["calendar.findAvailability"],
   risk: "safe",
   plan: [
@@ -15,7 +15,7 @@ export const calendarFindAvailabilitySkill = createBaselineSkill({
   templates: {
     success: "Here are candidate time slots.",
     partial: "I found partial availability and need one constraint clarified.",
-    blocked: "I need participants, date window, and duration to find availability.",
+    blocked: "I need a date window and duration to find availability.",
     failed: "I couldn't compute availability right now.",
   },
 });

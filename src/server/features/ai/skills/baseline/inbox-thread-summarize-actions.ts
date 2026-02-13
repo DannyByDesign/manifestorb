@@ -5,11 +5,10 @@ export const inboxThreadSummarizeActionsSkill = createBaselineSkill({
   intents: ["summarize this thread", "what are the action items", "summarize decisions and deadlines"],
   requiredSlots: ["thread_id"],
   optionalSlots: ["summary_style"],
-  allowedTools: ["email.searchThreads"],
+  allowedTools: ["email.getThreadMessages"],
   risk: "safe",
   plan: [
-    { id: "load_thread", description: "Load target thread context", capability: "email.searchThreads", requiredSlots: ["thread_id"] },
-    { id: "summarize", description: "Extract decisions, actions, and deadlines" },
+    { id: "load_thread", description: "Load target thread context", capability: "email.getThreadMessages", requiredSlots: ["thread_id"] },
   ],
   successChecks: [{ id: "summary_sections", description: "Response includes decisions/actions/deadlines sections" }],
   failureModes: [{ code: "THREAD_NOT_FOUND", description: "Thread could not be loaded", recoveryPrompt: "I couldn't load that thread. Please share the thread context again." }],

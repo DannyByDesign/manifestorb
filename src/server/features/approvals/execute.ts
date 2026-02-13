@@ -1,6 +1,7 @@
 import prisma from "@/server/db/client";
 import { ApprovalService } from "@/features/approvals/service";
 import { createScopedLogger } from "@/server/lib/logger";
+import { executeStructuredApprovalAction } from "@/features/approvals/structured-execution";
 
 const logger = createScopedLogger("approvals/execute");
 
@@ -121,148 +122,68 @@ export async function executeApprovalRequest(params: {
       };
     }
 
+    if (payload.actionType === "calendar_auto_reschedule") {
+      const { resolveEmailAccount } = await import("@/server/lib/user-utils");
+      const emailAccount = resolveEmailAccount(request.user, payload.emailAccountId);
+      if (!emailAccount) {
+        throw new Error("No email account found for calendar_auto_reschedule");
+      }
+
+      const executionResult = await executeStructuredApprovalAction({
+        tool: "modify",
+        args: payload.args ?? {},
+        userId: request.userId,
+        emailAccountId: emailAccount.id,
+        logger,
+      });
+      if (!executionResult.success) {
+        throw new Error(
+          `Approved action execution failed: ${executionResult.error ?? "calendar_auto_reschedule failed"}`,
+        );
+      }
+
+      return {
+        decisionRecord,
+        executionResult,
+        toolName: "modify",
+        request,
+      };
+    }
+
+    if (payload.actionType === "schedule_proposal") {
+      throw new Error(
+        "Schedule proposals require an explicit slot selection; use the schedule-proposal resolve endpoint.",
+      );
+    }
+
+    if (payload.actionType === "ambiguous_time") {
+      throw new Error(
+        "Ambiguous-time approvals require selecting earlier/later; use the ambiguous-time resolve endpoint.",
+      );
+    }
+
     const { resolveEmailAccount } = await import("@/server/lib/user-utils");
     const payloadEmailAccountId = payload.emailAccountId;
     const emailAccount = resolveEmailAccount(request.user, payloadEmailAccountId);
     if (!emailAccount) {
       throw new Error("No email account found for user during tool execution");
     }
-    const emailAccountWithProvider = request.user.emailAccounts.find(
-      (candidate) => candidate.id === emailAccount.id,
-    );
-    const provider = (emailAccountWithProvider as { account?: { provider?: string } })?.account?.provider;
-    if (!provider) {
-      throw new Error(`Email account ${emailAccount.id} is missing provider linkage`);
+    const toolName = payload.tool;
+    if (toolName !== "create" && toolName !== "modify") {
+      throw new Error(`Unsupported legacy approval tool: ${toolName ?? "unknown"}`);
     }
-    const toolEmailAccount = {
-      id: emailAccount.id,
-      provider,
-      access_token: (emailAccountWithProvider as { account?: { access_token?: string | null } })?.account?.access_token ?? null,
-      refresh_token: (emailAccountWithProvider as { account?: { refresh_token?: string | null } })?.account?.refresh_token ?? null,
-      expires_at: (() => {
-        const raw = (emailAccountWithProvider as { account?: { expires_at?: Date | null } })?.account?.expires_at;
-        if (!raw) return null;
-        return Math.floor(raw.getTime() / 1000);
-      })(),
-      email: emailAccount.email,
-    };
 
-    const toolName = payload.tool ?? "";
-    const args = payload.args ?? {};
-
-    const { createAgentTools } = await import("@/features/ai/tools");
-    const tools = await createAgentTools({
-      emailAccount: toolEmailAccount,
-      logger,
+    const executionResult = await executeStructuredApprovalAction({
+      tool: toolName,
+      args: payload.args ?? {},
       userId: request.userId,
+      emailAccountId: emailAccount.id,
+      logger,
     });
-
-    const toolMap = tools as unknown as Record<
-      string,
-      { execute?: (args: Record<string, unknown>) => Promise<unknown> }
-    >;
-    const toolInstance = toolMap[toolName];
-    if (!toolInstance || typeof toolInstance.execute !== "function") {
-      throw new Error(`Tool ${toolName} not found in agent tools`);
-    }
-    const executeToolCall = (args: Record<string, unknown>) => toolInstance.execute!(args);
-
-    const executionArgs = { ...args };
-    if (toolName === "workflow") {
-      executionArgs.preApproved = true;
-      executionArgs.approvalId = approvalRequestId;
-    }
-    const argsIds = Array.isArray((executionArgs as { ids?: unknown }).ids)
-      ? ((executionArgs as { ids?: unknown }).ids as unknown[]).filter(
-        (value): value is string => typeof value === "string" && value.length > 0,
-      )
-      : [];
-
-    const maxIdsPerRun = toolName === "delete" || toolName === "modify"
-      ? 50
-      : toolName === "get"
-        ? 10
-        : undefined;
-
-    const isFailureResult = (result: unknown): boolean =>
-      Boolean(
-        result &&
-          typeof result === "object" &&
-          "success" in result &&
-          (result as { success?: unknown }).success === false,
+    if (!executionResult.success) {
+      throw new Error(
+        `Approved action execution failed: ${executionResult.error ?? "structured execution failed"}`,
       );
-    const getResultError = (result: unknown): string | undefined =>
-      result &&
-      typeof result === "object" &&
-      "error" in result &&
-      typeof (result as { error?: unknown }).error === "string"
-        ? (result as { error?: string }).error
-        : undefined;
-
-    const executionResult =
-      maxIdsPerRun && argsIds.length > maxIdsPerRun
-        ? await (async () => {
-          const baseArgs = { ...executionArgs } as Record<string, unknown>;
-          delete baseArgs.ids;
-          const chunkResults: Array<{
-            chunkIndex: number;
-            ids: string[];
-            result: unknown;
-          }> = [];
-
-          for (let i = 0; i < argsIds.length; i += maxIdsPerRun) {
-            const chunk = argsIds.slice(i, i + maxIdsPerRun);
-            const chunkResult = await executeToolCall({
-              ...baseArgs,
-              ids: chunk,
-            });
-            chunkResults.push({
-              chunkIndex: Math.floor(i / maxIdsPerRun),
-              ids: chunk,
-              result: chunkResult,
-            });
-          }
-
-          const failedChunks = chunkResults.filter((entry) =>
-            isFailureResult(entry.result),
-          ).length;
-          const firstFailedChunk = chunkResults.find((entry) =>
-            isFailureResult(entry.result),
-          );
-          const firstFailedError = firstFailedChunk
-            ? getResultError(firstFailedChunk.result)
-            : undefined;
-
-          return {
-            success: failedChunks === 0,
-            error:
-              failedChunks > 0
-                ? firstFailedError ?? "One or more chunk executions failed."
-                : undefined,
-            data: {
-              chunkCount: chunkResults.length,
-              failedChunks,
-              chunks: chunkResults,
-            },
-            message:
-              failedChunks === 0
-                ? `Executed ${chunkResults.length} approval chunk(s).`
-                : `Executed ${chunkResults.length - failedChunks}/${chunkResults.length} approval chunk(s).`,
-          };
-        })()
-        : await executeToolCall(executionArgs as Record<string, unknown>);
-
-    if (
-      executionResult &&
-      typeof executionResult === "object" &&
-      "success" in executionResult &&
-      (executionResult as { success?: unknown }).success === false
-    ) {
-      const executionError =
-        "error" in executionResult && typeof (executionResult as { error?: unknown }).error === "string"
-          ? (executionResult as { error?: string }).error
-          : "Tool returned unsuccessful result";
-      throw new Error(`Approved action execution failed: ${executionError}`);
     }
 
     return {

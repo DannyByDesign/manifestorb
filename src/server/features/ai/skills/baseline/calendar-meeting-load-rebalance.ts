@@ -5,10 +5,10 @@ export const calendarMeetingLoadRebalanceSkill = createBaselineSkill({
   intents: ["rebalance my meetings", "reduce meeting load", "reclaim focus time"],
   requiredSlots: ["analysis_window"],
   optionalSlots: ["max_meetings_per_day"],
-  allowedTools: ["calendar.findAvailability", "planner.composeDayPlan"],
+  allowedTools: ["calendar.listEvents", "planner.composeDayPlan"],
   risk: "safe",
   plan: [
-    { id: "analyze_load", description: "Analyze meeting density", capability: "calendar.findAvailability", requiredSlots: ["analysis_window"] },
+    { id: "analyze_load", description: "Analyze meeting density", capability: "calendar.listEvents", requiredSlots: ["analysis_window"] },
     { id: "recommend_rebalance", description: "Generate rebalance recommendations", capability: "planner.composeDayPlan" },
   ],
   successChecks: [{ id: "rebalance_plan", description: "Returns actionable rebalance plan" }],

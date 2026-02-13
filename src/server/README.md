@@ -28,7 +28,7 @@ Next-safe-action handlers for authenticated mutations.
 
 ### 2. `features/` (Feature Modules)
 Self-contained domain logic organized by feature.
-- **`ai/`** - AI orchestration, tools, and security
+- **`ai/`** - Skills-first AI orchestration, capability facades, and safety boundaries
 - **`web-chat/`** - Web UI chat assistant (rule management focus)
 - **`channels/`** - Multi-channel executor (Slack/Discord/Telegram); one-shot agent runtime
 - **`email/`** - Email provider abstraction
@@ -75,7 +75,7 @@ Migration and verification scripts.
 
 ```typescript
 // Features
-import { createAgentTools } from "@/features/ai/tools";
+import { processMessage } from "@/features/ai/message-processor";
 
 // Integrations
 import { getGmailClient } from "@/integrations/google/client";

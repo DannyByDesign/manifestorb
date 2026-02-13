@@ -72,6 +72,9 @@ export async function runBaselineSkillTurn(params: {
     skillId: route.skillId,
     missingRequired: slots.missingRequired.length,
     ambiguous: slots.ambiguous.length,
+    missingRequiredSlots: slots.missingRequired,
+    ambiguousSlots: slots.ambiguous,
+    ...(slots.clarificationPrompt ? { clarificationPrompt: slots.clarificationPrompt } : {}),
   });
 
   if (slots.missingRequired.length > 0) {
@@ -93,7 +96,15 @@ export async function runBaselineSkillTurn(params: {
     sourceEmailThreadId: params.sourceEmailThreadId,
   });
 
-  const result = await executeSkill({ skill, slots, capabilities });
+  const result = await executeSkill({
+    skill,
+    slots,
+    capabilities,
+    runtime: {
+      logger: params.logger,
+      emailAccount: { id: params.emailAccountId, email: params.email, userId: params.userId },
+    },
+  });
   emitSkillTelemetry(params.logger, {
     name: "skill.execution.completed",
     requestId,
@@ -102,6 +113,7 @@ export async function runBaselineSkillTurn(params: {
     status: result.status,
     stepsExecuted: result.stepsExecuted,
     toolChain: result.toolChain,
+    stepDurationsMs: result.stepDurationsMs,
     postconditionsPassed: result.postconditionsPassed,
     ...(result.failureReason ? { failureReason: result.failureReason } : {}),
   });

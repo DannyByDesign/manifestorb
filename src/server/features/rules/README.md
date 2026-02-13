@@ -274,8 +274,8 @@ if (hasAutomationRules && hasAiAccess) {
 }
 ```
 
-### AI Agent Tools
-Rule management is exposed as a **single polymorphic `rules` tool** in `features/ai/tools/rules.ts` (list/create/update/delete/enable/disable). The same behavior is available on web-chat and surfaces. Rules portal APIs: `GET/POST /api/rules`, `GET/PATCH/DELETE /api/rules/[id]`. Web-chat wiring: `features/ai/rule-tools.ts`.
+### AI Assistant Integration
+Rule management is handled by rules APIs and rule-engine modules. The assistant runtime is now skills-first (router -> slots -> executor) and no longer uses the legacy polymorphic tools registry.
 
 ### Server Actions
 ```typescript

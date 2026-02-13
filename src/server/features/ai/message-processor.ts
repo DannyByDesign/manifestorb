@@ -3,6 +3,9 @@
  *
  * This project now routes every user turn through the Skills Runtime. There is
  * no legacy LLM tool-calling loop, no canary/shadow modes, and no fallback path.
+ *
+ * Important: we still keep a lightweight orchestration preflight to avoid
+ * unnecessary skill routing/tool work on purely conversational turns.
  */
 
 import type { ModelMessage } from "ai";
@@ -13,6 +16,9 @@ import { PrivacyService } from "@/features/privacy/service";
 import { MemoryRecordingService } from "@/features/memory/service";
 import type { Logger } from "@/server/lib/logger";
 import { runBaselineSkillTurn } from "@/features/ai/skills/runtime";
+import { runOrchestrationPreflight } from "@/server/features/ai/orchestration/preflight";
+import { createGenerateText } from "@/server/lib/llms";
+import { getModel } from "@/server/lib/llms/model";
 
 export interface ProcessorContext {
   conversationId?: string;
@@ -219,6 +225,38 @@ function triggerMemoryRecording(userId: string, email: string, logger: Logger): 
   })();
 }
 
+function isTrivialAck(message: string): boolean {
+  const normalized = message.trim().toLowerCase();
+  if (!normalized) return true;
+  return /^(ok|okay|cool|nice|thanks|thank you|thx|got it|sounds good|👍)$/iu.test(normalized);
+}
+
+async function generateConversationalReply(params: {
+  emailAccount: { id: string; email: string; userId: string };
+  message: string;
+  logger: Logger;
+}): Promise<string> {
+  if (isTrivialAck(params.message)) {
+    return "Got it.";
+  }
+
+  const modelOptions = getModel("economy");
+  const generateText = createGenerateText({
+    emailAccount: params.emailAccount,
+    label: "conversational-preflight-reply",
+    modelOptions,
+  });
+
+  const result = await generateText({
+    model: modelOptions.model,
+    system:
+      "You are Amodel. Be concise and helpful. If the user is not asking to check or change real inbox/calendar state, answer conversationally without mentioning tools.",
+    prompt: params.message.trim(),
+  });
+
+  return result.text.trim() || "How can I help?";
+}
+
 export async function processMessage(
   input: MessageProcessorInput,
 ): Promise<MessageProcessorResult> {
@@ -238,6 +276,40 @@ export async function processMessage(
   if (!resolvedProvider) {
     const text =
       "Your email account isn't fully connected. Please connect Gmail or Outlook in the Amodel web app, then try again.";
+    return { text, approvals: [], interactivePayloads: [] };
+  }
+
+  // Orchestration preflight: avoid the skills runtime (router/slots/executor)
+  // for conversational turns to reduce latency and LLM/tool costs.
+  const preflight = await runOrchestrationPreflight({
+    message: messageContent,
+    provider: context.provider,
+    userId: user.id,
+    emailAccount: { id: emailAccount.id, email: emailAccount.email, userId: user.id },
+    hasPendingApproval: false,
+    hasPendingScheduleProposal: false,
+  });
+
+  if (!preflight.needsTools) {
+    const text = await generateConversationalReply({
+      emailAccount: { id: emailAccount.id, email: emailAccount.email, userId: user.id },
+      message: messageContent,
+      logger,
+    });
+
+    await persistAssistantMessage(
+      user.id,
+      conversationId,
+      text,
+      context.provider,
+      logger,
+      context.channelId,
+      context.threadId,
+      context.messageId ?? context.threadId ?? messageContent,
+    );
+
+    triggerMemoryRecording(user.id, emailAccount.email, logger);
+
     return { text, approvals: [], interactivePayloads: [] };
   }
 
@@ -283,4 +355,3 @@ export async function processMessage(
 
   return { text, approvals: [], interactivePayloads };
 }
-

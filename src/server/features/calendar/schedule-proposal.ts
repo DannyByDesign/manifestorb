@@ -2,6 +2,7 @@ import prisma from "@/server/db/client";
 import { createScopedLogger } from "@/server/lib/logger";
 import { createEmailProvider } from "@/features/email/provider";
 import { resolveEmailAccount } from "@/server/lib/user-utils";
+import { executeStructuredApprovalAction } from "@/features/approvals/structured-execution";
 
 const logger = createScopedLogger("schedule-proposal");
 
@@ -117,41 +118,17 @@ export async function resolveScheduleProposalRequestById(params: {
   if (!emailAccountWithProvider) {
     return { ok: false, error: "Email account context missing for tool execution" };
   }
-  const toolEmailAccount = {
-    id: emailAccountRow.id,
-    provider,
-    access_token:
-      (emailAccountWithProvider as { account?: { access_token?: string | null } })
-        .account?.access_token ?? null,
-    refresh_token:
-      (emailAccountWithProvider as { account?: { refresh_token?: string | null } })
-        .account?.refresh_token ?? null,
-    expires_at: (() => {
-      const raw = (
-        emailAccountWithProvider as { account?: { expires_at?: Date | null } }
-      ).account?.expires_at;
-      return raw ? Math.floor(raw.getTime() / 1000) : null;
-    })(),
-    email: emailAccountRow.email,
-  };
-
   try {
-    const { createAgentTools } = await import("@/features/ai/tools");
-    const tools = await createAgentTools({
-      emailAccount: toolEmailAccount,
-      logger,
+    const executionResult = await executeStructuredApprovalAction({
+      tool: payload.tool,
+      args,
       userId: requestRecord.userId,
+      emailAccountId: emailAccountRow.id,
+      logger,
     });
-    const toolMap = tools as unknown as Record<
-      string,
-      { execute?: (a: Record<string, unknown>) => Promise<unknown> }
-    >;
-    const toolInstance = toolMap[payload.tool];
-    if (!toolInstance || typeof toolInstance.execute !== "function") {
-      return { ok: false, error: "Tool not found" };
+    if (!executionResult.success) {
+      return { ok: false, error: executionResult.error ?? "Execution failed" };
     }
-
-    const executionResult = await toolInstance.execute(args);
 
     // If the proposal was created by SCHEDULE_MEETING with a draft, send it
     let draftSent = false;

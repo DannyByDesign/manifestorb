@@ -27,12 +27,62 @@ function extractIsoDateTime(text: string): string | undefined {
   return iso?.[0];
 }
 
+function extractIsoDateTimes(text: string): string[] {
+  return text.match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2})/g) ?? [];
+}
+
+function extractUrl(text: string): string | undefined {
+  const m = text.match(/https?:\/\/[^\s)]+/i);
+  return m?.[0];
+}
+
+function parseWorkDays(text: string): number[] | undefined {
+  const lower = text.toLowerCase();
+  if (/\bweekdays\b/.test(lower) || /\bmon(?:day)?\s*-\s*fri(?:day)?\b/.test(lower)) return [1, 2, 3, 4, 5];
+  if (/\bweekends\b/.test(lower) || /\bsat(?:urday)?\s*-\s*sun(?:day)?\b/.test(lower)) return [0, 6];
+  const days: Array<[RegExp, number]> = [
+    [/\bsun(?:day)?\b/, 0],
+    [/\bmon(?:day)?\b/, 1],
+    [/\btue(?:sday)?\b/, 2],
+    [/\bwed(?:nesday)?\b/, 3],
+    [/\bthu(?:rsday)?\b/, 4],
+    [/\bfri(?:day)?\b/, 5],
+    [/\bsat(?:urday)?\b/, 6],
+  ];
+  const out = days.filter(([re]) => re.test(lower)).map(([, n]) => n);
+  return out.length ? Array.from(new Set(out)) : undefined;
+}
+
+function parseWorkHours(text: string): { start?: number; end?: number } | undefined {
+  const lower = text.toLowerCase();
+  const m = lower.match(/(\d{1,2})(?::\d{2})?\s*(am|pm)?\s*(?:to|-|–)\s*(\d{1,2})(?::\d{2})?\s*(am|pm)?/i);
+  if (!m) return undefined;
+  const a = Number.parseInt(m[1]!, 10);
+  const b = Number.parseInt(m[3]!, 10);
+  const ampmA = m[2];
+  const ampmB = m[4];
+  const to24 = (h: number, ampm?: string) => {
+    if (!ampm) return h;
+    const isPm = ampm.toLowerCase() === "pm";
+    if (isPm && h < 12) return h + 12;
+    if (!isPm && h === 12) return 0;
+    return h;
+  };
+  const start = to24(a, ampmA);
+  const end = to24(b, ampmB);
+  if (Number.isFinite(start) && Number.isFinite(end) && start >= 0 && start <= 23 && end >= 0 && end <= 23) {
+    return { start, end };
+  }
+  return undefined;
+}
+
 function resolveSlotValue(slot: string, message: string): unknown {
   const lower = message.toLowerCase();
+  const isoList = extractIsoDateTimes(message);
 
-  if (slot.includes("time_window") || slot.includes("date_window") || slot === "analysis_window") {
-    const iso = extractIsoDateTime(message);
-    if (iso) return { start: iso };
+  if (slot.includes("time_window") || slot.includes("date_window") || slot.includes("window") || slot === "analysis_window") {
+    if (isoList.length >= 2) return { start: isoList[0], end: isoList[1] };
+    if (isoList.length === 1) return { start: isoList[0] };
     if (/today/i.test(lower)) return "today";
     if (/this week/i.test(lower)) return "this_week";
   }
@@ -48,6 +98,29 @@ function resolveSlotValue(slot: string, message: string): unknown {
       if (slot.includes("participants")) return { emails };
       return emails;
     }
+  }
+
+  if (slot === "booking_link") {
+    const url = extractUrl(message);
+    if (url) return url;
+  }
+
+  if (slot === "workDays") {
+    const days = parseWorkDays(message);
+    if (days) return days;
+  }
+
+  if (slot === "workHourStart" || slot === "workHourEnd") {
+    const hours = parseWorkHours(message);
+    if (hours?.start != null && slot === "workHourStart") return hours.start;
+    if (hours?.end != null && slot === "workHourEnd") return hours.end;
+  }
+
+  if (slot === "body") {
+    const quoted = message.match(/["“]([\s\S]{10,})["”]/);
+    if (quoted?.[1]) return quoted[1].trim();
+    const afterSay = message.match(/(?:say|saying|body:|that says)\s*[:\-]?\s*([\s\S]{10,})/i);
+    if (afterSay?.[1]) return afterSay[1].trim();
   }
 
   if (slot === "duration") {
@@ -75,7 +148,19 @@ function resolveSlotValue(slot: string, message: string): unknown {
   }
 
   if (slot === "reply_intent") {
-    if (/reply|respond|draft|compose|write/i.test(lower)) return "reply";
+    if (/reply|respond|draft|compose|write/i.test(lower)) return message.trim();
+  }
+
+  if (slot === "title") {
+    const quoted = message.match(/["“]([^"”]{4,120})["”]/);
+    if (quoted?.[1]) return quoted[1].trim();
+    const about = message.match(/(?:meeting|event|call)\s+(?:about|for)\s+(.{3,80})/i);
+    if (about?.[1]) return about[1].trim();
+  }
+
+  if (slot === "subject") {
+    const m = message.match(/subject[:\s]+(.{3,120})/i);
+    if (m?.[1]) return m[1].trim();
   }
 
   if (slot === "planning_day") {
@@ -108,11 +193,56 @@ const llmSlotSchema = z.object({
   slots: z.record(z.string(), slotValueSchema),
 }).strict();
 
+function applySkillDefaults(skill: SkillContract, resolved: ResolvedSlots): ResolvedSlots {
+  const out: ResolvedSlots = { ...resolved };
+
+  const ensureWindow = (slot: string, value: "today" | "this_week") => {
+    if (out[slot] === undefined) out[slot] = value as never;
+  };
+
+  if (skill.id === "inbox_triage_today" && out.time_window === undefined) {
+    out.time_window = "today" as never;
+  }
+  if (skill.id === "inbox_followup_guard" && out.time_window === undefined) {
+    out.time_window = "this_week" as never;
+  }
+  if (skill.id === "daily_plan_inbox_calendar" && out.date_window === undefined) {
+    out.date_window = "today" as never;
+  }
+  if (skill.id === "inbox_bulk_newsletter_cleanup" && out.target_scope === undefined) {
+    out.target_scope = "this_week" as never;
+  }
+  if (skill.id === "calendar_find_availability") {
+    ensureWindow("date_window", "this_week");
+    if (out.duration === undefined) out.duration = 30 as never;
+  }
+  if (skill.id === "calendar_meeting_load_rebalance") {
+    ensureWindow("analysis_window", "this_week");
+  }
+  if (skill.id === "calendar_reschedule_with_constraints") {
+    ensureWindow("reschedule_window", "this_week");
+  }
+  if (skill.id === "calendar_schedule_from_context") {
+    if (out.duration === undefined) out.duration = 30 as never;
+  }
+  if (skill.id === "calendar_working_hours_ooo") {
+    if (out.policy_type === undefined) {
+      if (out.workHourStart !== undefined || out.workHourEnd !== undefined || out.workDays !== undefined) {
+        out.policy_type = "working_hours" as never;
+      } else if (out.ooo_window !== undefined) {
+        out.policy_type = "out_of_office" as never;
+      }
+    }
+  }
+
+  return out;
+}
+
 function normalizeSlotShorthands(resolved: ResolvedSlots, timeZone: string): ResolvedSlots {
   const out: ResolvedSlots = { ...resolved };
   for (const slot of Object.keys(out)) {
     const value = out[slot];
-    if ((slot.includes("time_window") || slot.includes("date_window")) && typeof value === "string") {
+    if ((slot.includes("time_window") || slot.includes("date_window") || slot.includes("window")) && typeof value === "string") {
       const now = new Date();
       if (value === "today") {
         out[slot] = { start: now.toISOString(), timezone: timeZone } as never;
@@ -209,7 +339,7 @@ export async function resolveSlots(
     resolved.message_id = env.sourceEmailMessageId as never;
   }
 
-  const normalized = normalizeSlotShorthands(resolved, env.timeZone);
+  const normalized = normalizeSlotShorthands(applySkillDefaults(skill, resolved), env.timeZone);
 
   // Validate extracted shapes; drop invalid.
   const validated = resolvedSlotsSchema.safeParse(normalized);
@@ -227,7 +357,10 @@ export async function resolveSlots(
         timeZone: env.timeZone,
         missing: missingRequired,
       });
-      const merged = normalizeSlotShorthands({ ...safeResolved, ...llmSlots } as ResolvedSlots, env.timeZone);
+      const merged = normalizeSlotShorthands(
+        applySkillDefaults(skill, { ...safeResolved, ...llmSlots } as ResolvedSlots),
+        env.timeZone,
+      );
       const mergedValidated = resolvedSlotsSchema.safeParse(merged);
       if (mergedValidated.success) {
         missingRequired = skill.required_slots.filter((slot) => mergedValidated.data[slot] === undefined);

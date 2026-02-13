@@ -10,7 +10,7 @@ export const inboxScheduleSendSkill = createBaselineSkill({
     { id: "schedule_send", description: "Schedule draft send", capability: "email.scheduleSend", requiredSlots: ["draft_id", "send_time"] },
   ],
   successChecks: [{ id: "schedule_confirmed", description: "Scheduled send confirmation returned" }],
-  failureModes: [{ code: "SCHEDULE_NOT_SUPPORTED", description: "Schedule send unsupported in current capability", recoveryPrompt: "Scheduled send isn't available in this path yet. I can create a draft now and you can schedule from Gmail." }],
+  failureModes: [{ code: "SCHEDULE_FAILED", description: "Scheduled send could not be queued", recoveryPrompt: "I couldn't queue that scheduled send. I can create or refresh the draft and try one more time." }],
   templates: {
     success: "Done. I scheduled that draft to send.",
     partial: "I validated most scheduling details but need one clarification.",

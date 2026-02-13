@@ -3,12 +3,14 @@ import { BASELINE_SKILL_IDS, type SkillId } from "@/server/features/ai/skills/ba
 
 export const capabilityNameSchema = z.enum([
   "email.searchThreads",
+  "email.getThreadMessages",
   "email.batchArchive",
   "email.unsubscribeSender",
   "email.snoozeThread",
   "email.createDraft",
   "email.scheduleSend",
   "calendar.findAvailability",
+  "calendar.listEvents",
   "calendar.createEvent",
   "calendar.rescheduleEvent",
   "calendar.setWorkingHours",

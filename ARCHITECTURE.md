@@ -23,11 +23,11 @@ src/
     ├── db/                   # Database (Prisma client, extensions)
     │
     ├── features/             # Feature modules (domain logic)
-    │   ├── ai/               # AI orchestration & tools
-    │   │   ├── tools/        # Agent tools: query, get, analyze, create, modify,
-    │   │   │                 # delete, send (DANGEROUS), rules, triage
-    │   │   ├── system-prompt.ts # Unified system prompt (single source of truth)
-    │   │   ├── rule-tools.ts # Web-chat rule tool wiring (rules tool in tools/rules.ts)
+    │   ├── ai/               # Skills-first AI orchestration
+    │   │   ├── skills/       # Skill contracts, router, slots, executor, telemetry
+    │   │   ├── capabilities/ # Typed capability facades (email/calendar/planner)
+    │   │   ├── tools/        # Provider adapters + shared time utilities
+    │   │   ├── system-prompt.ts # Minimal policy/style system prompt
     │   │   ├── helpers.ts    # Shared AI helpers
     │   │   ├── security.ts   # Prompt injection protection
     │   │   └── types.ts      # AI types
@@ -123,10 +123,11 @@ Self-contained feature modules. Each feature should:
 - Export a clear public API
 
 Key features include:
-- **ai/** - Core AI orchestration and tool definitions
-  - `system-prompt.ts` - Unified system prompt (single source of truth for all agents)
-  - `tools/` - Agent tools: query, get, analyze, create, modify, delete, **send** (DANGEROUS, approval-gated), **rules** (polymorphic), **triage** (task prioritization + approval-backed actions)
-  - `rule-tools.ts` - Web-chat wiring for rule management (main tool in `tools/rules.ts`)
+- **ai/** - Skills-first AI runtime
+  - `message-processor.ts` - Conversational preflight + skills dispatch
+  - `skills/` - Baseline skill contracts and deterministic execution runtime
+  - `capabilities/` - Narrow typed capability layer used by skills
+  - `tools/providers/` - External provider adapters used by capabilities
 - **approvals/** - Human-in-the-loop workflow; **secure action tokens** for approval links (push/email)
 - **channels/** - Multi-channel executor (Slack, Discord, Telegram); one-shot agent runtime
 - **calendar/** - Google Calendar (events, watch, renewal cron, conflict resolution, schedule proposals)
@@ -300,53 +301,37 @@ The app is **one assistant with many skills**, not independent collaborating age
 - **Latency**: A2A would add 2–5 extra LLM hops per message (router → sub-agent → …).
 - **Context loss**: Each sub-agent would not see full conversation history unless we serialize and pass it.
 - **Cross-feature workflows**: Email + calendar + approval flows (e.g. “check my calendar and reply to John”) are natural for a single multi-step agent; splitting into sub-agents makes coordination and error handling harder.
-- **Tool design scales**: The 13 resource-based CRUD tools already cover many features; new capabilities are added as resources/actions on existing tools, not as new agents.
+- **Skills-first design scales**: Baseline skills route into narrow capability facades. New behavior is added as skill contracts/capability methods, not broad polymorphic tool loops.
 
-**Chosen approach:** Single main agent + dynamic context injection + rich tool descriptions. Specialist LLM calls remain as one-shot helpers invoked *inside* tool implementations or background jobs, not as separate conversational agents.
+**Chosen approach:** Single main agent runtime with conversational preflight + deterministic skills execution. Specialist LLM calls remain one-shot helpers inside bounded subsystems (not free-form tool loops).
 
 ### Agent Entry Points
 
-| Agent | Location | Used By | Tools | Max Steps |
-|-------|----------|---------|-------|-----------|
-| **runOneShotAgent** | `features/channels/executor.ts` | Slack, Discord, Telegram, Email (processAssistantEmail) | 13 CRUD + webSearch + 4 memory | 10 |
-| **Web chat** | `features/web-chat/ai/chat.ts` | Web UI | Same tools as executor | 10 |
+| Agent | Location | Used By | Runtime |
+|-------|----------|---------|---------|
+| **processMessage** | `features/ai/message-processor.ts` | Web + sidecar surfaces | preflight -> skills router -> slot resolver -> executor |
+| **runBaselineSkillTurn** | `features/ai/skills/runtime.ts` | Operational turns | deterministic skill execution |
 
 Notifications: when a background pipeline completes (draft created, calendar event created, meeting briefing ready), `sendNotification()` (in `features/notifications/create.ts`) uses the shared notification generator and creates an in-app notification; channel delivery is handled by the QStash fallback.
 
-### Main Agent Tools (13 + 4)
+### Skills + Capabilities
 
-**From `createAgentTools()` (`features/ai/tools/index.ts`):**
+The operational assistant path is now skill-based:
 
-| Tool | Security | Description |
-|------|----------|-------------|
-| query | SAFE | Search across resources: email, calendar, automation, knowledge, report, patterns, contacts, task |
-| get | SAFE | Get full details by ID (email, calendar, automation, approval, task) |
-| create | CAUTION | Create drafts, events, tasks, rules, notifications, knowledge, contacts, automation |
-| modify | CAUTION | Change state: email (archive, labels, tracking), calendar, task, approval |
-| delete | CAUTION | Remove items: email (trash), calendar, automation, task |
-| analyze | SAFE | AI analysis: summarize, extract actions, categorize, find conflicts, suggest times, etc. |
-| send | DANGEROUS | Send email draft; requires explicit approval |
-| triage | SAFE | Rank tasks and suggest next actions |
-| rules | CAUTION | Manage automation rules: list, create, update_conditions, update_actions, update_patterns, etc. |
-| webSearch | SAFE | Search the web for people, companies, or topics; use for meeting prep or research |
+- **Skills**: `features/ai/skills/baseline/*` (closed-set contracts)
+- **Router**: `features/ai/skills/router/*`
+- **Slot resolution**: `features/ai/skills/slots/*`
+- **Executor + postconditions**: `features/ai/skills/executor/*`
+- **Capability facades**: `features/ai/capabilities/*`
 
-**From `createMemoryTools()` (`features/ai/memory-tools.ts`):**
-
-| Tool | Security | Description |
-|------|----------|-------------|
-| rememberFact | SAFE | Store facts about the user |
-| recallFacts | SAFE | Search stored memories |
-| forgetFact | CAUTION | Remove a fact when requested |
-| listFacts | SAFE | List remembered facts |
-
-Sensitive tools (`modify`, `delete`, `send`) are wrapped in the executor with approval interception; the agent never executes them directly until the user approves.
+Mutations are only executed through allowed capability lists and postcondition checks.
 
 ### Prompt Hierarchy
 
 1. **System prompt** (`features/ai/system-prompt.ts`): `buildAgentSystemPrompt()` — identity, safety, tool overview, behavior guidelines. Single source of truth for the main agent.
 2. **Dynamic context** (`features/memory/context-manager.ts`): `ContextManager.buildContextPack()` — conversation summary, user instructions (legacy about), relevant facts, knowledge base entries, recent history. Injected per request; token budgets apply (summary ~2K, facts ~1K, knowledge ~3K, history ~5K tokens).
-3. **Tool descriptions**: Each tool’s `description` field (in `features/ai/tools/*.ts` and `memory-tools.ts`) is sent with the tool schema. The model uses these when choosing and invoking tools; feature-specific guidance can live here to avoid bloating the system prompt.
-4. **Specialist prompts**: The ~50 one-shot LLM calls (see map below) have their own small system prompts in their feature modules. They are **not** composed into the main system prompt; they run inside tool implementations or background pipelines.
+3. **Skill contracts and capability constraints**: Baseline skill contracts define allowed capabilities and success checks. The model does not directly execute arbitrary tools.
+4. **Specialist prompts**: One-shot LLM helpers remain in feature modules; they are not a replacement for deterministic skill execution.
 
 ### Context Manager and Token Budget
 
