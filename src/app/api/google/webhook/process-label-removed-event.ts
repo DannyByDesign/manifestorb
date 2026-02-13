@@ -1,11 +1,11 @@
 import type { gmail_v1 } from "@googleapis/gmail";
 import { GroupItemSource, ActionType } from "@/generated/prisma/enums";
-import { saveLearnedPattern } from "@/features/rules/learned-patterns";
+import { saveLearnedPattern } from "@/server/features/policy-plane/learning-patterns";
 import { extractEmailAddress } from "@/server/integrations/google";
 import type { EmailAccountWithAI } from "@/server/lib/llms/types";
 import type { EmailProvider } from "@/features/email/types";
 import { GmailLabel } from "@/server/integrations/google/label";
-import { shouldLearnFromLabelRemoval } from "@/features/rules/consts";
+import { shouldLearnFromLabelRemoval } from "@/server/features/policy-plane/system-config";
 import type { Logger } from "@/server/lib/logger";
 import prisma from "@/server/db/client";
 import {

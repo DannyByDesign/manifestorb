@@ -51,9 +51,6 @@ vi.mock("@/features/cold-email/is-cold-email", () => ({
 vi.mock("@/features/categorize/senders/categorize", () => ({
   categorizeSender: vi.fn(),
 }));
-vi.mock("@/features/rules/ai/run-rules", () => ({
-  runRules: vi.fn(),
-}));
 vi.mock("@/features/web-chat/process-assistant-email", () => ({
   processAssistantEmail: vi.fn().mockResolvedValue(undefined),
 }));
@@ -103,7 +100,7 @@ vi.mock("@/server/integrations/google/label", async () => {
   };
 });
 
-vi.mock("@/features/rules/learned-patterns", () => ({
+vi.mock("@/server/features/policy-plane/learning-patterns", () => ({
   saveLearnedPatterns: vi.fn().mockResolvedValue(undefined),
 }));
 

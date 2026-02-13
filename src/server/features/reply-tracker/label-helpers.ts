@@ -6,7 +6,7 @@ import {
   CONVERSATION_STATUS_TYPES,
   type ConversationStatus,
 } from "./conversation-status-config";
-import { getRuleLabel } from "@/features/rules/consts";
+import { getRuleLabel } from "@/server/features/policy-plane/system-config";
 import { labelMessageAndSync } from "@/server/lib/label.server";
 
 export type LabelIds = Record<

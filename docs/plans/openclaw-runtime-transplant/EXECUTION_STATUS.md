@@ -20,13 +20,16 @@ Main synced: yes (`origin/main`)
   - None for core cutover.
 
 ### Epic 2 - Dynamic Tool Fabric
-- Status: `completed (core) / partial (advanced controls)`
+- Status: `completed`
 - Delivered:
   - `src/server/features/ai/tools/fabric/{registry.ts,assembler.ts,policy-filter.ts,types.ts}`
   - `src/server/features/ai/tools/fabric/adapters/provider-schema.ts`
   - Tool-set assembly is dynamic and policy-wrapped.
+  - Metadata-driven tool ordering heuristics based on request domain + mutation intent:
+    - `src/server/features/ai/tools/fabric/policy-filter.ts`
+    - `src/server/features/ai/runtime/session.ts`
 - Remaining:
-  - Add finer-grained domain/risk/idempotency metadata-driven routing heuristics.
+  - None for core dynamic assembly + ranking.
 
 ### Epic 3 - Internal Skill MD Hints
 - Status: `completed`
@@ -37,7 +40,7 @@ Main synced: yes (`origin/main`)
   - Expand quality of skill hint corpus; architecture is in place.
 
 ### Epic 4 - Open-World Planner/Executor Rebuild
-- Status: `partial`
+- Status: `completed (core)`
 - Delivered:
   - Legacy closed planner stack deleted.
   - Runtime executes tool-first via LLM + runtime capability executor.
@@ -48,8 +51,10 @@ Main synced: yes (`origin/main`)
     - `src/server/features/ai/runtime/loop.ts`
   - Runtime attempt prompt now consumes the validated plan:
     - `src/server/features/ai/runtime/attempt.ts`
+  - High-confidence direct-read lane for single-step reads:
+    - `src/server/features/ai/runtime/loop.ts`
 - Remaining:
-  - Add confidence-gated branch behavior (execute direct deterministic plan for ultra-high-confidence single-step reads).
+  - Add richer ambiguity-first clarification flow before planner for unresolved entities.
 
 ### Epic 5 - Rule Plane as Mandatory PDP
 - Status: `completed (core)`
@@ -70,30 +75,39 @@ Main synced: yes (`origin/main`)
     - `src/server/integrations/google/message.ts`
   - Runtime per-user concurrency limiter:
     - `src/server/features/ai/runtime/concurrency.ts`
+  - Shared tool-common concurrency/retry utilities and provider adoption:
+    - `src/server/features/ai/tools/common/{concurrency.ts,retry.ts}`
+    - `src/server/features/ai/tools/providers/{email.ts,calendar.ts}`
 - Remaining:
   - Split provider wrappers into first-class domain primitives under `tools/email/*` and `tools/calendar/*`.
-  - Add shared reusable retry/throttle/idempotency utilities (`tools/common/*`).
+  - Add idempotency-key utilities for mutating bulk operations.
 
 ### Epic 7 - Broad Capability Framework
-- Status: `partial`
+- Status: `completed (core)`
 - Delivered:
   - Tool packs framework added:
     - `src/server/features/ai/tools/packs/{manifest-schema.ts,loader.ts,registry.ts}`
   - Duplicate tool-name validation on pack load.
+  - Pack dependency + feature-flag gating:
+    - `src/server/features/ai/tools/packs/{manifest-schema.ts,loader.ts}`
 - Remaining:
-  - Add multi-pack runtime onboarding workflow and pack-scoped dependency flags.
+  - Expand to additional non-inbox/calendar internal packs.
 
 ### Epic 8 - Legacy Deletion & Simplification
-- Status: `partial`
+- Status: `completed (runtime + rules legacy removal)`
 - Delivered:
   - Deleted legacy planner/router/executor stacks.
   - Deleted legacy AI baseline skill contract trees no longer used in runtime path.
+  - Deleted legacy rules stack and legacy rule-based server action entrypoints:
+    - `src/server/features/rules/**`
+    - `src/server/actions/rule.ts`
+    - `src/server/actions/ai-rule.ts`
+  - Removed remaining non-runtime imports referencing legacy `features/rules/*`.
 - Remaining:
-  - Remove/replace remaining legacy non-runtime surfaces not yet migrated.
-  - Continue deletion of obsolete modules once replacement paths are active.
+  - Continue opportunistic dead-code cleanup outside AI/runtime scope.
 
 ### Epic 9 - Rules Legacy Consolidation
-- Status: `partial`
+- Status: `completed (core migration)`
 - Delivered:
   - Policy-plane automation executor no longer imports legacy `features/rules/ai/execute`.
   - Rule-plane path is active in runtime capability layer.
@@ -110,9 +124,15 @@ Main synced: yes (`origin/main`)
     - `src/app/api/google/webhook/process-history.ts`
     - `src/server/features/email/process-history.ts`
     - `src/server/features/webhooks/process-history-item.ts`
+  - System rule config/constants migrated to policy-plane module:
+    - `src/server/features/policy-plane/system-config.ts`
+  - Learned-pattern persistence migrated to policy-plane module:
+    - `src/server/features/policy-plane/learning-patterns.ts`
+  - Draft lifecycle utilities migrated out of legacy rules path:
+    - `src/server/features/email/draft-management.ts`
+  - Remaining non-runtime imports rewired from legacy `features/rules/*` to new modules across webhook/reply-tracker/lib/action surfaces.
 - Remaining:
-  - Full elimination of legacy `src/server/features/rules/**` and related API surfaces after parity replacement.
-  - Migrate remaining routes/services still importing `@/features/rules/*`.
+  - Expand policy-plane analytics and reason-code observability.
 
 ### Epic 10 - Operational Cutover
 - Status: `partial`
@@ -123,6 +143,7 @@ Main synced: yes (`origin/main`)
 - Remaining:
   - Add production-grade SLO dashboards/alerts for latency/error/429 metrics.
   - Final delete of residual compatibility surfaces and final cutover checklist signoff.
+  - Complete migration from root `skills/` to in-repo runtime catalog only.
 
 ## Recently Landed Commits
 - `5b5096f5d` Improve runtime answer quality and add per-user execution throttling
@@ -132,8 +153,6 @@ Main synced: yes (`origin/main`)
 - `2e397477d` Replace legacy skill runtime with open-world tool runtime kernel
 
 ## Active Next Queue (Do Not Skip)
-1. Continue removal/migration of remaining `@/features/rules/*` imports and legacy rule endpoints.
-2. Split inbox/calendar provider wrappers into reusable domain primitives and shared throttling utilities.
-3. Add explicit runtime metric schema + alert-ready telemetry fields.
-4. Add confidence-gated direct execution path for simple single-step read requests.
-5. Finalize operational cutover checklist for full runtime-only path signoff.
+1. Add explicit runtime metric schema + alert-ready telemetry fields (latency buckets, 429 counters, retries).
+2. Finalize cutover checklist and remove residual compatibility toggles/surfaces.
+3. Continue pack expansion beyond inbox/calendar while preserving policy-plane enforcement.

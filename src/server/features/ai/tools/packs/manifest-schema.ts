@@ -6,6 +6,8 @@ export const toolPackManifestSchema = z
     id: z.string().min(1),
     name: z.string().min(1),
     enabled: z.boolean().default(true),
+    dependencies: z.array(z.string().min(1)).default([]),
+    requiredFlags: z.array(z.string().min(1)).default([]),
     capabilities: z.array(capabilityNameSchema).min(1),
   })
   .strict();

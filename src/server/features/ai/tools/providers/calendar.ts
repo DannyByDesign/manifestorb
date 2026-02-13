@@ -13,6 +13,7 @@ import { CalendarServiceImpl } from "@/features/calendar/scheduling/CalendarServ
 import { TimeSlotManagerImpl } from "@/features/calendar/scheduling/TimeSlotManager";
 import type { SchedulingSettings, SchedulingTask } from "@/features/calendar/scheduling/types";
 import { resolveDefaultCalendarTimeZone } from "../calendar-time";
+import { mapInBatches } from "@/server/features/ai/tools/common/concurrency";
 
 export interface CalendarProvider {
   searchEvents(
@@ -53,21 +54,6 @@ export async function createCalendarProvider(
   const scopedLogger = createScopedLogger("tools/calendar");
   const providers = await createCalendarEventProviders(account.id, logger);
   const providerByType = new Map(providers.map((provider) => [provider.provider, provider]));
-  const mapWithConcurrency = async <T, U>(
-    items: T[],
-    concurrency: number,
-    mapper: (item: T) => Promise<U>,
-  ): Promise<U[]> => {
-    if (items.length === 0) return [];
-    const safeConcurrency = Math.max(1, concurrency);
-    const out: U[] = [];
-    for (let i = 0; i < items.length; i += safeConcurrency) {
-      const chunk = items.slice(i, i + safeConcurrency);
-      const mapped = await Promise.all(chunk.map((item) => mapper(item)));
-      out.push(...mapped);
-    }
-    return out;
-  };
 
   const resolveCalendarTarget = async (calendarId?: string) => {
     if (calendarId) {
@@ -192,7 +178,7 @@ export async function createCalendarProvider(
           return [];
         }
 
-        const results = await mapWithConcurrency(calendars, 3, (calendar) => {
+        const results = await mapInBatches(calendars, 3, (calendar) => {
             const provider = providerByType.get(
               calendar.connection.provider as "google" | "microsoft",
             );
@@ -232,7 +218,7 @@ export async function createCalendarProvider(
         })) ?? [];
 
         if (calendars.length > 0) {
-          const results = await mapWithConcurrency(calendars, 3, (calendar) => {
+          const results = await mapInBatches(calendars, 3, (calendar) => {
               const provider = providerByType.get(
                 calendar.connection.provider as "google" | "microsoft",
               );
@@ -257,7 +243,7 @@ export async function createCalendarProvider(
             });
           events = results.flat();
         } else {
-          const results = await mapWithConcurrency(providers, 3, (provider) => {
+          const results = await mapInBatches(providers, 3, (provider) => {
               if (attendeeEmail) {
                 return provider.fetchEventsWithAttendee({
                   attendeeEmail,

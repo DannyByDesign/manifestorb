@@ -35,9 +35,6 @@ vi.mock("@/features/cold-email/is-cold-email", () => ({
 vi.mock("@/features/categorize/senders/categorize", () => ({
   categorizeSender: vi.fn(),
 }));
-vi.mock("@/features/rules/ai/run-rules", () => ({
-  runRules: vi.fn(),
-}));
 vi.mock("@/features/web-chat/process-assistant-email", () => ({
   processAssistantEmail: vi.fn().mockResolvedValue(undefined),
 }));

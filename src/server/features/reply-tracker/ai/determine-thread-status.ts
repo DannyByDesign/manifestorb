@@ -6,7 +6,7 @@ import { getModel, type ModelType } from "@/server/lib/llms/model";
 import { getUserInfoPrompt, getEmailListPrompt } from "@/features/ai/helpers";
 import type { ConversationStatus } from "@/features/reply-tracker/conversation-status-config";
 import { SystemType } from "@/generated/prisma/enums";
-import { getRuleConfig } from "@/features/rules/consts";
+import { getRuleConfig } from "@/server/features/policy-plane/system-config";
 import { createScopedLogger } from "@/server/lib/logger";
 
 const logger = createScopedLogger("ai/determine-thread-status");

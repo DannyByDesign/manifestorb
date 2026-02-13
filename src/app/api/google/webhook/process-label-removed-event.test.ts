@@ -2,7 +2,7 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 import { HistoryEventType } from "./types";
 import { handleLabelRemovedEvent } from "./process-label-removed-event";
 import type { gmail_v1 } from "@googleapis/gmail";
-import { saveLearnedPattern } from "@/features/rules/learned-patterns";
+import { saveLearnedPattern } from "@/server/features/policy-plane/learning-patterns";
 import { createScopedLogger } from "@/server/lib/logger";
 import { GroupItemSource, SystemType } from "@/generated/prisma/enums";
 import prisma from "@/server/db/client";
@@ -20,7 +20,7 @@ vi.mock("@/server/db/client", () => ({
   },
 }));
 
-vi.mock("@/features/rules/learned-patterns", () => ({
+vi.mock("@/server/features/policy-plane/learning-patterns", () => ({
   saveLearnedPattern: vi.fn().mockResolvedValue(undefined),
 }));
 
