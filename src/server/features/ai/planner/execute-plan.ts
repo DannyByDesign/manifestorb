@@ -144,6 +144,87 @@ function asItemCount(data: unknown): number {
   return 0;
 }
 
+function asObjectArray(data: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(data)) return [];
+  return data.filter(
+    (item): item is Record<string, unknown> =>
+      Boolean(item) && typeof item === "object" && !Array.isArray(item),
+  );
+}
+
+function renderPlannerReadAnswer(params: {
+  capability: CapabilityName;
+  data: unknown;
+}): string | null {
+  if (
+    params.capability === "email.searchInbox" ||
+    params.capability === "email.searchThreads" ||
+    params.capability === "email.searchThreadsAdvanced" ||
+    params.capability === "email.searchSent"
+  ) {
+    const items = asObjectArray(params.data);
+    const first = items[0];
+    if (!first) return "I couldn't find matching emails.";
+    const title =
+      typeof first.title === "string" && first.title.trim().length > 0
+        ? first.title.trim()
+        : "(No Subject)";
+    const from =
+      typeof first.from === "string" && first.from.trim().length > 0
+        ? first.from.trim()
+        : "unknown sender";
+    const date =
+      typeof first.date === "string" && first.date.trim().length > 0
+        ? first.date.trim()
+        : "unknown time";
+    return `The top matching inbox email is "${title}" from ${from} at ${date}.`;
+  }
+
+  if (
+    params.capability === "calendar.listEvents" ||
+    params.capability === "calendar.searchEventsByAttendee"
+  ) {
+    const items = asObjectArray(params.data);
+    const first = items[0];
+    if (!first) return "I couldn't find matching calendar events.";
+    const title =
+      typeof first.title === "string" && first.title.trim().length > 0
+        ? first.title.trim()
+        : "(Untitled event)";
+    const start =
+      typeof first.start === "string" && first.start.trim().length > 0
+        ? first.start.trim()
+        : "unknown time";
+    return `The next matching event is "${title}" at ${start}.`;
+  }
+
+  return null;
+}
+
+function renderPlannerActionSummary(params: {
+  stepResults: PlannerExecutionResult["stepResults"];
+}): string {
+  const successful = params.stepResults.filter((step) => step.success);
+  const failed = params.stepResults.filter((step) => !step.success);
+  const lines: string[] = [];
+  lines.push(
+    `Completed ${successful.length} step${successful.length === 1 ? "" : "s"}${
+      failed.length > 0
+        ? `, with ${failed.length} failure${failed.length === 1 ? "" : "s"}`
+        : ""
+    }.`,
+  );
+  for (const step of successful.slice(0, 5)) {
+    const summary = step.message?.trim();
+    if (summary) {
+      lines.push(`- ${summary}`);
+    } else {
+      lines.push(`- Executed ${step.capability}.`);
+    }
+  }
+  return lines.join("\n");
+}
+
 function isReadOnly(capability: CapabilityName): boolean {
   if (capability.startsWith("email.search")) return true;
   if (capability === "email.getThreadMessages") return true;
@@ -493,17 +574,23 @@ export async function executePlannerPlan(params: {
     });
   }
 
-  const summaryLines = stepResults.map((step, index) => {
-    const status = step.success ? "done" : "failed";
-    const base = `${index + 1}. [${status}] ${step.capability}`;
-    return step.message ? `${base}\n   - ${step.message}` : base;
-  });
+  const successfulReadStep = stepResults.find(
+    (step) => step.success && isReadOnly(step.capability),
+  );
+  const readAnswer =
+    successfulReadStep != null
+      ? renderPlannerReadAnswer({
+          capability: successfulReadStep.capability,
+          data: stepOutputs[successfulReadStep.stepId],
+        })
+      : null;
   return {
     status: "success",
     responseText:
-      summaryLines.length > 0
-        ? summaryLines.join("\n")
-        : "Done.",
+      readAnswer ??
+      renderPlannerActionSummary({
+        stepResults,
+      }),
     approvals,
     interactivePayloads,
     stepResults,

@@ -10,6 +10,11 @@ import { createGenerateObject } from "@/server/lib/llms";
 import { getModel } from "@/server/lib/llms/model";
 import { buildSlotClarificationPrompt } from "@/server/features/ai/skills/slots/slot-clarifications";
 import { normalizeSemanticEntities } from "@/server/features/ai/skills/slots/normalize-entities";
+import {
+  decodeProviderValueDto,
+  providerValueDtoSchema,
+} from "@/server/features/ai/contracts/provider-safe-value";
+import { registerProviderSchema } from "@/server/lib/llms/schema-safety";
 
 export interface SlotResolutionResult {
   resolved: ResolvedSlots;
@@ -246,6 +251,18 @@ function resolveSlotValue(slot: string, message: string): unknown {
     if (/month/i.test(lower)) return "this_month";
   }
 
+  if (slot === "lookup_mode") {
+    if (/\boldest\b.*\bunread\b/i.test(lower)) return "oldest_unread";
+    if (/\b(latest|newest|most recent)\b/i.test(lower)) return "latest";
+    if (/\bnext\b.*\b(meeting|event)\b/i.test(lower)) return "next_meeting";
+    if (/\bfirst\b.*\b(meeting|event)\b/i.test(lower)) {
+      return "first_meeting";
+    }
+    if (/\b(first|top)\b.*\b(email|item|message|thread)\b/i.test(lower)) {
+      return "first";
+    }
+  }
+
   if (slot === "sender_or_domain") {
     const email = extractEmails(message)[0];
     if (email) return email;
@@ -301,9 +318,30 @@ function resolveSlotValue(slot: string, message: string): unknown {
   return undefined;
 }
 
-const llmSlotSchema = z.object({
-  slots: z.record(z.string(), slotValueSchema),
-}).strict();
+const llmSlotSchema = z
+  .object({
+    slots: z
+      .array(
+        z
+          .object({
+            key: z.string().min(1),
+            value: providerValueDtoSchema,
+          })
+          .strict(),
+      )
+      .max(80),
+  })
+  .strict();
+
+const SLOT_EXTRACTION_SCHEMA_ID = "skills_slots_v1";
+
+registerProviderSchema({
+  id: SLOT_EXTRACTION_SCHEMA_ID,
+  owner: "ai-runtime",
+  route: "slots",
+  label: "Skills slot extraction",
+  schema: llmSlotSchema,
+});
 
 function applySkillDefaults(skill: SkillContract, resolved: ResolvedSlots): ResolvedSlots {
   const out: ResolvedSlots = { ...resolved };
@@ -440,14 +478,19 @@ async function resolveMissingSlotsWithLLM(params: {
 
 Constraints:
 - Output MUST be JSON.
-- Only include keys for the requested slots.
-- Allowed slot value shapes:
-  - string
-  - number (duration minutes)
-  - boolean
-  - array of strings (e.g. email addresses)
-  - time range object: {"start": ISO8601, "end"?: ISO8601, "timezone"?: IANA}
-  - participants object: {"emails":[...]}
+- Output shape:
+  {
+    "slots": [
+      { "key": "<slot_name>", "value": { "kind": "<kind>", "value": <payload> } }
+    ]
+  }
+- Only include requested slot keys.
+- Allowed ProviderValueDto kinds:
+  - {"kind":"string","value":"..."}
+  - {"kind":"number","value":30}
+  - {"kind":"boolean","value":true}
+  - {"kind":"string_list","value":["a","b"]}
+  - {"kind":"json","value":"{\\"start\\":\\"2026-02-14T09:00:00Z\\",\\"end\\":\\"2026-02-14T10:00:00Z\\"}"}
 
 User timezone: ${params.timeZone}
 Skill: ${params.skill.id}
@@ -459,10 +502,20 @@ ${params.message.trim()}
   });
 
   const filtered: ResolvedSlots = {};
+  const slotMap = new Map(
+    object.slots.map((entry) => [entry.key, entry.value] as const),
+  );
   for (const key of params.missing) {
-    const value = object.slots[key];
-    if (value !== undefined) {
-      filtered[key] = value as never;
+    const valueDto = slotMap.get(key);
+    if (valueDto !== undefined) {
+      const decoded = decodeProviderValueDto({
+        value: valueDto,
+        parseJson: true,
+      });
+      const parsed = slotValueSchema.safeParse(decoded);
+      if (parsed.success) {
+        filtered[key] = parsed.data as never;
+      }
     }
   }
   return filtered;

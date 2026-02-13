@@ -91,4 +91,12 @@ export type SkillTelemetryEvent =
       policyDecision: "allowed" | "blocked" | "not_applicable";
       itemCount: number;
       errorCode?: string;
+    }
+  | {
+      name: "orchestration.stage.latency";
+      requestId: string;
+      provider: string;
+      routeType: "chat" | "skill" | "planner" | "clarify";
+      stageDurationsMs: Record<string, number>;
+      totalMs: number;
     };

@@ -22,6 +22,7 @@ import { env } from "@/env";
 import type { CreateApprovalParams } from "@/server/features/approvals/types";
 import { evaluatePolicyDecision } from "@/server/features/policy-plane/pdp";
 import { createPolicyExecutionLog } from "@/server/features/policy-plane/policy-logs";
+import { mapCapabilityToPolicyContext } from "@/server/features/ai/policy/capability-context";
 
 interface SkillApprovalRecord {
   id: string;
@@ -236,222 +237,10 @@ function mapCapabilityToApprovalContext(params: {
   toolName: string;
   args: Record<string, unknown>;
 } {
-  const { capability, slots } = params;
-  const threadIds = Array.isArray(slots.thread_ids)
-    ? (slots.thread_ids as string[])
-    : typeof slots.thread_id === "string"
-      ? [slots.thread_id]
-      : [];
-  const eventIds =
-    typeof slots.event_id === "string" ? [slots.event_id] : [];
-  const recipientEmails = [
-    ...(Array.isArray(slots.recipient)
-      ? (slots.recipient as unknown[]).filter(
-          (value): value is string => typeof value === "string",
-        )
-      : []),
-    ...getParticipantEmails(slots.participants),
-    ...(typeof slots.attendee_email === "string" ? [slots.attendee_email] : []),
-  ];
-
-  const commonIds = threadIds.length > 0 ? threadIds : eventIds;
-  const operationByCapability: Partial<Record<CapabilityName, string>> = {
-    "email.batchTrash": "delete_email",
-    "calendar.deleteEvent": "delete_calendar_event",
-    "email.sendNow": "send_email",
-    "email.sendDraft": "send_email",
-    "email.reply": "send_email",
-    "email.forward": "send_email",
-    "calendar.createEvent": "create_calendar_event",
-    "email.createDraft": "create_email_draft",
-    "email.unsubscribeSender": "unsubscribe_sender",
-    "email.bulkSenderTrash": "bulk_trash_senders",
-    "email.bulkSenderArchive": "bulk_archive_senders",
-    "email.bulkSenderLabel": "bulk_label_senders",
-    "email.batchArchive": "archive_email",
-    "calendar.rescheduleEvent": "update_calendar_event",
-    "policy.listRules": "list_rules",
-    "policy.compileRule": "compile_rule",
-    "policy.createRule": "create_rule",
-    "policy.updateRule": "update_rule",
-    "policy.disableRule": "disable_rule",
-    "policy.deleteRule": "delete_rule",
-  };
-  const operation = operationByCapability[capability];
-
-  if (
-    capability.startsWith("email.delete") ||
-    capability === "email.batchTrash" ||
-    capability === "calendar.deleteEvent"
-  ) {
-    return {
-      toolName: "delete",
-      args: {
-        resource: capability.startsWith("calendar") ? "calendar" : "email",
-        ids: commonIds,
-        ...(operation ? { operation } : {}),
-      },
-    };
-  }
-  if (
-    capability === "email.sendNow" ||
-    capability === "email.sendDraft" ||
-    capability === "email.reply" ||
-    capability === "email.forward"
-  ) {
-    return {
-      toolName: "send",
-      args: {
-        resource: "email",
-        to: recipientEmails,
-        ...(operation ? { operation } : {}),
-      },
-    };
-  }
-  if (
-    capability.startsWith("calendar.create") ||
-    capability.startsWith("email.create")
-  ) {
-    return {
-      toolName: "create",
-      args: {
-        resource: capability.startsWith("calendar") ? "calendar" : "email",
-        ...(recipientEmails.length > 0 ? { to: recipientEmails } : {}),
-        ...(operation ? { operation } : {}),
-      },
-    };
-  }
-  if (capability === "email.unsubscribeSender") {
-    return {
-      toolName: "modify",
-      args: {
-        resource: "email",
-        ids: threadIds,
-        changes: { unsubscribe: true },
-        ...(operation ? { operation } : {}),
-      },
-    };
-  }
-  if (capability === "email.bulkSenderTrash") {
-    return {
-      toolName: "modify",
-      args: {
-        resource: "email",
-        ids: threadIds,
-        changes: { bulk_trash_senders: true },
-        ...(operation ? { operation } : {}),
-      },
-    };
-  }
-  if (capability === "email.bulkSenderArchive") {
-    return {
-      toolName: "modify",
-      args: {
-        resource: "email",
-        ids: threadIds,
-        changes: { bulk_archive_senders: true },
-        ...(operation ? { operation } : {}),
-      },
-    };
-  }
-  if (capability === "email.bulkSenderLabel") {
-    return {
-      toolName: "modify",
-      args: {
-        resource: "email",
-        ids: threadIds,
-        changes: { bulk_label_senders: true },
-        ...(operation ? { operation } : {}),
-      },
-    };
-  }
-  if (capability === "email.batchArchive") {
-    return {
-      toolName: "modify",
-      args: {
-        resource: "email",
-        ids: threadIds,
-        changes: { archive: true },
-        ...(operation ? { operation } : {}),
-      },
-    };
-  }
-  if (capability === "email.markSpam") {
-    return {
-      toolName: "modify",
-      args: {
-        resource: "email",
-        ids: threadIds,
-        changes: { trash: true },
-        ...(operation ? { operation } : {}),
-      },
-    };
-  }
-  if (capability.startsWith("calendar.")) {
-    return {
-      toolName: "modify",
-      args: {
-        resource: "calendar",
-        ids: eventIds,
-        to: recipientEmails,
-        ...(operation ? { operation } : {}),
-      },
-    };
-  }
-  if (capability === "policy.listRules") {
-    return {
-      toolName: "query",
-      args: {
-        resource: "rule",
-        ...(operation ? { operation } : {}),
-      },
-    };
-  }
-  if (capability === "policy.compileRule") {
-    return {
-      toolName: "analyze",
-      args: {
-        resource: "rule",
-        ...(operation ? { operation } : {}),
-      },
-    };
-  }
-  if (capability === "policy.createRule") {
-    return {
-      toolName: "create",
-      args: {
-        resource: "rule",
-        ...(operation ? { operation } : {}),
-      },
-    };
-  }
-  if (capability === "policy.updateRule" || capability === "policy.disableRule") {
-    return {
-      toolName: "modify",
-      args: {
-        resource: "rule",
-        ...(operation ? { operation } : {}),
-      },
-    };
-  }
-  if (capability === "policy.deleteRule") {
-    return {
-      toolName: "delete",
-      args: {
-        resource: "rule",
-        ...(operation ? { operation } : {}),
-      },
-    };
-  }
-  return {
-    toolName: "modify",
-    args: {
-      resource: capability.startsWith("calendar") ? "calendar" : "email",
-      ids: commonIds,
-      ...(recipientEmails.length > 0 ? { to: recipientEmails } : {}),
-      ...(operation ? { operation } : {}),
-    },
-  };
+  return mapCapabilityToPolicyContext({
+    capability: params.capability,
+    args: params.slots,
+  });
 }
 
 async function logSkillExecution(params: {
@@ -572,6 +361,92 @@ function getParticipantEmails(participants: unknown): string[] {
   return Array.isArray(emails)
     ? emails.filter((value): value is string => typeof value === "string")
     : [];
+}
+
+function toInboxItems(data: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(data)) return [];
+  return data.filter(
+    (item): item is Record<string, unknown> =>
+      Boolean(item) && typeof item === "object" && !Array.isArray(item),
+  );
+}
+
+function pickInboxLookupItem(params: {
+  items: Array<Record<string, unknown>>;
+  lookupMode: string;
+}): Record<string, unknown> | null {
+  const { items, lookupMode } = params;
+  if (items.length === 0) return null;
+  if (lookupMode === "latest" || lookupMode === "first") return items[0] ?? null;
+  if (lookupMode === "oldest_unread") return items[items.length - 1] ?? null;
+  return items[0] ?? null;
+}
+
+function formatInboxLookupAnswer(params: {
+  item: Record<string, unknown> | null;
+  lookupMode: string;
+}): string {
+  if (!params.item) {
+    return "I couldn't find a matching email in your inbox.";
+  }
+  const title =
+    typeof params.item.title === "string" && params.item.title.trim().length > 0
+      ? params.item.title.trim()
+      : "(No Subject)";
+  const from =
+    typeof params.item.from === "string" && params.item.from.trim().length > 0
+      ? params.item.from.trim()
+      : "unknown sender";
+  const date =
+    typeof params.item.date === "string" && params.item.date.trim().length > 0
+      ? params.item.date.trim()
+      : "unknown time";
+  const modeLabel =
+    params.lookupMode === "latest"
+      ? "latest"
+      : params.lookupMode === "oldest_unread"
+        ? "oldest unread"
+        : "first";
+  return `Your ${modeLabel} inbox email is "${title}" from ${from} at ${date}.`;
+}
+
+function toCalendarItems(data: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(data)) return [];
+  return data.filter(
+    (item): item is Record<string, unknown> =>
+      Boolean(item) && typeof item === "object" && !Array.isArray(item),
+  );
+}
+
+function pickCalendarLookupItem(params: {
+  items: Array<Record<string, unknown>>;
+  lookupMode: string;
+}): Record<string, unknown> | null {
+  const { items, lookupMode } = params;
+  if (items.length === 0) return null;
+  if (lookupMode === "next_meeting") return items[0] ?? null;
+  if (lookupMode === "first_meeting") return items[0] ?? null;
+  return items[0] ?? null;
+}
+
+function formatCalendarLookupAnswer(params: {
+  item: Record<string, unknown> | null;
+  lookupMode: string;
+}): string {
+  if (!params.item) {
+    return "I couldn't find a matching meeting on your calendar.";
+  }
+  const title =
+    typeof params.item.title === "string" && params.item.title.trim().length > 0
+      ? params.item.title.trim()
+      : "(Untitled event)";
+  const start =
+    typeof params.item.start === "string" && params.item.start.trim().length > 0
+      ? params.item.start.trim()
+      : "unknown start time";
+  const modeLabel =
+    params.lookupMode === "first_meeting" ? "first meeting" : "next meeting";
+  return `Your ${modeLabel} is "${title}" at ${start}.`;
 }
 
 const summarizeThreadSchema = z.object({
@@ -1004,9 +879,28 @@ export async function executeSkill(params: {
           break;
         }
         case "email.searchInbox": {
-          toolResults[step.id] = await runWithTiming(step.id, () =>
-            capabilities.email.searchInbox({ limit: 25 }),
-          );
+          if (skill.id === "inbox_read_lookup") {
+            const lookupMode =
+              typeof slots.resolved.lookup_mode === "string"
+                ? slots.resolved.lookup_mode
+                : "first";
+            const query =
+              lookupMode === "oldest_unread"
+                ? "is:unread"
+                : typeof slots.resolved.lookup_query === "string"
+                  ? slots.resolved.lookup_query
+                  : "";
+            toolResults[step.id] = await runWithTiming(step.id, () =>
+              capabilities.email.searchInbox({
+                limit: lookupMode === "oldest_unread" ? 12 : 5,
+                ...(query ? { query } : {}),
+              }),
+            );
+          } else {
+            toolResults[step.id] = await runWithTiming(step.id, () =>
+              capabilities.email.searchInbox({ limit: 25 }),
+            );
+          }
           lastQueriedEmailIds = extractQueryMessageIds(toolResults[step.id]);
           lastQueriedEmailItems = Array.isArray(toolResults[step.id]?.data)
             ? (toolResults[step.id]!.data as unknown[])
@@ -1420,11 +1314,16 @@ export async function executeSkill(params: {
           break;
         }
         case "calendar.listEvents": {
-          const range = getDateRangeFromSlot(
-            slots.resolved.date_window ?? slots.resolved.analysis_window ?? slots.resolved.time_window,
-          );
+          const defaultRange =
+            skill.id === "calendar_read_lookup" ? dayRange(0) : null;
+          const range =
+            getDateRangeFromSlot(
+              slots.resolved.date_window ??
+                slots.resolved.analysis_window ??
+                slots.resolved.time_window,
+            ) ?? defaultRange;
           const filter: Record<string, unknown> = {
-            limit: 50,
+            limit: skill.id === "calendar_read_lookup" ? 8 : 50,
             ...(range ? { dateRange: range } : {}),
           };
           toolResults[step.id] = await runWithTiming(step.id, () =>
@@ -2096,6 +1995,60 @@ export async function executeSkill(params: {
     }
 
     // Skill-specific response rendering when the last tool result isn't user-facing.
+    if (skill.id === "inbox_read_lookup") {
+      const lookupMode =
+        typeof slots.resolved.lookup_mode === "string"
+          ? slots.resolved.lookup_mode
+          : "first";
+      const items = toInboxItems(toolResults["lookup_inbox_item"]?.data);
+      const item = pickInboxLookupItem({ items, lookupMode });
+      const responseText = formatInboxLookupAnswer({
+        item,
+        lookupMode,
+      });
+      return {
+        status: "success",
+        responseText,
+        postconditionsPassed,
+        stepsExecuted,
+        stepGraphSize: compiledPlan.nodes.length,
+        toolChain,
+        stepDurationsMs,
+        interactivePayloads,
+        actionEvents,
+        policyBlockCount,
+        repairAttemptCount,
+        diagnostics: { code: "ok", category: "unknown" },
+      };
+    }
+
+    if (skill.id === "calendar_read_lookup") {
+      const lookupMode =
+        typeof slots.resolved.lookup_mode === "string"
+          ? slots.resolved.lookup_mode
+          : "next_meeting";
+      const items = toCalendarItems(toolResults["lookup_calendar_item"]?.data);
+      const item = pickCalendarLookupItem({ items, lookupMode });
+      const responseText = formatCalendarLookupAnswer({
+        item,
+        lookupMode,
+      });
+      return {
+        status: "success",
+        responseText,
+        postconditionsPassed,
+        stepsExecuted,
+        stepGraphSize: compiledPlan.nodes.length,
+        toolChain,
+        stepDurationsMs,
+        interactivePayloads,
+        actionEvents,
+        policyBlockCount,
+        repairAttemptCount,
+        diagnostics: { code: "ok", category: "unknown" },
+      };
+    }
+
     if (skill.id === "inbox_thread_summarize_actions") {
       const threadData = toolResults["load_thread"]?.data;
       const messages =

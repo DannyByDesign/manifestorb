@@ -16,6 +16,11 @@ export interface CapabilitySelectionResult {
   intentFamilies: string[];
 }
 
+interface SeedSemanticInput {
+  intents: CapabilityIntentFamily[];
+  confidence: number;
+}
+
 function tokenize(input: string): string[] {
   return input
     .toLowerCase()
@@ -67,13 +72,19 @@ export async function selectCandidateCapabilities(params: {
   logger: Logger;
   emailAccount: { id: string; email: string; userId: string };
   topK?: number;
+  seedSemantic?: SeedSemanticInput;
 }): Promise<CapabilitySelectionResult> {
   const topK = Math.min(Math.max(params.topK ?? DEFAULT_TOP_K, 6), MAX_TOP_K);
-  const semantic = await parseSemanticRequest({
-    message: params.message,
-    logger: params.logger,
-    emailAccount: params.emailAccount,
-  });
+  const semantic = params.seedSemantic
+    ? {
+        intents: params.seedSemantic.intents,
+        confidence: params.seedSemantic.confidence,
+      }
+    : await parseSemanticRequest({
+        message: params.message,
+        logger: params.logger,
+        emailAccount: params.emailAccount,
+      });
 
   const intentFamilies = semantic.intents as CapabilityIntentFamily[];
   const tokens = tokenize(params.message);
@@ -123,9 +134,11 @@ export async function selectCandidateCapabilities(params: {
     candidates: uniqueCandidates,
     reason:
       uniqueCandidates.length > 0
-        ? "scored_capability_candidates"
+        ? params.seedSemantic
+          ? "scored_capability_candidates:seeded_semantic"
+          : "scored_capability_candidates"
         : "fallback_all_capabilities",
     semanticConfidence: semantic.confidence,
-    intentFamilies: semantic.intents,
+    intentFamilies: semantic.intents as string[],
   };
 }

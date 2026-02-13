@@ -32,6 +32,7 @@ type ExecuteOutcome =
         ambiguousSlots: string[];
         clarificationPrompt?: string;
       };
+      stageDurationsMs?: Record<string, number>;
     }
   | {
       kind: "executed";
@@ -41,6 +42,7 @@ type ExecuteOutcome =
       status: "success" | "partial" | "blocked" | "failed";
       diagnosticsCode?: string;
       diagnosticsCategory?: string;
+      stageDurationsMs?: Record<string, number>;
     };
 
 export interface SkillContinuationState {
@@ -130,6 +132,24 @@ function emitExecutionTelemetry(params: {
   });
 }
 
+function emitLatencyTelemetry(params: {
+  logger: Logger;
+  requestId: string;
+  provider: string;
+  routeType: "chat" | "skill" | "planner" | "clarify";
+  stageDurationsMs: Record<string, number>;
+  totalMs: number;
+}): void {
+  emitSkillTelemetry(params.logger, {
+    name: "orchestration.stage.latency",
+    requestId: params.requestId,
+    provider: params.provider,
+    routeType: params.routeType,
+    stageDurationsMs: params.stageDurationsMs,
+    totalMs: params.totalMs,
+  });
+}
+
 export async function runBaselineSkillTurn(params: {
   provider: string;
   userId: string;
@@ -167,6 +187,8 @@ export async function runBaselineSkillTurn(params: {
       };
     }
 > {
+  const turnStartedAt = Date.now();
+  const stageDurationsMs: Record<string, number> = {};
   assertBaselineSkillCapabilitiesSupported();
 
   const requestId = createHash("sha256")
@@ -193,6 +215,7 @@ export async function runBaselineSkillTurn(params: {
   });
 
   let route: Awaited<ReturnType<typeof routeSkill>>;
+  const routeStartedAt = Date.now();
   if (params.forcedSkillId) {
     route = {
       routeType: "skill",
@@ -220,6 +243,7 @@ export async function runBaselineSkillTurn(params: {
       emailAccount: { id: params.emailAccountId, email: params.email, userId: params.userId },
     });
   }
+  stageDurationsMs.route = Date.now() - routeStartedAt;
   emitRouteTelemetry({
     logger: params.logger,
     requestId,
@@ -228,6 +252,14 @@ export async function runBaselineSkillTurn(params: {
   });
 
   if (route.routeType === "clarify" || (!route.skillId && route.routeType !== "planner")) {
+    emitLatencyTelemetry({
+      logger: params.logger,
+      requestId,
+      provider: params.provider,
+      routeType: "clarify",
+      stageDurationsMs,
+      totalMs: Date.now() - turnStartedAt,
+    });
     return {
       kind: "clarify",
       text: route.clarificationPrompt ?? "What would you like to do?",
@@ -235,6 +267,7 @@ export async function runBaselineSkillTurn(params: {
   }
 
   if (route.routeType === "planner") {
+    const plannerStartedAt = Date.now();
     const plannerResult = await runCapabilityPlannerTurn({
       provider: params.provider,
       userId: params.userId,
@@ -245,6 +278,11 @@ export async function runBaselineSkillTurn(params: {
       capabilities,
       forcedCandidateCapabilities: params.seedPlannerCandidateCapabilities,
       continuationBaseMessage: params.continuationBaseMessage,
+      seedRouteContext: {
+        semanticParseConfidence: route.semanticParseConfidence,
+        routedFamilies: route.routedFamilies,
+        unresolvedEntities: route.unresolvedEntities,
+      },
       context: {
         conversationId: params.conversationId,
         channelId: params.channelId,
@@ -255,6 +293,15 @@ export async function runBaselineSkillTurn(params: {
         sourceEmailThreadId: params.sourceEmailThreadId,
         sourceCalendarEventId: params.sourceCalendarEventId,
       },
+    });
+    stageDurationsMs.planner = Date.now() - plannerStartedAt;
+    emitLatencyTelemetry({
+      logger: params.logger,
+      requestId,
+      provider: params.provider,
+      routeType: plannerResult.kind === "clarify" ? "clarify" : "planner",
+      stageDurationsMs,
+      totalMs: Date.now() - turnStartedAt,
     });
 
     if (plannerResult.kind === "clarify") {
@@ -278,6 +325,14 @@ export async function runBaselineSkillTurn(params: {
   }
 
   if (!route.skillId) {
+    emitLatencyTelemetry({
+      logger: params.logger,
+      requestId,
+      provider: params.provider,
+      routeType: "clarify",
+      stageDurationsMs,
+      totalMs: Date.now() - turnStartedAt,
+    });
     return {
       kind: "clarify",
       text: route.clarificationPrompt ?? "I need one more detail before I can continue.",
@@ -308,8 +363,19 @@ export async function runBaselineSkillTurn(params: {
       sourceCalendarEventId: params.sourceCalendarEventId,
       seedResolvedSlots: params.seedResolvedSlots,
     });
+    if (composite.stageDurationsMs) {
+      Object.assign(stageDurationsMs, composite.stageDurationsMs);
+    }
 
     if (composite.kind === "clarify") {
+      emitLatencyTelemetry({
+        logger: params.logger,
+        requestId,
+        provider: params.provider,
+        routeType: "clarify",
+        stageDurationsMs,
+        totalMs: Date.now() - turnStartedAt,
+      });
       return {
         kind: "clarify",
         text: composite.text,
@@ -395,6 +461,11 @@ export async function runBaselineSkillTurn(params: {
         sourceEmailThreadId: params.sourceEmailThreadId,
         sourceCalendarEventId: params.sourceCalendarEventId,
       });
+      if (actionOutcome.stageDurationsMs) {
+        stageDurationsMs[`action_${i + 1}`] =
+          (actionOutcome.stageDurationsMs.slots ?? 0) +
+          (actionOutcome.stageDurationsMs.execution ?? 0);
+      }
 
       actionResults.push({
         action: actionText,
@@ -416,6 +487,15 @@ export async function runBaselineSkillTurn(params: {
     const lines = actionResults.map(
       (r, idx) => `${idx + 1}. ${r.action}\n   - ${r.text}`,
     );
+
+    emitLatencyTelemetry({
+      logger: params.logger,
+      requestId,
+      provider: params.provider,
+      routeType: "skill",
+      stageDurationsMs,
+      totalMs: Date.now() - turnStartedAt,
+    });
 
     return {
       kind: "executed",
@@ -446,6 +526,17 @@ export async function runBaselineSkillTurn(params: {
     sourceEmailThreadId: params.sourceEmailThreadId,
     sourceCalendarEventId: params.sourceCalendarEventId,
     seedResolvedSlots: params.seedResolvedSlots,
+  });
+  if (outcome.stageDurationsMs) {
+    Object.assign(stageDurationsMs, outcome.stageDurationsMs);
+  }
+  emitLatencyTelemetry({
+    logger: params.logger,
+    requestId,
+    provider: params.provider,
+    routeType: outcome.kind === "clarify" ? "clarify" : "skill",
+    stageDurationsMs,
+    totalMs: Date.now() - turnStartedAt,
   });
 
   if (outcome.kind === "clarify") {
@@ -498,6 +589,7 @@ async function executeSingleSkill(params: {
   seedResolvedSlots?: ResolvedSlots;
 }): Promise<ExecuteOutcome> {
   const skill = getBaselineSkill(params.routeSkillId);
+  const slotsStartedAt = Date.now();
   const slots = await resolveSlots(skill, params.message, {
     logger: params.logger,
     emailAccount: params.emailAccount,
@@ -507,6 +599,7 @@ async function executeSingleSkill(params: {
     sourceCalendarEventId: params.sourceCalendarEventId,
     seedResolvedSlots: params.seedResolvedSlots,
   });
+  const slotsDurationMs = Date.now() - slotsStartedAt;
 
   emitSkillTelemetry(params.logger, {
     name: "skill.slot_resolution.completed",
@@ -538,9 +631,13 @@ async function executeSingleSkill(params: {
           ? { clarificationPrompt: slots.clarificationPrompt }
           : {}),
       },
+      stageDurationsMs: {
+        slots: slotsDurationMs,
+      },
     };
   }
 
+  const executionStartedAt = Date.now();
   const result = await executeSkill({
     skill,
     slots,
@@ -562,6 +659,7 @@ async function executeSingleSkill(params: {
       },
     },
   });
+  const executionDurationMs = Date.now() - executionStartedAt;
 
   emitExecutionTelemetry({
     logger: params.logger,
@@ -595,5 +693,9 @@ async function executeSingleSkill(params: {
     status: result.status,
     diagnosticsCode: result.diagnostics.code,
     diagnosticsCategory: result.diagnostics.category,
+    stageDurationsMs: {
+      slots: slotsDurationMs,
+      execution: executionDurationMs,
+    },
   };
 }

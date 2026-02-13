@@ -1,4 +1,5 @@
 import { inboxTriageTodaySkill } from "./inbox-triage-today";
+import { inboxReadLookupSkill } from "./inbox-read-lookup";
 import { inboxBulkNewsletterCleanupSkill } from "./inbox-bulk-newsletter-cleanup";
 import { inboxSubscriptionControlSkill } from "./inbox-subscription-control";
 import { inboxSnoozeOrDeferSkill } from "./inbox-snooze-or-defer";
@@ -23,10 +24,12 @@ import { calendarEventDeleteOrCancelSkill } from "./calendar-event-delete-or-can
 import { calendarAttendeeManagementSkill } from "./calendar-attendee-management";
 import { calendarRecurringSeriesManagementSkill } from "./calendar-recurring-series-management";
 import { calendarWorkingLocationManagementSkill } from "./calendar-working-location-management";
+import { calendarReadLookupSkill } from "./calendar-read-lookup";
 import { multiActionInboxCalendarSkill } from "./multi-action-inbox-calendar";
 import { rulePlaneManagementSkill } from "./rule-plane-management";
 
 export const baselineSkills = [
+  inboxReadLookupSkill,
   inboxTriageTodaySkill,
   inboxBulkNewsletterCleanupSkill,
   inboxSubscriptionControlSkill,
@@ -52,6 +55,7 @@ export const baselineSkills = [
   calendarAttendeeManagementSkill,
   calendarRecurringSeriesManagementSkill,
   calendarWorkingLocationManagementSkill,
+  calendarReadLookupSkill,
   multiActionInboxCalendarSkill,
   rulePlaneManagementSkill,
 ] as const;

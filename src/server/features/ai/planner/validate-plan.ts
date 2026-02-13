@@ -36,6 +36,29 @@ function hasCycle(steps: PlannerStep[]): boolean {
   return false;
 }
 
+function collectTemplateReferences(
+  value: unknown,
+  refs: string[] = [],
+): string[] {
+  if (typeof value === "string") {
+    const match = value.match(/^\{\{\s*([a-zA-Z0-9_-]+)(?:\.[a-zA-Z0-9_.-]+)?\s*\}\}$/u);
+    if (match?.[1]) refs.push(match[1]);
+    return refs;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectTemplateReferences(item, refs);
+    }
+    return refs;
+  }
+  if (value && typeof value === "object") {
+    for (const item of Object.values(value as Record<string, unknown>)) {
+      collectTemplateReferences(item, refs);
+    }
+  }
+  return refs;
+}
+
 export function validatePlannerPlan(params: {
   plan: PlannerPlan;
   allowedCapabilities: CapabilityName[];
@@ -70,6 +93,25 @@ export function validatePlannerPlan(params: {
         issues.push({
           code: "unknown_dependency",
           message: `Step ${step.id} references unknown dependency: ${dep}`,
+          stepId: step.id,
+        });
+      }
+    }
+
+    const templateRefs = collectTemplateReferences(step.args);
+    for (const ref of templateRefs) {
+      if (!stepById.has(ref)) {
+        issues.push({
+          code: "unresolved_template_reference",
+          message: `Step ${step.id} references unknown template step: ${ref}`,
+          stepId: step.id,
+        });
+        continue;
+      }
+      if (!(step.dependsOn ?? []).includes(ref)) {
+        issues.push({
+          code: "missing_template_dependency",
+          message: `Step ${step.id} uses template output from ${ref} but does not declare dependsOn.`,
           stepId: step.id,
         });
       }

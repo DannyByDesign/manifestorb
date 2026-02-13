@@ -1,4 +1,6 @@
 import type { gmail_v1 } from "@googleapis/gmail";
+import { createHash } from "crypto";
+import PQueue from "p-queue";
 import {
   type BatchError,
   type MessageWithPayload,
@@ -18,6 +20,33 @@ import parse from "gmail-api-parse-message";
 import { isRetryableError, withGmailRetry } from "@/server/integrations/google/retry";
 
 const logger = createScopedLogger("gmail/message");
+const MESSAGE_BATCH_CONCURRENCY_PER_USER = 1;
+const MESSAGE_BATCH_QUEUE_TTL_MS = 10 * 60 * 1000;
+const messageBatchQueues = new Map<
+  string,
+  { queue: PQueue; touchedAt: number }
+>();
+
+function getMessageBatchQueue(accessToken: string): PQueue {
+  const key = createHash("sha256")
+    .update(accessToken)
+    .digest("hex")
+    .slice(0, 16);
+  const now = Date.now();
+  for (const [queueKey, entry] of messageBatchQueues.entries()) {
+    if (now - entry.touchedAt > MESSAGE_BATCH_QUEUE_TTL_MS) {
+      messageBatchQueues.delete(queueKey);
+    }
+  }
+  const existing = messageBatchQueues.get(key);
+  if (existing) {
+    existing.touchedAt = now;
+    return existing.queue;
+  }
+  const queue = new PQueue({ concurrency: MESSAGE_BATCH_CONCURRENCY_PER_USER });
+  messageBatchQueues.set(key, { queue, touchedAt: now });
+  return queue;
+}
 
 export function parseMessage(
   message: MessageWithPayload,
@@ -126,11 +155,14 @@ export async function getMessagesBatch({
   }
   if (messageIds.length > 100) throw new Error("Too many messages. Max 100");
 
-  const batch: (MessageWithPayload | BatchError)[] = await getBatch(
-    messageIds,
-    "/gmail/v1/users/me/messages",
-    accessToken,
-  );
+  const batchQueue = getMessageBatchQueue(accessToken);
+  const batch = (await batchQueue.add(() =>
+    getBatch(
+      messageIds,
+      "/gmail/v1/users/me/messages",
+      accessToken,
+    ),
+  )) as (MessageWithPayload | BatchError)[];
 
   const missingMessageIds = new Set<string>();
 
@@ -143,7 +175,18 @@ export async function getMessagesBatch({
     .map((message, i) => {
       if (isBatchError(message)) {
         const { code, message: errorMessage, errors } = message.error;
-        const reason = (errors?.[0] as any)?.reason;
+        const flattenedErrors = Array.isArray(errors)
+          ? (errors.flat() as unknown[])
+          : [];
+        const firstErrorWithReason = flattenedErrors.find((value) => {
+          return (
+            value &&
+            typeof value === "object" &&
+            "reason" in value &&
+            typeof (value as { reason?: unknown }).reason === "string"
+          );
+        }) as { reason: string } | undefined;
+        const reason = firstErrorWithReason?.reason;
 
         const { retryable } = isRetryableError({
           status: code,
@@ -180,7 +223,9 @@ export async function getMessagesBatch({
       missingMessageIds: Array.from(missingMessageIds),
     });
     const nextRetryCount = retryCount + 1;
-    await sleep(1000 * nextRetryCount);
+    const baseDelayMs = 1000 * nextRetryCount;
+    const jitterMs = Math.floor(Math.random() * 750);
+    await sleep(baseDelayMs + jitterMs);
     const missingMessages = await getMessagesBatch({
       messageIds: Array.from(missingMessageIds),
       accessToken,

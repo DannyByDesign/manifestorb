@@ -1,4 +1,5 @@
 export const BASELINE_SKILL_IDS = [
+  "inbox_read_lookup",
   "inbox_triage_today",
   "inbox_bulk_newsletter_cleanup",
   "inbox_subscription_control",
@@ -24,6 +25,7 @@ export const BASELINE_SKILL_IDS = [
   "calendar_attendee_management",
   "calendar_recurring_series_management",
   "calendar_working_location_management",
+  "calendar_read_lookup",
   "multi_action_inbox_calendar",
   "rule_plane_management",
 ] as const;

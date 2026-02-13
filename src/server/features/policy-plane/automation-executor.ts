@@ -198,7 +198,6 @@ export async function executeCanonicalEmailAutomations(params: {
     userId: params.emailAccount.userId,
     emailAccountId: params.emailAccount.id,
     type: "automation",
-    includeLegacy: true,
   });
 
   const matches = rules.filter((rule) => matchesEmailAutomationRule(params.message, rule));

@@ -13,13 +13,13 @@ export const semanticIntentSchema = z.enum([
 
 export const semanticEntitySchema = z.object({
   key: z.string().min(1),
-  value: z.union([z.string(), z.number(), z.boolean(), z.array(z.string()), z.record(z.string(), z.unknown())]),
+  value: z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]),
   confidence: z.number().min(0).max(1).default(0.5),
 }).strict();
 
 export const semanticConstraintSchema = z.object({
   kind: z.string().min(1),
-  value: z.union([z.string(), z.number(), z.boolean(), z.array(z.string()), z.record(z.string(), z.unknown())]),
+  value: z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]),
 }).strict();
 
 export const semanticTaskSchema = z.object({

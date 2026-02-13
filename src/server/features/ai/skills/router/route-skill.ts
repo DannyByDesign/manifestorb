@@ -8,6 +8,7 @@ import { getModel } from "@/server/lib/llms/model";
 import { buildBaselineRouterPrompt, buildBaselineSkillMenu } from "@/server/features/ai/skills/router/router-prompts";
 import { parseSemanticRequest } from "@/server/features/ai/skills/router/parse-request";
 import { routeIntentFamilies } from "@/server/features/ai/skills/router/route-intent-family";
+import { registerProviderSchema } from "@/server/lib/llms/schema-safety";
 
 export interface SkillRouteResult {
   routeType: "skill" | "planner" | "clarify";
@@ -28,6 +29,14 @@ const llmRouteSchema = z.object({
   reason: z.string().min(1),
   clarificationPrompt: z.string().optional(),
 }).strict();
+
+registerProviderSchema({
+  id: "skills_router_closed_set_v1",
+  owner: "ai-runtime",
+  route: "router",
+  label: "Skills router (baseline closed set)",
+  schema: llmRouteSchema,
+});
 
 const routeRules: Array<{ skillId: SkillId; confidence: number; patterns: RegExp[] }> = [
   { skillId: "inbox_bulk_newsletter_cleanup", confidence: 0.9, patterns: [/newsletter/i, /promotions?/i, /bulk clean/i, /cleanup/i] },
@@ -60,6 +69,81 @@ const routeRules: Array<{ skillId: SkillId; confidence: number; patterns: RegExp
 ];
 
 const MIN_CONFIDENCE = 0.72;
+
+function matchDirectReadSkill(
+  message: string,
+): {
+  skillId: SkillId;
+  confidence: number;
+  reason: string;
+  routedFamilies: string[];
+} | null {
+  const normalized = message.toLowerCase();
+
+  const inboxScope =
+    /\b(inbox|email|emails|message|messages|thread|threads)\b/u.test(
+      normalized,
+    );
+  if (inboxScope) {
+    if (
+      /\b(first|top)\b/u.test(normalized) &&
+      /\b(email|item|message|thread)\b/u.test(normalized)
+    ) {
+      return {
+        skillId: "inbox_read_lookup",
+        confidence: 0.99,
+        reason: "direct_read:first_inbox_item",
+        routedFamilies: ["inbox_read"],
+      };
+    }
+    if (
+      /\b(latest|newest|most recent)\b/u.test(normalized) &&
+      /\b(email|item|message|thread)\b/u.test(normalized)
+    ) {
+      return {
+        skillId: "inbox_read_lookup",
+        confidence: 0.98,
+        reason: "direct_read:latest_inbox_item",
+        routedFamilies: ["inbox_read"],
+      };
+    }
+    if (/\boldest\b/u.test(normalized) && /\bunread\b/u.test(normalized)) {
+      return {
+        skillId: "inbox_read_lookup",
+        confidence: 0.98,
+        reason: "direct_read:oldest_unread_item",
+        routedFamilies: ["inbox_read"],
+      };
+    }
+  }
+
+  if (/\b(calendar|meeting|event)\b/u.test(normalized)) {
+    if (
+      /\bnext\b/u.test(normalized) &&
+      /\b(meeting|event)\b/u.test(normalized)
+    ) {
+      return {
+        skillId: "calendar_read_lookup",
+        confidence: 0.98,
+        reason: "direct_read:next_meeting",
+        routedFamilies: ["calendar_read"],
+      };
+    }
+    if (
+      /\bfirst\b/u.test(normalized) &&
+      /\b(meeting|event)\b/u.test(normalized)
+    ) {
+      return {
+        skillId: "calendar_read_lookup",
+        confidence: 0.96,
+        reason: "direct_read:first_meeting",
+        routedFamilies: ["calendar_read"],
+      };
+    }
+  }
+
+  return null;
+}
 
 function buildClarifyResult(params: {
   confidence: number;
@@ -191,6 +275,19 @@ export async function routeSkill(params: {
 }): Promise<SkillRouteResult> {
   const normalized = params.message.trim();
   if (!normalized) return routeSkillDeterministic(params.message);
+
+  const directRead = matchDirectReadSkill(normalized);
+  if (directRead) {
+    return {
+      routeType: "skill",
+      skillId: directRead.skillId,
+      confidence: directRead.confidence,
+      reason: directRead.reason,
+      semanticParseConfidence: 1,
+      routedFamilies: directRead.routedFamilies,
+      unresolvedEntities: [],
+    };
+  }
 
   const semantic = await parseSemanticRequest({
     message: normalized,

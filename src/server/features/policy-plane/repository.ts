@@ -1,14 +1,6 @@
 import { randomUUID } from "crypto";
 import prisma from "@/server/db/client";
 import { Prisma } from "@/generated/prisma/client";
-import { listApprovalRuleConfigs } from "@/features/approvals/rules";
-import {
-  adaptApprovalRuleToCanonical,
-  adaptCalendarPolicyToCanonical,
-  adaptEmailRuleToCanonical,
-  adaptTaskPreferenceToCanonical,
-  matchesRuleType,
-} from "@/server/features/policy-plane/adapters";
 import {
   canonicalRuleSchema,
   canonicalRuleTypeSchema,
@@ -85,84 +77,6 @@ function mapDbRuleToCanonical(
   return parsed.data;
 }
 
-async function listLegacyCanonicalRules(params: {
-  userId: string;
-  emailAccountId?: string;
-  type?: CanonicalRuleType;
-}): Promise<CanonicalRule[]> {
-  const out: CanonicalRule[] = [];
-
-  if (!params.type || params.type === "guardrail") {
-    const approvalConfigs = await listApprovalRuleConfigs({ userId: params.userId });
-    for (const config of approvalConfigs) {
-      for (const rule of config.rules) {
-        out.push(
-          adaptApprovalRuleToCanonical({
-            userId: params.userId,
-            toolName: config.toolName,
-            defaultPolicy: config.defaultPolicy,
-            rule,
-          }),
-        );
-      }
-    }
-
-    if (params.emailAccountId) {
-      const calendarPolicies = await prisma.calendarEventPolicy.findMany({
-        where: { userId: params.userId, emailAccountId: params.emailAccountId },
-      });
-      for (const policy of calendarPolicies) {
-        out.push(
-          adaptCalendarPolicyToCanonical({
-            userId: params.userId,
-            emailAccountId: params.emailAccountId,
-            policy,
-          }),
-        );
-      }
-    }
-  }
-
-  if ((!params.type || params.type === "automation") && params.emailAccountId) {
-    const emailRules = await prisma.rule.findMany({
-      where: { emailAccountId: params.emailAccountId },
-      include: { actions: true },
-      orderBy: { createdAt: "desc" },
-    });
-
-    for (const rule of emailRules) {
-      out.push(
-        adaptEmailRuleToCanonical({
-          userId: params.userId,
-          emailAccountId: params.emailAccountId,
-          rule,
-        }),
-      );
-    }
-  }
-
-  if (!params.type || params.type === "preference") {
-    const [taskPreference, aiConfig] = await Promise.all([
-      prisma.taskPreference.findUnique({
-        where: { userId: params.userId },
-      }),
-      prisma.userAIConfig.findUnique({
-        where: { userId: params.userId },
-      }),
-    ]);
-    out.push(
-      ...adaptTaskPreferenceToCanonical({
-        userId: params.userId,
-        emailAccountId: params.emailAccountId,
-        taskPreference,
-        aiConfig,
-      }),
-    );
-  }
-
-  return out.filter((rule) => matchesRuleType(rule, params.type));
-}
-
 function sortCanonicalRules(rules: CanonicalRule[]): CanonicalRule[] {
   return [...rules].sort((a, b) => {
     if (a.priority !== b.priority) return b.priority - a.priority;
@@ -197,7 +111,6 @@ export async function listEffectiveCanonicalRules(params: {
   userId: string;
   emailAccountId?: string;
   type?: CanonicalRuleType;
-  includeLegacy?: boolean;
 }): Promise<CanonicalRule[]> {
   const type = params.type
     ? canonicalRuleTypeSchema.parse(params.type)
@@ -207,19 +120,7 @@ export async function listEffectiveCanonicalRules(params: {
     emailAccountId: params.emailAccountId,
     type,
   });
-  if (params.includeLegacy === false) {
-    return sortCanonicalRules(persisted);
-  }
-
-  const legacy = await listLegacyCanonicalRules({
-    userId: params.userId,
-    emailAccountId: params.emailAccountId,
-    type,
-  });
-  const merged = new Map<string, CanonicalRule>();
-  for (const item of legacy) merged.set(item.id, item);
-  for (const item of persisted) merged.set(item.id, item);
-  return sortCanonicalRules(Array.from(merged.values()));
+  return sortCanonicalRules(persisted);
 }
 
 export async function createCanonicalRule(params: {

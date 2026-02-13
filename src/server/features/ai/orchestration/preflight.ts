@@ -2,8 +2,10 @@ import { z } from "zod";
 import { createGenerateObject } from "@/server/lib/llms";
 import { getModel } from "@/server/lib/llms/model";
 import { createScopedLogger } from "@/server/lib/logger";
+import { registerProviderSchema } from "@/server/lib/llms/schema-safety";
 
 const logger = createScopedLogger("ai/orchestration-preflight");
+const PREFLIGHT_SCHEMA_ID = "orchestration_preflight_v2";
 
 export const orchestrationModeSchema = z.enum([
   "chat",
@@ -16,8 +18,7 @@ export const preflightDecisionSchema = z.object({
   mode: orchestrationModeSchema,
   needsTools: z.boolean(),
   needsInternalData: z.boolean(),
-  // Keep this JSON-schema friendly for providers that reject transform().
-  contextTier: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]),
+  contextTier: z.number().int().min(0).max(3),
   allowProactiveNudges: z.boolean(),
   confidence: z.number().min(0).max(1),
   resourceHints: z
@@ -32,6 +33,14 @@ export const preflightDecisionSchema = z.object({
       ]),
     )
     .max(5),
+});
+
+registerProviderSchema({
+  id: PREFLIGHT_SCHEMA_ID,
+  owner: "ai-runtime",
+  route: "preflight",
+  label: "orchestration-preflight",
+  schema: preflightDecisionSchema,
 });
 
 export type PreflightDecision = z.infer<typeof preflightDecisionSchema>;
@@ -59,6 +68,10 @@ export async function runOrchestrationPreflight(params: {
 
   const operationalOverride = runOperationalOverride(message);
   if (operationalOverride) {
+    logger.info("Preflight branch selected", {
+      branch: "deterministic_operational",
+      schemaId: PREFLIGHT_SCHEMA_ID,
+    });
     return operationalOverride;
   }
 
@@ -68,6 +81,13 @@ export async function runOrchestrationPreflight(params: {
     hasPendingScheduleProposal: params.hasPendingScheduleProposal,
   });
   if (fastPath) {
+    logger.info("Preflight branch selected", {
+      branch:
+        fastPath.needsTools
+          ? "deterministic_operational"
+          : "deterministic_conversational",
+      schemaId: PREFLIGHT_SCHEMA_ID,
+    });
     return fastPath;
   }
 
@@ -105,6 +125,10 @@ Rules:
         "Return only structured orchestration decision fields. Be conservative with tools and retrieval when the user did not ask for operational actions.",
     });
 
+    logger.info("Preflight branch selected", {
+      branch: "llm_ambiguity_resolution",
+      schemaId: PREFLIGHT_SCHEMA_ID,
+    });
     return result.object;
   } catch (error) {
     logger.warn("Preflight failed; falling back to conservative default", {

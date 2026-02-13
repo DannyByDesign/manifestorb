@@ -7,11 +7,17 @@ import {
 } from "@/server/features/ai/skills/contracts/semantic-request";
 import { createGenerateObject } from "@/server/lib/llms";
 import { getModel } from "@/server/lib/llms/model";
+import {
+  decodeProviderValueDto,
+  providerValueDtoSchema,
+  type ProviderValueDto,
+} from "@/server/features/ai/contracts/provider-safe-value";
+import { registerProviderSchema } from "@/server/lib/llms/schema-safety";
 
-// Gemini-compatible stand-in for open object payloads.
-const looseObjectValueSchema = z.object({ _placeholder: z.string().optional() }).passthrough();
+const SEMANTIC_PARSER_SCHEMA_ID = "skills_semantic_parser_v2";
 
-const parserOutputSchema = z.object({
+const parserOutputSchema = z
+  .object({
   intents: z.array(
     z.enum([
       "inbox_read",
@@ -42,38 +48,56 @@ const parserOutputSchema = z.object({
         .array(
           z.object({
             key: z.string(),
-            value: z.union([
-              z.string(),
-              z.number(),
-              z.boolean(),
-              z.array(z.string()),
-              looseObjectValueSchema,
-            ]),
+            value: providerValueDtoSchema,
             confidence: z.number().min(0).max(1),
-          }),
+          }).strict(),
         )
         .default([]),
       constraints: z
         .array(
           z.object({
             kind: z.string(),
-            value: z.union([
-              z.string(),
-              z.number(),
-              z.boolean(),
-              z.array(z.string()),
-              looseObjectValueSchema,
-            ]),
-          }),
+            value: providerValueDtoSchema,
+          }).strict(),
         )
         .default([]),
       confidence: z.number().min(0).max(1),
-    }),
+    }).strict(),
   ),
   policyHints: z.array(z.string()).default([]),
   unresolved: z.array(z.string()).default([]),
   confidence: z.number().min(0).max(1),
-}).strict();
+  })
+  .strict();
+
+registerProviderSchema({
+  id: SEMANTIC_PARSER_SCHEMA_ID,
+  owner: "ai-runtime",
+  route: "parser",
+  label: "Skills semantic parser",
+  schema: parserOutputSchema,
+});
+
+function mapProviderValueToSemantic(value: ProviderValueDto): string | number | boolean | string[] {
+  const decoded = decodeProviderValueDto({
+    value,
+    parseJson: false,
+  });
+  if (
+    typeof decoded === "string" ||
+    typeof decoded === "number" ||
+    typeof decoded === "boolean"
+  ) {
+    return decoded;
+  }
+  if (
+    Array.isArray(decoded) &&
+    decoded.every((entry) => typeof entry === "string")
+  ) {
+    return decoded;
+  }
+  return JSON.stringify(decoded);
+}
 
 function heuristicIntents(message: string): SemanticIntent[] {
   const lower = message.toLowerCase();
@@ -150,6 +174,13 @@ Rules:
 - Keep tasks concise and atomic.
 - Include unresolved[] only when critical context is missing.
 - Do not invent IDs.
+- Entity and constraint values must use ProviderValueDto:
+  - {"kind":"string","value":"..."}
+  - {"kind":"number","value":123}
+  - {"kind":"boolean","value":true}
+  - {"kind":"string_list","value":["a","b"]}
+  - {"kind":"json","value":"{\\"k\\":\\"v\\"}"}
+- Schema ID: ${SEMANTIC_PARSER_SCHEMA_ID}
 
 User request:
 ${raw}`,
@@ -157,6 +188,17 @@ ${raw}`,
 
     return semanticRequestSchema.parse({
       ...object,
+      tasks: object.tasks.map((task) => ({
+        ...task,
+        entities: task.entities.map((entity) => ({
+          ...entity,
+          value: mapProviderValueToSemantic(entity.value),
+        })),
+        constraints: task.constraints.map((constraint) => ({
+          ...constraint,
+          value: mapProviderValueToSemantic(constraint.value),
+        })),
+      })),
       raw,
     });
   } catch (error) {

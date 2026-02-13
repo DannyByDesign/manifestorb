@@ -16,6 +16,7 @@ import {
 } from "ai";
 import { jsonrepair } from "jsonrepair";
 import type { LanguageModelV2 } from "@ai-sdk/provider";
+import type { ZodTypeAny } from "zod";
 import { saveAiUsage } from "@/server/lib/usage";
 import type { EmailAccountWithAI } from "@/server/lib/llms/types";
 import {
@@ -35,16 +36,28 @@ import {
 import { getModel, type ModelType } from "@/server/lib/llms/model";
 import { createScopedLogger } from "@/server/lib/logger";
 import { withNetworkRetry, withLLMRetry } from "./retry";
+import { assertProviderFacingSchemaSafety } from "@/server/lib/llms/schema-safety";
 
 const logger = createScopedLogger("llms");
 
 const MAX_LOG_LENGTH = 200;
+const SCHEMA_GUARD_LABEL_PATTERNS: RegExp[] = [
+  /^orchestration-preflight$/u,
+  /^Skills semantic parser$/u,
+  /^Skills router \(baseline closed set\)$/u,
+  /^Skills slot extraction/u,
+  /^Capability planner/u,
+];
 
 const commonOptions: {
   experimental_telemetry: { isEnabled: boolean };
   headers?: Record<string, string>;
   providerOptions?: Record<string, Record<string, JSONValue>>;
 } = { experimental_telemetry: { isEnabled: true } };
+
+function shouldValidateProviderSchema(label: string): boolean {
+  return SCHEMA_GUARD_LABEL_PATTERNS.some((pattern) => pattern.test(label));
+}
 
 export function createGenerateText({
   emailAccount,
@@ -170,6 +183,16 @@ export function createGenerateObject({
         system: options.system?.slice(0, MAX_LOG_LENGTH),
         prompt: options.prompt?.slice(0, MAX_LOG_LENGTH),
       });
+
+      if (shouldValidateProviderSchema(label)) {
+        const candidateSchema = (options as { schema?: ZodTypeAny }).schema;
+        if (candidateSchema) {
+          assertProviderFacingSchemaSafety({
+            schema: candidateSchema,
+            label,
+          });
+        }
+      }
 
       if (
         !options.system?.includes("JSON") &&

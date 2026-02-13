@@ -33,6 +33,8 @@ import { ApprovalService } from "@/features/approvals/service";
 import { executeApprovalRequest } from "@/features/approvals/execute";
 import { resolveScheduleProposalRequestById } from "@/features/calendar/schedule-proposal";
 import { resolveAmbiguousTimeRequestById } from "@/features/calendar/ambiguous-time";
+import { ensureProviderSchemaRegistryInitialized } from "@/server/features/ai/provider-schemas/bootstrap";
+import { emitSkillTelemetry } from "@/server/features/ai/skills/telemetry/emit";
 
 export interface ProcessorContext {
   conversationId?: string;
@@ -825,6 +827,7 @@ export async function processMessage(
   input: MessageProcessorInput,
 ): Promise<MessageProcessorResult> {
   const { user, emailAccount, context, logger } = input;
+  ensureProviderSchemaRegistryInitialized();
 
   const conversationId = context.conversationId
     ? context.conversationId
@@ -832,6 +835,10 @@ export async function processMessage(
 
   const messageContent =
     input.message ?? extractLatestUserMessage(input.messages ?? []);
+  const orchestrationRequestId = createHash("sha256")
+    .update(`${user.id}:${context.provider}:${Date.now()}:${messageContent}`)
+    .digest("hex")
+    .slice(0, 16);
 
   let sourceEmailContextCache: SourceEmailContext | null = null;
   const getSourceEmailContext = async (): Promise<SourceEmailContext> => {
@@ -1103,6 +1110,7 @@ export async function processMessage(
 
   // Orchestration preflight: avoid the skills runtime (router/slots/executor)
   // for conversational turns to reduce latency and LLM/tool costs.
+  const preflightStartedAt = Date.now();
   const preflight = await runOrchestrationPreflight({
     message: messageContent,
     provider: context.provider,
@@ -1111,13 +1119,16 @@ export async function processMessage(
     hasPendingApproval: pendingContext.hasPendingApproval,
     hasPendingScheduleProposal: pendingContext.hasPendingScheduleProposal,
   });
+  const preflightDurationMs = Date.now() - preflightStartedAt;
 
   if (!preflight.needsTools) {
+    const renderStartedAt = Date.now();
     const text = await generateConversationalReply({
       emailAccount: { id: emailAccount.id, email: emailAccount.email, userId: user.id },
       message: messageContent,
       logger,
     });
+    const renderDurationMs = Date.now() - renderStartedAt;
 
     await persistAssistantMessage(
       user.id,
@@ -1131,9 +1142,31 @@ export async function processMessage(
     );
 
     triggerMemoryRecording(user.id, emailAccount.email, logger);
+    emitSkillTelemetry(logger, {
+      name: "orchestration.stage.latency",
+      requestId: orchestrationRequestId,
+      provider: context.provider,
+      routeType: "chat",
+      stageDurationsMs: {
+        preflight: preflightDurationMs,
+        render: renderDurationMs,
+      },
+      totalMs: preflightDurationMs + renderDurationMs,
+    });
 
     return { text, approvals: [], interactivePayloads: [] };
   }
+
+  emitSkillTelemetry(logger, {
+    name: "orchestration.stage.latency",
+    requestId: orchestrationRequestId,
+    provider: context.provider,
+    routeType: "skill",
+    stageDurationsMs: {
+      preflight: preflightDurationMs,
+    },
+    totalMs: preflightDurationMs,
+  });
 
   const sourceEmailContext = await getSourceEmailContext();
 
