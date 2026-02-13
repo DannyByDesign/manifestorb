@@ -8,7 +8,7 @@ import type { CanonicalRule } from "@/server/features/policy-plane/canonical-sch
 import { isRuleActiveNow } from "@/server/features/policy-plane/canonical-schema";
 import { listEffectiveCanonicalRules } from "@/server/features/policy-plane/repository";
 import type { Logger } from "@/server/lib/logger";
-import { executeAct } from "@/features/rules/ai/execute";
+import { runActionFunction } from "@/features/ai/actions";
 
 type CanonicalAutomationExecutionResult = {
   ruleId: string;
@@ -283,14 +283,50 @@ export async function executeCanonicalEmailAutomations(params: {
     }
 
     try {
-      await executeAct({
-        client: params.provider,
-        executedRule,
-        message: params.message,
-        userEmail: params.emailAccount.email,
-        userId: params.emailAccount.userId,
-        emailAccountId: params.emailAccount.id,
-        logger: params.logger,
+      for (const action of executedRule.actionItems) {
+        const actionResult = await runActionFunction({
+          client: params.provider,
+          email: params.message,
+          action,
+          userEmail: params.emailAccount.email,
+          userId: params.emailAccount.userId,
+          emailAccountId: params.emailAccount.id,
+          executedRule,
+          logger: params.logger,
+          policySource: "automation",
+        });
+
+        const isDeferredForApproval =
+          typeof actionResult === "object" &&
+          actionResult !== null &&
+          "approvalRequested" in actionResult &&
+          actionResult.approvalRequested === true;
+        const isBlockedByPolicy =
+          typeof actionResult === "object" &&
+          actionResult !== null &&
+          "blockedByPolicy" in actionResult &&
+          actionResult.blockedByPolicy === true;
+        if (isDeferredForApproval || isBlockedByPolicy) {
+          continue;
+        }
+
+        const draftId =
+          typeof actionResult === "object" &&
+          actionResult !== null &&
+          "draftId" in actionResult &&
+          typeof actionResult.draftId === "string"
+            ? actionResult.draftId
+            : null;
+        if (draftId && action.type === ActionType.DRAFT_EMAIL) {
+          await prisma.executedAction.update({
+            where: { id: action.id },
+            data: { draftId },
+          });
+        }
+      }
+      await prisma.executedRule.update({
+        where: { id: executedRule.id },
+        data: { status: ExecutedRuleStatus.APPLIED },
       });
       results.push({
         ruleId: rule.id,
