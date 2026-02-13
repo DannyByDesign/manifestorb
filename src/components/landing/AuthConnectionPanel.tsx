@@ -326,7 +326,7 @@ export function AuthConnectionPanel() {
   );
 
   return (
-    <div className="w-full max-w-md rounded-2xl border border-white/20 bg-black/40 p-4 text-sm text-white shadow-xl backdrop-blur-md">
+    <div className="max-h-[calc(100vh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-white/20 bg-black/40 p-4 text-sm text-white shadow-xl backdrop-blur-md">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-base font-semibold">Amodel Status</h2>
         <button
@@ -525,7 +525,7 @@ export function AuthConnectionPanel() {
                 <p className="mt-2 text-xs text-emerald-100">{ruleCompilerNote}</p>
               )}
               <div className="mt-3 space-y-1">
-                {(rulePlane?.rules ?? []).slice(0, 8).map((rule) => (
+                {(rulePlane?.rules ?? []).map((rule) => (
                   <div
                     key={rule.id}
                     className="rounded border border-white/10 bg-black/20 p-2 text-xs"
