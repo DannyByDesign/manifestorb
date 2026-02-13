@@ -51,7 +51,35 @@ export async function executeAct({
         emailAccountId,
         executedRule,
         logger: log,
+        policySource: "automation",
       });
+
+      const deferredForApproval =
+        typeof actionResult === "object" &&
+        actionResult !== null &&
+        "approvalRequested" in actionResult &&
+        actionResult.approvalRequested === true;
+      const blockedByPolicy =
+        typeof actionResult === "object" &&
+        actionResult !== null &&
+        "blockedByPolicy" in actionResult &&
+        actionResult.blockedByPolicy === true;
+
+      if (deferredForApproval) {
+        log.info("Deferred action pending policy approval", {
+          actionId: action.id,
+          actionType: action.type,
+        });
+        continue;
+      }
+
+      if (blockedByPolicy) {
+        log.warn("Skipped action due to policy block", {
+          actionId: action.id,
+          actionType: action.type,
+        });
+        continue;
+      }
 
       if (action.type === ActionType.DRAFT_EMAIL && actionResult?.draftId) {
         await updateExecutedActionWithDraftId({

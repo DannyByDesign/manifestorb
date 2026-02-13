@@ -201,7 +201,7 @@ async function executeDelayedAction({
     messageId: email.id,
   });
 
-  await runActionFunction({
+  const actionResult = await runActionFunction({
     client,
     email,
     action: executedAction,
@@ -212,6 +212,29 @@ async function executeDelayedAction({
     logger: log,
     policySource: "scheduled",
   });
+
+  const deferredForApproval =
+    typeof actionResult === "object" &&
+    actionResult !== null &&
+    "approvalRequested" in actionResult &&
+    actionResult.approvalRequested === true;
+  const blockedByPolicy =
+    typeof actionResult === "object" &&
+    actionResult !== null &&
+    "blockedByPolicy" in actionResult &&
+    actionResult.blockedByPolicy === true;
+
+  if (deferredForApproval) {
+    log.info("Delayed action deferred for approval", {
+      actionType: executedAction.type,
+      executedActionId: executedAction.id,
+    });
+  } else if (blockedByPolicy) {
+    log.warn("Delayed action skipped due to policy block", {
+      actionType: executedAction.type,
+      executedActionId: executedAction.id,
+    });
+  }
 
   log.info("Successfully executed delayed action", {
     actionType: executedAction.type,
