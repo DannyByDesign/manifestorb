@@ -8,15 +8,35 @@ import { z } from "zod";
 import { createGenerateObject } from "@/server/lib/llms";
 import { getModel } from "@/server/lib/llms/model";
 import type { Logger } from "@/server/lib/logger";
+import { compileSkillPlan } from "@/server/features/ai/skills/executor/compile-plan";
+import { executeWithRepair } from "@/server/features/ai/skills/executor/repair";
+import { evaluateApprovalRequirement } from "@/server/features/approvals/rules";
+import { resolvePolicyConflict } from "@/server/features/ai/skills/policy/conflict-resolver";
+import type { SkillPolicyContext } from "@/server/features/ai/skills/policy/context";
 
 export interface SkillExecutionResult {
   status: "success" | "partial" | "blocked" | "failed";
   responseText: string;
   postconditionsPassed: boolean;
   stepsExecuted: number;
+  stepGraphSize: number;
   toolChain: CapabilityName[];
   stepDurationsMs: Record<string, number>;
   interactivePayloads: unknown[];
+  actionEvents: Array<{
+    stepId: string;
+    capability: CapabilityName;
+    success: boolean;
+    itemCount: number;
+    policyDecision: "allowed" | "blocked" | "not_applicable";
+    errorCode?: string;
+  }>;
+  policyBlockCount: number;
+  repairAttemptCount: number;
+  diagnostics: {
+    code: string;
+    category: "missing_context" | "policy" | "transient" | "provider" | "unsupported" | "unknown";
+  };
   failureReason?: string;
 }
 
@@ -36,6 +56,46 @@ function renderTemplate(skill: SkillContract, status: SkillExecutionResult["stat
 
 function isFailure(result: ToolResult): boolean {
   return result.success !== true;
+}
+
+function mapCapabilityToApprovalContext(capability: CapabilityName): {
+  toolName: string;
+  args: Record<string, unknown>;
+} {
+  if (
+    capability.startsWith("email.delete") ||
+    capability === "email.batchTrash" ||
+    capability === "calendar.deleteEvent"
+  ) {
+    return {
+      toolName: "delete",
+      args: { resource: capability.startsWith("calendar") ? "calendar" : "email" },
+    };
+  }
+  if (
+    capability === "email.sendNow" ||
+    capability === "email.sendDraft" ||
+    capability === "email.reply" ||
+    capability === "email.forward"
+  ) {
+    return {
+      toolName: "send",
+      args: { resource: "email" },
+    };
+  }
+  if (
+    capability.startsWith("calendar.create") ||
+    capability.startsWith("email.create")
+  ) {
+    return {
+      toolName: "create",
+      args: { resource: capability.startsWith("calendar") ? "calendar" : "email" },
+    };
+  }
+  return {
+    toolName: "modify",
+    args: { resource: capability.startsWith("calendar") ? "calendar" : "email" },
+  };
 }
 
 function toolClarificationPrompt(result: ToolResult): string | null {
@@ -77,12 +137,45 @@ function getAvailabilityWindowFromSlot(value: unknown): { start?: string; end?: 
   return { start, end };
 }
 
+function isOutsideWorkingHours(params: {
+  startIso?: string;
+  endIso?: string;
+  preference?: SkillPolicyContext["workingHours"] | null;
+}): boolean {
+  if (!params.preference || !params.startIso || !params.endIso) return false;
+  const start = new Date(params.startIso);
+  const end = new Date(params.endIso);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
+  const day = start.getUTCDay();
+  if (!params.preference.workDays.includes(day)) return true;
+  const startHour = start.getUTCHours();
+  const endHour = end.getUTCHours();
+  return (
+    startHour < params.preference.workHourStart ||
+    endHour > params.preference.workHourEnd
+  );
+}
+
 function extractQueryMessageIds(result: ToolResult | undefined): string[] {
   const data = result?.data;
   if (!Array.isArray(data)) return [];
   return data
     .map((item) => (item && typeof item === "object" ? (item as Record<string, unknown>).id : null))
     .filter((id): id is string => typeof id === "string" && id.length > 0);
+}
+
+function getCalendarSlots(data: unknown): unknown[] {
+  if (!data || typeof data !== "object") return [];
+  const slots = (data as Record<string, unknown>).slots;
+  return Array.isArray(slots) ? slots : [];
+}
+
+function getParticipantEmails(participants: unknown): string[] {
+  if (!participants || typeof participants !== "object") return [];
+  const emails = (participants as Record<string, unknown>).emails;
+  return Array.isArray(emails)
+    ? emails.filter((value): value is string => typeof value === "string")
+    : [];
 }
 
 const summarizeThreadSchema = z.object({
@@ -106,8 +199,14 @@ async function summarizeThreadWithLLM(params: {
   const compact = params.messages.slice(-12).map((m) => ({
     subject: m.subject ?? null,
     snippet: m.snippet ?? (m.textPlain ? String(m.textPlain).slice(0, 200) : null),
-    from: (m.headers as any)?.from ?? null,
-    to: (m.headers as any)?.to ?? null,
+    from:
+      m.headers && typeof m.headers === "object"
+        ? (m.headers as Record<string, unknown>).from ?? null
+        : null,
+    to:
+      m.headers && typeof m.headers === "object"
+        ? (m.headers as Record<string, unknown>).to ?? null
+        : null,
   }));
 
   const { object } = await generateObject({
@@ -138,6 +237,7 @@ export async function executeSkill(params: {
   runtime: {
     logger: Logger;
     emailAccount: { id: string; email: string; userId: string };
+    policyContext?: SkillPolicyContext;
   };
 }): Promise<SkillExecutionResult> {
   const { skill, slots, capabilities, runtime } = params;
@@ -148,9 +248,14 @@ export async function executeSkill(params: {
       responseText: slots.clarificationPrompt ?? renderTemplate(skill, "blocked"),
       postconditionsPassed: false,
       stepsExecuted: 0,
+      stepGraphSize: 0,
       toolChain: [],
       stepDurationsMs: {},
       interactivePayloads: [],
+      actionEvents: [],
+      policyBlockCount: 0,
+      repairAttemptCount: 0,
+      diagnostics: { code: "missing_required_slots", category: "missing_context" },
       failureReason: "missing_required_slots",
     };
   }
@@ -163,20 +268,71 @@ export async function executeSkill(params: {
   let lastQueriedEmailIds: string[] = [];
   let lastQueriedEmailItems: unknown[] = [];
   let lastQueriedCalendarItems: unknown[] = [];
+  let lastCapabilityStepId = "";
+  const actionEvents: SkillExecutionResult["actionEvents"] = [];
+  let policyBlockCount = 0;
+  let repairAttemptCount = 0;
+  const compiledPlan = compileSkillPlan({ skill, slotResolution: slots });
+  const mutatingPolicyByCapability: Partial<Record<CapabilityName, Awaited<ReturnType<typeof evaluateApprovalRequirement>>>> =
+    {};
+
+  const runWithTiming = async (
+    stepId: string,
+    execute: () => Promise<ToolResult>,
+  ): Promise<ToolResult> => {
+    const startedAt = Date.now();
+    const { result, attempts } = await executeWithRepair(execute);
+    stepDurationsMs[stepId] = Date.now() - startedAt;
+    repairAttemptCount += Math.max(0, attempts - 1);
+    return result;
+  };
 
   try {
-    for (const step of skill.plan) {
+    for (const node of compiledPlan.nodes) {
+      if (node.type === "conditional_skip") continue;
+      if (node.type === "transform") continue;
+      if (node.type === "conditional") continue;
+      if (node.type === "policy_precheck") {
+        const policyContext = mapCapabilityToApprovalContext(node.capability);
+        const approval = await evaluateApprovalRequirement({
+          userId: runtime.emailAccount.userId,
+          toolName: policyContext.toolName,
+          args: policyContext.args,
+        });
+        mutatingPolicyByCapability[node.capability] = approval;
+        if (approval.requiresApproval) {
+          const conflict = resolvePolicyConflict({
+            capability: node.capability,
+            approval,
+          });
+          policyBlockCount += 1;
+          return {
+            status: "blocked",
+            responseText: conflict.suggestedAlternative
+              ? `${conflict.userMessage} ${conflict.suggestedAlternative}`
+              : conflict.userMessage,
+            postconditionsPassed: false,
+            stepsExecuted,
+            stepGraphSize: compiledPlan.nodes.length,
+            toolChain,
+            stepDurationsMs,
+            interactivePayloads,
+            actionEvents,
+            policyBlockCount,
+            repairAttemptCount,
+            diagnostics: { code: conflict.reasonCode, category: "policy" },
+            failureReason: "approval_required",
+          };
+        }
+        continue;
+      }
+      if (node.type === "postcondition_check") continue;
+      const step = node;
       stepsExecuted += 1;
       if (!step.capability) continue;
-
-      // Skill-specific conditional execution.
-      if (skill.id === "calendar_working_hours_ooo") {
-        const policy = String(slots.resolved.policy_type ?? "");
-        if (policy === "working_hours" && step.capability === "calendar.setOutOfOffice") continue;
-        if (policy === "out_of_office" && step.capability === "calendar.setWorkingHours") continue;
-      }
       enforceAllowed(skill, step.capability);
       toolChain.push(step.capability);
+      lastCapabilityStepId = step.id;
 
       // Deterministic baseline executor: map slot values into narrow capability calls.
       switch (step.capability) {
@@ -202,36 +358,221 @@ export async function executeSkill(params: {
             filter.limit = 100;
             filter.fetchAll = true;
           }
-          const startedAt = Date.now();
-          toolResults[step.id] = await capabilities.email.searchThreads(filter);
-          stepDurationsMs[step.id] = Date.now() - startedAt;
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.email.searchThreads(filter),
+          );
           lastQueriedEmailIds = extractQueryMessageIds(toolResults[step.id]);
           lastQueriedEmailItems = Array.isArray(toolResults[step.id]?.data) ? (toolResults[step.id]!.data as unknown[]) : [];
           break;
         }
+        case "email.searchThreadsAdvanced": {
+          const filter: Record<string, unknown> = {
+            limit: 50,
+            ...(typeof slots.resolved.sender_or_domain === "string"
+              ? { from: slots.resolved.sender_or_domain }
+              : {}),
+            ...(typeof slots.resolved.query === "string"
+              ? { query: slots.resolved.query }
+              : {}),
+          };
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.email.searchThreadsAdvanced(filter),
+          );
+          lastQueriedEmailIds = extractQueryMessageIds(toolResults[step.id]);
+          lastQueriedEmailItems = Array.isArray(toolResults[step.id]?.data)
+            ? (toolResults[step.id]!.data as unknown[])
+            : [];
+          break;
+        }
+        case "email.searchSent": {
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.email.searchSent({ limit: 25 }),
+          );
+          lastQueriedEmailIds = extractQueryMessageIds(toolResults[step.id]);
+          lastQueriedEmailItems = Array.isArray(toolResults[step.id]?.data)
+            ? (toolResults[step.id]!.data as unknown[])
+            : [];
+          break;
+        }
+        case "email.searchInbox": {
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.email.searchInbox({ limit: 25 }),
+          );
+          lastQueriedEmailIds = extractQueryMessageIds(toolResults[step.id]);
+          lastQueriedEmailItems = Array.isArray(toolResults[step.id]?.data)
+            ? (toolResults[step.id]!.data as unknown[])
+            : [];
+          break;
+        }
         case "email.getThreadMessages": {
           const threadId = String(slots.resolved.thread_id ?? "");
-          const startedAt = Date.now();
-          toolResults[step.id] = await capabilities.email.getThreadMessages(threadId);
-          stepDurationsMs[step.id] = Date.now() - startedAt;
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.email.getThreadMessages(threadId),
+          );
+          break;
+        }
+        case "email.getMessagesBatch": {
+          const ids = Array.isArray(slots.resolved.thread_ids)
+            ? (slots.resolved.thread_ids as string[])
+            : lastQueriedEmailIds;
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.email.getMessagesBatch(ids),
+          );
+          break;
+        }
+        case "email.getLatestMessage": {
+          const threadId =
+            typeof slots.resolved.thread_id === "string"
+              ? slots.resolved.thread_id
+              : typeof slots.resolved.message_id === "string"
+                ? slots.resolved.message_id
+                : "";
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.email.getLatestMessage(threadId),
+          );
           break;
         }
         case "email.batchArchive": {
           const ids = Array.isArray(slots.resolved.thread_ids)
             ? (slots.resolved.thread_ids as string[])
             : lastQueriedEmailIds;
-          const startedAt = Date.now();
-          toolResults[step.id] = await capabilities.email.batchArchive(ids);
-          stepDurationsMs[step.id] = Date.now() - startedAt;
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.email.batchArchive(ids),
+          );
+          break;
+        }
+        case "email.batchTrash": {
+          const ids = Array.isArray(slots.resolved.thread_ids)
+            ? (slots.resolved.thread_ids as string[])
+            : lastQueriedEmailIds;
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.email.batchTrash(ids),
+          );
+          break;
+        }
+        case "email.markReadUnread": {
+          const ids = Array.isArray(slots.resolved.thread_ids)
+            ? (slots.resolved.thread_ids as string[])
+            : lastQueriedEmailIds;
+          const read = Boolean(slots.resolved.read ?? true);
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.email.markReadUnread(ids, read),
+          );
+          break;
+        }
+        case "email.applyLabels": {
+          const ids = Array.isArray(slots.resolved.thread_ids)
+            ? (slots.resolved.thread_ids as string[])
+            : lastQueriedEmailIds;
+          const labelIds = Array.isArray(slots.resolved.label_ids)
+            ? (slots.resolved.label_ids as string[])
+            : [];
+          if (
+            skill.id === "inbox_label_management" &&
+            String(slots.resolved.label_action ?? "").toLowerCase() === "remove"
+          ) {
+            toolResults[step.id] = await runWithTiming(step.id, () =>
+              capabilities.email.removeLabels(ids, labelIds),
+            );
+          } else {
+            toolResults[step.id] = await runWithTiming(step.id, () =>
+              capabilities.email.applyLabels(ids, labelIds),
+            );
+          }
+          break;
+        }
+        case "email.removeLabels": {
+          const ids = Array.isArray(slots.resolved.thread_ids)
+            ? (slots.resolved.thread_ids as string[])
+            : lastQueriedEmailIds;
+          const labelIds = Array.isArray(slots.resolved.label_ids)
+            ? (slots.resolved.label_ids as string[])
+            : [];
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.email.removeLabels(ids, labelIds),
+          );
+          break;
+        }
+        case "email.moveThread": {
+          const ids = Array.isArray(slots.resolved.thread_ids)
+            ? (slots.resolved.thread_ids as string[])
+            : lastQueriedEmailIds;
+          const folderName = String(slots.resolved.folder_name ?? "");
+          if (
+            skill.id === "inbox_move_or_spam_control" &&
+            String(slots.resolved.action_type ?? "").toLowerCase() === "spam"
+          ) {
+            toolResults[step.id] = await runWithTiming(step.id, () =>
+              capabilities.email.markSpam(ids),
+            );
+          } else {
+            toolResults[step.id] = await runWithTiming(step.id, () =>
+              capabilities.email.moveThread(ids, folderName),
+            );
+          }
+          break;
+        }
+        case "email.markSpam": {
+          const ids = Array.isArray(slots.resolved.thread_ids)
+            ? (slots.resolved.thread_ids as string[])
+            : lastQueriedEmailIds;
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.email.markSpam(ids),
+          );
           break;
         }
         case "email.unsubscribeSender": {
           const sender = slots.resolved.sender_or_domain;
-          const startedAt = Date.now();
-          toolResults[step.id] = await capabilities.email.unsubscribeSender({
-            filter: sender ? { from: String(sender), subscriptionsOnly: true, limit: 25 } : undefined,
-          });
-          stepDurationsMs[step.id] = Date.now() - startedAt;
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.email.unsubscribeSender({
+              filter: sender ? { from: String(sender), subscriptionsOnly: true, limit: 25 } : undefined,
+            }),
+          );
+          break;
+        }
+        case "email.blockSender": {
+          const ids = Array.isArray(slots.resolved.thread_ids)
+            ? (slots.resolved.thread_ids as string[])
+            : lastQueriedEmailIds;
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.email.blockSender(ids),
+          );
+          break;
+        }
+        case "email.bulkSenderArchive": {
+          const sender = slots.resolved.sender_or_domain;
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.email.bulkSenderArchive({
+              ...(sender ? { from: String(sender) } : {}),
+              subscriptionsOnly: true,
+            }),
+          );
+          break;
+        }
+        case "email.bulkSenderTrash": {
+          const sender = slots.resolved.sender_or_domain;
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.email.bulkSenderTrash({
+              ...(sender ? { from: String(sender) } : {}),
+              subscriptionsOnly: true,
+            }),
+          );
+          break;
+        }
+        case "email.bulkSenderLabel": {
+          const sender = slots.resolved.sender_or_domain;
+          const labelId =
+            typeof slots.resolved.label_id === "string"
+              ? slots.resolved.label_id
+              : "";
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.email.bulkSenderLabel({
+              filter: {
+                ...(sender ? { from: String(sender) } : {}),
+              },
+              labelId,
+            }),
+          );
           break;
         }
         case "email.snoozeThread": {
@@ -239,9 +580,58 @@ export async function executeSkill(params: {
             ? (slots.resolved.thread_ids as string[])
             : lastQueriedEmailIds;
           const until = typeof slots.resolved.defer_until === "string" ? slots.resolved.defer_until : "";
-          const startedAt = Date.now();
-          toolResults[step.id] = await capabilities.email.snoozeThread(ids, until);
-          stepDurationsMs[step.id] = Date.now() - startedAt;
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.email.snoozeThread(ids, until),
+          );
+          break;
+        }
+        case "email.listFilters": {
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.email.listFilters(),
+          );
+          break;
+        }
+        case "email.createFilter": {
+          const filterAction = String(slots.resolved.filter_action ?? "").toLowerCase();
+          if (skill.id === "inbox_filter_management" && filterAction === "delete") {
+            toolResults[step.id] = await runWithTiming(step.id, () =>
+              capabilities.email.deleteFilter(String(slots.resolved.filter_id ?? "")),
+            );
+          } else if (skill.id === "inbox_filter_management" && filterAction === "list") {
+            toolResults[step.id] = await runWithTiming(step.id, () =>
+              capabilities.email.listFilters(),
+            );
+          } else {
+            toolResults[step.id] = await runWithTiming(step.id, () =>
+              capabilities.email.createFilter({
+                from: String(slots.resolved.sender_or_domain ?? ""),
+                autoArchiveLabelName:
+                  typeof slots.resolved.label_name === "string"
+                    ? slots.resolved.label_name
+                    : undefined,
+              }),
+            );
+          }
+          break;
+        }
+        case "email.deleteFilter": {
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.email.deleteFilter(String(slots.resolved.filter_id ?? "")),
+          );
+          break;
+        }
+        case "email.listDrafts": {
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.email.listDrafts(
+              typeof slots.resolved.limit === "number" ? slots.resolved.limit : 25,
+            ),
+          );
+          break;
+        }
+        case "email.getDraft": {
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.email.getDraft(String(slots.resolved.draft_id ?? "")),
+          );
           break;
         }
         case "email.createDraft": {
@@ -257,28 +647,149 @@ export async function executeSkill(params: {
               responseText: "Who should this draft be sent to? If this is a reply, share the thread context.",
               postconditionsPassed: false,
               stepsExecuted,
+              stepGraphSize: compiledPlan.nodes.length,
               toolChain,
               stepDurationsMs,
               interactivePayloads,
+              actionEvents,
+              policyBlockCount,
+              repairAttemptCount,
+              diagnostics: { code: "missing_recipient_or_thread", category: "missing_context" },
               failureReason: "missing_recipient_or_thread",
             };
           }
-          const startedAt = Date.now();
-          toolResults[step.id] = await capabilities.email.createDraft({
-            ...(threadId ? { type: "reply", parentId: threadId } : {}),
-            ...(recipient.length > 0 ? { to: recipient } : {}),
-            ...(subject ? { subject } : {}),
-            body,
-          });
-          stepDurationsMs[step.id] = Date.now() - startedAt;
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.email.createDraft({
+              ...(threadId ? { type: "reply", parentId: threadId } : {}),
+              ...(recipient.length > 0 ? { to: recipient } : {}),
+              ...(subject ? { subject } : {}),
+              body,
+            }),
+          );
+          break;
+        }
+        case "email.updateDraft": {
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.email.updateDraft({
+              draftId: String(slots.resolved.draft_id ?? ""),
+              ...(typeof slots.resolved.subject === "string"
+                ? { subject: slots.resolved.subject }
+                : {}),
+              ...(typeof slots.resolved.body === "string"
+                ? { body: slots.resolved.body }
+                : {}),
+            }),
+          );
+          break;
+        }
+        case "email.deleteDraft": {
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.email.deleteDraft(String(slots.resolved.draft_id ?? "")),
+          );
+          break;
+        }
+        case "email.sendDraft": {
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.email.sendDraft(String(slots.resolved.draft_id ?? "")),
+          );
+          break;
+        }
+        case "email.sendNow": {
+          const recipient = Array.isArray(slots.resolved.recipient)
+            ? (slots.resolved.recipient as string[])
+            : [];
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.email.sendNow({
+              ...(typeof slots.resolved.draft_id === "string"
+                ? { draftId: slots.resolved.draft_id }
+                : {}),
+              ...(recipient.length > 0 ? { to: recipient } : {}),
+              ...(typeof slots.resolved.subject === "string"
+                ? { subject: slots.resolved.subject }
+                : {}),
+              ...(typeof slots.resolved.body === "string"
+                ? { body: slots.resolved.body }
+                : {}),
+            }),
+          );
+          break;
+        }
+        case "email.reply": {
+          const sendMode = String(slots.resolved.send_mode ?? "").toLowerCase();
+          const parentId = String(
+            slots.resolved.thread_id ?? slots.resolved.message_id ?? "",
+          );
+          const body =
+            typeof slots.resolved.body === "string"
+              ? slots.resolved.body
+              : "Thanks - sent from Amodel.";
+          if (skill.id === "inbox_reply_or_forward_send" && sendMode === "forward") {
+            const recipient = Array.isArray(slots.resolved.recipient)
+              ? (slots.resolved.recipient as string[])
+              : [];
+            toolResults[step.id] = await runWithTiming(step.id, () =>
+              capabilities.email.forward({
+                parentId,
+                to: recipient,
+                body,
+                ...(typeof slots.resolved.subject === "string"
+                  ? { subject: slots.resolved.subject }
+                  : {}),
+              }),
+            );
+          } else if (
+            skill.id === "inbox_reply_or_forward_send" &&
+            sendMode === "send_now"
+          ) {
+            const recipient = Array.isArray(slots.resolved.recipient)
+              ? (slots.resolved.recipient as string[])
+              : [];
+            toolResults[step.id] = await runWithTiming(step.id, () =>
+              capabilities.email.sendNow({
+                ...(recipient.length > 0 ? { to: recipient } : {}),
+                ...(typeof slots.resolved.subject === "string"
+                  ? { subject: slots.resolved.subject }
+                  : {}),
+                body,
+              }),
+            );
+          } else {
+            toolResults[step.id] = await runWithTiming(step.id, () =>
+              capabilities.email.reply({
+                parentId,
+                body,
+                ...(typeof slots.resolved.subject === "string"
+                  ? { subject: slots.resolved.subject }
+                  : {}),
+              }),
+            );
+          }
+          break;
+        }
+        case "email.forward": {
+          const recipient = Array.isArray(slots.resolved.recipient)
+            ? (slots.resolved.recipient as string[])
+            : [];
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.email.forward({
+              parentId: String(slots.resolved.thread_id ?? slots.resolved.message_id ?? ""),
+              to: recipient,
+              ...(typeof slots.resolved.body === "string"
+                ? { body: slots.resolved.body }
+                : {}),
+              ...(typeof slots.resolved.subject === "string"
+                ? { subject: slots.resolved.subject }
+                : {}),
+            }),
+          );
           break;
         }
         case "email.scheduleSend": {
           const draftId = String(slots.resolved.draft_id ?? "");
           const sendTime = typeof slots.resolved.send_time === "string" ? slots.resolved.send_time : "";
-          const startedAt = Date.now();
-          toolResults[step.id] = await capabilities.email.scheduleSend(draftId, sendTime);
-          stepDurationsMs[step.id] = Date.now() - startedAt;
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.email.scheduleSend(draftId, sendTime),
+          );
           break;
         }
         case "calendar.findAvailability": {
@@ -289,14 +800,14 @@ export async function executeSkill(params: {
               slots.resolved.analysis_window ??
               slots.resolved.focus_block_window,
           );
-          const startedAt = Date.now();
-          toolResults[step.id] = await capabilities.calendar.findAvailability({
-            durationMinutes,
-            ...(window?.start ? { start: window.start } : {}),
-            ...(window?.end ? { end: window.end } : {}),
-          });
-          stepDurationsMs[step.id] = Date.now() - startedAt;
-          lastQueriedCalendarItems = (toolResults[step.id]?.data as any)?.slots ? ((toolResults[step.id]?.data as any).slots as unknown[]) : [];
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.calendar.findAvailability({
+              durationMinutes,
+              ...(window?.start ? { start: window.start } : {}),
+              ...(window?.end ? { end: window.end } : {}),
+            }),
+          );
+          lastQueriedCalendarItems = getCalendarSlots(toolResults[step.id]?.data);
           break;
         }
         case "calendar.listEvents": {
@@ -307,10 +818,38 @@ export async function executeSkill(params: {
             limit: 50,
             ...(range ? { dateRange: range } : {}),
           };
-          const startedAt = Date.now();
-          toolResults[step.id] = await capabilities.calendar.listEvents(filter);
-          stepDurationsMs[step.id] = Date.now() - startedAt;
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.calendar.listEvents(filter),
+          );
           lastQueriedCalendarItems = Array.isArray(toolResults[step.id]?.data) ? (toolResults[step.id]!.data as unknown[]) : [];
+          break;
+        }
+        case "calendar.searchEventsByAttendee": {
+          const range = getDateRangeFromSlot(
+            slots.resolved.date_window ?? slots.resolved.analysis_window ?? slots.resolved.time_window,
+          );
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.calendar.searchEventsByAttendee({
+              ...(range ? { dateRange: range } : {}),
+              ...(typeof slots.resolved.attendee_email === "string"
+                ? { attendeeEmail: slots.resolved.attendee_email }
+                : {}),
+            }),
+          );
+          lastQueriedCalendarItems = Array.isArray(toolResults[step.id]?.data)
+            ? (toolResults[step.id]!.data as unknown[])
+            : [];
+          break;
+        }
+        case "calendar.getEvent": {
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.calendar.getEvent({
+              eventId: String(slots.resolved.event_id ?? ""),
+              ...(typeof slots.resolved.calendar_id === "string"
+                ? { calendarId: slots.resolved.calendar_id }
+                : {}),
+            }),
+          );
           break;
         }
         case "calendar.createEvent": {
@@ -323,33 +862,121 @@ export async function executeSkill(params: {
               : start && durationMinutes
                 ? new Date(new Date(start).getTime() + durationMinutes * 60 * 1000).toISOString()
                 : undefined;
-          const participants = Array.isArray((slots.resolved.participants as any)?.emails)
-            ? ((slots.resolved.participants as any).emails as string[])
+          const participantsFromSlots = getParticipantEmails(slots.resolved.participants);
+          const participants = participantsFromSlots.length > 0
+            ? participantsFromSlots
             : Array.isArray(slots.resolved.recipient)
               ? (slots.resolved.recipient as string[])
               : [];
-          const startedAt = Date.now();
-          toolResults[step.id] = await capabilities.calendar.createEvent({
-            title,
-            ...(start ? { start } : {}),
-            ...(end ? { end } : {}),
-            ...(participants.length > 0 ? { attendees: participants } : {}),
-            ...(typeof slots.resolved.location === "string" ? { location: slots.resolved.location } : {}),
-            ...(typeof slots.resolved.agenda === "string" ? { description: slots.resolved.agenda } : {}),
-          });
-          stepDurationsMs[step.id] = Date.now() - startedAt;
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.calendar.createEvent({
+              title,
+              ...(start ? { start } : {}),
+              ...(end ? { end } : {}),
+              ...(participants.length > 0 ? { attendees: participants } : {}),
+              ...(typeof slots.resolved.location === "string" ? { location: slots.resolved.location } : {}),
+              ...(typeof slots.resolved.agenda === "string" ? { description: slots.resolved.agenda } : {}),
+            }),
+          );
+          break;
+        }
+        case "calendar.updateEvent": {
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.calendar.updateEvent({
+              eventId: String(slots.resolved.event_id ?? ""),
+              ...(typeof slots.resolved.calendar_id === "string"
+                ? { calendarId: slots.resolved.calendar_id }
+                : {}),
+              changes: {
+                ...(typeof slots.resolved.title === "string"
+                  ? { title: slots.resolved.title }
+                  : {}),
+                ...(typeof slots.resolved.start === "string"
+                  ? { start: slots.resolved.start }
+                  : {}),
+                ...(typeof slots.resolved.end === "string"
+                  ? { end: slots.resolved.end }
+                  : {}),
+                ...(typeof slots.resolved.agenda === "string"
+                  ? { description: slots.resolved.agenda }
+                  : {}),
+              },
+            }),
+          );
+          break;
+        }
+        case "calendar.deleteEvent": {
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.calendar.deleteEvent({
+              eventId: String(slots.resolved.event_id ?? ""),
+              ...(typeof slots.resolved.calendar_id === "string"
+                ? { calendarId: slots.resolved.calendar_id }
+                : {}),
+              ...(typeof slots.resolved.mode === "string" &&
+              (slots.resolved.mode === "single" || slots.resolved.mode === "series")
+                ? { mode: slots.resolved.mode }
+                : {}),
+            }),
+          );
+          break;
+        }
+        case "calendar.manageAttendees": {
+          const attendeesFromSlots = getParticipantEmails(slots.resolved.participants);
+          const attendees = attendeesFromSlots.length > 0
+            ? attendeesFromSlots
+            : Array.isArray(slots.resolved.recipient)
+              ? (slots.resolved.recipient as string[])
+              : [];
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.calendar.manageAttendees({
+              eventId: String(slots.resolved.event_id ?? ""),
+              attendees,
+              ...(typeof slots.resolved.calendar_id === "string"
+                ? { calendarId: slots.resolved.calendar_id }
+                : {}),
+              ...(typeof slots.resolved.mode === "string" &&
+              (slots.resolved.mode === "single" || slots.resolved.mode === "series")
+                ? { mode: slots.resolved.mode }
+                : {}),
+            }),
+          );
+          break;
+        }
+        case "calendar.updateRecurringMode": {
+          const mode =
+            typeof slots.resolved.mode === "string" &&
+            (slots.resolved.mode === "single" || slots.resolved.mode === "series")
+              ? slots.resolved.mode
+              : "single";
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.calendar.updateRecurringMode({
+              eventId: String(slots.resolved.event_id ?? ""),
+              mode,
+              ...(typeof slots.resolved.calendar_id === "string"
+                ? { calendarId: slots.resolved.calendar_id }
+                : {}),
+              changes: {
+                ...(typeof slots.resolved.start === "string"
+                  ? { start: slots.resolved.start }
+                  : {}),
+                ...(typeof slots.resolved.end === "string"
+                  ? { end: slots.resolved.end }
+                  : {}),
+              },
+            }),
+          );
           break;
         }
         case "calendar.rescheduleEvent": {
           const eventId = String(slots.resolved.event_id ?? "");
           const window = getAvailabilityWindowFromSlot(slots.resolved.reschedule_window);
-          const startedAt = Date.now();
-          toolResults[step.id] = await capabilities.calendar.rescheduleEvent([eventId], {
-            reschedule: "next_available",
-            ...(window?.start ? { after: window.start } : {}),
-            ...(window?.end ? { before: window.end } : {}),
-          });
-          stepDurationsMs[step.id] = Date.now() - startedAt;
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.calendar.rescheduleEvent([eventId], {
+              reschedule: "next_available",
+              ...(window?.start ? { after: window.start } : {}),
+              ...(window?.end ? { before: window.end } : {}),
+            }),
+          );
           break;
         }
         case "calendar.setWorkingHours": {
@@ -364,15 +991,30 @@ export async function executeSkill(params: {
               responseText: "What working hours should I set (e.g. 9am-5pm weekdays)?",
               postconditionsPassed: false,
               stepsExecuted,
+              stepGraphSize: compiledPlan.nodes.length,
               toolChain,
               stepDurationsMs,
               interactivePayloads,
+              actionEvents,
+              policyBlockCount,
+              repairAttemptCount,
+              diagnostics: { code: "missing_working_hours", category: "missing_context" },
               failureReason: "missing_working_hours",
             };
           }
-          const startedAt = Date.now();
-          toolResults[step.id] = await capabilities.calendar.setWorkingHours(changes);
-          stepDurationsMs[step.id] = Date.now() - startedAt;
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.calendar.setWorkingHours(changes),
+          );
+          break;
+        }
+        case "calendar.setWorkingLocation": {
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.calendar.setWorkingLocation({
+              ...(typeof slots.resolved.working_location === "string"
+                ? { workingLocation: slots.resolved.working_location }
+                : {}),
+            }),
+          );
           break;
         }
         case "calendar.setOutOfOffice": {
@@ -383,48 +1025,92 @@ export async function executeSkill(params: {
               responseText: "What is your out-of-office window (start and end, ISO-8601)?",
               postconditionsPassed: false,
               stepsExecuted,
+              stepGraphSize: compiledPlan.nodes.length,
               toolChain,
               stepDurationsMs,
               interactivePayloads,
+              actionEvents,
+              policyBlockCount,
+              repairAttemptCount,
+              diagnostics: { code: "missing_ooo_window", category: "missing_context" },
               failureReason: "missing_ooo_window",
             };
           }
-          const startedAt = Date.now();
-          toolResults[step.id] = await capabilities.calendar.setOutOfOffice({
-            title: "Out of office",
-            ...(window?.start ? { start: window.start } : {}),
-            ...(window?.end ? { end: window.end } : {}),
-            ...(typeof slots.resolved.location === "string" ? { location: slots.resolved.location } : {}),
-          });
-          stepDurationsMs[step.id] = Date.now() - startedAt;
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.calendar.setOutOfOffice({
+              title: "Out of office",
+              ...(window?.start ? { start: window.start } : {}),
+              ...(window?.end ? { end: window.end } : {}),
+              ...(typeof slots.resolved.location === "string" ? { location: slots.resolved.location } : {}),
+            }),
+          );
           break;
         }
         case "calendar.createFocusBlock": {
           const window = getAvailabilityWindowFromSlot(slots.resolved.focus_block_window);
-          const startedAt = Date.now();
-          toolResults[step.id] = await capabilities.calendar.createFocusBlock({
-            title: "Focus time",
-            ...(window?.start ? { start: window.start } : {}),
-            ...(window?.end ? { end: window.end } : {}),
-          });
-          stepDurationsMs[step.id] = Date.now() - startedAt;
+          if (
+            isOutsideWorkingHours({
+              startIso: window?.start,
+              endIso: window?.end,
+              preference: runtime.policyContext?.workingHours,
+            })
+          ) {
+            return {
+              status: "blocked",
+              responseText:
+                "That focus block conflicts with your working-hours rule. Try a window inside your configured workday.",
+              postconditionsPassed: false,
+              stepsExecuted,
+              stepGraphSize: compiledPlan.nodes.length,
+              toolChain,
+              stepDurationsMs,
+              interactivePayloads,
+              actionEvents,
+              policyBlockCount,
+              repairAttemptCount,
+              diagnostics: { code: "working_hours_conflict", category: "policy" },
+              failureReason: "working_hours_conflict",
+            };
+          }
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.calendar.createFocusBlock({
+              title: "Focus time",
+              ...(window?.start ? { start: window.start } : {}),
+              ...(window?.end ? { end: window.end } : {}),
+            }),
+          );
           break;
         }
         case "calendar.createBookingSchedule": {
-          const startedAt = Date.now();
-          toolResults[step.id] = await capabilities.calendar.createBookingSchedule({
-            bookingLink: typeof slots.resolved.booking_link === "string" ? slots.resolved.booking_link : undefined,
-          });
-          stepDurationsMs[step.id] = Date.now() - startedAt;
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.calendar.createBookingSchedule({
+              bookingLink: typeof slots.resolved.booking_link === "string" ? slots.resolved.booking_link : undefined,
+            }),
+          );
           break;
         }
         case "planner.composeDayPlan": {
-          const startedAt = Date.now();
-          toolResults[step.id] = await capabilities.planner.composeDayPlan({
-            topEmailItems: lastQueriedEmailItems,
-            calendarItems: lastQueriedCalendarItems,
-          });
-          stepDurationsMs[step.id] = Date.now() - startedAt;
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.planner.composeDayPlan({
+              topEmailItems: lastQueriedEmailItems,
+              calendarItems: lastQueriedCalendarItems,
+            }),
+          );
+          break;
+        }
+        case "planner.compileMultiActionPlan": {
+          const actions = Array.isArray(slots.resolved.composite_actions)
+            ? (slots.resolved.composite_actions as unknown[]).map((value, index) => ({
+                id: `action_${index + 1}`,
+                raw: value,
+              }))
+            : [];
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.planner.compileMultiActionPlan({
+              actions,
+              constraints: {},
+            }),
+          );
           break;
         }
         default: {
@@ -437,7 +1123,33 @@ export async function executeSkill(params: {
       if (result?.interactive) {
         interactivePayloads.push(result.interactive);
       }
+      const policyDecision = mutatingPolicyByCapability[step.capability];
+      runtime.logger.info("[skills/action-event]", {
+        userId: runtime.emailAccount.userId,
+        skillId: skill.id,
+        capability: step.capability,
+        stepId: step.id,
+        success: result?.success ?? false,
+        error: result?.error,
+        itemCount: result?.meta?.itemCount,
+        policy: policyDecision
+          ? {
+              source: policyDecision.source,
+              requiresApproval: policyDecision.requiresApproval,
+              operation: policyDecision.target.operation,
+              resource: policyDecision.target.resource ?? null,
+            }
+          : null,
+      });
       if (result && isFailure(result)) {
+        actionEvents.push({
+          stepId: step.id,
+          capability: step.capability,
+          success: false,
+          itemCount: result?.meta?.itemCount ?? 0,
+          policyDecision: policyDecision?.requiresApproval ? "blocked" : "allowed",
+          ...(result.error ? { errorCode: result.error } : {}),
+        });
         const clarification = toolClarificationPrompt(result);
         if (clarification) {
           return {
@@ -445,24 +1157,45 @@ export async function executeSkill(params: {
             responseText: clarification,
               postconditionsPassed: false,
               stepsExecuted,
+              stepGraphSize: compiledPlan.nodes.length,
               toolChain,
               stepDurationsMs,
               interactivePayloads,
+              actionEvents,
+              policyBlockCount,
+              repairAttemptCount,
+              diagnostics: { code: result.error ?? "tool_clarification", category: "provider" },
               failureReason: result.error ?? "tool_clarification",
             };
         }
         throw new Error(result.error ?? `tool_failed:${step.capability}`);
       }
+      actionEvents.push({
+        stepId: step.id,
+        capability: step.capability,
+        success: true,
+        itemCount: result?.meta?.itemCount ?? 0,
+        policyDecision: policyDecision?.requiresApproval ? "blocked" : "allowed",
+      });
     }
 
     const postconditionsPassed = validateSkillPostconditions({ skill, toolResults });
-    const lastStepId = skill.plan.at(-1)?.id ?? "";
-    const lastMessage = lastStepId ? toolResults[lastStepId]?.message : undefined;
+    const lastMessage = lastCapabilityStepId
+      ? toolResults[lastCapabilityStepId]?.message
+      : undefined;
 
     // Skill-specific response rendering when the last tool result isn't user-facing.
     if (skill.id === "inbox_thread_summarize_actions") {
-      const data = toolResults["load_thread"]?.data as any;
-      const messages = Array.isArray(data?.messages) ? data.messages : [];
+      const threadData = toolResults["load_thread"]?.data;
+      const messages =
+        threadData && typeof threadData === "object" && Array.isArray((threadData as Record<string, unknown>).messages)
+          ? ((threadData as Record<string, unknown>).messages as Array<{
+              subject?: string | null;
+              snippet?: string | null;
+              textPlain?: string | null;
+              headers?: Record<string, unknown> | null;
+            }>)
+          : [];
       const summary = await summarizeThreadWithLLM({
         logger: runtime.logger,
         emailAccount: runtime.emailAccount,
@@ -489,9 +1222,14 @@ export async function executeSkill(params: {
         responseText: responseText || "I couldn't find clear decisions, action items, or deadlines in that thread.",
         postconditionsPassed,
         stepsExecuted,
+        stepGraphSize: compiledPlan.nodes.length,
         toolChain,
         stepDurationsMs,
         interactivePayloads,
+        actionEvents,
+        policyBlockCount,
+        repairAttemptCount,
+        diagnostics: { code: "ok", category: "unknown" },
       };
     }
 
@@ -500,23 +1238,53 @@ export async function executeSkill(params: {
       responseText: lastMessage ?? renderTemplate(skill, "success"),
       postconditionsPassed,
       stepsExecuted,
+      stepGraphSize: compiledPlan.nodes.length,
       toolChain,
       stepDurationsMs,
       interactivePayloads,
+      actionEvents,
+      policyBlockCount,
+      repairAttemptCount,
+      diagnostics: { code: "ok", category: "unknown" },
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const normalized = normalizeSkillFailure({ skill, errorMessage: message });
+    const diagnostics = mapFailureToDiagnostics(normalized.reason);
 
     return {
       status: normalized.status,
       responseText: normalized.userMessage,
       postconditionsPassed: false,
       stepsExecuted,
+      stepGraphSize: compiledPlan.nodes.length,
       toolChain,
       stepDurationsMs,
       interactivePayloads,
+      actionEvents,
+      policyBlockCount,
+      repairAttemptCount,
+      diagnostics,
       failureReason: normalized.reason,
     };
   }
+}
+
+function mapFailureToDiagnostics(reason: string): SkillExecutionResult["diagnostics"] {
+  if (reason.includes("missing_")) {
+    return { code: reason, category: "missing_context" };
+  }
+  if (reason.includes("approval") || reason.includes("policy")) {
+    return { code: reason, category: "policy" };
+  }
+  if (reason.includes("rate_limit") || reason.includes("timeout") || reason.includes("transient")) {
+    return { code: reason, category: "transient" };
+  }
+  if (reason.includes("unsupported")) {
+    return { code: reason, category: "unsupported" };
+  }
+  if (reason.includes("provider") || reason.includes("not_found") || reason.includes("invalid_input")) {
+    return { code: reason, category: "provider" };
+  }
+  return { code: reason, category: "unknown" };
 }

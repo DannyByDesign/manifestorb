@@ -6,6 +6,10 @@ export interface PlannerCapabilities {
     calendarItems: unknown[];
     focusSuggestions?: string[];
   }): Promise<ToolResult>;
+  compileMultiActionPlan(input: {
+    actions: Array<Record<string, unknown>>;
+    constraints?: Record<string, unknown>;
+  }): Promise<ToolResult>;
 }
 
 export function createPlannerCapabilities(): PlannerCapabilities {
@@ -56,6 +60,21 @@ export function createPlannerCapabilities(): PlannerCapabilities {
           messageParts.length > 0
             ? messageParts.join("\n")
             : `No items found to plan from (${emailCount} email priorities, ${calendarCount} calendar items).`,
+      };
+    },
+    async compileMultiActionPlan(input) {
+      const actions = Array.isArray(input.actions) ? input.actions : [];
+      return {
+        success: true,
+        data: {
+          actions,
+          constraints: input.constraints ?? {},
+          actionCount: actions.length,
+        },
+        message:
+          actions.length === 0
+            ? "No executable actions were found in that request."
+            : `Compiled ${actions.length} action${actions.length === 1 ? "" : "s"} into an execution plan.`,
       };
     },
   };

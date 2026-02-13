@@ -15,8 +15,11 @@ The migration and runtime boundary reference is:
 3. If the turn is operational, it runs the skills runtime:
    - router
    - slot resolver
+   - semantic normalization
+   - policy precheck
    - deterministic executor
    - postcondition validator
+   - bounded repair
 4. All operational mutations flow through skill contracts and capability facades.
 
 There is no legacy LLM polymorphic tool-calling loop in the production assistant path.
@@ -30,6 +33,7 @@ ai/
 │   ├── baseline/      # Baseline universal inbox/calendar skills
 │   ├── contracts/     # Skill schema + slot schema
 │   ├── executor/      # Deterministic execution + postconditions
+│   ├── policy/        # Policy context + conflict resolver
 │   ├── registry/      # Baseline registry
 │   ├── router/        # Closed-set skill routing
 │   ├── slots/         # Slot extraction + clarification
@@ -49,3 +53,5 @@ ai/
 
 - Rule automation execution remains in rule-engine modules; that is separate from assistant turn execution.
 - Approval flows for schedule proposals and ambiguous time now execute through structured deterministic handlers, not polymorphic tool maps.
+- Multi-action requests are decomposed into sequential sub-actions with per-step policy enforcement.
+- Telemetry emits route/execution/action events with deterministic outcome taxonomy fields.

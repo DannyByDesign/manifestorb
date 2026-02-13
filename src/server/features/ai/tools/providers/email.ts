@@ -2,7 +2,12 @@
 import { type Logger } from "@/server/lib/logger";
 import { type ParsedMessage } from "@/server/types";
 import { createEmailProvider as createServiceEmailProvider } from "@/features/email/provider";
-import { type EmailProvider as ServiceEmailProvider, type EmailThread, type Contact } from "@/features/email/types";
+import {
+    type EmailProvider as ServiceEmailProvider,
+    type EmailThread,
+    type Contact,
+    type EmailFilter,
+} from "@/features/email/types";
 import { SafeError } from "@/server/lib/error";
 import {
     type DraftParams,
@@ -63,6 +68,21 @@ export interface EmailProvider {
         },
     ): Promise<void>;
     deleteDraft(draftId: string): Promise<void>;
+    markSpam(threadId: string): Promise<void>;
+    blockUnsubscribedEmail(messageId: string): Promise<void>;
+    getFiltersList(): Promise<EmailFilter[]>;
+    createFilter(options: {
+        from: string;
+        addLabelIds?: string[];
+        removeLabelIds?: string[];
+    }): Promise<{ status: number }>;
+    deleteFilter(id: string): Promise<{ status: number }>;
+    createAutoArchiveFilter(options: {
+        from: string;
+        gmailLabelId?: string;
+        labelName?: string;
+    }): Promise<{ status: number }>;
+    moveThreadToFolder(threadId: string, folderName: string): Promise<void>;
 
     // Extended (Found missing during audit)
     getThread(threadId: string): Promise<EmailThread>;
@@ -354,6 +374,15 @@ export async function createEmailProvider(
                         await service.markReadThread(threadId, changes.read);
                         processedThreads.add(`read:${threadId}`);
                     }
+                    // Follow-up flag approximation: enable -> unread, disable -> read
+                    if (
+                        changes.followUp !== undefined &&
+                        !processedThreads.has(`followUp:${threadId}`)
+                    ) {
+                        const read = changes.followUp === "disable";
+                        await service.markReadThread(threadId, read);
+                        processedThreads.add(`followUp:${threadId}`);
+                    }
 
                     // Labels
                     if (changes.labels) {
@@ -370,6 +399,21 @@ export async function createEmailProvider(
                             processedThreads.add(`removeLabels:${threadId}`);
                         }
                     }
+                    // Sender unsubscribe/block action (message-level)
+                    if (changes.unsubscribe) {
+                        await service.blockUnsubscribedEmail(id);
+                    }
+
+                    // Optional provider move when a folder target is supplied
+                    if (
+                        typeof changes.targetFolderId === "string" &&
+                        changes.targetFolderId.length > 0 &&
+                        !processedThreads.has(`move:${threadId}`)
+                    ) {
+                        await service.moveThreadToFolder(threadId, account.email, changes.targetFolderId);
+                        processedThreads.add(`move:${threadId}`);
+                    }
+
                     count++;
                 } catch (e) {
                     logger.error("Failed to modify item", { id, error: e });
@@ -506,6 +550,76 @@ export async function createEmailProvider(
         deleteDraft: async (draftId: string) => {
             try {
                 await service.deleteDraft(draftId);
+            } catch (err: unknown) {
+                if (isGmailAuthError(err)) {
+                    throw new Error(GMAIL_RECONNECT_MESSAGE);
+                }
+                throw err;
+            }
+        },
+        markSpam: async (threadId: string) => {
+            try {
+                await service.markSpam(threadId);
+            } catch (err: unknown) {
+                if (isGmailAuthError(err)) {
+                    throw new Error(GMAIL_RECONNECT_MESSAGE);
+                }
+                throw err;
+            }
+        },
+        blockUnsubscribedEmail: async (messageId: string) => {
+            try {
+                await service.blockUnsubscribedEmail(messageId);
+            } catch (err: unknown) {
+                if (isGmailAuthError(err)) {
+                    throw new Error(GMAIL_RECONNECT_MESSAGE);
+                }
+                throw err;
+            }
+        },
+        getFiltersList: async () => {
+            try {
+                return await service.getFiltersList();
+            } catch (err: unknown) {
+                if (isGmailAuthError(err)) {
+                    throw new Error(GMAIL_RECONNECT_MESSAGE);
+                }
+                throw err;
+            }
+        },
+        createFilter: async (options) => {
+            try {
+                return await service.createFilter(options);
+            } catch (err: unknown) {
+                if (isGmailAuthError(err)) {
+                    throw new Error(GMAIL_RECONNECT_MESSAGE);
+                }
+                throw err;
+            }
+        },
+        deleteFilter: async (id: string) => {
+            try {
+                return await service.deleteFilter(id);
+            } catch (err: unknown) {
+                if (isGmailAuthError(err)) {
+                    throw new Error(GMAIL_RECONNECT_MESSAGE);
+                }
+                throw err;
+            }
+        },
+        createAutoArchiveFilter: async (options) => {
+            try {
+                return await service.createAutoArchiveFilter(options);
+            } catch (err: unknown) {
+                if (isGmailAuthError(err)) {
+                    throw new Error(GMAIL_RECONNECT_MESSAGE);
+                }
+                throw err;
+            }
+        },
+        moveThreadToFolder: async (threadId: string, folderName: string) => {
+            try {
+                await service.moveThreadToFolder(threadId, account.email, folderName);
             } catch (err: unknown) {
                 if (isGmailAuthError(err)) {
                     throw new Error(GMAIL_RECONNECT_MESSAGE);

@@ -9,6 +9,7 @@ import {
 import { createGenerateObject } from "@/server/lib/llms";
 import { getModel } from "@/server/lib/llms/model";
 import { buildSlotClarificationPrompt } from "@/server/features/ai/skills/slots/slot-clarifications";
+import { normalizeSemanticEntities } from "@/server/features/ai/skills/slots/normalize-entities";
 
 export interface SlotResolutionResult {
   resolved: ResolvedSlots;
@@ -136,15 +137,86 @@ function resolveSlotValue(slot: string, message: string): unknown {
     const m = message.match(/thread[_\s-]?id[:\s]+([a-zA-Z0-9_-]+)/i);
     if (m?.[1]) return m[1];
   }
+  if (slot === "thread_ids") {
+    const explicit = [...message.matchAll(/thread[_\s-]?id[:\s]+([a-zA-Z0-9_-]+)/gi)].map((m) => m[1]).filter(Boolean);
+    if (explicit.length > 0) return explicit;
+  }
 
   if (slot === "event_id") {
     const m = message.match(/event[_\s-]?id[:\s]+([a-zA-Z0-9_-]+)/i);
+    if (m?.[1]) return m[1];
+  }
+  if (slot === "calendar_id") {
+    const m = message.match(/calendar[_\s-]?id[:\s]+([a-zA-Z0-9_.@-]+)/i);
     if (m?.[1]) return m[1];
   }
 
   if (slot === "draft_id") {
     const m = message.match(/draft[_\s-]?id[:\s]+([a-zA-Z0-9_-]+)/i);
     if (m?.[1]) return m[1];
+  }
+  if (slot === "filter_id") {
+    const m = message.match(/filter[_\s-]?id[:\s]+([a-zA-Z0-9_-]+)/i);
+    if (m?.[1]) return m[1];
+  }
+  if (slot === "label_id") {
+    const m = message.match(/label[_\s-]?id[:\s]+([a-zA-Z0-9_-]+)/i);
+    if (m?.[1]) return m[1];
+  }
+  if (slot === "label_ids") {
+    const ids = [...message.matchAll(/label[_\s-]?id[:\s]+([a-zA-Z0-9_-]+)/gi)]
+      .map((m) => m[1])
+      .filter(Boolean);
+    if (ids.length > 0) return ids;
+  }
+  if (slot === "folder_name") {
+    const m = message.match(/(?:to|into)\s+folder\s+['"]?([^'"\n]+)['"]?/i);
+    if (m?.[1]) return m[1].trim();
+  }
+  if (slot === "mode") {
+    if (/\bwhole series\b|\bentire series\b|\bseries\b/i.test(lower)) return "series";
+    if (/\bthis instance\b|\bjust this one\b|\bsingle\b/i.test(lower)) return "single";
+  }
+  if (slot === "working_location") {
+    if (/\bremote\b|\bhome\b/i.test(lower)) return "remote";
+    if (/\boffice\b|\bon-site\b|\bonsite\b/i.test(lower)) return "office";
+    const m = message.match(/working location[:\s]+([^\n.]+)/i);
+    if (m?.[1]) return m[1].trim();
+  }
+  if (slot === "attendee_email") {
+    const email = extractEmails(message)[0];
+    if (email) return email;
+  }
+  if (slot === "read") {
+    if (/\bunread\b/i.test(lower)) return false;
+    if (/\bread\b/i.test(lower)) return true;
+  }
+  if (slot === "label_action") {
+    if (/\bremove\b/i.test(lower)) return "remove";
+    if (/\badd\b|\bapply\b/i.test(lower)) return "apply";
+  }
+  if (slot === "action_type") {
+    if (/\bspam\b|\bjunk\b/i.test(lower)) return "spam";
+    if (/\bmove\b/i.test(lower)) return "move";
+  }
+  if (slot === "filter_action") {
+    if (/\bdelete\b|\bremove\b/i.test(lower)) return "delete";
+    if (/\bcreate\b|\badd\b/i.test(lower)) return "create";
+    if (/\blist\b|\bshow\b/i.test(lower)) return "list";
+  }
+  if (slot === "send_mode") {
+    if (/\bforward\b/i.test(lower)) return "forward";
+    if (/\breply\b/i.test(lower)) return "reply";
+    if (/\bsend\b/i.test(lower)) return "send_now";
+  }
+  if (slot === "composite_actions") {
+    if (/\band\b|\balso\b|\bthen\b|\bplus\b/i.test(lower)) {
+      const parts = message
+        .split(/\band\b|\balso\b|\bthen\b|\bplus\b/gi)
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0);
+      if (parts.length > 1) return parts;
+    }
   }
 
   if (slot === "reply_intent") {
@@ -339,6 +411,17 @@ export async function resolveSlots(
     resolved.message_id = env.sourceEmailMessageId as never;
   }
 
+  const semanticNormalization = normalizeSemanticEntities({
+    rawMessage: message,
+    entities: Object.entries(resolved).map(([key, value]) => ({ key, value })),
+    timeZone: env.timeZone,
+  });
+  for (const slot of [...skill.required_slots, ...skill.optional_slots]) {
+    if (resolved[slot] === undefined && semanticNormalization.normalized[slot] !== undefined) {
+      resolved[slot] = semanticNormalization.normalized[slot] as never;
+    }
+  }
+
   const normalized = normalizeSlotShorthands(applySkillDefaults(skill, resolved), env.timeZone);
 
   // Validate extracted shapes; drop invalid.
@@ -367,7 +450,7 @@ export async function resolveSlots(
         return {
           resolved: mergedValidated.data,
           missingRequired,
-          ambiguous: [],
+          ambiguous: semanticNormalization.unresolved,
           clarificationPrompt: buildSlotClarificationPrompt(missingRequired),
         };
       }
@@ -379,7 +462,7 @@ export async function resolveSlots(
   return {
     resolved: safeResolved,
     missingRequired,
-    ambiguous: [],
+    ambiguous: semanticNormalization.unresolved,
     clarificationPrompt: buildSlotClarificationPrompt(missingRequired),
   };
 }

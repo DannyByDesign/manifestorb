@@ -2,13 +2,39 @@ import type { ToolResult } from "@/server/features/ai/tools/types";
 import type { CapabilityEnvironment } from "@/server/features/ai/capabilities/types";
 import prisma from "@/server/db/client";
 import type { CalendarEventUpdateInput } from "@/features/calendar/event-types";
+import { capabilityFailureResult } from "@/server/features/ai/capabilities/errors";
 
 export interface CalendarCapabilities {
   findAvailability(filter: Record<string, unknown>): Promise<ToolResult>;
   listEvents(filter: Record<string, unknown>): Promise<ToolResult>;
+  searchEventsByAttendee(filter: Record<string, unknown>): Promise<ToolResult>;
+  getEvent(input: { eventId: string; calendarId?: string }): Promise<ToolResult>;
   createEvent(data: Record<string, unknown>): Promise<ToolResult>;
+  updateEvent(input: {
+    eventId: string;
+    calendarId?: string;
+    changes: Record<string, unknown>;
+  }): Promise<ToolResult>;
+  deleteEvent(input: {
+    eventId: string;
+    calendarId?: string;
+    mode?: "single" | "series";
+  }): Promise<ToolResult>;
+  manageAttendees(input: {
+    eventId: string;
+    calendarId?: string;
+    attendees: string[];
+    mode?: "single" | "series";
+  }): Promise<ToolResult>;
+  updateRecurringMode(input: {
+    eventId: string;
+    calendarId?: string;
+    mode: "single" | "series";
+    changes?: Record<string, unknown>;
+  }): Promise<ToolResult>;
   rescheduleEvent(eventIds: string[], changes: Record<string, unknown>): Promise<ToolResult>;
   setWorkingHours(changes: Record<string, unknown>): Promise<ToolResult>;
+  setWorkingLocation(changes: Record<string, unknown>): Promise<ToolResult>;
   setOutOfOffice(data: Record<string, unknown>): Promise<ToolResult>;
   createFocusBlock(data: Record<string, unknown>): Promise<ToolResult>;
   createBookingSchedule(data: Record<string, unknown>): Promise<ToolResult>;
@@ -22,6 +48,14 @@ function toDate(value: unknown): Date | undefined {
 
 function safeString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((entry): entry is string => typeof entry === "string")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 }
 
 function toEventListData(
@@ -44,6 +78,10 @@ function toEventListData(
     location: event.location ?? null,
     snippet: event.description ?? "",
   }));
+}
+
+function calendarFailure(error: unknown, message: string): ToolResult {
+  return capabilityFailureResult(error, message, { resource: "calendar" });
 }
 
 export function createCalendarCapabilities(env: CapabilityEnvironment): CalendarCapabilities {
@@ -117,8 +155,71 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           meta: { resource: "calendar", itemCount: data.length },
         };
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return { success: false, error: message, message: "I couldn't load calendar events right now." };
+        return calendarFailure(error, "I couldn't load calendar events right now.");
+      }
+    },
+
+    async searchEventsByAttendee(filter) {
+      try {
+        const dateRange =
+          filter && typeof filter.dateRange === "object"
+            ? (filter.dateRange as Record<string, unknown>)
+            : undefined;
+        const start = toDate(dateRange?.after) ?? new Date();
+        const end =
+          toDate(dateRange?.before) ?? new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
+        const query =
+          safeString(filter.query) ??
+          safeString(filter.text) ??
+          safeString(filter.titleContains) ??
+          "";
+        const attendeeEmail =
+          safeString(filter.attendeeEmail) ??
+          safeString(filter.attendee) ??
+          safeString(filter.email);
+
+        const events = await provider.searchEvents(query, { start, end }, attendeeEmail);
+        const data = toEventListData(events);
+        return {
+          success: true,
+          data,
+          message:
+            data.length === 0
+              ? "No attendee-matching events found in that window."
+              : `Found ${data.length} attendee-matching event${data.length === 1 ? "" : "s"}.`,
+          meta: { resource: "calendar", itemCount: data.length },
+        };
+      } catch (error) {
+        return calendarFailure(error, "I couldn't load attendee events right now.");
+      }
+    },
+
+    async getEvent(input) {
+      const eventId = safeString(input.eventId);
+      if (!eventId) {
+        return {
+          success: false,
+          error: "event_id_missing",
+          clarification: {
+            kind: "missing_fields",
+            prompt: "Which event should I inspect?",
+            missingFields: ["event_id"],
+          },
+        };
+      }
+      try {
+        const event = await provider.getEvent({
+          eventId,
+          ...(safeString(input.calendarId) ? { calendarId: safeString(input.calendarId) } : {}),
+        });
+        return {
+          success: true,
+          data: event,
+          message: event ? "Event loaded." : "Event not found.",
+          meta: { resource: "calendar", itemCount: event ? 1 : 0 },
+        };
+      } catch (error) {
+        return calendarFailure(error, "I couldn't load that event right now.");
       }
     },
 
@@ -168,8 +269,189 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           meta: { resource: "calendar", itemCount: 1 },
         };
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return { success: false, error: message, message: "I couldn't create that event right now." };
+        return calendarFailure(error, "I couldn't create that event right now.");
+      }
+    },
+
+    async updateEvent(input) {
+      const eventId = safeString(input.eventId);
+      if (!eventId) {
+        return {
+          success: false,
+          error: "event_id_missing",
+          clarification: {
+            kind: "missing_fields",
+            prompt: "Which event should I update?",
+            missingFields: ["event_id"],
+          },
+        };
+      }
+
+      const changes = input.changes ?? {};
+      const attendees = toStringArray((changes as Record<string, unknown>).attendees);
+      const modeRaw = safeString((changes as Record<string, unknown>).mode);
+      const mode = modeRaw === "single" || modeRaw === "series" ? modeRaw : undefined;
+
+      try {
+        const updated = await provider.updateEvent({
+          ...(safeString(input.calendarId) ? { calendarId: safeString(input.calendarId) } : {}),
+          eventId,
+          input: {
+            ...(safeString((changes as Record<string, unknown>).title)
+              ? { title: safeString((changes as Record<string, unknown>).title) }
+              : {}),
+            ...(safeString((changes as Record<string, unknown>).description)
+              ? { description: safeString((changes as Record<string, unknown>).description) }
+              : {}),
+            ...(safeString((changes as Record<string, unknown>).location)
+              ? { location: safeString((changes as Record<string, unknown>).location) }
+              : {}),
+            ...(toDate((changes as Record<string, unknown>).start)
+              ? { start: toDate((changes as Record<string, unknown>).start) }
+              : {}),
+            ...(toDate((changes as Record<string, unknown>).end)
+              ? { end: toDate((changes as Record<string, unknown>).end) }
+              : {}),
+            ...(attendees.length > 0 ? { attendees } : {}),
+            ...(safeString((changes as Record<string, unknown>).timeZone)
+              ? { timeZone: safeString((changes as Record<string, unknown>).timeZone) }
+              : {}),
+            ...(mode ? { mode } : {}),
+          },
+        });
+
+        return {
+          success: true,
+          data: {
+            id: updated.id,
+            title: updated.title,
+            start: updated.startTime.toISOString(),
+            end: updated.endTime.toISOString(),
+            attendees: updated.attendees.map((attendee) => attendee.email),
+          },
+          message: "Event updated.",
+          meta: { resource: "calendar", itemCount: 1 },
+        };
+      } catch (error) {
+        return calendarFailure(error, "I couldn't update that event right now.");
+      }
+    },
+
+    async deleteEvent(input) {
+      const eventId = safeString(input.eventId);
+      if (!eventId) {
+        return {
+          success: false,
+          error: "event_id_missing",
+          clarification: {
+            kind: "missing_fields",
+            prompt: "Which event should I delete?",
+            missingFields: ["event_id"],
+          },
+        };
+      }
+      const mode = input.mode === "single" || input.mode === "series" ? input.mode : "single";
+      try {
+        await provider.deleteEvent({
+          ...(safeString(input.calendarId) ? { calendarId: safeString(input.calendarId) } : {}),
+          eventId,
+          deleteOptions: { mode },
+        });
+        return {
+          success: true,
+          data: { eventId, mode },
+          message: "Event deleted.",
+          meta: { resource: "calendar", itemCount: 1 },
+        };
+      } catch (error) {
+        return calendarFailure(error, "I couldn't delete that event right now.");
+      }
+    },
+
+    async manageAttendees(input) {
+      const eventId = safeString(input.eventId);
+      if (!eventId) {
+        return {
+          success: false,
+          error: "event_id_missing",
+          clarification: {
+            kind: "missing_fields",
+            prompt: "Which event should I update attendees for?",
+            missingFields: ["event_id"],
+          },
+        };
+      }
+      const attendees = toStringArray(input.attendees);
+      if (attendees.length === 0) {
+        return {
+          success: false,
+          error: "attendees_missing",
+          clarification: {
+            kind: "missing_fields",
+            prompt: "Who should be on this event?",
+            missingFields: ["attendees"],
+          },
+        };
+      }
+
+      const mode = input.mode === "single" || input.mode === "series" ? input.mode : "single";
+      try {
+        const updated = await provider.updateEvent({
+          ...(safeString(input.calendarId) ? { calendarId: safeString(input.calendarId) } : {}),
+          eventId,
+          input: { attendees, mode },
+        });
+        return {
+          success: true,
+          data: {
+            id: updated.id,
+            attendees: updated.attendees.map((attendee) => attendee.email),
+            mode,
+          },
+          message: "Attendees updated.",
+          meta: { resource: "calendar", itemCount: 1 },
+        };
+      } catch (error) {
+        return calendarFailure(error, "I couldn't update attendees right now.");
+      }
+    },
+
+    async updateRecurringMode(input) {
+      const eventId = safeString(input.eventId);
+      if (!eventId) {
+        return {
+          success: false,
+          error: "event_id_missing",
+          clarification: {
+            kind: "missing_fields",
+            prompt: "Which recurring event should I update?",
+            missingFields: ["event_id"],
+          },
+        };
+      }
+
+      try {
+        const updated = await provider.updateEvent({
+          ...(safeString(input.calendarId) ? { calendarId: safeString(input.calendarId) } : {}),
+          eventId,
+          input: {
+            ...(input.changes ?? {}),
+            mode: input.mode,
+          },
+        });
+        return {
+          success: true,
+          data: {
+            id: updated.id,
+            mode: input.mode,
+            start: updated.startTime.toISOString(),
+            end: updated.endTime.toISOString(),
+          },
+          message: "Recurring event updated.",
+          meta: { resource: "calendar", itemCount: 1 },
+        };
+      } catch (error) {
+        return calendarFailure(error, "I couldn't update that recurring event right now.");
       }
     },
 
@@ -254,8 +536,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           meta: { resource: "calendar", itemCount: 1 },
         };
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return { success: false, error: message, message: "I couldn't reschedule that event right now." };
+        return calendarFailure(error, "I couldn't reschedule that event right now.");
       }
     },
 
@@ -299,9 +580,31 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           meta: { resource: "preferences", itemCount: 1 },
         };
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return { success: false, error: message, message: "I couldn't update working hours right now." };
+        return calendarFailure(error, "I couldn't update working hours right now.");
       }
+    },
+
+    async setWorkingLocation(changes) {
+      const location = safeString(changes.location) ?? safeString(changes.workingLocation);
+      if (!location) {
+        return {
+          success: false,
+          error: "working_location_missing",
+          clarification: {
+            kind: "missing_fields",
+            prompt: "What working location should I set?",
+            missingFields: ["working_location"],
+          },
+        };
+      }
+
+      // Placeholder until provider-specific working-location support is added.
+      return {
+        success: false,
+        error: "unsupported_working_location",
+        message:
+          "Working location updates are not yet supported by this environment. I can create a calendar event note as a fallback.",
+      };
     },
 
     async setOutOfOffice(data) {
@@ -334,8 +637,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           meta: { resource: "calendar", itemCount: 1 },
         };
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return { success: false, error: message, message: "I couldn't set out-of-office right now." };
+        return calendarFailure(error, "I couldn't set out-of-office right now.");
       }
     },
 
@@ -369,8 +671,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           meta: { resource: "calendar", itemCount: 1 },
         };
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return { success: false, error: message, message: "I couldn't create a focus block right now." };
+        return calendarFailure(error, "I couldn't create a focus block right now.");
       }
     },
 
@@ -402,8 +703,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           message: "Booking link saved.",
         };
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return { success: false, error: message, message: "I couldn't save your booking link right now." };
+        return calendarFailure(error, "I couldn't save your booking link right now.");
       }
     },
   };

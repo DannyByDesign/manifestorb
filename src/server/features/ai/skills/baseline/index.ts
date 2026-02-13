@@ -14,6 +14,16 @@ import { calendarWorkingHoursOooSkill } from "./calendar-working-hours-ooo";
 import { calendarBookingPageSetupSkill } from "./calendar-booking-page-setup";
 import { calendarMeetingLoadRebalanceSkill } from "./calendar-meeting-load-rebalance";
 import { dailyPlanInboxCalendarSkill } from "./daily-plan-inbox-calendar";
+import { inboxMarkReadUnreadSkill } from "./inbox-mark-read-unread";
+import { inboxLabelManagementSkill } from "./inbox-label-management";
+import { inboxMoveOrSpamControlSkill } from "./inbox-move-or-spam-control";
+import { inboxReplyOrForwardSendSkill } from "./inbox-reply-or-forward-send";
+import { inboxFilterManagementSkill } from "./inbox-filter-management";
+import { calendarEventDeleteOrCancelSkill } from "./calendar-event-delete-or-cancel";
+import { calendarAttendeeManagementSkill } from "./calendar-attendee-management";
+import { calendarRecurringSeriesManagementSkill } from "./calendar-recurring-series-management";
+import { calendarWorkingLocationManagementSkill } from "./calendar-working-location-management";
+import { multiActionInboxCalendarSkill } from "./multi-action-inbox-calendar";
 
 export const baselineSkills = [
   inboxTriageTodaySkill,
@@ -32,4 +42,14 @@ export const baselineSkills = [
   calendarBookingPageSetupSkill,
   calendarMeetingLoadRebalanceSkill,
   dailyPlanInboxCalendarSkill,
+  inboxMarkReadUnreadSkill,
+  inboxLabelManagementSkill,
+  inboxMoveOrSpamControlSkill,
+  inboxReplyOrForwardSendSkill,
+  inboxFilterManagementSkill,
+  calendarEventDeleteOrCancelSkill,
+  calendarAttendeeManagementSkill,
+  calendarRecurringSeriesManagementSkill,
+  calendarWorkingLocationManagementSkill,
+  multiActionInboxCalendarSkill,
 ] as const;
