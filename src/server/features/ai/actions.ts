@@ -43,6 +43,18 @@ type ActionFunction<T extends Partial<Omit<ActionItem, "type">>> = (options: {
   logger: Logger;
 }) => Promise<unknown>;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function parseDateOrNull(value: unknown): Date | null {
+  if (typeof value !== "string" && typeof value !== "number" && !(value instanceof Date)) {
+    return null;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 export const runActionFunction = async (options: {
   client: EmailProvider;
   email: EmailForAction;
@@ -690,13 +702,13 @@ export const notify_user: ActionFunction<Record<string, unknown>> = async ({
   }
 };
 
-const set_task_preferences: ActionFunction<{ payload?: unknown }> = async ({
+const set_task_preferences: ActionFunction<{ payload?: ActionItem["payload"] }> = async ({
   userId,
   args,
   logger,
 }) => {
   const payload = args.payload;
-  if (!payload || typeof payload !== "object") {
+  if (!isRecord(payload)) {
     logger.warn("Missing payload for set_task_preferences action");
     return;
   }
@@ -708,33 +720,82 @@ const set_task_preferences: ActionFunction<{ payload?: unknown }> = async ({
   });
 };
 
-const create_task: ActionFunction<{ payload?: unknown }> = async ({
+const create_task: ActionFunction<{ payload?: ActionItem["payload"] }> = async ({
   userId,
   emailAccountId,
   args,
   logger,
 }) => {
   const payload = args.payload;
-  if (!payload || typeof payload !== "object") {
+  if (!isRecord(payload)) {
     logger.warn("Missing payload for create_task action");
     return;
   }
 
+  const title =
+    typeof payload.title === "string" && payload.title.trim().length > 0
+      ? payload.title
+      : null;
+  if (!title) {
+    logger.warn("create_task payload missing title", { payload });
+    return;
+  }
+
+  const status =
+    payload.status === "PENDING" ||
+    payload.status === "IN_PROGRESS" ||
+    payload.status === "COMPLETED" ||
+    payload.status === "CANCELLED"
+      ? payload.status
+      : "PENDING";
+
+  const priority =
+    payload.priority === "NONE" ||
+    payload.priority === "LOW" ||
+    payload.priority === "MEDIUM" ||
+    payload.priority === "HIGH"
+      ? payload.priority
+      : "NONE";
+
+  const energyLevel =
+    payload.energyLevel === "LOW" ||
+    payload.energyLevel === "MEDIUM" ||
+    payload.energyLevel === "HIGH"
+      ? payload.energyLevel
+      : null;
+
+  const preferredTime =
+    payload.preferredTime === "MORNING" ||
+    payload.preferredTime === "AFTERNOON" ||
+    payload.preferredTime === "EVENING"
+      ? payload.preferredTime
+      : null;
+
+  const reschedulePolicy =
+    payload.reschedulePolicy === "FIXED" ||
+    payload.reschedulePolicy === "FLEXIBLE" ||
+    payload.reschedulePolicy === "APPROVAL_REQUIRED"
+      ? payload.reschedulePolicy
+      : "FLEXIBLE";
+
   const task = await prisma.task.create({
     data: {
       userId,
-      title: payload.title,
-      description: payload.description ?? null,
-      durationMinutes: payload.durationMinutes ?? null,
-      status: payload.status ?? "PENDING",
-      priority: payload.priority ?? "NONE",
-      energyLevel: payload.energyLevel ?? null,
-      preferredTime: payload.preferredTime ?? null,
-      dueDate: payload.dueDate ? new Date(payload.dueDate) : null,
-      startDate: payload.startDate ? new Date(payload.startDate) : null,
-      isAutoScheduled: payload.isAutoScheduled ?? true,
-      scheduleLocked: payload.scheduleLocked ?? false,
-      reschedulePolicy: payload.reschedulePolicy ?? "FLEXIBLE",
+      title,
+      description: typeof payload.description === "string" ? payload.description : null,
+      durationMinutes:
+        typeof payload.durationMinutes === "number" ? payload.durationMinutes : null,
+      status,
+      priority,
+      energyLevel,
+      preferredTime,
+      dueDate: parseDateOrNull(payload.dueDate),
+      startDate: parseDateOrNull(payload.startDate),
+      isAutoScheduled:
+        typeof payload.isAutoScheduled === "boolean" ? payload.isAutoScheduled : true,
+      scheduleLocked:
+        typeof payload.scheduleLocked === "boolean" ? payload.scheduleLocked : false,
+      reschedulePolicy,
     },
   });
 
@@ -749,20 +810,31 @@ const create_task: ActionFunction<{ payload?: unknown }> = async ({
   return task;
 };
 
-const create_calendar_event: ActionFunction<{ payload?: unknown }> = async ({
+const create_calendar_event: ActionFunction<{ payload?: ActionItem["payload"] }> = async ({
   userId,
   emailAccountId,
   args,
   logger,
 }) => {
   const payload = args.payload;
-  if (!payload || typeof payload !== "object") {
+  if (!isRecord(payload)) {
     logger.warn("Missing payload for create_calendar_event action");
     return;
   }
 
-  if (!payload.start || !payload.end) {
+  if (payload.start == null || payload.end == null) {
     logger.warn("Calendar event payload missing start/end", {
+      payload,
+    });
+    return;
+  }
+
+  const title =
+    typeof payload.title === "string" && payload.title.trim().length > 0
+      ? payload.title
+      : null;
+  if (!title) {
+    logger.warn("Calendar event payload missing title", {
       payload,
     });
     return;
@@ -819,17 +891,18 @@ const create_calendar_event: ActionFunction<{ payload?: unknown }> = async ({
   );
 
   const event = await calendarProvider.createEvent({
-    calendarId: payload.calendarId,
+    calendarId: typeof payload.calendarId === "string" ? payload.calendarId : undefined,
     input: {
-      title: payload.title,
-      description: payload.description,
+      title,
+      description: typeof payload.description === "string" ? payload.description : undefined,
       start: parsedStart,
       end: parsedEnd,
-      allDay: payload.allDay,
-      isRecurring: payload.isRecurring,
-      recurrenceRule: payload.recurrenceRule,
+      allDay: typeof payload.allDay === "boolean" ? payload.allDay : undefined,
+      isRecurring: typeof payload.isRecurring === "boolean" ? payload.isRecurring : undefined,
+      recurrenceRule:
+        typeof payload.recurrenceRule === "string" ? payload.recurrenceRule : undefined,
       timeZone: effectiveTimeZone.timeZone,
-      location: payload.location,
+      location: typeof payload.location === "string" ? payload.location : undefined,
     },
   });
 

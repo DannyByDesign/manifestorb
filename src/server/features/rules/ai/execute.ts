@@ -81,10 +81,18 @@ export async function executeAct({
         continue;
       }
 
-      if (action.type === ActionType.DRAFT_EMAIL && actionResult?.draftId) {
+      const draftId =
+        typeof actionResult === "object" &&
+        actionResult !== null &&
+        "draftId" in actionResult &&
+        typeof actionResult.draftId === "string"
+          ? actionResult.draftId
+          : null;
+
+      if (action.type === ActionType.DRAFT_EMAIL && draftId) {
         await updateExecutedActionWithDraftId({
           actionId: action.id,
-          draftId: actionResult.draftId,
+          draftId,
           logger,
         });
       }
