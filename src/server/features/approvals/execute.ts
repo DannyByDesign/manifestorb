@@ -5,10 +5,9 @@ import { executeStructuredApprovalAction } from "@/features/approvals/structured
 
 const logger = createScopedLogger("approvals/execute");
 
-type CapabilityExecutePayload = {
-  actionType: "capability_execute";
-  capabilityId: string;
-  capability: string;
+type ToolExecutePayload = {
+  actionType: "tool_execute";
+  toolName: string;
   args?: Record<string, unknown>;
   description?: string;
   emailAccountId?: string;
@@ -32,51 +31,83 @@ type RuleActionExecutePayload = {
   threadId?: string;
 };
 
-function mapCapabilityToApprovalTool(capability: string): "send" | "create" | "modify" | "delete" {
+function mapToolToApprovalTool(toolName: string): "send" | "create" | "modify" | "delete" {
   if (
-    capability === "email.sendNow" ||
-    capability === "email.sendDraft" ||
-    capability === "email.reply" ||
-    capability === "email.forward"
+    toolName === "email.sendNow" ||
+    toolName === "email.sendDraft" ||
+    toolName === "email.reply" ||
+    toolName === "email.forward"
   ) {
     return "send";
   }
   if (
-    capability === "email.batchTrash" ||
-    capability === "calendar.deleteEvent" ||
-    capability === "email.deleteDraft"
+    toolName === "email.batchTrash" ||
+    toolName === "calendar.deleteEvent" ||
+    toolName === "email.deleteDraft"
   ) {
     return "delete";
   }
   if (
-    capability === "email.createDraft" ||
-    capability === "calendar.createEvent" ||
-    capability === "calendar.createFocusBlock" ||
-    capability === "calendar.createBookingSchedule"
+    toolName === "email.createDraft" ||
+    toolName === "calendar.createEvent" ||
+    toolName === "calendar.createFocusBlock" ||
+    toolName === "calendar.createBookingSchedule"
   ) {
     return "create";
   }
   return "modify";
 }
 
-function parseCapabilityExecutePayload(payload: {
+function parseToolExecutePayload(payload: {
   [key: string]: unknown;
-}): CapabilityExecutePayload | null {
-  if (payload.actionType !== "capability_execute") return null;
+}): ToolExecutePayload | null {
+  if (payload.actionType !== "tool_execute") return null;
   if (
-    typeof payload.capabilityId !== "string" ||
-    payload.capabilityId.length === 0
+    typeof payload.toolName !== "string" ||
+    payload.toolName.length === 0
   ) {
     return null;
   }
-  const normalized = {
-    ...payload,
-    capability:
+  return payload as unknown as ToolExecutePayload;
+}
+
+function parseLegacyCapabilityExecutePayload(payload: {
+  [key: string]: unknown;
+}): ToolExecutePayload | null {
+  if (payload.actionType !== "capability_execute") return null;
+  if (typeof payload.capabilityId !== "string" || payload.capabilityId.length === 0) {
+    return null;
+  }
+  return {
+    actionType: "tool_execute",
+    toolName:
       typeof payload.capability === "string" && payload.capability.length > 0
         ? payload.capability
         : payload.capabilityId,
+    args:
+      payload.args && typeof payload.args === "object" && !Array.isArray(payload.args)
+        ? (payload.args as Record<string, unknown>)
+        : undefined,
+    description: typeof payload.description === "string" ? payload.description : undefined,
+    emailAccountId:
+      typeof payload.emailAccountId === "string" ? payload.emailAccountId : undefined,
+    conversationId:
+      typeof payload.conversationId === "string" ? payload.conversationId : undefined,
+    threadId: typeof payload.threadId === "string" ? payload.threadId : undefined,
+    messageId: typeof payload.messageId === "string" ? payload.messageId : undefined,
+    sourceEmailMessageId:
+      typeof payload.sourceEmailMessageId === "string"
+        ? payload.sourceEmailMessageId
+        : undefined,
+    sourceEmailThreadId:
+      typeof payload.sourceEmailThreadId === "string"
+        ? payload.sourceEmailThreadId
+        : undefined,
+    sourceCalendarEventId:
+      typeof payload.sourceCalendarEventId === "string"
+        ? payload.sourceCalendarEventId
+        : undefined,
   };
-  return normalized as unknown as CapabilityExecutePayload;
 }
 
 function parseRuleActionExecutePayload(payload: {
@@ -317,21 +348,26 @@ export async function executeApprovalRequest(params: {
       );
     }
 
-    if (payload.actionType === "capability_execute") {
-      const capabilityPayload = parseCapabilityExecutePayload(payload as Record<string, unknown>);
-      if (!capabilityPayload) {
-        throw new Error("Invalid capability approval payload");
+    if (
+      payload.actionType === "tool_execute" ||
+      payload.actionType === "capability_execute"
+    ) {
+      const toolPayload =
+        parseToolExecutePayload(payload as Record<string, unknown>) ??
+        parseLegacyCapabilityExecutePayload(payload as Record<string, unknown>);
+      if (!toolPayload) {
+        throw new Error("Invalid tool approval payload");
       }
 
       const { resolveEmailAccount } = await import("@/server/lib/user-utils");
-      const emailAccount = resolveEmailAccount(request.user, capabilityPayload.emailAccountId);
+      const emailAccount = resolveEmailAccount(request.user, toolPayload.emailAccountId);
       if (!emailAccount) {
-        throw new Error("No email account found for capability approval execution");
+        throw new Error("No email account found for tool approval execution");
       }
 
-      const { createCapabilities } = await import("@/server/features/ai/capabilities");
-      const { executeRuntimeCapability } = await import(
-        "@/server/features/ai/runtime/capability-executor"
+      const { createCapabilities } = await import("@/server/features/ai/tools/runtime/legacy");
+      const { executeRuntimeTool } = await import(
+        "@/server/features/ai/tools/runtime/legacy/execute"
       );
       const capabilities = await createCapabilities({
         userId: request.userId,
@@ -341,26 +377,26 @@ export async function executeApprovalRequest(params: {
           (emailAccount as { account?: { provider?: string } }).account?.provider ??
           "google",
         logger,
-        conversationId: capabilityPayload.conversationId,
+        conversationId: toolPayload.conversationId,
         currentMessage:
-          typeof capabilityPayload.description === "string"
-            ? capabilityPayload.description
+          typeof toolPayload.description === "string"
+            ? toolPayload.description
             : undefined,
-        sourceEmailMessageId: capabilityPayload.sourceEmailMessageId,
-        sourceEmailThreadId: capabilityPayload.sourceEmailThreadId,
+        sourceEmailMessageId: toolPayload.sourceEmailMessageId,
+        sourceEmailThreadId: toolPayload.sourceEmailThreadId,
       });
 
       const capabilityArgs =
-        capabilityPayload.args &&
-        typeof capabilityPayload.args === "object" &&
-        !Array.isArray(capabilityPayload.args)
-          ? (capabilityPayload.args as Record<string, unknown>)
+        toolPayload.args &&
+        typeof toolPayload.args === "object" &&
+        !Array.isArray(toolPayload.args)
+          ? (toolPayload.args as Record<string, unknown>)
           : {};
 
-      const executionResult = await executeRuntimeCapability({
-        capability: capabilityPayload.capabilityId as Parameters<
-          typeof executeRuntimeCapability
-        >[0]["capability"],
+      const executionResult = await executeRuntimeTool({
+        toolName: toolPayload.toolName as Parameters<
+          typeof executeRuntimeTool
+        >[0]["toolName"],
         args: capabilityArgs,
         capabilities,
       });
@@ -378,7 +414,7 @@ export async function executeApprovalRequest(params: {
           message: executionResult.message ?? "Approved action executed.",
           data: executionResult.data,
         },
-        toolName: mapCapabilityToApprovalTool(capabilityPayload.capabilityId),
+        toolName: mapToolToApprovalTool(toolPayload.toolName),
         request,
       };
     }

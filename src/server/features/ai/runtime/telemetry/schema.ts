@@ -15,7 +15,7 @@ export const runtimePlanTelemetrySchema = baseSchema.extend({
 });
 
 export const runtimeDirectReadTelemetrySchema = baseSchema.extend({
-  capabilityId: z.string().min(1),
+  toolName: z.string().min(1),
   confidence: z.number().min(0).max(1),
 });
 
@@ -27,6 +27,14 @@ export const runtimeTurnCompletedTelemetrySchema = baseSchema.extend({
   failed: z.number().int().nonnegative(),
   approvalsCount: z.number().int().nonnegative(),
   interactivePayloadsCount: z.number().int().nonnegative(),
+  stopReason: z.enum([
+    "completed",
+    "needs_clarification",
+    "approval_pending",
+    "runtime_error",
+    "max_attempts",
+  ]),
+  failureReason: z.string().min(1).max(160).optional(),
 });
 
 export const runtimePrecheckFailedTelemetrySchema = baseSchema.extend({

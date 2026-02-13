@@ -1,5 +1,5 @@
 import type { gmail_v1 } from "@googleapis/gmail";
-import { GroupItemSource, ActionType } from "@/generated/prisma/enums";
+import { GroupItemSource, SystemType } from "@/generated/prisma/enums";
 import { saveLearnedPattern } from "@/server/features/policy-plane/learning-patterns";
 import { extractEmailAddress } from "@/server/integrations/google";
 import type { EmailAccountWithAI } from "@/server/lib/llms/types";
@@ -159,30 +159,49 @@ async function learnFromRemovedLabel({
     return;
   }
 
-  // Find rule with matching label action
-  const rule = await prisma.rule.findFirst({
+  const rules = await prisma.canonicalRule.findMany({
     where: {
       emailAccountId,
-      systemType: { not: null },
-      actions: {
-        some: {
-          labelId: labelId,
-          type: ActionType.LABEL,
-        },
-      },
+      enabled: true,
     },
-    select: { id: true, systemType: true },
+    select: {
+      id: true,
+      name: true,
+      actionPlan: true,
+    },
   });
 
-  if (!rule?.systemType || !shouldLearnFromLabelRemoval(rule.systemType)) {
+  const rule = rules.find((candidate) => {
+    const actionPlan =
+      candidate.actionPlan &&
+      typeof candidate.actionPlan === "object" &&
+      !Array.isArray(candidate.actionPlan)
+        ? (candidate.actionPlan as Record<string, unknown>)
+        : {};
+    const actions = Array.isArray(actionPlan.actions) ? actionPlan.actions : [];
+    return actions.some((action) => {
+      if (!action || typeof action !== "object" || Array.isArray(action)) return false;
+      const obj = action as Record<string, unknown>;
+      const type = typeof obj.type === "string" ? obj.type.toLowerCase() : "";
+      const actionLabelId = typeof obj.labelId === "string" ? obj.labelId : "";
+      return (type === "label" || type === "apply_label") && actionLabelId === labelId;
+    });
+  });
+
+  const systemType =
+    rule?.name && Object.values(SystemType).includes(rule.name as SystemType)
+      ? (rule.name as SystemType)
+      : null;
+
+  if (!rule || !systemType || !shouldLearnFromLabelRemoval(systemType)) {
     logger.info("Label removal does not match a learnable system rule", {
-      systemType: rule?.systemType,
+      systemType: rule?.name,
     });
     return;
   }
 
   logger.info("Processing label removal for learning", {
-    systemType: rule.systemType,
+    systemType,
   });
 
   await saveLearnedPattern({

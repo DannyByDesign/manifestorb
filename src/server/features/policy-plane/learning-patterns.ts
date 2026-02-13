@@ -14,9 +14,9 @@ export async function saveLearnedPattern(params: {
   messageId?: string | null;
   source?: GroupItemSource | null;
 }) {
-  const rule = await prisma.rule.findUnique({
+  const rule = await prisma.canonicalRule.findUnique({
     where: { id: params.ruleId, emailAccountId: params.emailAccountId },
-    select: { id: true, name: true, groupId: true },
+    select: { id: true, name: true },
   });
 
   if (!rule) {
@@ -27,8 +27,7 @@ export async function saveLearnedPattern(params: {
   const groupId = await getOrCreateGroupForRule({
     emailAccountId: params.emailAccountId,
     ruleId: rule.id,
-    ruleName: rule.name,
-    existingGroupId: rule.groupId,
+    ruleName: rule.name ?? `rule-${rule.id}`,
     logger: params.logger,
   });
 
@@ -64,29 +63,30 @@ async function getOrCreateGroupForRule(params: {
   emailAccountId: string;
   ruleId: string;
   ruleName: string;
-  existingGroupId: string | null;
   logger: Logger;
 }): Promise<string> {
-  if (params.existingGroupId) return params.existingGroupId;
+  const existing = await prisma.group.findUnique({
+    where: {
+      name_emailAccountId: {
+        name: params.ruleName,
+        emailAccountId: params.emailAccountId,
+      },
+    },
+    select: { id: true },
+  });
+  if (existing?.id) return existing.id;
 
   try {
     const group = await prisma.group.create({
       data: {
         emailAccountId: params.emailAccountId,
         name: params.ruleName,
-        rule: { connect: { id: params.ruleId } },
       },
     });
     return group.id;
   } catch (error) {
     if (!isDuplicateError(error)) throw error;
   }
-
-  const updatedRule = await prisma.rule.findUnique({
-    where: { id: params.ruleId },
-    select: { groupId: true },
-  });
-  if (updatedRule?.groupId) return updatedRule.groupId;
 
   const existingGroup = await prisma.group.findUnique({
     where: {
@@ -100,19 +100,6 @@ async function getOrCreateGroupForRule(params: {
   if (!existingGroup) {
     throw new Error(`Failed to create or find group for rule: ${params.ruleName}`);
   }
-
-  await prisma.rule
-    .update({
-      where: { id: params.ruleId },
-      data: { groupId: existingGroup.id },
-    })
-    .catch((error) => {
-      params.logger.warn("Failed to link existing group to rule", {
-        ruleId: params.ruleId,
-        groupId: existingGroup.id,
-        error,
-      });
-    });
 
   return existingGroup.id;
 }

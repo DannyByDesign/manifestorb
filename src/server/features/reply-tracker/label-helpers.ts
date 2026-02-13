@@ -1,7 +1,6 @@
 import type { EmailProvider, EmailLabel } from "@/features/email/types";
 import type { Logger } from "@/server/lib/logger";
 import prisma from "@/server/db/client";
-import { ActionType } from "@/generated/prisma/enums";
 import {
   CONVERSATION_STATUS_TYPES,
   type ConversationStatus,
@@ -177,17 +176,14 @@ export async function applyThreadStatusLabel({
 export async function getLabelsFromDb(
   emailAccountId: string,
 ): Promise<LabelIds> {
-  const rules = await prisma.rule.findMany({
+  const rules = await prisma.canonicalRule.findMany({
     where: {
       emailAccountId,
-      systemType: { in: CONVERSATION_STATUS_TYPES },
+      enabled: true,
     },
     select: {
-      systemType: true,
-      actions: {
-        where: { type: ActionType.LABEL },
-        select: { type: true, labelId: true, label: true },
-      },
+      name: true,
+      actionPlan: true,
     },
   });
 
@@ -198,13 +194,44 @@ export async function getLabelsFromDb(
     ACTIONED: { labelId: null, label: null },
   };
 
+  const validStatuses = new Set(CONVERSATION_STATUS_TYPES);
+
   for (const rule of rules) {
-    if (!rule.systemType) continue;
-    const labelAction = rule.actions.find((a) => a.type === ActionType.LABEL);
-    if (labelAction?.labelId || labelAction?.label) {
-      dbLabels[rule.systemType as ConversationStatus] = {
-        labelId: labelAction.labelId,
-        label: labelAction.label,
+    const normalizedName = rule.name?.trim().toUpperCase();
+    if (!normalizedName || !validStatuses.has(normalizedName as ConversationStatus)) continue;
+
+    const actionPlan =
+      rule.actionPlan && typeof rule.actionPlan === "object" && !Array.isArray(rule.actionPlan)
+        ? (rule.actionPlan as Record<string, unknown>)
+        : {};
+    const actions = Array.isArray(actionPlan.actions) ? actionPlan.actions : [];
+    const labelAction = actions
+      .map((action) =>
+        action && typeof action === "object" && !Array.isArray(action)
+          ? (action as Record<string, unknown>)
+          : null,
+      )
+      .find((action) => {
+        if (!action) return false;
+        const type = typeof action.type === "string" ? action.type.toLowerCase() : "";
+        return type === "label" || type === "apply_label";
+      });
+
+    if (!labelAction) continue;
+
+    const labelId =
+      typeof labelAction.labelId === "string" && labelAction.labelId.length > 0
+        ? labelAction.labelId
+        : null;
+    const label =
+      typeof labelAction.label === "string" && labelAction.label.length > 0
+        ? labelAction.label
+        : null;
+
+    if (labelId || label) {
+      dbLabels[normalizedName as ConversationStatus] = {
+        labelId,
+        label,
       };
     }
   }

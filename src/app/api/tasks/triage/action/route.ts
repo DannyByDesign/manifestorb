@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
 
     const { taskId, changes, summary } = parsed.data;
     const requestPayload = {
-      actionType: "tool_execution",
+      actionType: "tool_execute",
       description: summary || "Update task",
       tool: "modify",
       args: {

@@ -1,7 +1,7 @@
 import type { RuntimeSkill, RuntimeSkillSnapshot } from "@/server/features/ai/skills/types";
+import { formatSkillPromptSection } from "@/server/features/ai/skills/prompt";
 
 const MAX_SKILLS = 4;
-const MAX_SECTION_CHARS = 9000;
 
 function scoreSkill(message: string, skill: RuntimeSkill): number {
   const m = message.toLowerCase();
@@ -36,17 +36,8 @@ export function buildSkillPromptSnapshot(params: {
 
   const selected = scored.slice(0, MAX_SKILLS).map((item) => item.skill);
 
-  const sections: string[] = [];
-  let usedChars = 0;
-  for (const skill of selected) {
-    const block = `### Skill: ${skill.title}\n${skill.body}\n`;
-    if (usedChars + block.length > MAX_SECTION_CHARS) break;
-    sections.push(block);
-    usedChars += block.length;
-  }
-
   return {
     selectedSkillIds: selected.map((skill) => skill.id),
-    promptSection: sections.join("\n").trim(),
+    promptSection: formatSkillPromptSection(selected),
   };
 }

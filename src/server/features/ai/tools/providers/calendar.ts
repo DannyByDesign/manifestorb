@@ -18,6 +18,7 @@ import {
   isProviderRateLimitError,
   withRetries,
 } from "@/server/features/ai/tools/common/retry";
+import { withToolThrottle } from "@/server/features/ai/tools/common/throttle";
 
 export interface CalendarProvider {
   searchEvents(
@@ -181,8 +182,18 @@ export async function createCalendarProvider(
     return { provider, calendarId: target.calendarId };
   };
 
+  const throttleKey = `calendar:${account.id}`;
+  const runThrottled = async <T>(operation: string, run: () => Promise<T>): Promise<T> =>
+    withToolThrottle({
+      key: throttleKey,
+      maxConcurrent: 4,
+      operation,
+      run,
+    });
+
   return {
-    searchEvents: async (query, range, attendeeEmail) => {
+    searchEvents: async (query, range, attendeeEmail) =>
+      runThrottled("searchEvents", async () => {
       const preferences = await prisma.taskPreference.findUnique({
         where: { userId },
         select: { selectedCalendarIds: true },
@@ -340,8 +351,9 @@ export async function createCalendarProvider(
           )
         );
       });
-    },
-    findAvailableSlots: async ({ durationMinutes, start, end }) => {
+    }),
+    findAvailableSlots: async ({ durationMinutes, start, end }) =>
+      runThrottled("findAvailableSlots", async () => {
       if (!env.NEXT_PUBLIC_CALENDAR_SCHEDULING_ENABLED) {
         return [];
       }
@@ -423,34 +435,38 @@ export async function createCalendarProvider(
         end: slot.end,
         score: slot.score,
       }));
-    },
-    getEvent: async ({ eventId, calendarId }) => {
+    }),
+    getEvent: async ({ eventId, calendarId }) =>
+      runThrottled("getEvent", async () => {
       const { provider, calendarId: resolvedId } =
         await getProviderFor(calendarId);
       return withProviderRetry("getEvent", provider.provider, () =>
         provider.getEvent(eventId, resolvedId),
       );
-    },
-    createEvent: async ({ calendarId, input }) => {
+    }),
+    createEvent: async ({ calendarId, input }) =>
+      runThrottled("createEvent", async () => {
       const { provider, calendarId: resolvedId } =
         await getProviderFor(calendarId);
       return withProviderRetry("createEvent", provider.provider, () =>
         provider.createEvent(resolvedId, input),
       );
-    },
-    updateEvent: async ({ calendarId, eventId, input }) => {
+    }),
+    updateEvent: async ({ calendarId, eventId, input }) =>
+      runThrottled("updateEvent", async () => {
       const { provider, calendarId: resolvedId } =
         await getProviderFor(calendarId);
       return withProviderRetry("updateEvent", provider.provider, () =>
         provider.updateEvent(resolvedId, eventId, input),
       );
-    },
-    deleteEvent: async ({ calendarId, eventId, deleteOptions }) => {
+    }),
+    deleteEvent: async ({ calendarId, eventId, deleteOptions }) =>
+      runThrottled("deleteEvent", async () => {
       const { provider, calendarId: resolvedId } =
         await getProviderFor(calendarId);
       await withProviderRetry("deleteEvent", provider.provider, () =>
         provider.deleteEvent(resolvedId, eventId, deleteOptions),
       );
-    },
+    }),
   };
 }

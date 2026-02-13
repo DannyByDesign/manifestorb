@@ -1,13 +1,12 @@
 import type { ModelMessage, ToolSet } from "ai";
 import type { Logger } from "@/server/lib/logger";
-import type { SkillCapabilities } from "@/server/features/ai/capabilities";
+import type { SkillCapabilities } from "@/server/features/ai/tools/runtime/legacy";
 import type { RuntimeSkillSnapshot } from "@/server/features/ai/skills/types";
 import type {
   ToolExecutionArtifacts,
   ToolExecutionSummary,
   RuntimeToolDefinition,
 } from "@/server/features/ai/tools/fabric/types";
-import type { RuntimeExecutionPlan } from "@/server/features/ai/runtime/planner/types";
 
 export interface OpenWorldTurnInput {
   provider: string;
@@ -30,9 +29,9 @@ export interface RuntimeSession {
   input: OpenWorldTurnInput;
   capabilities: SkillCapabilities;
   skillSnapshot: RuntimeSkillSnapshot;
-  plan?: RuntimeExecutionPlan;
   tools: ToolSet;
   toolRegistry: RuntimeToolDefinition[];
+  toolLookup: Map<string, RuntimeToolDefinition>;
   artifacts: ToolExecutionArtifacts;
   summaries: ToolExecutionSummary[];
 }

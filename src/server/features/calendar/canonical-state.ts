@@ -1,12 +1,39 @@
 import prisma from "@/server/db/client";
 import type { CalendarEvent } from "@/features/calendar/event-types";
 import { Prisma } from "@/generated/prisma/client";
+import { listEffectiveCanonicalRules } from "@/server/features/policy-plane/repository";
+import {
+  isRuleActiveNow,
+  type CanonicalRule,
+} from "@/server/features/policy-plane/canonical-schema";
 
 export type CalendarMutationSource = "ai" | "approval" | "webhook" | "reconcile" | "manual" | "system";
+type ReschedulePolicy = "FIXED" | "FLEXIBLE" | "APPROVAL_REQUIRED";
+type CalendarPolicyCriteria = {
+  provider?: string;
+  calendarId?: string;
+  iCalUid?: string;
+  titleContains?: string;
+};
+type CalendarPolicyRule = {
+  id: string;
+  source: "event" | "rule";
+  shadowEventId?: string;
+  criteria?: CalendarPolicyCriteria;
+  reschedulePolicy: ReschedulePolicy;
+  notifyOnAutoMove: boolean;
+  isProtected: boolean;
+  enabled: boolean;
+  disabledUntil?: string;
+  expiresAt?: string;
+};
+
+const CALENDAR_POLICY_OPERATION = "calendar_policy";
+const CALENDAR_POLICY_LEGACY_REF = "calendar_policy";
 
 export type CalendarPolicyDecision = {
   policyId?: string;
-  reschedulePolicy: "FIXED" | "FLEXIBLE" | "APPROVAL_REQUIRED";
+  reschedulePolicy: ReschedulePolicy;
   notifyOnAutoMove: boolean;
   isProtected: boolean;
   source: "default" | "event" | "rule";
@@ -27,13 +54,15 @@ function normalizeAttendees(event: CalendarEvent): Array<{ email: string; name?:
 }
 
 function isPolicyActive(policy: {
-  disabledUntil: Date | null;
-  expiresAt: Date | null;
+  enabled: boolean;
+  disabledUntil?: string;
+  expiresAt?: string;
 }): boolean {
-  const now = Date.now();
-  if (policy.disabledUntil && policy.disabledUntil.getTime() > now) return false;
-  if (policy.expiresAt && policy.expiresAt.getTime() < now) return false;
-  return true;
+  return isRuleActiveNow({
+    enabled: policy.enabled,
+    disabledUntil: policy.disabledUntil,
+    expiresAt: policy.expiresAt,
+  });
 }
 
 function toNullableJson(
@@ -45,7 +74,7 @@ function toNullableJson(
 }
 
 function matchesPolicyCriteria(params: {
-  criteria: unknown;
+  criteria?: CalendarPolicyCriteria;
   event: {
     provider?: string;
     calendarId?: string;
@@ -54,58 +83,129 @@ function matchesPolicyCriteria(params: {
   };
 }): boolean {
   const { criteria, event } = params;
-  if (!criteria || typeof criteria !== "object" || Array.isArray(criteria)) {
+  if (!criteria) {
     return true;
   }
 
-  const record = criteria as Record<string, unknown>;
-  if (typeof record.provider === "string" && event.provider && record.provider !== event.provider) {
+  if (typeof criteria.provider === "string" && event.provider && criteria.provider !== event.provider) {
     return false;
   }
-  if (typeof record.calendarId === "string" && event.calendarId && record.calendarId !== event.calendarId) {
+  if (typeof criteria.calendarId === "string" && event.calendarId && criteria.calendarId !== event.calendarId) {
     return false;
   }
-  if (typeof record.iCalUid === "string" && event.iCalUid && record.iCalUid !== event.iCalUid) {
+  if (typeof criteria.iCalUid === "string" && event.iCalUid && criteria.iCalUid !== event.iCalUid) {
     return false;
   }
   if (
-    typeof record.titleContains === "string" &&
+    typeof criteria.titleContains === "string" &&
     event.title &&
-    !event.title.toLowerCase().includes(record.titleContains.toLowerCase())
+    !event.title.toLowerCase().includes(criteria.titleContains.toLowerCase())
   ) {
     return false;
   }
   return true;
 }
 
-async function ensureDefaultPolicyForShadow(params: {
+function getTransformPatchValue(
+  rule: CanonicalRule,
+  path: string,
+): unknown {
+  const patch = rule.transform?.patch ?? [];
+  const entry = patch.find((item) => item.path === path);
+  return entry?.value;
+}
+
+function toReschedulePolicy(value: unknown): ReschedulePolicy {
+  if (
+    value === "FIXED" ||
+    value === "FLEXIBLE" ||
+    value === "APPROVAL_REQUIRED"
+  ) {
+    return value;
+  }
+  return "FLEXIBLE";
+}
+
+function toBoolean(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function extractCalendarPolicyRule(rule: CanonicalRule): CalendarPolicyRule | null {
+  if (rule.match.resource !== "calendar") return null;
+
+  const operation = rule.match.operation?.trim().toLowerCase();
+  const isPolicyOperation = operation === CALENDAR_POLICY_OPERATION;
+  const isPolicyLegacyRef =
+    rule.legacyRefType === CALENDAR_POLICY_LEGACY_REF ||
+    rule.legacyRefType === "CalendarEventPolicy";
+  if (!isPolicyOperation && !isPolicyLegacyRef) return null;
+
+  let shadowEventId: string | undefined;
+  const criteria: CalendarPolicyCriteria = {};
+  for (const condition of rule.match.conditions) {
+    if (condition.op === "eq" && condition.field === "target.shadowEventId" && typeof condition.value === "string") {
+      shadowEventId = condition.value;
+      continue;
+    }
+    if (condition.op === "eq" && condition.field === "target.provider" && typeof condition.value === "string") {
+      criteria.provider = condition.value;
+      continue;
+    }
+    if (condition.op === "eq" && condition.field === "target.calendarId" && typeof condition.value === "string") {
+      criteria.calendarId = condition.value;
+      continue;
+    }
+    if (condition.op === "eq" && condition.field === "target.iCalUid" && typeof condition.value === "string") {
+      criteria.iCalUid = condition.value;
+      continue;
+    }
+    if (condition.op === "contains" && condition.field === "target.title" && typeof condition.value === "string") {
+      criteria.titleContains = condition.value;
+    }
+  }
+
+  const sourceValue = getTransformPatchValue(rule, "calendarPolicy.source");
+  const source =
+    sourceValue === "event" || sourceValue === "rule"
+      ? sourceValue
+      : shadowEventId
+        ? "event"
+        : "rule";
+
+  return {
+    id: rule.id,
+    source,
+    shadowEventId,
+    criteria: Object.keys(criteria).length > 0 ? criteria : undefined,
+    reschedulePolicy: toReschedulePolicy(
+      getTransformPatchValue(rule, "calendarPolicy.reschedulePolicy"),
+    ),
+    notifyOnAutoMove: toBoolean(
+      getTransformPatchValue(rule, "calendarPolicy.notifyOnAutoMove"),
+      true,
+    ),
+    isProtected: toBoolean(
+      getTransformPatchValue(rule, "calendarPolicy.isProtected"),
+      false,
+    ),
+    enabled: rule.enabled,
+    disabledUntil: rule.disabledUntil,
+    expiresAt: rule.expiresAt,
+  };
+}
+
+async function listCalendarPolicyRules(params: {
   userId: string;
   emailAccountId: string;
-  shadowEventId: string;
-}) {
-  const existing = await prisma.calendarEventPolicy.findFirst({
-    where: {
-      userId: params.userId,
-      emailAccountId: params.emailAccountId,
-      shadowEventId: params.shadowEventId,
-    },
-    select: { id: true },
+}): Promise<CalendarPolicyRule[]> {
+  const rules = await listEffectiveCanonicalRules({
+    userId: params.userId,
+    emailAccountId: params.emailAccountId,
+    type: "guardrail",
   });
-
-  if (!existing) {
-    await prisma.calendarEventPolicy.create({
-      data: {
-        userId: params.userId,
-        emailAccountId: params.emailAccountId,
-        shadowEventId: params.shadowEventId,
-        source: "default",
-        reschedulePolicy: "FLEXIBLE",
-        notifyOnAutoMove: true,
-        isProtected: false,
-        priority: 0,
-      },
-    });
-  }
+  return rules
+    .map((rule) => extractCalendarPolicyRule(rule))
+    .filter((rule): rule is CalendarPolicyRule => Boolean(rule));
 }
 
 export async function upsertCalendarEventShadow(params: {
@@ -201,12 +301,6 @@ export async function upsertCalendarEventShadow(params: {
         select: { id: true },
       });
 
-  await ensureDefaultPolicyForShadow({
-    userId,
-    emailAccountId,
-    shadowEventId: shadow.id,
-  });
-
   return { shadowId: shadow.id, remapped };
 }
 
@@ -273,18 +367,10 @@ export async function resolveCalendarEventPolicy(params: {
   };
 }): Promise<CalendarPolicyDecision> {
   const { userId, emailAccountId, shadowEventId, eventHint } = params;
+  const rules = await listCalendarPolicyRules({ userId, emailAccountId });
 
   if (shadowEventId) {
-    const eventPolicy = await prisma.calendarEventPolicy.findMany({
-      where: {
-        userId,
-        emailAccountId,
-        shadowEventId,
-      },
-      orderBy: [{ priority: "desc" }, { updatedAt: "desc" }],
-      take: 3,
-    });
-
+    const eventPolicy = rules.filter((policy) => policy.shadowEventId === shadowEventId);
     const active = eventPolicy.find((policy) => isPolicyActive(policy));
     if (active) {
       return {
@@ -292,24 +378,18 @@ export async function resolveCalendarEventPolicy(params: {
         reschedulePolicy: active.reschedulePolicy,
         notifyOnAutoMove: active.notifyOnAutoMove,
         isProtected: active.isProtected,
-        source: active.source === "default" ? "event" : "rule",
+        source: active.source,
       };
     }
   }
 
-  const globalPolicies = await prisma.calendarEventPolicy.findMany({
-    where: {
-      userId,
-      emailAccountId,
-      shadowEventId: null,
-    },
-    orderBy: [{ priority: "desc" }, { updatedAt: "desc" }],
-    take: 25,
-  });
+  const globalPolicies = rules.filter((policy) => !policy.shadowEventId);
 
   for (const policy of globalPolicies) {
     if (!isPolicyActive(policy)) continue;
-    if (!matchesPolicyCriteria({ criteria: policy.criteria, event: eventHint ?? {} })) continue;
+    if (!matchesPolicyCriteria({ criteria: policy.criteria, event: eventHint ?? {} })) {
+      continue;
+    }
 
     return {
       policyId: policy.id,

@@ -1,6 +1,6 @@
 import type { ToolSet } from "ai";
-import { executeRuntimeCapability } from "@/server/features/ai/runtime/capability-executor";
-import { enforcePolicyForCapability } from "@/server/features/ai/policy/enforcement";
+import { executeRuntimeTool } from "@/server/features/ai/tools/runtime/legacy/execute";
+import { enforcePolicyForTool } from "@/server/features/ai/policy/enforcement";
 import { assertProviderCompatibleToolSchema } from "@/server/features/ai/tools/fabric/adapters/provider-schema";
 import type {
   RuntimeToolDefinition,
@@ -51,7 +51,7 @@ export function assembleRuntimeTools(params: {
   for (const definition of params.registry) {
     assertProviderCompatibleToolSchema(
       definition.parameters,
-      `tool:${definition.capabilityId}`,
+      `tool:${definition.toolName}`,
     );
 
     tools[definition.toolName] = {
@@ -64,9 +64,9 @@ export function assembleRuntimeTools(params: {
             ? (rawArgs as Record<string, unknown>)
             : {};
 
-        const policy = await enforcePolicyForCapability({
+        const policy = await enforcePolicyForTool({
           context: params.context.policy,
-          capabilityId: definition.capabilityId,
+          toolName: definition.toolName,
           args,
           definition: definition.metadata,
         });
@@ -74,7 +74,7 @@ export function assembleRuntimeTools(params: {
         if (policy.kind === "block") {
           const result = blockedResult(policy.message, policy.reasonCode);
           params.summaries.push({
-            capabilityId: definition.capabilityId,
+            toolName: definition.toolName,
             outcome: "blocked",
             durationMs: Date.now() - startedAt,
             result,
@@ -86,7 +86,7 @@ export function assembleRuntimeTools(params: {
           params.artifacts.approvals.push(policy.approval);
           const result = blockedResult(policy.message, policy.reasonCode);
           params.summaries.push({
-            capabilityId: definition.capabilityId,
+            toolName: definition.toolName,
             outcome: "blocked",
             durationMs: Date.now() - startedAt,
             result,
@@ -95,8 +95,8 @@ export function assembleRuntimeTools(params: {
         }
 
         const result = sanitizeResult(
-          await executeRuntimeCapability({
-            capability: definition.capabilityId,
+          await executeRuntimeTool({
+            toolName: definition.toolName as Parameters<typeof executeRuntimeTool>[0]["toolName"],
             args: policy.args,
             capabilities: params.context.capabilities,
           }),
@@ -107,7 +107,7 @@ export function assembleRuntimeTools(params: {
         }
 
         params.summaries.push({
-          capabilityId: definition.capabilityId,
+          toolName: definition.toolName,
           outcome: result.success ? "success" : "failed",
           durationMs: Date.now() - startedAt,
           result,

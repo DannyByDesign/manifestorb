@@ -14,20 +14,27 @@ export const createGroupAction = actionClient
   .metadata({ name: "createGroup" })
   .inputSchema(createGroupBody)
   .action(async ({ ctx: { emailAccountId }, parsedInput: { ruleId } }) => {
-    const rule = await prisma.rule.findUnique({
+    const rule = await prisma.canonicalRule.findUnique({
       where: { id: ruleId, emailAccountId },
-      select: { name: true, groupId: true },
+      select: { name: true },
     });
-    if (rule?.groupId) return { groupId: rule.groupId };
     if (!rule) throw new SafeError("Rule not found");
+
+    const existingGroup = await prisma.group.findUnique({
+      where: {
+        name_emailAccountId: {
+          name: rule.name ?? `rule-${ruleId}`,
+          emailAccountId,
+        },
+      },
+      select: { id: true },
+    });
+    if (existingGroup?.id) return { groupId: existingGroup.id };
 
     const group = await prisma.group.create({
       data: {
-        name: rule.name,
+        name: rule.name ?? `rule-${ruleId}`,
         emailAccountId,
-        rule: {
-          connect: { id: ruleId },
-        },
       },
     });
 

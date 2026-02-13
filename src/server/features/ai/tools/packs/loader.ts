@@ -1,4 +1,4 @@
-import { getCapabilityDefinition } from "@/server/features/ai/capabilities/registry";
+import { getToolDefinition } from "@/server/features/ai/tools/runtime/legacy/registry";
 import { listInternalToolPacks } from "@/server/features/ai/tools/packs/registry";
 import {
   toolPackManifestSchema,
@@ -6,15 +6,10 @@ import {
 } from "@/server/features/ai/tools/packs/manifest-schema";
 import type { RuntimeToolDefinition } from "@/server/features/ai/tools/fabric/types";
 
-function capabilityIdToToolName(capabilityId: string): string {
-  return capabilityId.replace(/[^a-zA-Z0-9_]/g, "__");
-}
-
-function toRuntimeDefinition(capabilityId: ToolPackManifest["capabilities"][number]): RuntimeToolDefinition {
-  const definition = getCapabilityDefinition(capabilityId);
+function toRuntimeDefinition(toolName: ToolPackManifest["tools"][number]): RuntimeToolDefinition {
+  const definition = getToolDefinition(toolName as Parameters<typeof getToolDefinition>[0]);
   return {
-    toolName: capabilityIdToToolName(definition.id),
-    capabilityId: definition.id,
+    toolName: definition.id,
     description: definition.description,
     parameters: definition.inputSchema,
     metadata: definition,
@@ -49,15 +44,11 @@ export function loadRuntimeToolDefinitionsFromPacks(): RuntimeToolDefinition[] {
   }
 
   const out: RuntimeToolDefinition[] = [];
-  const seenCapabilities = new Set<string>();
   const seenToolNames = new Map<string, string>();
 
   for (const pack of enabledPacks) {
-    for (const capabilityId of pack.capabilities) {
-      if (seenCapabilities.has(capabilityId)) continue;
-      seenCapabilities.add(capabilityId);
-
-      const definition = toRuntimeDefinition(capabilityId);
+    for (const toolName of pack.tools) {
+      const definition = toRuntimeDefinition(toolName);
       const existingPack = seenToolNames.get(definition.toolName);
       if (existingPack) {
         throw new Error(

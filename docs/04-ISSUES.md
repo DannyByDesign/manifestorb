@@ -651,6 +651,30 @@ process.env.TZ = "UTC"; // Mutates global process state
 
 ---
 
+### 27. [OPEN] Runtime Migration Follow-Up - Drop Legacy `Rule` Table
+
+**Status:** ⚠️ **Open / In Progress**.
+
+**Issue:** OpenClaw runtime/rule-plane migration removed direct `prisma.rule` usage, but the legacy `Rule` model/table remains in schema for compatibility.
+
+**Impact:** Source-of-truth drift risk remains until legacy rule rows are fully backfilled and the table can be safely dropped.
+
+**Fix:** Backfill legacy `Rule` rows to `CanonicalRule` (with version history), switch remaining relation-dependent surfaces, then drop `Rule` in a dedicated migration.
+
+---
+
+### 28. [OPEN] Runtime Migration Follow-Up - Remove Legacy Approval Payload Compatibility
+
+**Status:** ⚠️ **Open / In Progress**.
+
+**Issue:** Approval execution still accepts legacy `capability_execute` payloads for backwards compatibility.
+
+**Impact:** Compatibility code keeps legacy naming and branch paths alive longer than needed, increasing maintenance surface.
+
+**Fix:** Migrate remaining callers to `tool_execute`, remove legacy parser branch from approvals execution, and tighten payload validation.
+
+---
+
 ## Issue Tracking Template
 
 When working through these issues, use this template:

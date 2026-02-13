@@ -622,9 +622,16 @@ async function loadRuleConfigForTool(
   userId: string,
   toolName: string,
 ): Promise<ApprovalRuleConfig> {
-  const pref = await prisma.approvalPreference.findUnique({
+  const preferenceRuleName = `approval:${toolName}`;
+  const pref = await prisma.canonicalRule.findFirst({
     where: {
-      userId_toolName: { userId, toolName },
+      userId,
+      type: "preference",
+      name: preferenceRuleName,
+    },
+    select: {
+      decision: true,
+      preferencePatch: true,
     },
   });
 
@@ -632,7 +639,7 @@ async function loadRuleConfigForTool(
     return cloneDefaultConfig(toolName);
   }
 
-  const parsed = parseStoredConfig(toolName, pref.policy, pref.conditions);
+  const parsed = parseStoredConfig(toolName, pref.decision, pref.preferencePatch);
   const now = Date.now();
   let shouldPersist = false;
   const nextRules = parsed.rules.map((rule) => {
@@ -721,38 +728,65 @@ function persistConfig(
   toolName: string,
   config: ApprovalRuleConfig,
 ) {
+  const preferenceRuleName = `approval:${toolName}`;
   const serializedConfig = config as unknown as Prisma.InputJsonValue;
-  return prisma.approvalPreference.upsert({
-    where: {
-      userId_toolName: { userId, toolName },
-    },
-    update: {
-      policy: config.defaultPolicy,
-      conditions: serializedConfig,
-    },
-    create: {
-      userId,
-      toolName,
-      policy: config.defaultPolicy,
-      conditions: serializedConfig,
-    },
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.canonicalRule.findFirst({
+      where: {
+        userId,
+        type: "preference",
+        name: preferenceRuleName,
+      },
+      select: { id: true },
+    });
+
+    if (existing) {
+      return tx.canonicalRule.update({
+        where: { id: existing.id },
+        data: {
+          enabled: true,
+          decision: config.defaultPolicy,
+          preferencePatch: serializedConfig,
+        },
+      });
+    }
+
+    return tx.canonicalRule.create({
+      data: {
+        userId,
+        type: "preference",
+        name: preferenceRuleName,
+        enabled: true,
+        sourceMode: "system",
+        match: {},
+        decision: config.defaultPolicy,
+        preferencePatch: serializedConfig,
+      },
+    });
   });
 }
 
 export async function listApprovalRuleConfigs(params: { userId: string }) {
-  const userRows = await prisma.approvalPreference.findMany({
-    where: { userId: params.userId },
-    select: { toolName: true, policy: true, conditions: true },
+  const userRows = await prisma.canonicalRule.findMany({
+    where: {
+      userId: params.userId,
+      type: "preference",
+      name: { startsWith: "approval:" },
+    },
+    select: { name: true, decision: true, preferencePatch: true },
   });
 
   const knownTools = new Set<string>(APPROVAL_RULE_TOOLS);
-  for (const row of userRows) knownTools.add(row.toolName);
+  for (const row of userRows) {
+    const toolName = row.name?.replace(/^approval:/, "");
+    if (toolName) knownTools.add(toolName);
+  }
 
   const result: Array<{ toolName: string; defaultPolicy: ApprovalPolicy; rules: ApprovalRule[] }> = [];
   for (const toolName of Array.from(knownTools).sort()) {
-    const row = userRows.find((item) => item.toolName === toolName);
+    const row = userRows.find((item) => item.name === `approval:${toolName}`);
     const config = row
-      ? parseStoredConfig(toolName, row.policy, row.conditions)
+      ? parseStoredConfig(toolName, row.decision, row.preferencePatch)
       : cloneDefaultConfig(toolName);
     result.push({
       toolName,
@@ -982,12 +1016,20 @@ export async function resetApprovalRuleConfig(params: {
   toolName?: string;
 }) {
   if (params.toolName) {
-    await prisma.approvalPreference.deleteMany({
-      where: { userId: params.userId, toolName: params.toolName },
+    await prisma.canonicalRule.deleteMany({
+      where: {
+        userId: params.userId,
+        type: "preference",
+        name: `approval:${params.toolName}`,
+      },
     });
     return;
   }
-  await prisma.approvalPreference.deleteMany({
-    where: { userId: params.userId },
+  await prisma.canonicalRule.deleteMany({
+    where: {
+      userId: params.userId,
+      type: "preference",
+      name: { startsWith: "approval:" },
+    },
   });
 }

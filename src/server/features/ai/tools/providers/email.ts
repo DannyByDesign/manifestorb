@@ -15,6 +15,7 @@ import {
     isProviderRateLimitError,
     withRetries,
 } from "@/server/features/ai/tools/common/retry";
+import { withToolThrottle } from "@/server/features/ai/tools/common/throttle";
 import {
     type DraftParams,
     type EmailChanges,
@@ -232,6 +233,15 @@ export async function createEmailProvider(
             options.receivedByMe !== undefined,
         );
 
+    const throttleKey = `email:${account.id}`;
+    const runThrottled = async <T>(operation: string, run: () => Promise<T>): Promise<T> =>
+        withToolThrottle({
+            key: throttleKey,
+            maxConcurrent: 4,
+            operation,
+            run,
+        });
+
     return {
         search: async ({
             query,
@@ -249,7 +259,7 @@ export async function createEmailProvider(
             hasAttachment,
             sentByMe,
             receivedByMe,
-        }) => {
+        }) => runThrottled("search", async () => {
             try {
                 const localFilterOptions = {
                     subjectContains,
@@ -312,9 +322,9 @@ export async function createEmailProvider(
                 const detail = err instanceof Error ? err.message : JSON.stringify(err);
                 throw new Error(`Gmail search failed (query="${query}"): ${detail}`);
             }
-        },
+        }),
 
-        get: async (ids: string[]) => {
+        get: async (ids: string[]) => runThrottled("get", async () => {
             try {
                 return await service.getMessagesBatch(ids);
             } catch (err: unknown) {
@@ -323,9 +333,9 @@ export async function createEmailProvider(
                 }
                 throw err;
             }
-        },
+        }),
 
-        modify: async (ids: string[], changes: EmailChanges) => {
+        modify: async (ids: string[], changes: EmailChanges) => runThrottled("modify", async () => {
             let count = 0;
 
             let messages: ParsedMessage[];
@@ -457,7 +467,7 @@ export async function createEmailProvider(
             });
 
             return { success: true, count };
-        },
+        }),
 
         createDraft: async (params: DraftParams) => {
             // Validate: reply/forward need a parentId (thread/message to reply to)
@@ -514,7 +524,7 @@ export async function createEmailProvider(
             }
         },
 
-        trash: async (ids: string[]) => {
+        trash: async (ids: string[]) => runThrottled("trash", async () => {
             try {
             const messages = await service.getMessagesBatch(ids);
             const threadIds = [...new Set(messages.map(m => m.threadId))];
@@ -531,7 +541,7 @@ export async function createEmailProvider(
                 }
                 throw err;
             }
-        },
+        }),
 
         sendDraft: async (draftId: string) => {
             try {
@@ -665,7 +675,7 @@ export async function createEmailProvider(
         },
 
         // Extended
-        getThread: async (threadId: string) => {
+        getThread: async (threadId: string) => runThrottled("getThread", async () => {
             try {
                 return await service.getThread(threadId);
             } catch (err: unknown) {
@@ -674,7 +684,7 @@ export async function createEmailProvider(
                 }
                 throw err;
             }
-        },
+        }),
 
         searchContacts: async (query: string) => {
             try {

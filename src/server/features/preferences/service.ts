@@ -1,6 +1,5 @@
 import { z } from "zod";
 import prisma from "@/server/db/client";
-import { ActionType, SystemType } from "@/generated/prisma/enums";
 import {
   calculateNextScheduleDate,
   createCanonicalTimeOfDay,
@@ -273,19 +272,6 @@ export async function toggleDigestForEmailAccount(params: {
       update: {},
     });
 
-    const newsletterRule = await prisma.rule.findFirst({
-      where: { emailAccountId: params.emailAccountId, systemType: SystemType.NEWSLETTER },
-      include: { actions: true },
-    });
-
-    if (
-      newsletterRule &&
-      !newsletterRule.actions.some((action) => action.type === ActionType.DIGEST)
-    ) {
-      await prisma.action.create({
-        data: { ruleId: newsletterRule.id, type: ActionType.DIGEST },
-      });
-    }
     return { enabled: true };
   }
 

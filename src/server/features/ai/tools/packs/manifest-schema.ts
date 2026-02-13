@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { capabilityNameSchema } from "@/server/features/ai/contracts/capability-contract";
 
 export const toolPackManifestSchema = z
   .object({
@@ -8,7 +7,9 @@ export const toolPackManifestSchema = z
     enabled: z.boolean().default(true),
     dependencies: z.array(z.string().min(1)).default([]),
     requiredFlags: z.array(z.string().min(1)).default([]),
-    capabilities: z.array(capabilityNameSchema).min(1),
+    precedence: z.number().int().default(0),
+    groups: z.array(z.string().min(1)).default([]),
+    tools: z.array(z.string().min(1)).min(1),
   })
   .strict();
 

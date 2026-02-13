@@ -1,4 +1,5 @@
 import { sleep } from "@/server/lib/sleep";
+import { computeExponentialBackoffDelay } from "@/server/features/ai/tools/common/backoff";
 
 export function isProviderRateLimitError(error: unknown): boolean {
   const message =
@@ -34,7 +35,7 @@ export async function withRetries<T>(
   },
 ): Promise<T> {
   const attempts = Math.max(1, options?.attempts ?? 3);
-  const baseDelayMs = Math.max(100, options?.baseDelayMs ?? 700);
+  const baseDelayMs = Math.max(50, options?.baseDelayMs ?? 700);
   const jitterMaxMs = Math.max(0, options?.jitterMaxMs ?? 300);
   const isRetryable = options?.isRetryable ?? isProviderRateLimitError;
 
@@ -53,8 +54,11 @@ export async function withRetries<T>(
         }
         throw error;
       }
-      const jitter = jitterMaxMs > 0 ? Math.floor(Math.random() * jitterMaxMs) : 0;
-      const delayMs = baseDelayMs * attempt + jitter;
+      const delayMs = computeExponentialBackoffDelay({
+        attempt,
+        baseDelayMs,
+        jitterMaxMs,
+      });
       options?.onRetry?.({
         attempt,
         attempts,

@@ -1,13 +1,11 @@
 import type { ZodTypeAny } from "zod";
 import type { ToolResult } from "@/server/features/ai/tools/types";
-import type { CapabilityName } from "@/server/features/ai/contracts/capability-contract";
-import type { CapabilityDefinition } from "@/server/features/ai/capabilities/registry";
-import type { SkillCapabilities } from "@/server/features/ai/capabilities";
+import type { CapabilityDefinition } from "@/server/features/ai/tools/runtime/legacy/registry";
+import type { SkillCapabilities } from "@/server/features/ai/tools/runtime/legacy";
 import type { PolicyApprovalRecord, PolicyExecutionContext } from "@/server/features/ai/policy/enforcement";
 
 export interface RuntimeToolDefinition {
   toolName: string;
-  capabilityId: CapabilityName;
   description: string;
   parameters: ZodTypeAny;
   metadata: CapabilityDefinition;
@@ -24,7 +22,7 @@ export interface ToolExecutionArtifacts {
 }
 
 export interface ToolExecutionSummary {
-  capabilityId: CapabilityName;
+  toolName: string;
   outcome: "success" | "partial" | "blocked" | "failed";
   durationMs: number;
   result: ToolResult;

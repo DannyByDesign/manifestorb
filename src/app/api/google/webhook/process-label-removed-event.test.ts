@@ -14,8 +14,8 @@ vi.mock("server-only", () => ({}));
 // Mock dependencies
 vi.mock("@/server/db/client", () => ({
   default: {
-    rule: {
-      findFirst: vi.fn(),
+    canonicalRule: {
+      findMany: vi.fn(),
     },
   },
 }));
@@ -97,10 +97,13 @@ describe("process-label-removed-event", () => {
 
   describe("handleLabelRemovedEvent", () => {
     it("should process Cold Email label removal and call saveLearnedPattern with exclude: true", async () => {
-      vi.mocked(prisma.rule.findFirst).mockResolvedValue({
-        id: "rule-123",
-        systemType: SystemType.COLD_EMAIL,
-      } as any);
+      vi.mocked(prisma.canonicalRule.findMany).mockResolvedValue([
+        {
+          id: "rule-123",
+          name: SystemType.COLD_EMAIL,
+          actionPlan: { actions: [{ type: "label", labelId: "label-1" }] },
+        },
+      ] as any);
 
       const historyItem = createLabelRemovedHistoryItem();
 
@@ -120,10 +123,13 @@ describe("process-label-removed-event", () => {
     });
 
     it("should skip learning when To Reply label is removed (not a learnable rule)", async () => {
-      vi.mocked(prisma.rule.findFirst).mockResolvedValue({
-        id: "rule-456",
-        systemType: SystemType.TO_REPLY,
-      } as any);
+      vi.mocked(prisma.canonicalRule.findMany).mockResolvedValue([
+        {
+          id: "rule-456",
+          name: SystemType.TO_REPLY,
+          actionPlan: { actions: [{ type: "label", labelId: "label-4" }] },
+        },
+      ] as any);
 
       const historyItem = createLabelRemovedHistoryItem("123", "thread-123", [
         "label-4",
@@ -182,15 +188,21 @@ describe("process-label-removed-event", () => {
     });
 
     it("should handle multiple label removals in a single event", async () => {
-      vi.mocked(prisma.rule.findFirst)
-        .mockResolvedValueOnce({
-          id: "rule-1",
-          systemType: SystemType.COLD_EMAIL,
-        } as any)
-        .mockResolvedValueOnce({
-          id: "rule-2",
-          systemType: SystemType.NEWSLETTER,
-        } as any);
+      vi.mocked(prisma.canonicalRule.findMany)
+        .mockResolvedValueOnce([
+          {
+            id: "rule-1",
+            name: SystemType.COLD_EMAIL,
+            actionPlan: { actions: [{ type: "label", labelId: "label-1" }] },
+          },
+        ] as any)
+        .mockResolvedValueOnce([
+          {
+            id: "rule-2",
+            name: SystemType.NEWSLETTER,
+            actionPlan: { actions: [{ type: "label", labelId: "label-2" }] },
+          },
+        ] as any);
 
       const historyItem = createLabelRemovedHistoryItem("123", "thread-123", [
         "label-1",
@@ -209,7 +221,7 @@ describe("process-label-removed-event", () => {
     });
 
     it("should skip learning when no rule is found for the removed label", async () => {
-      vi.mocked(prisma.rule.findFirst).mockResolvedValue(null);
+      vi.mocked(prisma.canonicalRule.findMany).mockResolvedValue([] as any);
 
       const historyItem = createLabelRemovedHistoryItem("123", "thread-123", [
         "unknown-label",

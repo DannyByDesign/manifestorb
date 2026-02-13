@@ -36,28 +36,26 @@ describe("applyThreadStatusLabel", () => {
     } as unknown as EmailProvider;
 
     // Mock prisma to return rules with label IDs
-    vi.mocked(prisma.rule.findMany).mockResolvedValue([
+    vi.mocked(prisma.canonicalRule.findMany).mockResolvedValue([
       {
         id: "rule-1",
-        systemType: "TO_REPLY",
-        actions: [{ id: "action-1", type: "LABEL", labelId: "label-to-reply" }],
+        name: "TO_REPLY",
+        actionPlan: { actions: [{ type: "label", labelId: "label-to-reply" }] },
       },
       {
         id: "rule-2",
-        systemType: "AWAITING_REPLY",
-        actions: [
-          { id: "action-2", type: "LABEL", labelId: "label-awaiting-reply" },
-        ],
+        name: "AWAITING_REPLY",
+        actionPlan: { actions: [{ type: "label", labelId: "label-awaiting-reply" }] },
       },
       {
         id: "rule-3",
-        systemType: "FYI",
-        actions: [{ id: "action-3", type: "LABEL", labelId: "label-fyi" }],
+        name: "FYI",
+        actionPlan: { actions: [{ type: "label", labelId: "label-fyi" }] },
       },
       {
         id: "rule-4",
-        systemType: "ACTIONED",
-        actions: [{ id: "action-4", type: "LABEL", labelId: "label-actioned" }],
+        name: "ACTIONED",
+        actionPlan: { actions: [{ type: "label", labelId: "label-actioned" }] },
       },
     ] as any);
   });
@@ -186,24 +184,22 @@ describe("applyThreadStatusLabel", () => {
 
   test("uses provider label when label ID not in database", async () => {
     // Mock prisma to return rules without one label
-    vi.mocked(prisma.rule.findMany).mockResolvedValue([
+    vi.mocked(prisma.canonicalRule.findMany).mockResolvedValue([
       {
         id: "rule-1",
-        systemType: "TO_REPLY",
-        actions: [{ id: "action-1", type: "LABEL", labelId: "label-to-reply" }],
+        name: "TO_REPLY",
+        actionPlan: { actions: [{ type: "label", labelId: "label-to-reply" }] },
       },
       {
         id: "rule-2",
-        systemType: "AWAITING_REPLY",
-        actions: [
-          { id: "action-2", type: "LABEL", labelId: "label-awaiting-reply" },
-        ],
+        name: "AWAITING_REPLY",
+        actionPlan: { actions: [{ type: "label", labelId: "label-awaiting-reply" }] },
       },
       // FYI is missing from DB
       {
         id: "rule-4",
-        systemType: "ACTIONED",
-        actions: [{ id: "action-4", type: "LABEL", labelId: "label-actioned" }],
+        name: "ACTIONED",
+        actionPlan: { actions: [{ type: "label", labelId: "label-actioned" }] },
       },
     ] as any);
 
@@ -229,37 +225,21 @@ describe("applyThreadStatusLabel", () => {
 
   test("creates label when not found in DB or provider labels", async () => {
     // Mock prisma to return empty rules for target label
-    vi.mocked(prisma.rule.findMany).mockResolvedValue([
+    vi.mocked(prisma.canonicalRule.findMany).mockResolvedValue([
       {
         id: "rule-2",
-        systemType: "AWAITING_REPLY",
-        actions: [
-          {
-            id: "action-2",
-            type: "LABEL",
-            labelId: "label-awaiting-reply",
-            label: null,
-          },
-        ],
+        name: "AWAITING_REPLY",
+        actionPlan: { actions: [{ type: "label", labelId: "label-awaiting-reply", label: null }] },
       },
       {
         id: "rule-3",
-        systemType: "FYI",
-        actions: [
-          { id: "action-3", type: "LABEL", labelId: "label-fyi", label: null },
-        ],
+        name: "FYI",
+        actionPlan: { actions: [{ type: "label", labelId: "label-fyi", label: null }] },
       },
       {
         id: "rule-4",
-        systemType: "ACTIONED",
-        actions: [
-          {
-            id: "action-4",
-            type: "LABEL",
-            labelId: "label-actioned",
-            label: null,
-          },
-        ],
+        name: "ACTIONED",
+        actionPlan: { actions: [{ type: "label", labelId: "label-actioned", label: null }] },
       },
     ] as any);
 
@@ -292,7 +272,7 @@ describe("applyThreadStatusLabel", () => {
 
   test("handles label creation failure gracefully", async () => {
     // Mock prisma to return empty rules for target label
-    vi.mocked(prisma.rule.findMany).mockResolvedValue([] as any);
+    vi.mocked(prisma.canonicalRule.findMany).mockResolvedValue([] as any);
 
     // Mock provider labels to be empty (no conflicting labels to remove)
     vi.mocked(mockProvider.getLabels).mockResolvedValue([]);

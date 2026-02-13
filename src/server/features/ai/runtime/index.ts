@@ -1,6 +1,6 @@
 import { createRuntimeSession } from "@/server/features/ai/runtime/session";
-import { runRuntimeLoop } from "@/server/features/ai/runtime/loop";
-import { finalizeRuntimeResult } from "@/server/features/ai/runtime/response";
+import { runAttemptLoop } from "@/server/features/ai/runtime/attempt-loop";
+import { buildFinalUserResponse } from "@/server/features/ai/runtime/finalize";
 import type { OpenWorldTurnInput, OpenWorldTurnResult } from "@/server/features/ai/runtime/types";
 import { runRuntimePrecheck } from "@/server/features/ai/runtime/context/precheck";
 import { hydrateRuntimeContext } from "@/server/features/ai/runtime/context/hydrator";
@@ -35,15 +35,19 @@ export async function runOpenWorldRuntimeTurn(
       ...input,
       message: hydrated.message,
     });
-    const execution = await runRuntimeLoop(session);
-    const result = finalizeRuntimeResult({
+    const execution = await runAttemptLoop(session);
+    const result = buildFinalUserResponse({
       session,
-      text: execution.text,
+      loopResult: execution,
     });
     const durationMs = Date.now() - startedAt;
     const successes = result.toolSummaries.filter((summary) => summary.outcome === "success").length;
     const blocked = result.toolSummaries.filter((summary) => summary.outcome === "blocked").length;
     const failed = result.toolSummaries.filter((summary) => summary.outcome === "failed").length;
+    const failureReason =
+      execution.stopReason === "completed" || execution.stopReason === "approval_pending"
+        ? undefined
+        : execution.stopReason;
     emitRuntimeTelemetry(input.logger, "openworld.turn.completed", {
       userId: input.userId,
       provider: input.provider,
@@ -54,6 +58,8 @@ export async function runOpenWorldRuntimeTurn(
       failed,
       approvalsCount: result.approvals.length,
       interactivePayloadsCount: result.interactivePayloads.length,
+      stopReason: execution.stopReason,
+      failureReason,
     });
     return result;
   });

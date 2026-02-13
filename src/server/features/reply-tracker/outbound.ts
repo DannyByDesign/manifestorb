@@ -103,11 +103,11 @@ async function isOutboundTrackingEnabled({
 }: {
   emailAccountId: string;
 }): Promise<boolean> {
-  const enabledRule = await prisma.rule.findFirst({
+  const enabledRule = await prisma.canonicalRule.findFirst({
     where: {
       emailAccountId,
-      systemType: { in: CONVERSATION_STATUS_TYPES },
       enabled: true,
+      name: { in: CONVERSATION_STATUS_TYPES },
     },
   });
   return !!enabledRule;

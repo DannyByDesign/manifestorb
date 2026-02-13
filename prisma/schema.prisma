@@ -107,8 +107,7 @@ model User {
   canonicalRules     CanonicalRule[]
   policyDecisionLogs PolicyDecisionLog[]
   policyExecutionLogs PolicyExecutionLog[]
-  pendingSkillRunStates PendingSkillRunState[]
-  pendingPlannerRunStates PendingPlannerRunState[]
+  pendingAgentTurnStates PendingAgentTurnState[]
   inAppNotifications InAppNotification[]
 
   conversations        Conversation[]
@@ -120,10 +119,8 @@ model User {
   taskPreferences      TaskPreference?
   calendarActionLogs   CalendarActionLog[]
   calendarEventShadows CalendarEventShadow[]
-  calendarEventPolicies CalendarEventPolicy[]
   calendarPlanRuns     CalendarPlanRun[]
   knowledge            Knowledge[]
-  approvalPreferences  ApprovalPreference[]
   schedulingInsights   SchedulingInsights?
   userAIConfig         UserAIConfig?
   categories           UserCategory[]
@@ -203,13 +200,11 @@ model EmailAccount {
   calendarConnections CalendarConnection[]
   meetingBriefings    MeetingBriefing[]
   calendarEventShadows CalendarEventShadow[]
-  calendarEventPolicies CalendarEventPolicy[]
   calendarPlanRuns      CalendarPlanRun[]
   canonicalRules        CanonicalRule[]
   policyDecisionLogs    PolicyDecisionLog[]
   policyExecutionLogs   PolicyExecutionLog[]
-  pendingSkillRunStates PendingSkillRunState[]
-  pendingPlannerRunStates PendingPlannerRunState[]
+  pendingAgentTurnStates PendingAgentTurnState[]
   @@index([userId])
   @@index([lastSummaryEmailAt])
 }
@@ -459,8 +454,6 @@ model Rule {
 
   promptText String? // natural language for this rule for prompt file. prompt file is combination of these fields
 
-  history RuleHistory[]
-
   @@unique([name, emailAccountId])
   @@unique([emailAccountId, systemType])
 }
@@ -487,35 +480,6 @@ model Action {
   payload        Json?
 
   @@index([ruleId])
-}
-
-model RuleHistory {
-  id          String   @id @default(cuid())
-  createdAt   DateTime @default(now())
-  ruleId      String
-  rule        Rule     @relation(fields: [ruleId], references: [id], onDelete: Cascade)
-  version     Int
-  triggerType String // "ai_update" (AI), "manual_update" (user), "ai_creation" (AI), "manual_creation" (user), "system_creation" (system), "system_update" (system)
-  promptText  String? // The prompt text that generated this version
-
-  name                String
-  instructions        String?
-  enabled             Boolean
-  automate            Boolean
-  runOnThreads        Boolean
-  conditionalOperator String
-  from                String?
-  to                  String?
-  subject             String?
-  body                String?
-  categoryFilterType  String? // deprecated
-  systemType          String?
-
-  actions         Json
-  categoryFilters Json? // deprecated
-
-  @@unique([ruleId, version])
-  @@index([ruleId, createdAt])
 }
 
 // Rule/Action models represent the rules and actions that the AI can take.
@@ -1210,40 +1174,10 @@ model CalendarEventShadow {
   lastMutationSource String?
   metadata       Json?
 
-  policies       CalendarEventPolicy[]
-
   @@unique([emailAccountId, provider, calendarId, externalEventId])
   @@index([userId, provider, iCalUid])
   @@index([emailAccountId, provider, calendarId])
   @@index([userId, updatedAt])
-}
-
-model CalendarEventPolicy {
-  id             String   @id @default(cuid())
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  userId         String
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  emailAccountId String
-  emailAccount   EmailAccount @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
-
-  shadowEventId  String?
-  shadowEvent    CalendarEventShadow? @relation(fields: [shadowEventId], references: [id], onDelete: Cascade)
-
-  title          String?
-  source         String   @default("default")
-  priority       Int      @default(0)
-  reschedulePolicy TaskReschedulePolicy @default(FLEXIBLE)
-  notifyOnAutoMove Boolean @default(true)
-  isProtected    Boolean  @default(false)
-  disabledUntil  DateTime?
-  expiresAt      DateTime?
-  criteria       Json?
-
-  @@index([userId, emailAccountId, priority])
-  @@index([userId, reschedulePolicy])
-  @@index([shadowEventId])
 }
 
 model CalendarPlanRun {
@@ -1537,21 +1471,6 @@ enum WeekStartDay {
 // Approvals
 // -----------------------------------------------------------------------------
 
-model ApprovalPreference {
-  id        String   @id @default(cuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  userId   String
-  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  toolName String // "modify", "delete", "send", "create", "workflow"
-  policy   String // "always" | "never" | "conditional"
-  conditions Json?
-
-  @@unique([userId, toolName])
-  @@index([userId])
-}
-
 model ApprovalRequest {
   id             String   @id @default(cuid())
   userId         String
@@ -1596,7 +1515,7 @@ model ApprovalDecision {
   @@index([decidedByUserId])
 }
 
-model PendingSkillRunState {
+model PendingAgentTurnState {
   id             String   @id @default(cuid())
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -1606,47 +1525,15 @@ model PendingSkillRunState {
   emailAccountId String
   emailAccount   EmailAccount @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
 
-  provider       String
+  provider       String // "web" | "slack" | "discord" | "telegram" | "system"
   conversationId String?
   channelId      String?
   threadId       String?
   status         String   @default("PENDING") // PENDING | RESOLVED | EXPIRED | CANCELED
-  skillId        String
+  pendingType    String   @default("clarification") // clarification | approval | resume
   correlationId  String   @unique
 
-  resolvedSlots  Json
-  missingSlots   String[]
-  ambiguousSlots String[]
-  clarificationPrompt String?
-  expiresAt      DateTime
-
-  @@index([userId, status, expiresAt])
-  @@index([userId, emailAccountId, status, expiresAt])
-  @@index([userId, provider, channelId, threadId, status, expiresAt])
-  @@index([conversationId, status, expiresAt])
-}
-
-model PendingPlannerRunState {
-  id             String   @id @default(cuid())
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  userId         String
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  emailAccountId String
-  emailAccount   EmailAccount @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
-
-  provider       String
-  conversationId String?
-  channelId      String?
-  threadId       String?
-  status         String   @default("PENDING") // PENDING | RESOLVED | EXPIRED | CANCELED
-  correlationId  String   @unique
-
-  baseMessage    String
-  candidateCapabilities String[]
-  clarificationPrompt String?
-  missingFields  String[]
+  payload        Json
   expiresAt      DateTime
 
   @@index([userId, status, expiresAt])

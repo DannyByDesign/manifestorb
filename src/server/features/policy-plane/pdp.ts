@@ -30,6 +30,7 @@ export type PolicyIntent = {
   context: {
     source:
       | "skills"
+      | "runtime"
       | "planner"
       | "automation"
       | "scheduled"

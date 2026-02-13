@@ -1,6 +1,5 @@
 import { z } from "zod";
 import type { EmailAccountWithAI } from "@/server/lib/llms/types";
-import type { Rule } from "@/generated/prisma/client";
 import { GroupItemType } from "@/generated/prisma/enums";
 import prisma from "@/server/db/client";
 import { DEFAULT_COLD_EMAIL_PROMPT } from "@/features/cold-email/prompt";
@@ -20,6 +19,11 @@ type ColdEmailBlockerReason =
   | "ai-already-labeled"
   | "excluded";
 
+type ColdEmailRuleInput = {
+  instructions?: string | null;
+  groupId?: string | null;
+};
+
 export async function isColdEmail({
   email,
   emailAccount,
@@ -31,7 +35,7 @@ export async function isColdEmail({
   emailAccount: EmailAccountWithAI;
   provider: EmailProvider;
   modelType?: ModelType;
-  coldEmailRule: Pick<Rule, "instructions" | "groupId"> | null;
+  coldEmailRule: ColdEmailRuleInput | null;
 }): Promise<{
   isColdEmail: boolean;
   reason: ColdEmailBlockerReason;

@@ -1,9 +1,9 @@
-import { createCapabilities } from "@/server/features/ai/capabilities";
+import { createCapabilities } from "@/server/features/ai/tools/runtime/legacy";
 import { loadRuntimeSkills } from "@/server/features/ai/skills/loader";
 import { buildSkillPromptSnapshot } from "@/server/features/ai/skills/snapshot";
 import { assembleRuntimeTools } from "@/server/features/ai/tools/fabric/assembler";
 import { filterToolRegistry } from "@/server/features/ai/tools/fabric/policy-filter";
-import { buildRuntimeToolRegistry } from "@/server/features/ai/tools/fabric/registry";
+import { buildRuntimeToolRegistry, buildToolNameLookup } from "@/server/features/ai/tools/fabric/registry";
 import type { RuntimeSession, OpenWorldTurnInput } from "@/server/features/ai/runtime/types";
 import type { ToolExecutionSummary } from "@/server/features/ai/tools/fabric/types";
 
@@ -30,6 +30,7 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
     includeDangerous: true,
     message: input.message,
   });
+  const toolLookup = buildToolNameLookup(registry);
 
   const artifacts = {
     approvals: [] as Array<{ id: string; requestPayload?: unknown }>,
@@ -49,7 +50,7 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
         channelId: input.channelId,
         threadId: input.threadId,
         messageId: input.messageId,
-        source: "planner",
+        source: "runtime",
       },
       capabilities,
     },
@@ -63,6 +64,7 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
     skillSnapshot,
     tools,
     toolRegistry: registry,
+    toolLookup,
     artifacts,
     summaries,
   };

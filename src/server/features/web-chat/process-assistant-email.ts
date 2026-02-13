@@ -102,57 +102,19 @@ async function processAssistantEmailInternal({
   const originalMessageId = firstMessageToAssistant.headers["in-reply-to"];
   const originalMessage = await provider.getOriginalMessage(originalMessageId);
 
-  const [emailAccount, executedRules] = await Promise.all([
-    prisma.emailAccount.findUnique({
-      where: { email: userEmail },
-      select: {
-        id: true,
-        userId: true,
-        email: true,
-        about: true,
-        multiRuleSelectionEnabled: true,
-        timezone: true,
-        calendarBookingLink: true,
-        rules: {
-          include: {
-            actions: true,
-            group: {
-              select: {
-                id: true,
-                name: true,
-                items: {
-                  select: {
-                    id: true,
-                    type: true,
-                    value: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-        account: { select: { provider: true } },
-      },
-    }),
-    originalMessage
-      ? prisma.executedRule.findMany({
-        where: {
-          emailAccountId,
-          threadId: originalMessage.threadId,
-          messageId: originalMessage.id,
-        },
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        select: {
-          rule: {
-            include: {
-              actions: true,
-              group: true,
-            },
-          },
-        },
-      })
-      : null,
-  ]);
+  const emailAccount = await prisma.emailAccount.findUnique({
+    where: { email: userEmail },
+    select: {
+      id: true,
+      userId: true,
+      email: true,
+      about: true,
+      multiRuleSelectionEnabled: true,
+      timezone: true,
+      calendarBookingLink: true,
+      account: { select: { provider: true } },
+    },
+  });
 
   if (!emailAccount) {
     logger.error("User not found");

@@ -13,7 +13,6 @@ import {
   applyEmailNotificationSettings,
   toggleDigestForEmailAccount,
 } from "@/features/preferences/service";
-import { ActionType } from "@/generated/prisma/enums";
 
 /** Shared logic for email notification settings. Call from actions or AI modify tool. */
 export async function applyEmailSettings(
@@ -79,13 +78,12 @@ export const updateDigestItemsAction = actionClient
     }) => {
       const promises = Object.entries(ruleDigestPreferences).map(
         async ([ruleId, enabled]) => {
-          // Verify the rule belongs to this email account
-          const rule = await prisma.rule.findUnique({
+          const rule = await prisma.canonicalRule.findUnique({
             where: {
               id: ruleId,
               emailAccountId,
             },
-            select: { id: true, actions: true },
+            select: { id: true, preferencePatch: true },
           });
 
           if (!rule) {
@@ -93,27 +91,22 @@ export const updateDigestItemsAction = actionClient
             return;
           }
 
-          const hasDigestAction = rule.actions.some(
-            (action) => action.type === ActionType.DIGEST,
-          );
+          const existingPatch =
+            rule.preferencePatch &&
+            typeof rule.preferencePatch === "object" &&
+            !Array.isArray(rule.preferencePatch)
+              ? (rule.preferencePatch as Record<string, unknown>)
+              : {};
 
-          if (enabled && !hasDigestAction) {
-            // Add DIGEST action
-            await prisma.action.create({
-              data: {
-                ruleId: rule.id,
-                type: ActionType.DIGEST,
+          await prisma.canonicalRule.update({
+            where: { id: rule.id },
+            data: {
+              preferencePatch: {
+                ...existingPatch,
+                digestEnabled: enabled,
               },
-            });
-          } else if (!enabled && hasDigestAction) {
-            // Remove DIGEST action
-            await prisma.action.deleteMany({
-              where: {
-                ruleId: rule.id,
-                type: ActionType.DIGEST,
-              },
-            });
-          }
+            },
+          });
         },
       );
 

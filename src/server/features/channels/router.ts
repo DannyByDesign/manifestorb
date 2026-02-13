@@ -155,7 +155,7 @@ function buildApprovalInteractivePayload(params: {
     ];
 
     if (
-        payload?.actionType === "tool_execution" &&
+        (payload?.actionType === "tool_execute" || payload?.actionType === "tool_execution") &&
         (toolName === "modify" || toolName === "delete") &&
         (resource === "calendar" || resource === "task")
     ) {

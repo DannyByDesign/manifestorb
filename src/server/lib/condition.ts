@@ -1,5 +1,4 @@
 import { LogicalOperator } from "@/generated/prisma/enums";
-import type { Rule } from "@/generated/prisma/client";
 import { ConditionType, type CoreConditionType } from "@/server/lib/config";
 import type {
   CreateRuleBody,
@@ -7,20 +6,16 @@ import type {
 } from "@/actions/rule.validation";
 import type { Logger } from "@/server/lib/logger";
 
-export type RuleConditions = Partial<
-  Pick<
-    Rule,
-    | "groupId"
-    | "instructions"
-    | "from"
-    | "to"
-    | "subject"
-    | "body"
-    | "conditionalOperator"
-  > & {
-    group?: { name: string } | null;
-  }
->;
+export type RuleConditions = Partial<{
+  groupId: string;
+  instructions: string;
+  from: string;
+  to: string;
+  subject: string;
+  body: string;
+  conditionalOperator: LogicalOperator;
+  group?: { name: string } | null;
+}>;
 
 export function isAIRule<T extends RuleConditions>(
   rule: T,

@@ -33,7 +33,7 @@ describe("handleOutboundReply", () => {
     });
 
     // Mock tracking enabled
-    prisma.rule.findFirst.mockResolvedValue({ id: "rule1" } as any);
+    prisma.canonicalRule.findFirst.mockResolvedValue({ id: "rule1" } as any);
 
     // Mock thread messages - sortByInternalDate sorts asc by default (oldest first)
     // We mock getThreadMessages to return messages that our internal sortByInternalDate will sort
@@ -66,7 +66,7 @@ describe("handleOutboundReply", () => {
     const message = getMockMessage({ id: "sent-msg-1", threadId: "thread1" });
 
     // Mock tracking disabled
-    prisma.rule.findFirst.mockResolvedValue(null);
+    prisma.canonicalRule.findFirst.mockResolvedValue(null);
 
     await handleOutboundReply({
       emailAccount,

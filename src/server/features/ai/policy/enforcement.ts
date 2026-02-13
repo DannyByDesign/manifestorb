@@ -2,7 +2,7 @@ import { createHash } from "crypto";
 import prisma from "@/server/db/client";
 import { evaluatePolicyDecision } from "@/server/features/policy-plane/pdp";
 import { ApprovalService, getApprovalExpiry } from "@/server/features/approvals/service";
-import type { CapabilityDefinition } from "@/server/features/ai/capabilities/registry";
+import type { CapabilityDefinition as RuntimeToolMetadata } from "@/server/features/ai/tools/runtime/legacy/registry";
 
 export interface PolicyExecutionContext {
   userId: string;
@@ -12,7 +12,7 @@ export interface PolicyExecutionContext {
   channelId?: string;
   threadId?: string;
   messageId?: string;
-  source: "skills" | "planner" | "automation" | "scheduled";
+  source: "skills" | "runtime" | "automation" | "scheduled";
 }
 
 export interface PolicyApprovalRecord {
@@ -44,26 +44,26 @@ function mapProvider(provider: string): "web" | "slack" | "discord" | "telegram"
   return "system";
 }
 
-function inferResource(definition: CapabilityDefinition): string {
+function inferResource(definition: RuntimeToolMetadata): string {
   const mutatingEffect = definition.effects.find((effect) => effect.mutates);
   if (mutatingEffect) return mutatingEffect.resource;
   const first = definition.effects[0];
   return first ? first.resource : "workflow";
 }
 
-function approvalPayloadForCapability(params: {
-  capabilityId: string;
+function approvalPayloadForTool(params: {
+  toolName: string;
   args: Record<string, unknown>;
   context: PolicyExecutionContext;
-  definition: CapabilityDefinition;
+  definition: RuntimeToolMetadata;
 }) {
-  const { capabilityId, args, context, definition } = params;
+  const { toolName, args, context, definition } = params;
   return {
-    actionType: "capability_execute",
-    description: `Capability ${capabilityId} requires approval`,
-    tool: capabilityId,
+    actionType: "tool_execute",
+    description: `Tool ${toolName} requires approval`,
+    tool: toolName,
+    toolName,
     args,
-    capabilityId,
     emailAccountId: context.emailAccountId,
     conversationId: context.conversationId,
     channelId: context.channelId,
@@ -76,20 +76,20 @@ function approvalPayloadForCapability(params: {
 
 async function createApprovalRequest(params: {
   context: PolicyExecutionContext;
-  capabilityId: string;
+  toolName: string;
   args: Record<string, unknown>;
-  definition: CapabilityDefinition;
+  definition: RuntimeToolMetadata;
 }): Promise<PolicyApprovalRecord> {
-  const { context, capabilityId, args, definition } = params;
+  const { context, toolName, args, definition } = params;
   const approvalService = new ApprovalService(prisma);
   const expiresInSeconds = await getApprovalExpiry(context.userId);
   const idempotencyKey = createHash("sha256")
     .update(
       JSON.stringify({
-        kind: "capability_approval",
+        kind: "tool_approval",
         userId: context.userId,
         emailAccountId: context.emailAccountId,
-        capabilityId,
+        toolName,
         args,
         conversationId: context.conversationId,
         threadId: context.threadId,
@@ -97,8 +97,8 @@ async function createApprovalRequest(params: {
     )
     .digest("hex");
 
-  const requestPayload = approvalPayloadForCapability({
-    capabilityId,
+  const requestPayload = approvalPayloadForTool({
+    toolName,
     args,
     context,
     definition,
@@ -125,13 +125,13 @@ async function createApprovalRequest(params: {
   };
 }
 
-export async function enforcePolicyForCapability(params: {
+export async function enforcePolicyForTool(params: {
   context: PolicyExecutionContext;
-  capabilityId: string;
+  toolName: string;
   args: Record<string, unknown>;
-  definition: CapabilityDefinition;
+  definition: RuntimeToolMetadata;
 }): Promise<PolicyEnforcementResult> {
-  const { context, capabilityId, args, definition } = params;
+  const { context, toolName, args, definition } = params;
 
   if (definition.readOnly) {
     return { kind: "allow", args };
@@ -140,7 +140,7 @@ export async function enforcePolicyForCapability(params: {
   const decision = await evaluatePolicyDecision({
     userId: context.userId,
     emailAccountId: context.emailAccountId,
-    toolName: capabilityId,
+    toolName,
     args,
     context: {
       source: context.source,
@@ -173,7 +173,7 @@ export async function enforcePolicyForCapability(params: {
 
   const approval = await createApprovalRequest({
     context,
-    capabilityId,
+    toolName,
     args,
     definition,
   });
@@ -184,4 +184,18 @@ export async function enforcePolicyForCapability(params: {
     reasonCode: decision.reasonCode,
     approval,
   };
+}
+
+export async function enforcePolicyForCapability(params: {
+  context: PolicyExecutionContext;
+  capabilityId: string;
+  args: Record<string, unknown>;
+  definition: RuntimeToolMetadata;
+}): Promise<PolicyEnforcementResult> {
+  return enforcePolicyForTool({
+    context: params.context,
+    toolName: params.capabilityId,
+    args: params.args,
+    definition: params.definition,
+  });
 }
