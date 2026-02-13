@@ -1,18 +1,19 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@/server/auth";
 import { createScopedLogger } from "@/server/lib/logger";
-import { createRuleSchema } from "@/features/rules/ai/prompts/create-rule-schema";
-import { mapRuleActionsForMutation } from "@/features/rules/action-mapper";
-import { createRule } from "@/features/rules/rule";
 import { findUserEmailAccountWithProvider } from "@/server/lib/user/email-account";
 import {
   getApprovalOperationLabel,
   normalizeApprovalOperationKey,
   upsertApprovalRule,
 } from "@/features/approvals/rules";
-import { resumePausedEmailRules } from "@/features/rules/management";
 import { z } from "zod";
 import { listAssistantPolicies } from "@/features/policies/service";
+import {
+  compileAndActivateRulePlaneRule,
+  createRulePlaneRule,
+} from "@/server/features/policy-plane/service";
+import type { CanonicalRuleCreateInput } from "@/server/features/policy-plane/canonical-schema";
 
 export const dynamic = "force-dynamic";
 
@@ -31,12 +32,12 @@ export async function GET() {
       return NextResponse.json({ error: "No email account linked" }, { status: 400 });
     }
 
-    await resumePausedEmailRules(emailAccount.id);
     const policies = await listAssistantPolicies({
       userId: session.user.id,
       emailAccountId: emailAccount.id,
     });
-    const approvalRules = policies.approvalRules.map((rule) => ({
+    const emailRules = policies.emailRules ?? [];
+    const approvalRules = (policies.approvalRules ?? []).map((rule) => ({
       id: rule.id,
       name: rule.name,
       toolName: rule.toolName,
@@ -52,11 +53,12 @@ export async function GET() {
     return NextResponse.json({
       about: emailAccount.about || "Not set",
       preferences: policies.preferences,
-      rules: policies.emailRules,
-      emailRules: policies.emailRules,
+      rules: emailRules,
+      emailRules,
+      rulePlaneRules: policies.rulePlaneRules ?? [],
       approvalRules,
       summary: {
-        totalEmailRules: policies.emailRules.length,
+        totalEmailRules: emailRules.length,
         totalApprovalRules: approvalRules.length,
       },
     });
@@ -81,7 +83,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No email account linked" }, { status: 400 });
     }
 
-    const provider = emailAccount.account?.provider || "google";
     const body = await req.json();
     const type = (body?.type as string | undefined) ?? "email_rule";
 
@@ -129,7 +130,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ type: "approval_rule", rule });
     }
 
-    const parsed = createRuleSchema(provider).safeParse(body);
+    const parsed = z
+      .object({
+        rule: z.record(z.string(), z.unknown()).optional(),
+        input: z.string().min(1).optional(),
+      })
+      .safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
         { error: "Invalid payload", details: parsed.error.issues },
@@ -137,20 +143,32 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const rule = await createRule({
-      result: {
-        name: parsed.data.name,
-        ruleId: undefined,
-        condition: parsed.data.condition,
-        actions: mapRuleActionsForMutation({
-          actions: parsed.data.actions,
-          provider,
-        }),
-      },
+    if (parsed.data.input) {
+      const compiled = await compileAndActivateRulePlaneRule({
+        input: parsed.data.input,
+        userId: session.user.id,
+        emailAccount,
+      });
+      if (!compiled.activated || !compiled.rule) {
+        return NextResponse.json(
+          { error: "Rule could not be activated", details: compiled.compiled },
+          { status: 400 },
+        );
+      }
+      return NextResponse.json({ type: "email_rule", rule: compiled.rule });
+    }
+
+    if (!parsed.data.rule) {
+      return NextResponse.json(
+        { error: "Provide either `rule` or `input` for email_rule creation." },
+        { status: 400 },
+      );
+    }
+
+    const rule = await createRulePlaneRule({
+      userId: session.user.id,
       emailAccountId: emailAccount.id,
-      provider,
-      runOnThreads: body?.runOnThreads ?? true,
-      logger,
+      rule: parsed.data.rule as CanonicalRuleCreateInput,
     });
 
     return NextResponse.json({ type: "email_rule", rule });

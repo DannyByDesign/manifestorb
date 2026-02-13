@@ -1,19 +1,36 @@
 import { listApprovalRuleConfigs } from "@/features/approvals/rules";
-import { listEmailRules } from "@/features/rules/management";
 import { getAssistantPreferenceSnapshot } from "@/features/preferences/service";
+import { listRulePlaneSnapshot } from "@/server/features/policy-plane/service";
 
 export async function listAssistantPolicies(params: {
   userId: string;
   emailAccountId: string;
 }) {
-  const [preferences, emailRules, approvalRuleConfigs] = await Promise.all([
+  const [preferences, rulePlane, approvalRuleConfigs] = await Promise.all([
     getAssistantPreferenceSnapshot({
       userId: params.userId,
       emailAccountId: params.emailAccountId,
     }),
-    listEmailRules(params.emailAccountId),
+    listRulePlaneSnapshot({
+      userId: params.userId,
+      emailAccountId: params.emailAccountId,
+    }),
     listApprovalRuleConfigs({ userId: params.userId }),
   ]);
+
+  const emailRules = rulePlane.rules
+    .filter((rule) => rule.type === "automation")
+    .map((rule) => ({
+      id: rule.id,
+      name: rule.name ?? "Untitled automation",
+      enabled: rule.enabled,
+      priority: rule.priority,
+      disabledUntil: rule.disabledUntil ?? null,
+      trigger: rule.trigger,
+      match: rule.match,
+      actionPlan: rule.actionPlan ?? null,
+      source: rule.source,
+    }));
 
   const approvalRules = approvalRuleConfigs.flatMap((config) =>
     config.rules.map((rule) => ({
@@ -26,6 +43,7 @@ export async function listAssistantPolicies(params: {
   return {
     preferences,
     emailRules,
+    rulePlaneRules: rulePlane.rules,
     approvalRuleConfigs,
     approvalRules,
     summary: {

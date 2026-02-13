@@ -97,6 +97,11 @@ Main synced: yes (`origin/main`)
 - Delivered:
   - Policy-plane automation executor no longer imports legacy `features/rules/ai/execute`.
   - Rule-plane path is active in runtime capability layer.
+  - Legacy `/api/rules` endpoints now run on canonical rule-plane services:
+    - `src/app/api/rules/route.ts`
+    - `src/app/api/rules/[id]/route.ts`
+  - Policy aggregation no longer pulls legacy `listEmailRules`:
+    - `src/server/features/policies/service.ts`
 - Remaining:
   - Full elimination of legacy `src/server/features/rules/**` and related API surfaces after parity replacement.
   - Migrate remaining routes/services still importing `@/features/rules/*`.
