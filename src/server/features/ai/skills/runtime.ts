@@ -7,11 +7,14 @@ import { resolveSlots } from "@/server/features/ai/skills/slots/resolve-slots";
 import { executeSkill } from "@/server/features/ai/skills/executor/execute-skill";
 import { EXECUTOR_SUPPORTED_CAPABILITIES } from "@/server/features/ai/skills/executor/execute-skill";
 import { createCapabilities } from "@/server/features/ai/capabilities";
+import { assertCapabilityRegistryCoverage } from "@/server/features/ai/capabilities/registry";
+import { runCapabilityPlannerTurn, type PlannerContinuationState } from "@/server/features/ai/planner/runtime";
 import { emitSkillTelemetry } from "@/server/features/ai/skills/telemetry/emit";
 import { resolveDefaultCalendarTimeZone } from "@/server/features/ai/tools/calendar-time";
 import { loadSkillPolicyContext } from "@/server/features/ai/skills/policy/context";
 import type { SkillId } from "@/server/features/ai/skills/baseline/skill-ids";
 import type { ResolvedSlots } from "@/server/features/ai/skills/contracts/slot-types";
+import type { CapabilityName } from "@/server/features/ai/skills/contracts/skill-contract";
 
 type ExecuteOutcome =
   | {
@@ -48,10 +51,15 @@ export interface SkillContinuationState {
   clarificationPrompt?: string;
 }
 
+export type SkillTurnContinuation =
+  | { type: "skill"; state: SkillContinuationState }
+  | { type: "planner"; state: PlannerContinuationState };
+
 let capabilityCoverageChecked = false;
 
 function assertBaselineSkillCapabilitiesSupported(): void {
   if (capabilityCoverageChecked) return;
+  assertCapabilityRegistryCoverage();
   const unsupported: string[] = [];
   for (const skill of baselineSkills) {
     for (const step of skill.plan) {
@@ -80,6 +88,7 @@ function emitRouteTelemetry(params: {
     name: "skill.route.completed",
     requestId: params.requestId,
     provider: params.provider,
+    routeType: params.route.routeType,
     skillId: params.route.skillId,
     confidence: params.route.confidence,
     reason: params.route.reason,
@@ -138,16 +147,20 @@ export async function runBaselineSkillTurn(params: {
   sourceEmailThreadId?: string;
   sourceCalendarEventId?: string;
   forcedSkillId?: SkillId;
+  forcedRouteType?: "skill" | "planner";
+  continuationBaseMessage?: string;
+  seedPlannerCandidateCapabilities?: CapabilityName[];
   seedResolvedSlots?: ResolvedSlots;
 }): Promise<
-  | { kind: "clarify"; text: string; continuation?: SkillContinuationState }
+  | { kind: "clarify"; text: string; continuation?: SkillTurnContinuation }
   | {
       kind: "executed";
       text: string;
       interactivePayloads: unknown[];
       approvals: Array<{ id: string; requestPayload?: unknown }>;
       debug: {
-        skillId: string;
+        routeType: "skill" | "planner";
+        skillId?: string;
         status: string;
         diagnosticsCode?: string;
         diagnosticsCategory?: string;
@@ -182,9 +195,20 @@ export async function runBaselineSkillTurn(params: {
   let route: Awaited<ReturnType<typeof routeSkill>>;
   if (params.forcedSkillId) {
     route = {
+      routeType: "skill",
       skillId: params.forcedSkillId,
       confidence: 1,
       reason: "pending_state_resume",
+      routedFamilies: [],
+      unresolvedEntities: [],
+      semanticParseConfidence: 1,
+    };
+  } else if (params.forcedRouteType === "planner") {
+    route = {
+      routeType: "planner",
+      skillId: null,
+      confidence: 1,
+      reason: "pending_planner_resume",
       routedFamilies: [],
       unresolvedEntities: [],
       semanticParseConfidence: 1,
@@ -203,17 +227,69 @@ export async function runBaselineSkillTurn(params: {
     route,
   });
 
-  if (!route.skillId) {
+  if (route.routeType === "clarify" || (!route.skillId && route.routeType !== "planner")) {
     return {
       kind: "clarify",
       text: route.clarificationPrompt ?? "What would you like to do?",
     };
   }
 
-  if (route.skillId === "multi_action_inbox_calendar") {
+  if (route.routeType === "planner") {
+    const plannerResult = await runCapabilityPlannerTurn({
+      provider: params.provider,
+      userId: params.userId,
+      emailAccountId: params.emailAccountId,
+      email: params.email,
+      message: params.message,
+      logger: params.logger,
+      capabilities,
+      forcedCandidateCapabilities: params.seedPlannerCandidateCapabilities,
+      continuationBaseMessage: params.continuationBaseMessage,
+      context: {
+        conversationId: params.conversationId,
+        channelId: params.channelId,
+        threadId: params.threadId,
+        messageId: params.messageId,
+        teamId: params.teamId,
+        sourceEmailMessageId: params.sourceEmailMessageId,
+        sourceEmailThreadId: params.sourceEmailThreadId,
+        sourceCalendarEventId: params.sourceCalendarEventId,
+      },
+    });
+
+    if (plannerResult.kind === "clarify") {
+      return {
+        kind: "clarify",
+        text: plannerResult.text,
+        continuation: {
+          type: "planner",
+          state: plannerResult.continuation,
+        },
+      };
+    }
+
+    return {
+      kind: "executed",
+      text: plannerResult.text,
+      interactivePayloads: plannerResult.interactivePayloads,
+      approvals: plannerResult.approvals,
+      debug: plannerResult.debug,
+    };
+  }
+
+  if (!route.skillId) {
+    return {
+      kind: "clarify",
+      text: route.clarificationPrompt ?? "I need one more detail before I can continue.",
+    };
+  }
+
+  const routedSkillId = route.skillId;
+
+  if (routedSkillId === "multi_action_inbox_calendar") {
     const composite = await executeSingleSkill({
       requestId,
-      routeSkillId: route.skillId,
+      routeSkillId: routedSkillId,
       message: params.message,
       provider: params.provider,
       logger: params.logger,
@@ -237,7 +313,10 @@ export async function runBaselineSkillTurn(params: {
       return {
         kind: "clarify",
         text: composite.text,
-        continuation: composite.continuation,
+        continuation: {
+          type: "skill",
+          state: composite.continuation,
+        },
       };
     }
 
@@ -343,13 +422,13 @@ export async function runBaselineSkillTurn(params: {
       text: lines.join("\n"),
       interactivePayloads,
       approvals,
-      debug: { skillId: route.skillId, status: finalStatus },
+      debug: { routeType: "skill", skillId: routedSkillId, status: finalStatus },
     };
   }
 
   const outcome = await executeSingleSkill({
     requestId,
-    routeSkillId: route.skillId,
+    routeSkillId: routedSkillId,
     message: params.message,
     provider: params.provider,
     logger: params.logger,
@@ -373,7 +452,10 @@ export async function runBaselineSkillTurn(params: {
     return {
       kind: "clarify",
       text: outcome.text,
-      continuation: outcome.continuation,
+      continuation: {
+        type: "skill",
+        state: outcome.continuation,
+      },
     };
   }
 
@@ -383,7 +465,8 @@ export async function runBaselineSkillTurn(params: {
     interactivePayloads: outcome.interactivePayloads,
     approvals: outcome.approvals,
     debug: {
-      skillId: route.skillId,
+      routeType: "skill",
+      skillId: routedSkillId,
       status: outcome.status,
       ...(outcome.diagnosticsCode ? { diagnosticsCode: outcome.diagnosticsCode } : {}),
       ...(outcome.diagnosticsCategory

@@ -10,6 +10,7 @@ import { parseSemanticRequest } from "@/server/features/ai/skills/router/parse-r
 import { routeIntentFamilies } from "@/server/features/ai/skills/router/route-intent-family";
 
 export interface SkillRouteResult {
+  routeType: "skill" | "planner" | "clarify";
   skillId: SkillId | null;
   confidence: number;
   reason: string;
@@ -59,21 +60,66 @@ const routeRules: Array<{ skillId: SkillId; confidence: number; patterns: RegExp
 
 const MIN_CONFIDENCE = 0.72;
 
+function buildClarifyResult(params: {
+  confidence: number;
+  reason: string;
+  semanticParseConfidence?: number;
+  routedFamilies?: string[];
+  unresolvedEntities?: string[];
+  clarificationPrompt: string;
+}): SkillRouteResult {
+  return {
+    routeType: "clarify",
+    skillId: null,
+    confidence: params.confidence,
+    reason: params.reason,
+    semanticParseConfidence: params.semanticParseConfidence ?? 0,
+    routedFamilies: params.routedFamilies ?? [],
+    unresolvedEntities: params.unresolvedEntities ?? [],
+    clarificationPrompt: params.clarificationPrompt,
+  };
+}
+
+function shouldUsePlannerFallbackFromHeuristic(message: string): boolean {
+  return /\b(email|inbox|calendar|meeting|event|schedule|reschedule|draft|reply|forward|archive|trash|label|unsubscribe|block|availability|focus|working hours|out of office|booking)\b/i.test(
+    message,
+  );
+}
+
+function shouldUsePlannerFallbackFromSemantic(params: {
+  message: string;
+  semanticConfidence: number;
+  routedFamilies: string[];
+  unresolvedEntities: string[];
+}): boolean {
+  if (params.unresolvedEntities.includes("empty_message")) {
+    return false;
+  }
+  const hasActionLanguage = /\b(find|show|summari[sz]e|draft|reply|forward|send|archive|trash|delete|move|label|unsubscribe|block|mark|schedule|reschedule|cancel|create|update|set|plan|rebalance)\b/i.test(
+    params.message,
+  );
+  if (params.routedFamilies.length > 0) {
+    return true;
+  }
+  if (hasActionLanguage && params.semanticConfidence >= 0.4) {
+    return true;
+  }
+  return false;
+}
+
 function routeSkillDeterministic(message: string): SkillRouteResult {
   const normalized = message.trim();
   if (!normalized) {
-    return {
-      skillId: null,
+    return buildClarifyResult({
       confidence: 0,
       reason: "empty_message",
-      semanticParseConfidence: 0,
-      routedFamilies: [],
-      unresolvedEntities: ["empty_message"],
       clarificationPrompt: "What would you like help with in your inbox or calendar?",
-    };
+      unresolvedEntities: ["empty_message"],
+    });
   }
 
   let best: SkillRouteResult = {
+    routeType: "clarify",
     skillId: null,
     confidence: 0,
     reason: "no_match",
@@ -88,6 +134,7 @@ function routeSkillDeterministic(message: string): SkillRouteResult {
     const confidence = Math.min(0.99, rule.confidence + matches * 0.02);
     if (confidence > best.confidence) {
       best = {
+        routeType: "skill",
         skillId: rule.skillId,
         confidence,
         reason: `rule_match:${matches}`,
@@ -99,8 +146,19 @@ function routeSkillDeterministic(message: string): SkillRouteResult {
   }
 
   if (!best.skillId || best.confidence < MIN_CONFIDENCE) {
-    return {
-      skillId: null,
+    if (shouldUsePlannerFallbackFromHeuristic(normalized)) {
+      return {
+        routeType: "planner",
+        skillId: null,
+        confidence: Math.max(best.confidence, 0.62),
+        reason: "heuristic_planner_fallback",
+        semanticParseConfidence: best.semanticParseConfidence,
+        routedFamilies: best.routedFamilies,
+        unresolvedEntities: best.unresolvedEntities,
+      };
+    }
+
+    return buildClarifyResult({
       confidence: best.confidence,
       reason: best.reason,
       semanticParseConfidence: best.semanticParseConfidence,
@@ -108,22 +166,21 @@ function routeSkillDeterministic(message: string): SkillRouteResult {
       unresolvedEntities: best.unresolvedEntities,
       clarificationPrompt:
         "I can help with inbox cleanup, drafting, follow-ups, scheduling, and calendar planning. Which one do you want?",
-    };
+    });
   }
 
   if (!(BASELINE_SKILL_IDS as readonly string[]).includes(best.skillId)) {
-    return {
-      skillId: null,
+    return buildClarifyResult({
       confidence: 0,
       reason: "invalid_skill_output",
-      semanticParseConfidence: 0,
-      routedFamilies: [],
-      unresolvedEntities: [],
       clarificationPrompt: "I couldn't safely route that request. Please rephrase your inbox or calendar goal.",
-    };
+    });
   }
 
-  return best;
+  return {
+    ...best,
+    routeType: "skill",
+  };
 }
 
 export async function routeSkill(params: {
@@ -149,6 +206,7 @@ export async function routeSkill(params: {
     intentFamilies.families.includes("cross_surface_planning")
   ) {
     return {
+      routeType: "skill",
       skillId: "multi_action_inbox_calendar",
       confidence: Math.max(intentFamilies.confidence, 0.74),
       reason: "semantic:cross_surface_planning",
@@ -176,8 +234,27 @@ export async function routeSkill(params: {
 
     const candidate = object;
     if (!candidate.skillId || candidate.confidence < MIN_CONFIDENCE) {
-      return {
-        skillId: null,
+      if (
+        shouldUsePlannerFallbackFromSemantic({
+          message: normalized,
+          semanticConfidence: semantic.confidence,
+          routedFamilies: intentFamilies.families,
+          unresolvedEntities: semantic.unresolved,
+        })
+      ) {
+        return {
+          routeType: "planner",
+          skillId: null,
+          confidence: Math.max(candidate.confidence, Math.min(semantic.confidence, 0.82)),
+          reason: `planner_fallback:${candidate.reason}`,
+          semanticParseConfidence: semantic.confidence,
+          routedFamilies: intentFamilies.families,
+          unresolvedEntities: semantic.unresolved,
+          clarificationPrompt: candidate.clarificationPrompt,
+        };
+      }
+
+      return buildClarifyResult({
         confidence: candidate.confidence,
         reason: `llm:${candidate.reason}`,
         semanticParseConfidence: semantic.confidence,
@@ -186,10 +263,11 @@ export async function routeSkill(params: {
         clarificationPrompt:
           candidate.clarificationPrompt ??
           "I can help with inbox cleanup, drafting, follow-ups, scheduling, and calendar planning. What do you want to do?",
-      };
+      });
     }
 
     return {
+      routeType: "skill",
       skillId: candidate.skillId,
       confidence: candidate.confidence,
       reason: `llm:${candidate.reason}`,
@@ -201,6 +279,34 @@ export async function routeSkill(params: {
   } catch (error) {
     params.logger.warn("[skills-router] LLM route failed; falling back to heuristic", { error });
     const heuristic = routeSkillDeterministic(params.message);
+    if (heuristic.routeType === "clarify") {
+      if (
+        shouldUsePlannerFallbackFromSemantic({
+          message: normalized,
+          semanticConfidence: semantic.confidence,
+          routedFamilies: intentFamilies.families,
+          unresolvedEntities: semantic.unresolved,
+        })
+      ) {
+        return {
+          routeType: "planner",
+          skillId: null,
+          confidence: Math.max(heuristic.confidence, Math.min(semantic.confidence, 0.8)),
+          reason: `planner_fallback:${heuristic.reason}`,
+          semanticParseConfidence: semantic.confidence,
+          routedFamilies: intentFamilies.families,
+          unresolvedEntities: semantic.unresolved,
+          clarificationPrompt: heuristic.clarificationPrompt,
+        };
+      }
+      return {
+        ...heuristic,
+        semanticParseConfidence: semantic.confidence,
+        routedFamilies: intentFamilies.families,
+        unresolvedEntities: semantic.unresolved,
+      };
+    }
+
     return {
       ...heuristic,
       semanticParseConfidence: semantic.confidence,

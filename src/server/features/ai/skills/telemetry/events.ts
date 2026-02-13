@@ -6,6 +6,7 @@ export type SkillTelemetryEvent =
       name: "skill.route.completed";
       requestId: string;
       provider: string;
+      routeType?: "skill" | "planner" | "clarify";
       skillId: SkillId | null;
       confidence: number;
       reason: string;
@@ -13,6 +14,39 @@ export type SkillTelemetryEvent =
       routedFamilies: string[];
       unresolvedEntities: string[];
       finalOutcome?: string;
+    }
+  | {
+      name: "planner.route.selected";
+      requestId: string;
+      provider: string;
+      userId: string;
+      routeType: "planner";
+      candidateCount: number;
+      semanticParseConfidence: number;
+      routedFamilies: string[];
+      reason: string;
+    }
+  | {
+      name: "planner.execution.completed";
+      requestId: string;
+      provider: string;
+      userId: string;
+      routeType: "planner";
+      finalOutcome: "success" | "partial" | "blocked" | "failed";
+      diagnosticsCode?: string;
+      diagnosticsCategory?: string;
+      stepCount: number;
+      approvalCount: number;
+      reason?: string;
+    }
+  | {
+      name: "planner.validation.failed";
+      requestId: string;
+      provider: string;
+      userId: string;
+      routeType: "planner";
+      reason: string;
+      issues: string[];
     }
   | {
       name: "skill.slot_resolution.completed";

@@ -105,6 +105,7 @@ model User {
   approvalRequests  ApprovalRequest[]
   approvalDecisions ApprovalDecision[]
   pendingSkillRunStates PendingSkillRunState[]
+  pendingPlannerRunStates PendingPlannerRunState[]
   inAppNotifications InAppNotification[]
 
   conversations        Conversation[]
@@ -202,6 +203,7 @@ model EmailAccount {
   calendarEventPolicies CalendarEventPolicy[]
   calendarPlanRuns      CalendarPlanRun[]
   pendingSkillRunStates PendingSkillRunState[]
+  pendingPlannerRunStates PendingPlannerRunState[]
   @@index([userId])
   @@index([lastSummaryEmailAt])
 }
@@ -1610,6 +1612,35 @@ model PendingSkillRunState {
   missingSlots   String[]
   ambiguousSlots String[]
   clarificationPrompt String?
+  expiresAt      DateTime
+
+  @@index([userId, status, expiresAt])
+  @@index([userId, emailAccountId, status, expiresAt])
+  @@index([userId, provider, channelId, threadId, status, expiresAt])
+  @@index([conversationId, status, expiresAt])
+}
+
+model PendingPlannerRunState {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emailAccountId String
+  emailAccount   EmailAccount @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
+
+  provider       String
+  conversationId String?
+  channelId      String?
+  threadId       String?
+  status         String   @default("PENDING") // PENDING | RESOLVED | EXPIRED | CANCELED
+  correlationId  String   @unique
+
+  baseMessage    String
+  candidateCapabilities String[]
+  clarificationPrompt String?
+  missingFields  String[]
   expiresAt      DateTime
 
   @@index([userId, status, expiresAt])

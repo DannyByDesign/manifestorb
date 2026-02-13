@@ -21,6 +21,11 @@ import {
   markPendingSkillRunStateResolved,
   savePendingSkillRunState,
 } from "@/features/ai/skills/pending-run-state";
+import {
+  getActivePendingPlannerRunState,
+  markPendingPlannerRunStateResolved,
+  savePendingPlannerRunState,
+} from "@/features/ai/planner/pending-plan-state";
 import { runOrchestrationPreflight } from "@/server/features/ai/orchestration/preflight";
 import { createGenerateText } from "@/server/lib/llms";
 import { getModel } from "@/server/lib/llms/model";
@@ -868,7 +873,7 @@ export async function processMessage(
     return { text: pendingDecisionResult.text, approvals: [], interactivePayloads: [] };
   }
 
-  const pendingSkillStateContext = {
+  const pendingRunStateContext = {
     provider: context.provider,
     conversationId,
     channelId: context.channelId,
@@ -878,7 +883,7 @@ export async function processMessage(
   const pendingSkillState = await getActivePendingSkillRunState({
     userId: user.id,
     emailAccountId: emailAccount.id,
-    context: pendingSkillStateContext,
+    context: pendingRunStateContext,
   });
 
   if (pendingSkillState) {
@@ -903,20 +908,132 @@ export async function processMessage(
       seedResolvedSlots: pendingSkillState.resolvedSlots,
     });
 
-    if (continuationResult.kind === "clarify" && continuationResult.continuation) {
+    if (continuationResult.kind === "clarify" && continuationResult.continuation?.type === "skill") {
       await savePendingSkillRunState({
         userId: user.id,
         emailAccountId: emailAccount.id,
-        context: pendingSkillStateContext,
-        skillId: continuationResult.continuation.skillId,
-        resolvedSlots: continuationResult.continuation.resolvedSlots,
-        missingSlots: continuationResult.continuation.missingSlots,
-        ambiguousSlots: continuationResult.continuation.ambiguousSlots,
-        clarificationPrompt: continuationResult.continuation.clarificationPrompt,
+        context: pendingRunStateContext,
+        skillId: continuationResult.continuation.state.skillId,
+        resolvedSlots: continuationResult.continuation.state.resolvedSlots,
+        missingSlots: continuationResult.continuation.state.missingSlots,
+        ambiguousSlots: continuationResult.continuation.state.ambiguousSlots,
+        clarificationPrompt: continuationResult.continuation.state.clarificationPrompt,
         existingStateId: pendingSkillState.id,
+      });
+    } else if (
+      continuationResult.kind === "clarify" &&
+      continuationResult.continuation?.type === "planner"
+    ) {
+      await markPendingSkillRunStateResolved({ stateId: pendingSkillState.id, status: "CANCELED" });
+      await savePendingPlannerRunState({
+        userId: user.id,
+        emailAccountId: emailAccount.id,
+        context: pendingRunStateContext,
+        baseMessage: continuationResult.continuation.state.baseMessage,
+        candidateCapabilities: continuationResult.continuation.state.candidateCapabilities,
+        clarificationPrompt: continuationResult.continuation.state.clarificationPrompt,
+        missingFields: continuationResult.continuation.state.missingFields,
       });
     } else {
       await markPendingSkillRunStateResolved({ stateId: pendingSkillState.id });
+    }
+
+    const continuationText = continuationResult.text ?? "";
+    const continuationInteractivePayloads =
+      continuationResult.kind === "executed"
+        ? continuationResult.interactivePayloads
+        : [];
+    const continuationApprovals =
+      continuationResult.kind === "executed"
+        ? continuationResult.approvals
+        : [];
+
+    await persistAssistantMessage(
+      user.id,
+      conversationId,
+      continuationText,
+      context.provider,
+      logger,
+      context.channelId,
+      context.threadId,
+      context.messageId ?? context.threadId ?? messageContent,
+      continuationInteractivePayloads.length > 0 || continuationApprovals.length > 0
+        ? {
+            interactivePayloads: continuationInteractivePayloads,
+            approvals: continuationApprovals,
+          }
+        : undefined,
+    );
+
+    triggerMemoryRecording(user.id, emailAccount.email, logger);
+
+    return {
+      text: continuationText,
+      approvals: continuationApprovals,
+      interactivePayloads: continuationInteractivePayloads,
+    };
+  }
+
+  const pendingPlannerState = await getActivePendingPlannerRunState({
+    userId: user.id,
+    emailAccountId: emailAccount.id,
+    context: pendingRunStateContext,
+  });
+
+  if (pendingPlannerState) {
+    const sourceEmailContext = await getSourceEmailContext();
+    const continuationResult = await runBaselineSkillTurn({
+      provider: context.provider,
+      userId: user.id,
+      emailAccountId: emailAccount.id,
+      email: emailAccount.email,
+      providerName: resolvedProvider,
+      message: messageContent,
+      logger,
+      conversationId,
+      channelId: context.channelId,
+      threadId: context.threadId,
+      messageId: context.messageId,
+      teamId: context.teamId,
+      sourceEmailMessageId: sourceEmailContext.messageId,
+      sourceEmailThreadId: sourceEmailContext.threadId,
+      sourceCalendarEventId: sourceEmailContext.eventId,
+      forcedRouteType: "planner",
+      continuationBaseMessage: pendingPlannerState.baseMessage,
+      seedPlannerCandidateCapabilities: pendingPlannerState.candidateCapabilities,
+    });
+
+    if (continuationResult.kind === "clarify" && continuationResult.continuation?.type === "planner") {
+      await savePendingPlannerRunState({
+        userId: user.id,
+        emailAccountId: emailAccount.id,
+        context: pendingRunStateContext,
+        baseMessage: continuationResult.continuation.state.baseMessage,
+        candidateCapabilities: continuationResult.continuation.state.candidateCapabilities,
+        clarificationPrompt: continuationResult.continuation.state.clarificationPrompt,
+        missingFields: continuationResult.continuation.state.missingFields,
+        existingStateId: pendingPlannerState.id,
+      });
+    } else if (
+      continuationResult.kind === "clarify" &&
+      continuationResult.continuation?.type === "skill"
+    ) {
+      await markPendingPlannerRunStateResolved({
+        stateId: pendingPlannerState.id,
+        status: "CANCELED",
+      });
+      await savePendingSkillRunState({
+        userId: user.id,
+        emailAccountId: emailAccount.id,
+        context: pendingRunStateContext,
+        skillId: continuationResult.continuation.state.skillId,
+        resolvedSlots: continuationResult.continuation.state.resolvedSlots,
+        missingSlots: continuationResult.continuation.state.missingSlots,
+        ambiguousSlots: continuationResult.continuation.state.ambiguousSlots,
+        clarificationPrompt: continuationResult.continuation.state.clarificationPrompt,
+      });
+    } else {
+      await markPendingPlannerRunStateResolved({ stateId: pendingPlannerState.id });
     }
 
     const continuationText = continuationResult.text ?? "";
@@ -1010,16 +1127,28 @@ export async function processMessage(
   });
 
   if (skillsResult.kind === "clarify" && skillsResult.continuation) {
-    await savePendingSkillRunState({
-      userId: user.id,
-      emailAccountId: emailAccount.id,
-      context: pendingSkillStateContext,
-      skillId: skillsResult.continuation.skillId,
-      resolvedSlots: skillsResult.continuation.resolvedSlots,
-      missingSlots: skillsResult.continuation.missingSlots,
-      ambiguousSlots: skillsResult.continuation.ambiguousSlots,
-      clarificationPrompt: skillsResult.continuation.clarificationPrompt,
-    });
+    if (skillsResult.continuation.type === "skill") {
+      await savePendingSkillRunState({
+        userId: user.id,
+        emailAccountId: emailAccount.id,
+        context: pendingRunStateContext,
+        skillId: skillsResult.continuation.state.skillId,
+        resolvedSlots: skillsResult.continuation.state.resolvedSlots,
+        missingSlots: skillsResult.continuation.state.missingSlots,
+        ambiguousSlots: skillsResult.continuation.state.ambiguousSlots,
+        clarificationPrompt: skillsResult.continuation.state.clarificationPrompt,
+      });
+    } else {
+      await savePendingPlannerRunState({
+        userId: user.id,
+        emailAccountId: emailAccount.id,
+        context: pendingRunStateContext,
+        baseMessage: skillsResult.continuation.state.baseMessage,
+        candidateCapabilities: skillsResult.continuation.state.candidateCapabilities,
+        clarificationPrompt: skillsResult.continuation.state.clarificationPrompt,
+        missingFields: skillsResult.continuation.state.missingFields,
+      });
+    }
   }
 
   const text = skillsResult.text ?? "";
