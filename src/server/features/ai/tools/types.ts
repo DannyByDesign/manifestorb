@@ -2,7 +2,6 @@
 import { type z } from "zod";
 import { type EmailProvider } from "./providers/email";
 import { type CalendarProvider } from "./providers/calendar";
-import { type AutomationProvider } from "./providers/automation";
 import { type Logger } from "@/server/lib/logger";
 
 export type Resource = "email" | "calendar" | "contacts" | "automation" | "knowledge" | "preferences" | "patterns" | "report" | "notification" | "approval" | "summary" | "task";
@@ -35,7 +34,6 @@ export interface ToolContext {
     providers: {
         email: EmailProvider;
         calendar: CalendarProvider;
-        automation: AutomationProvider;
         // Add others as needed
     };
 }

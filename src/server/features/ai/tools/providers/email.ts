@@ -9,6 +9,7 @@ import {
     type EmailFilter,
 } from "@/features/email/types";
 import { SafeError } from "@/server/lib/error";
+import { sleep } from "@/server/lib/sleep";
 import {
     type DraftParams,
     type EmailChanges,
@@ -239,6 +240,50 @@ export async function createEmailProvider(
         }
     };
 
+    const isRateLimitedError = (error: unknown): boolean => {
+        const message =
+            error instanceof Error
+                ? error.message
+                : typeof error === "string"
+                  ? error
+                  : JSON.stringify(error);
+        const normalized = message.toLowerCase();
+        return (
+            normalized.includes("too many concurrent requests") ||
+            normalized.includes("ratelimit") ||
+            normalized.includes("rate limit") ||
+            normalized.includes("429")
+        );
+    };
+
+    const runWithRetries = async <T>(
+        operation: () => Promise<T>,
+        options?: { attempts?: number; baseDelayMs?: number },
+    ): Promise<T> => {
+        const attempts = Math.max(1, options?.attempts ?? 3);
+        const baseDelayMs = Math.max(100, options?.baseDelayMs ?? 700);
+        let lastError: unknown;
+        for (let attempt = 1; attempt <= attempts; attempt++) {
+            try {
+                return await operation();
+            } catch (error) {
+                lastError = error;
+                if (!isRateLimitedError(error) || attempt >= attempts) {
+                    throw error;
+                }
+                const jitter = Math.floor(Math.random() * 300);
+                const delayMs = baseDelayMs * attempt + jitter;
+                logger.warn("Rate limited in email provider operation; retrying", {
+                    attempt,
+                    attempts,
+                    delayMs,
+                });
+                await sleep(delayMs);
+            }
+        }
+        throw lastError;
+    };
+
     return {
         search: async ({
             query,
@@ -349,76 +394,77 @@ export async function createEmailProvider(
             // Track which threads we've already processed to avoid duplicate operations
             const processedThreads = new Set<string>();
 
-            await Promise.all(ids.map(async (id) => {
+            await runWithConcurrency(ids, 3, async (id) => {
                 try {
-                    const threadId = messageToThread.get(id);
-                    if (!threadId) {
-                        logger.warn("Could not find thread ID for message", { messageId: id });
-                        return;
-                    }
+                    await runWithRetries(async () => {
+                        const threadId = messageToThread.get(id);
+                        if (!threadId) {
+                            logger.warn("Could not find thread ID for message", { messageId: id });
+                            return;
+                        }
 
-                    // Archive (thread-level operation)
-                    if (changes.archive && !processedThreads.has(`archive:${threadId}`)) {
-                        await service.archiveThread(threadId, account.email);
-                        processedThreads.add(`archive:${threadId}`);
-                    }
+                        // Archive (thread-level operation)
+                        if (changes.archive && !processedThreads.has(`archive:${threadId}`)) {
+                            await service.archiveThread(threadId, account.email);
+                            processedThreads.add(`archive:${threadId}`);
+                        }
 
-                    // Trash (thread-level operation)
-                    if (changes.trash && !processedThreads.has(`trash:${threadId}`)) {
-                        await service.trashThread(threadId, account.email, "ai");
-                        processedThreads.add(`trash:${threadId}`);
-                    }
+                        // Trash (thread-level operation)
+                        if (changes.trash && !processedThreads.has(`trash:${threadId}`)) {
+                            await service.trashThread(threadId, account.email, "ai");
+                            processedThreads.add(`trash:${threadId}`);
+                        }
 
-                    // Read/Unread (thread-level operation)
-                    if (changes.read !== undefined && !processedThreads.has(`read:${threadId}`)) {
-                        await service.markReadThread(threadId, changes.read);
-                        processedThreads.add(`read:${threadId}`);
-                    }
-                    // Follow-up flag approximation: enable -> unread, disable -> read
-                    if (
-                        changes.followUp !== undefined &&
-                        !processedThreads.has(`followUp:${threadId}`)
-                    ) {
-                        const read = changes.followUp === "disable";
-                        await service.markReadThread(threadId, read);
-                        processedThreads.add(`followUp:${threadId}`);
-                    }
+                        // Read/Unread (thread-level operation)
+                        if (changes.read !== undefined && !processedThreads.has(`read:${threadId}`)) {
+                            await service.markReadThread(threadId, changes.read);
+                            processedThreads.add(`read:${threadId}`);
+                        }
+                        // Follow-up flag approximation: enable -> unread, disable -> read
+                        if (
+                            changes.followUp !== undefined &&
+                            !processedThreads.has(`followUp:${threadId}`)
+                        ) {
+                            const read = changes.followUp === "disable";
+                            await service.markReadThread(threadId, read);
+                            processedThreads.add(`followUp:${threadId}`);
+                        }
 
-                    // Labels
-                    if (changes.labels) {
-                        const { add, remove } = changes.labels;
-                        // Adding labels works on message IDs
-                        if (add) {
-                            for (const labelId of add) {
-                                await service.labelMessage({ messageId: id, labelId, labelName: null });
+                        // Labels
+                        if (changes.labels) {
+                            const { add, remove } = changes.labels;
+                            // Adding labels works on message IDs
+                            if (add) {
+                                for (const labelId of add) {
+                                    await service.labelMessage({ messageId: id, labelId, labelName: null });
+                                }
+                            }
+                            // Removing labels is a thread-level operation
+                            if (remove && remove.length > 0 && !processedThreads.has(`removeLabels:${threadId}`)) {
+                                await service.removeThreadLabels(threadId, remove);
+                                processedThreads.add(`removeLabels:${threadId}`);
                             }
                         }
-                        // Removing labels is a thread-level operation
-                        if (remove && remove.length > 0 && !processedThreads.has(`removeLabels:${threadId}`)) {
-                            await service.removeThreadLabels(threadId, remove);
-                            processedThreads.add(`removeLabels:${threadId}`);
+                        // Sender unsubscribe/block action (message-level)
+                        if (changes.unsubscribe) {
+                            await service.blockUnsubscribedEmail(id);
                         }
-                    }
-                    // Sender unsubscribe/block action (message-level)
-                    if (changes.unsubscribe) {
-                        await service.blockUnsubscribedEmail(id);
-                    }
 
-                    // Optional provider move when a folder target is supplied
-                    if (
-                        typeof changes.targetFolderId === "string" &&
-                        changes.targetFolderId.length > 0 &&
-                        !processedThreads.has(`move:${threadId}`)
-                    ) {
-                        await service.moveThreadToFolder(threadId, account.email, changes.targetFolderId);
-                        processedThreads.add(`move:${threadId}`);
-                    }
-
+                        // Optional provider move when a folder target is supplied
+                        if (
+                            typeof changes.targetFolderId === "string" &&
+                            changes.targetFolderId.length > 0 &&
+                            !processedThreads.has(`move:${threadId}`)
+                        ) {
+                            await service.moveThreadToFolder(threadId, account.email, changes.targetFolderId);
+                            processedThreads.add(`move:${threadId}`);
+                        }
+                    });
                     count++;
                 } catch (e) {
                     logger.error("Failed to modify item", { id, error: e });
                 }
-            }));
+            });
 
             return { success: true, count };
         },

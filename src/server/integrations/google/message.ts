@@ -156,23 +156,41 @@ export async function getMessagesBatch({
   if (messageIds.length > 100) throw new Error("Too many messages. Max 100");
 
   const batchQueue = getMessageBatchQueue(accessToken);
-  const batch = (await batchQueue.add(() =>
-    getBatch(
-      messageIds,
-      "/gmail/v1/users/me/messages",
-      accessToken,
-    ),
-  )) as (MessageWithPayload | BatchError)[];
+  const BATCH_CHUNK_SIZE = 10;
+  const batchedResults: Array<{
+    messageId: string;
+    result: MessageWithPayload | BatchError;
+  }> = [];
+  for (let i = 0; i < messageIds.length; i += BATCH_CHUNK_SIZE) {
+    const chunkIds = messageIds.slice(i, i + BATCH_CHUNK_SIZE);
+    const chunkBatch = (await batchQueue.add(() =>
+      getBatch(
+        chunkIds,
+        "/gmail/v1/users/me/messages",
+        accessToken,
+      ),
+    )) as (MessageWithPayload | BatchError)[];
+
+    for (let index = 0; index < chunkBatch.length; index += 1) {
+      const messageId = chunkIds[index];
+      if (!messageId) continue;
+      batchedResults.push({
+        messageId,
+        result: chunkBatch[index],
+      });
+    }
+  }
 
   const missingMessageIds = new Set<string>();
 
-  if (batch.some((m) => isBatchError(m) && m.error.code === 401)) {
-    logger.error("Error fetching messages", { firstBatchItem: batch?.[0] });
+  if (batchedResults.some((entry) => isBatchError(entry.result) && entry.result.error.code === 401)) {
+    logger.error("Error fetching messages", { firstBatchItem: batchedResults?.[0]?.result });
     throw new Error("Invalid access token");
   }
 
-  const messages = batch
-    .map((message, i) => {
+  const messages = batchedResults
+    .map((entry) => {
+      const message = entry.result;
       if (isBatchError(message)) {
         const { code, message: errorMessage, errors } = message.error;
         const flattenedErrors = Array.isArray(errors)
@@ -196,7 +214,7 @@ export async function getMessagesBatch({
 
         if (!retryable) {
           logger.warn("Skipping message due to non-retryable error", {
-            messageId: messageIds[i],
+            messageId: entry.messageId,
             code,
             reason,
             errorMessage,
@@ -205,11 +223,12 @@ export async function getMessagesBatch({
         }
 
         logger.error("Error fetching message, adding to retry queue", {
+          messageId: entry.messageId,
           code,
           error: errorMessage,
           reason,
         });
-        missingMessageIds.add(messageIds[i]);
+        missingMessageIds.add(entry.messageId);
         return;
       }
 

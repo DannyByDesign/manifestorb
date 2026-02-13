@@ -1,11 +1,8 @@
 /**
- * Unified message processor — skills-only.
+ * Unified message processor for the open-world runtime.
  *
- * This project now routes every user turn through the Skills Runtime. There is
- * no legacy LLM tool-calling loop, no canary/shadow modes, and no fallback path.
- *
- * Important: we still keep a lightweight orchestration preflight to avoid
- * unnecessary skill routing/tool work on purely conversational turns.
+ * Every user turn is routed through the runtime kernel in `features/ai/runtime`.
+ * Legacy skill-router/planner execution paths are removed from the message path.
  */
 
 import type { ModelMessage } from "ai";

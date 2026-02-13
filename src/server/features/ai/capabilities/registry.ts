@@ -1,6 +1,8 @@
 import { z } from "zod";
-import type { CapabilityName } from "@/server/features/ai/skills/contracts/skill-contract";
-import { EXECUTOR_SUPPORTED_CAPABILITIES } from "@/server/features/ai/skills/executor/execute-skill";
+import {
+  capabilityNameSchema,
+  type CapabilityName,
+} from "@/server/features/ai/skills/contracts/skill-contract";
 
 export type CapabilityRiskLevel = "safe" | "caution" | "dangerous";
 export type CapabilityIntentFamily =
@@ -849,15 +851,14 @@ let coverageChecked = false;
 
 export function assertCapabilityRegistryCoverage(): void {
   if (coverageChecked) return;
-  const missing: string[] = [];
-  for (const capability of EXECUTOR_SUPPORTED_CAPABILITIES) {
-    if (!capabilityRegistry.has(capability)) {
-      missing.push(capability);
-    }
-  }
-  if (missing.length > 0) {
+  const declaredCapabilities = new Set(capabilityNameSchema.options);
+  const missing = capabilityNameSchema.options.filter((capability) => !capabilityRegistry.has(capability));
+  const extra = CAPABILITY_DEFINITIONS.map((definition) => definition.id).filter(
+    (capability) => !declaredCapabilities.has(capability),
+  );
+  if (missing.length > 0 || extra.length > 0) {
     throw new Error(
-      `capability_registry_missing_entries:${missing.join(",")}`,
+      `capability_registry_mismatch:missing=${missing.join("|") || "none"};extra=${extra.join("|") || "none"}`,
     );
   }
 

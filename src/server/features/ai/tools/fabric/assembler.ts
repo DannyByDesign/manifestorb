@@ -1,5 +1,5 @@
 import type { ToolSet } from "ai";
-import { invokeCapability } from "@/server/features/ai/planner/invoke-capability";
+import { executeRuntimeCapability } from "@/server/features/ai/runtime/capability-executor";
 import { enforcePolicyForCapability } from "@/server/features/ai/policy/enforcement";
 import { assertProviderCompatibleToolSchema } from "@/server/features/ai/tools/fabric/adapters/provider-schema";
 import type {
@@ -58,6 +58,7 @@ export function assembleRuntimeTools(params: {
       description: definition.description,
       inputSchema: definition.parameters,
       execute: async (rawArgs: unknown) => {
+        const startedAt = Date.now();
         const args =
           rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)
             ? (rawArgs as Record<string, unknown>)
@@ -75,6 +76,7 @@ export function assembleRuntimeTools(params: {
           params.summaries.push({
             capabilityId: definition.capabilityId,
             outcome: "blocked",
+            durationMs: Date.now() - startedAt,
             result,
           });
           return result;
@@ -86,13 +88,14 @@ export function assembleRuntimeTools(params: {
           params.summaries.push({
             capabilityId: definition.capabilityId,
             outcome: "blocked",
+            durationMs: Date.now() - startedAt,
             result,
           });
           return result;
         }
 
         const result = sanitizeResult(
-          await invokeCapability({
+          await executeRuntimeCapability({
             capability: definition.capabilityId,
             args: policy.args,
             capabilities: params.context.capabilities,
@@ -106,6 +109,7 @@ export function assembleRuntimeTools(params: {
         params.summaries.push({
           capabilityId: definition.capabilityId,
           outcome: result.success ? "success" : "failed",
+          durationMs: Date.now() - startedAt,
           result,
         });
 

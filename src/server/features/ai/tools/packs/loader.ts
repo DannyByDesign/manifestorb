@@ -26,13 +26,23 @@ export function loadRuntimeToolDefinitionsFromPacks(): RuntimeToolDefinition[] {
   const enabledPacks = packs.filter((pack) => pack.enabled);
 
   const out: RuntimeToolDefinition[] = [];
-  const seen = new Set<string>();
+  const seenCapabilities = new Set<string>();
+  const seenToolNames = new Map<string, string>();
 
   for (const pack of enabledPacks) {
     for (const capabilityId of pack.capabilities) {
-      if (seen.has(capabilityId)) continue;
-      seen.add(capabilityId);
-      out.push(toRuntimeDefinition(capabilityId));
+      if (seenCapabilities.has(capabilityId)) continue;
+      seenCapabilities.add(capabilityId);
+
+      const definition = toRuntimeDefinition(capabilityId);
+      const existingPack = seenToolNames.get(definition.toolName);
+      if (existingPack) {
+        throw new Error(
+          `duplicate_runtime_tool_name:${definition.toolName}:packs=${existingPack},${pack.id}`,
+        );
+      }
+      seenToolNames.set(definition.toolName, pack.id);
+      out.push(definition);
     }
   }
 

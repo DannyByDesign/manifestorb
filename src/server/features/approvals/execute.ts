@@ -2,15 +2,14 @@ import prisma from "@/server/db/client";
 import { ApprovalService } from "@/features/approvals/service";
 import { createScopedLogger } from "@/server/lib/logger";
 import { executeStructuredApprovalAction } from "@/features/approvals/structured-execution";
-import { resolvedSlotsSchema } from "@/server/features/ai/skills/contracts/slot-types";
 
 const logger = createScopedLogger("approvals/execute");
 
-type SkillExecutionResumePayload = {
-  actionType: "skill_execution_resume";
-  skillId: string;
-  stepId: string;
+type CapabilityExecutePayload = {
+  actionType: "capability_execute";
+  capabilityId: string;
   capability: string;
+  args?: Record<string, unknown>;
   description?: string;
   emailAccountId?: string;
   conversationId?: string;
@@ -19,14 +18,6 @@ type SkillExecutionResumePayload = {
   sourceEmailMessageId?: string;
   sourceEmailThreadId?: string;
   sourceCalendarEventId?: string;
-  resume?: {
-    resolvedSlots?: Record<string, unknown>;
-    executionState?: {
-      lastQueriedEmailIds?: string[];
-      lastQueriedEmailItems?: unknown[];
-      lastQueriedCalendarItems?: unknown[];
-    };
-  };
 };
 
 type RuleActionExecutePayload = {
@@ -68,21 +59,24 @@ function mapCapabilityToApprovalTool(capability: string): "send" | "create" | "m
   return "modify";
 }
 
-function parseSkillExecutionResumePayload(payload: {
+function parseCapabilityExecutePayload(payload: {
   [key: string]: unknown;
-}): SkillExecutionResumePayload | null {
-  if (payload.actionType !== "skill_execution_resume") return null;
+}): CapabilityExecutePayload | null {
+  if (payload.actionType !== "capability_execute") return null;
   if (
-    typeof payload.skillId !== "string" ||
-    payload.skillId.length === 0 ||
-    typeof payload.stepId !== "string" ||
-    payload.stepId.length === 0 ||
-    typeof payload.capability !== "string" ||
-    payload.capability.length === 0
+    typeof payload.capabilityId !== "string" ||
+    payload.capabilityId.length === 0
   ) {
     return null;
   }
-  return payload as unknown as SkillExecutionResumePayload;
+  const normalized = {
+    ...payload,
+    capability:
+      typeof payload.capability === "string" && payload.capability.length > 0
+        ? payload.capability
+        : payload.capabilityId,
+  };
+  return normalized as unknown as CapabilityExecutePayload;
 }
 
 function parseRuleActionExecutePayload(payload: {
@@ -323,37 +317,22 @@ export async function executeApprovalRequest(params: {
       );
     }
 
-    if (payload.actionType === "skill_execution_resume") {
-      const resumePayload = parseSkillExecutionResumePayload(payload as Record<string, unknown>);
-      if (!resumePayload) {
-        throw new Error("Invalid skill approval payload");
+    if (payload.actionType === "capability_execute") {
+      const capabilityPayload = parseCapabilityExecutePayload(payload as Record<string, unknown>);
+      if (!capabilityPayload) {
+        throw new Error("Invalid capability approval payload");
       }
 
       const { resolveEmailAccount } = await import("@/server/lib/user-utils");
-      const emailAccount = resolveEmailAccount(request.user, resumePayload.emailAccountId);
+      const emailAccount = resolveEmailAccount(request.user, capabilityPayload.emailAccountId);
       if (!emailAccount) {
-        throw new Error("No email account found for skill approval execution");
+        throw new Error("No email account found for capability approval execution");
       }
 
-      const { getBaselineSkill } = await import("@/server/features/ai/skills/registry/baseline-registry");
-      const { BASELINE_SKILL_IDS } = await import("@/server/features/ai/skills/baseline/skill-ids");
-      const { executeSkill } = await import("@/server/features/ai/skills/executor/execute-skill");
       const { createCapabilities } = await import("@/server/features/ai/capabilities");
-      const { loadSkillPolicyContext } = await import("@/server/features/ai/skills/policy/context");
-
-      if (!BASELINE_SKILL_IDS.includes(resumePayload.skillId as (typeof BASELINE_SKILL_IDS)[number])) {
-        throw new Error(`Unsupported skill in approval payload: ${resumePayload.skillId}`);
-      }
-      const skill = getBaselineSkill(
-        resumePayload.skillId as (typeof BASELINE_SKILL_IDS)[number],
+      const { executeRuntimeCapability } = await import(
+        "@/server/features/ai/runtime/capability-executor"
       );
-      const resolvedSlotsRaw =
-        resumePayload.resume?.resolvedSlots &&
-        typeof resumePayload.resume.resolvedSlots === "object"
-          ? (resumePayload.resume.resolvedSlots as Record<string, unknown>)
-          : {};
-      const parsedResolvedSlots = resolvedSlotsSchema.safeParse(resolvedSlotsRaw);
-      const resolvedSlots = parsedResolvedSlots.success ? parsedResolvedSlots.data : {};
       const capabilities = await createCapabilities({
         userId: request.userId,
         emailAccountId: emailAccount.id,
@@ -362,58 +341,33 @@ export async function executeApprovalRequest(params: {
           (emailAccount as { account?: { provider?: string } }).account?.provider ??
           "google",
         logger,
-        conversationId: resumePayload.conversationId,
+        conversationId: capabilityPayload.conversationId,
         currentMessage:
-          typeof resumePayload.description === "string"
-            ? resumePayload.description
+          typeof capabilityPayload.description === "string"
+            ? capabilityPayload.description
             : undefined,
-        sourceEmailMessageId: resumePayload.sourceEmailMessageId,
-        sourceEmailThreadId: resumePayload.sourceEmailThreadId,
+        sourceEmailMessageId: capabilityPayload.sourceEmailMessageId,
+        sourceEmailThreadId: capabilityPayload.sourceEmailThreadId,
       });
-      const policyContext = await loadSkillPolicyContext(request.userId);
 
-      const resumedExecution = await executeSkill({
-        skill,
-        slots: {
-          resolved: resolvedSlots,
-          missingRequired: [],
-          ambiguous: [],
-        },
+      const capabilityArgs =
+        capabilityPayload.args &&
+        typeof capabilityPayload.args === "object" &&
+        !Array.isArray(capabilityPayload.args)
+          ? (capabilityPayload.args as Record<string, unknown>)
+          : {};
+
+      const executionResult = await executeRuntimeCapability({
+        capability: capabilityPayload.capabilityId as Parameters<
+          typeof executeRuntimeCapability
+        >[0]["capability"],
+        args: capabilityArgs,
         capabilities,
-        runtime: {
-          logger,
-          emailAccount: {
-            id: emailAccount.id,
-            email: emailAccount.email,
-            userId: request.userId,
-          },
-          policyContext,
-          approvalContext: {
-            provider: request.provider,
-            conversationId: resumePayload.conversationId,
-            threadId: resumePayload.threadId,
-            messageId: resumePayload.messageId,
-            sourceEmailMessageId: resumePayload.sourceEmailMessageId,
-            sourceEmailThreadId: resumePayload.sourceEmailThreadId,
-            sourceCalendarEventId: resumePayload.sourceCalendarEventId,
-          },
-        },
-        resume: {
-          approvedStepId: resumePayload.stepId,
-          bypassPolicyForStepId: resumePayload.stepId,
-          executeOnlyApprovedStep: true,
-          initialState: resumePayload.resume?.executionState,
-        },
       });
 
-      if (
-        resumedExecution.status !== "success" &&
-        resumedExecution.status !== "partial"
-      ) {
+      if (!executionResult.success) {
         throw new Error(
-          `Approved action execution failed: ${
-            resumedExecution.failureReason ?? resumedExecution.responseText
-          }`,
+          `Approved action execution failed: ${executionResult.error ?? executionResult.message ?? "capability execution failed"}`,
         );
       }
 
@@ -421,15 +375,10 @@ export async function executeApprovalRequest(params: {
         decisionRecord,
         executionResult: {
           success: true,
-          message: resumedExecution.responseText,
-          data: {
-            status: resumedExecution.status,
-            stepsExecuted: resumedExecution.stepsExecuted,
-            capability: resumePayload.capability,
-            stepId: resumePayload.stepId,
-          },
+          message: executionResult.message ?? "Approved action executed.",
+          data: executionResult.data,
         },
-        toolName: mapCapabilityToApprovalTool(resumePayload.capability),
+        toolName: mapCapabilityToApprovalTool(capabilityPayload.capabilityId),
         request,
       };
     }

@@ -22,7 +22,7 @@ function asObject(value: unknown): Record<string, unknown> {
     : {};
 }
 
-export async function invokeCapability(params: {
+export async function executeRuntimeCapability(params: {
   capability: CapabilityName;
   args: Record<string, unknown>;
   capabilities: SkillCapabilities;
@@ -257,7 +257,7 @@ export async function invokeCapability(params: {
       return {
         success: false,
         error: `unsupported_capability:${capability}`,
-        message: `Capability ${capability} is not supported by planner executor.`,
+        message: `Capability ${capability} is not supported by runtime executor.`,
       };
   }
 }

@@ -53,6 +53,21 @@ export async function createCalendarProvider(
   const scopedLogger = createScopedLogger("tools/calendar");
   const providers = await createCalendarEventProviders(account.id, logger);
   const providerByType = new Map(providers.map((provider) => [provider.provider, provider]));
+  const mapWithConcurrency = async <T, U>(
+    items: T[],
+    concurrency: number,
+    mapper: (item: T) => Promise<U>,
+  ): Promise<U[]> => {
+    if (items.length === 0) return [];
+    const safeConcurrency = Math.max(1, concurrency);
+    const out: U[] = [];
+    for (let i = 0; i < items.length; i += safeConcurrency) {
+      const chunk = items.slice(i, i + safeConcurrency);
+      const mapped = await Promise.all(chunk.map((item) => mapper(item)));
+      out.push(...mapped);
+    }
+    return out;
+  };
 
   const resolveCalendarTarget = async (calendarId?: string) => {
     if (calendarId) {
@@ -177,8 +192,7 @@ export async function createCalendarProvider(
           return [];
         }
 
-        const results = await Promise.all(
-          calendars.map((calendar) => {
+        const results = await mapWithConcurrency(calendars, 3, (calendar) => {
             const provider = providerByType.get(
               calendar.connection.provider as "google" | "microsoft",
             );
@@ -200,8 +214,7 @@ export async function createCalendarProvider(
               maxResults: 250,
               calendarId: calendar.calendarId,
             });
-          }),
-        );
+          });
         events = results.flat();
       } else {
         const calendars = (await prisma.calendar.findMany({
@@ -219,8 +232,7 @@ export async function createCalendarProvider(
         })) ?? [];
 
         if (calendars.length > 0) {
-          const results = await Promise.all(
-            calendars.map((calendar) => {
+          const results = await mapWithConcurrency(calendars, 3, (calendar) => {
               const provider = providerByType.get(
                 calendar.connection.provider as "google" | "microsoft",
               );
@@ -242,12 +254,10 @@ export async function createCalendarProvider(
                 maxResults: 250,
                 calendarId: calendar.calendarId,
               });
-            }),
-          );
+            });
           events = results.flat();
         } else {
-          const results = await Promise.all(
-            providers.map((provider) => {
+          const results = await mapWithConcurrency(providers, 3, (provider) => {
               if (attendeeEmail) {
                 return provider.fetchEventsWithAttendee({
                   attendeeEmail,
@@ -261,8 +271,7 @@ export async function createCalendarProvider(
                 timeMax: range.end,
                 maxResults: 250,
               });
-            }),
-          );
+            });
           events = results.flat();
         }
       }

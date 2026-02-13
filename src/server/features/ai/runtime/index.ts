@@ -8,6 +8,7 @@ import { hydrateRuntimeContext } from "@/server/features/ai/runtime/context/hydr
 export async function runOpenWorldRuntimeTurn(
   input: OpenWorldTurnInput,
 ): Promise<OpenWorldTurnResult> {
+  const startedAt = Date.now();
   const precheck = runRuntimePrecheck(input);
   if (!precheck.ok) {
     return {
@@ -27,8 +28,24 @@ export async function runOpenWorldRuntimeTurn(
     message: hydrated.message,
   });
   const execution = await runRuntimeLoop(session);
-  return finalizeRuntimeResult({
+  const result = finalizeRuntimeResult({
     session,
     text: execution.text,
   });
+  const durationMs = Date.now() - startedAt;
+  const successes = result.toolSummaries.filter((summary) => summary.outcome === "success").length;
+  const blocked = result.toolSummaries.filter((summary) => summary.outcome === "blocked").length;
+  const failed = result.toolSummaries.filter((summary) => summary.outcome === "failed").length;
+  input.logger.info("openworld.turn.completed", {
+    userId: input.userId,
+    provider: input.provider,
+    durationMs,
+    stepCount: result.toolSummaries.length,
+    successes,
+    blocked,
+    failed,
+    approvalsCount: result.approvals.length,
+    interactivePayloadsCount: result.interactivePayloads.length,
+  });
+  return result;
 }

@@ -53,6 +53,148 @@ function summarizeToolOutcomes(session: RuntimeSession): string {
   return `Executed ${successful.length} capability step${successful.length === 1 ? "" : "s"}:\n${lines.join("\n")}`;
 }
 
+function compactValue(value: unknown, depth = 0): unknown {
+  if (depth > 2) {
+    return typeof value === "object" ? "[truncated]" : value;
+  }
+  if (Array.isArray(value)) {
+    const limited = value.slice(0, 5).map((entry) => compactValue(entry, depth + 1));
+    if (value.length > 5) {
+      limited.push({ truncated: true, omitted: value.length - 5 });
+    }
+    return limited;
+  }
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+  const entries = Object.entries(value as Record<string, unknown>).slice(0, 10);
+  const out: Record<string, unknown> = {};
+  for (const [key, entry] of entries) {
+    out[key] = compactValue(entry, depth + 1);
+  }
+  return out;
+}
+
+function buildToolEvidence(session: RuntimeSession): string {
+  const successful = session.summaries.filter((summary) => summary.result.success);
+  const payload = successful.slice(0, 4).map((summary) => ({
+    capabilityId: summary.capabilityId,
+    message: summary.result.message ?? null,
+    data: compactValue(summary.result.data),
+  }));
+  return JSON.stringify(payload);
+}
+
+function extractListFromResultData(data: unknown): unknown[] {
+  if (Array.isArray(data)) return data;
+  if (!data || typeof data !== "object") return [];
+  const record = data as Record<string, unknown>;
+  if (Array.isArray(record.items)) return record.items;
+  if (Array.isArray(record.messages)) return record.messages;
+  if (Array.isArray(record.events)) return record.events;
+  return [];
+}
+
+function summarizeListItem(item: unknown): string {
+  if (!item || typeof item !== "object") {
+    return String(item);
+  }
+  const record = item as Record<string, unknown>;
+  const headers =
+    record.headers && typeof record.headers === "object" && !Array.isArray(record.headers)
+      ? (record.headers as Record<string, unknown>)
+      : {};
+  const subject =
+    typeof record.subject === "string"
+      ? record.subject
+      : typeof headers.subject === "string"
+        ? headers.subject
+        : undefined;
+  const from =
+    typeof record.from === "string"
+      ? record.from
+      : typeof headers.from === "string"
+        ? headers.from
+        : undefined;
+  const when =
+    typeof record.date === "string"
+      ? record.date
+      : typeof headers.date === "string"
+        ? headers.date
+        : typeof record.start === "string"
+          ? record.start
+          : undefined;
+
+  const parts = [
+    subject ? `subject "${subject}"` : null,
+    from ? `from ${from}` : null,
+    when ? `at ${when}` : null,
+  ].filter((part): part is string => Boolean(part));
+
+  if (parts.length > 0) {
+    return parts.join(", ");
+  }
+
+  try {
+    return JSON.stringify(compactValue(item));
+  } catch {
+    return "details unavailable";
+  }
+}
+
+function deriveDeterministicListAnswer(session: RuntimeSession): string | null {
+  const request = session.input.message.toLowerCase();
+  const wantsFirst = /\b(first|1st|top)\b/u.test(request);
+  const wantsLast = /\b(last|latest|most recent)\b/u.test(request);
+  if (!wantsFirst && !wantsLast) return null;
+
+  const successful = session.summaries.filter((summary) => summary.result.success);
+  for (const summary of successful) {
+    const items = extractListFromResultData(summary.result.data);
+    if (items.length === 0) continue;
+    const selected = wantsLast ? items[items.length - 1] : items[0];
+    const ordinal = wantsLast ? "latest" : "first";
+    const details = summarizeListItem(selected);
+    return `The ${ordinal} item I found is ${details}.`;
+  }
+  return null;
+}
+
+async function synthesizeFinalAnswer(session: RuntimeSession): Promise<string | null> {
+  const successful = session.summaries.filter((summary) => summary.result.success);
+  if (successful.length === 0) return null;
+
+  const finalizeGenerate = createGenerateText({
+    emailAccount: {
+      id: session.input.emailAccountId,
+      email: session.input.email,
+      userId: session.input.userId,
+    },
+    label: "openworld-runtime-finalize-answer",
+    modelOptions: getModel("economy"),
+  });
+
+  const evidence = buildToolEvidence(session);
+  const response = await finalizeGenerate({
+    model: getModel("economy").model,
+    system: [
+      "You are Amodel.",
+      "Convert executed tool evidence into a direct answer to the user.",
+      "Use only the provided evidence. Do not invent details.",
+      "If evidence is partial or missing, clearly say what is missing in one sentence.",
+      "Keep answers concise and concrete.",
+    ].join("\n"),
+    prompt: [
+      `User request: ${session.input.message}`,
+      `Tool evidence JSON: ${evidence}`,
+      "Answer:",
+    ].join("\n\n"),
+  });
+
+  const text = response.text?.trim();
+  return text && text.length > 0 ? text : null;
+}
+
 export async function runRuntimeAttempt(session: RuntimeSession): Promise<{ text: string }> {
   const generate = createGenerateText({
     emailAccount: {
@@ -75,6 +217,20 @@ export async function runRuntimeAttempt(session: RuntimeSession): Promise<{ text
   const text = result.text?.trim();
   if (text && text.length > 0) {
     return { text };
+  }
+
+  const deterministic = deriveDeterministicListAnswer(session);
+  if (deterministic) {
+    return { text: deterministic };
+  }
+
+  try {
+    const synthesized = await synthesizeFinalAnswer(session);
+    if (synthesized) {
+      return { text: synthesized };
+    }
+  } catch (error) {
+    session.input.logger.warn("Runtime response synthesis failed", { error });
   }
 
   return { text: summarizeToolOutcomes(session) };

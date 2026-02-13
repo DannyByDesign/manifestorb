@@ -26,5 +26,6 @@ export interface ToolExecutionArtifacts {
 export interface ToolExecutionSummary {
   capabilityId: CapabilityName;
   outcome: "success" | "partial" | "blocked" | "failed";
+  durationMs: number;
   result: ToolResult;
 }
