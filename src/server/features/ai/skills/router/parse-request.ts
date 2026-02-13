@@ -8,6 +8,9 @@ import {
 import { createGenerateObject } from "@/server/lib/llms";
 import { getModel } from "@/server/lib/llms/model";
 
+// Gemini-compatible stand-in for open object payloads.
+const looseObjectValueSchema = z.object({ _placeholder: z.string().optional() }).passthrough();
+
 const parserOutputSchema = z.object({
   intents: z.array(
     z.enum([
@@ -44,7 +47,7 @@ const parserOutputSchema = z.object({
               z.number(),
               z.boolean(),
               z.array(z.string()),
-              z.record(z.string(), z.unknown()),
+              looseObjectValueSchema,
             ]),
             confidence: z.number().min(0).max(1),
           }),
@@ -59,7 +62,7 @@ const parserOutputSchema = z.object({
               z.number(),
               z.boolean(),
               z.array(z.string()),
-              z.record(z.string(), z.unknown()),
+              looseObjectValueSchema,
             ]),
           }),
         )

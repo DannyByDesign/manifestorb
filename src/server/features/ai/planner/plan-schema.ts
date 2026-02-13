@@ -6,11 +6,14 @@ import type { PlannerPlan } from "@/server/features/ai/planner/types";
 
 export const plannerRiskSchema = z.enum(["safe", "caution", "dangerous"]);
 
+// Preserve flexible args while keeping object schema provider-compatible.
+const plannerArgsSchema = z.object({ _placeholder: z.string().optional() }).passthrough();
+
 export const plannerStepSchema = z
   .object({
     id: z.string().min(1),
     capability: capabilityNameSchema,
-    args: z.record(z.string(), z.unknown()),
+    args: plannerArgsSchema,
     dependsOn: z.array(z.string().min(1)).optional(),
     postcondition: z.string().min(1).optional(),
     risk: plannerRiskSchema.optional(),

@@ -16,6 +16,8 @@ export interface PlannerContinuationState {
   missingFields?: string[];
 }
 
+const PLAN_BUILD_FAILURE_MESSAGE = "I couldn't build an execution plan from that yet.";
+
 export async function runCapabilityPlannerTurn(params: {
   provider: string;
   userId: string;
@@ -131,6 +133,7 @@ export async function runCapabilityPlannerTurn(params: {
   let selectedReason = initialSelection.reason;
   let plan: PlannerPlan | null = null;
   let validationIssueMessages: string[] = [];
+  let planBuildFailed = false;
 
   for (const selection of selectionAttempts) {
     selectedCandidates = selection.candidates;
@@ -153,7 +156,8 @@ export async function runCapabilityPlannerTurn(params: {
         error,
         selectionReason: selection.reason,
       });
-      validationIssueMessages = ["I couldn't build an execution plan from that yet."];
+      validationIssueMessages = [PLAN_BUILD_FAILURE_MESSAGE];
+      planBuildFailed = true;
       continue;
     }
 
@@ -206,6 +210,7 @@ export async function runCapabilityPlannerTurn(params: {
   }
 
   if (!plan) {
+    const missingFields = planBuildFailed ? ["plan_build_failed"] : undefined;
     return {
       kind: "clarify",
       text:
@@ -214,6 +219,7 @@ export async function runCapabilityPlannerTurn(params: {
       continuation: {
         baseMessage: plannerMessage,
         candidateCapabilities: selectedCandidates,
+        missingFields,
       },
     };
   }

@@ -16,12 +16,8 @@ export const preflightDecisionSchema = z.object({
   mode: orchestrationModeSchema,
   needsTools: z.boolean(),
   needsInternalData: z.boolean(),
-  contextTier: z
-    .number()
-    .int()
-    .min(0)
-    .max(3)
-    .transform((value) => (value <= 0 ? 0 : value === 1 ? 1 : value === 2 ? 2 : 3) as 0 | 1 | 2 | 3),
+  // Keep this JSON-schema friendly for providers that reject transform().
+  contextTier: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]),
   allowProactiveNudges: z.boolean(),
   confidence: z.number().min(0).max(1),
   resourceHints: z
