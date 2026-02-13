@@ -42,9 +42,14 @@ Main synced: yes (`origin/main`)
   - Legacy closed planner stack deleted.
   - Runtime executes tool-first via LLM + runtime capability executor.
   - Approval replay executes capability directly (no legacy skill resume).
+  - Added explicit runtime planner module package:
+    - `src/server/features/ai/runtime/planner/{builder.ts,validator.ts,types.ts,index.ts}`
+  - Runtime loop now builds a pre-execution plan and logs planner telemetry:
+    - `src/server/features/ai/runtime/loop.ts`
+  - Runtime attempt prompt now consumes the validated plan:
+    - `src/server/features/ai/runtime/attempt.ts`
 - Remaining:
-  - Add explicit modular runtime planner package under `src/server/features/ai/runtime/planner/*`
-  - Add deterministic pre-execution plan validator + one-pass repair loop.
+  - Add confidence-gated branch behavior (execute direct deterministic plan for ultra-high-confidence single-step reads).
 
 ### Epic 5 - Rule Plane as Mandatory PDP
 - Status: `completed (core)`
@@ -114,8 +119,8 @@ Main synced: yes (`origin/main`)
 - `2e397477d` Replace legacy skill runtime with open-world tool runtime kernel
 
 ## Active Next Queue (Do Not Skip)
-1. Implement runtime planner package (`runtime/planner/*`) and wire into runtime.
-2. Add deterministic plan validation + single repair pass for malformed tool-step arguments.
-3. Continue removal/migration of remaining `@/features/rules/*` imports and legacy rule endpoints.
-4. Split inbox/calendar provider wrappers into reusable domain primitives and shared throttling utilities.
-5. Add explicit runtime metric schema + alert-ready telemetry fields.
+1. Continue removal/migration of remaining `@/features/rules/*` imports and legacy rule endpoints.
+2. Split inbox/calendar provider wrappers into reusable domain primitives and shared throttling utilities.
+3. Add explicit runtime metric schema + alert-ready telemetry fields.
+4. Add confidence-gated direct execution path for simple single-step read requests.
+5. Finalize operational cutover checklist for full runtime-only path signoff.
