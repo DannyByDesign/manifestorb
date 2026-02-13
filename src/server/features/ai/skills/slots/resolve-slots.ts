@@ -438,9 +438,14 @@ export async function resolveSlots(
     sourceEmailThreadId?: string;
     sourceEmailMessageId?: string;
     sourceCalendarEventId?: string;
+    seedResolvedSlots?: ResolvedSlots;
   },
 ): Promise<SlotResolutionResult> {
-  const resolved: ResolvedSlots = {};
+  const seeded = env.seedResolvedSlots
+    ? resolvedSlotsSchema.safeParse(env.seedResolvedSlots)
+    : null;
+  const resolved: ResolvedSlots =
+    seeded && seeded.success ? { ...seeded.data } : {};
   for (const slot of [...skill.required_slots, ...skill.optional_slots]) {
     const value = resolveSlotValue(slot, message);
     if (value !== undefined) {

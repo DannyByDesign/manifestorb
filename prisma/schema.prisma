@@ -104,6 +104,7 @@ model User {
 
   approvalRequests  ApprovalRequest[]
   approvalDecisions ApprovalDecision[]
+  pendingSkillRunStates PendingSkillRunState[]
   inAppNotifications InAppNotification[]
 
   conversations        Conversation[]
@@ -200,6 +201,7 @@ model EmailAccount {
   calendarEventShadows CalendarEventShadow[]
   calendarEventPolicies CalendarEventPolicy[]
   calendarPlanRuns      CalendarPlanRun[]
+  pendingSkillRunStates PendingSkillRunState[]
   @@index([userId])
   @@index([lastSummaryEmailAt])
 }
@@ -1584,6 +1586,36 @@ model ApprovalDecision {
 
   @@index([approvalRequestId])
   @@index([decidedByUserId])
+}
+
+model PendingSkillRunState {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emailAccountId String
+  emailAccount   EmailAccount @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
+
+  provider       String
+  conversationId String?
+  channelId      String?
+  threadId       String?
+  status         String   @default("PENDING") // PENDING | RESOLVED | EXPIRED | CANCELED
+  skillId        String
+  correlationId  String   @unique
+
+  resolvedSlots  Json
+  missingSlots   String[]
+  ambiguousSlots String[]
+  clarificationPrompt String?
+  expiresAt      DateTime
+
+  @@index([userId, status, expiresAt])
+  @@index([userId, emailAccountId, status, expiresAt])
+  @@index([userId, provider, channelId, threadId, status, expiresAt])
+  @@index([conversationId, status, expiresAt])
 }
 
 // -- RLM Context Models --

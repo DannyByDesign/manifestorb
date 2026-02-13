@@ -11,6 +11,7 @@ import { emitSkillTelemetry } from "@/server/features/ai/skills/telemetry/emit";
 import { resolveDefaultCalendarTimeZone } from "@/server/features/ai/tools/calendar-time";
 import { loadSkillPolicyContext } from "@/server/features/ai/skills/policy/context";
 import type { SkillId } from "@/server/features/ai/skills/baseline/skill-ids";
+import type { ResolvedSlots } from "@/server/features/ai/skills/contracts/slot-types";
 
 type ExecuteOutcome =
   | {
@@ -21,6 +22,13 @@ type ExecuteOutcome =
       status: "blocked";
       diagnosticsCode?: string;
       diagnosticsCategory?: string;
+      continuation: {
+        skillId: SkillId;
+        resolvedSlots: ResolvedSlots;
+        missingSlots: string[];
+        ambiguousSlots: string[];
+        clarificationPrompt?: string;
+      };
     }
   | {
       kind: "executed";
@@ -31,6 +39,14 @@ type ExecuteOutcome =
       diagnosticsCode?: string;
       diagnosticsCategory?: string;
     };
+
+export interface SkillContinuationState {
+  skillId: SkillId;
+  resolvedSlots: ResolvedSlots;
+  missingSlots: string[];
+  ambiguousSlots: string[];
+  clarificationPrompt?: string;
+}
 
 let capabilityCoverageChecked = false;
 
@@ -121,8 +137,10 @@ export async function runBaselineSkillTurn(params: {
   sourceEmailMessageId?: string;
   sourceEmailThreadId?: string;
   sourceCalendarEventId?: string;
+  forcedSkillId?: SkillId;
+  seedResolvedSlots?: ResolvedSlots;
 }): Promise<
-  | { kind: "clarify"; text: string }
+  | { kind: "clarify"; text: string; continuation?: SkillContinuationState }
   | {
       kind: "executed";
       text: string;
@@ -161,11 +179,23 @@ export async function runBaselineSkillTurn(params: {
     sourceEmailThreadId: params.sourceEmailThreadId,
   });
 
-  const route = await routeSkill({
-    message: params.message,
-    logger: params.logger,
-    emailAccount: { id: params.emailAccountId, email: params.email, userId: params.userId },
-  });
+  let route: Awaited<ReturnType<typeof routeSkill>>;
+  if (params.forcedSkillId) {
+    route = {
+      skillId: params.forcedSkillId,
+      confidence: 1,
+      reason: "pending_state_resume",
+      routedFamilies: [],
+      unresolvedEntities: [],
+      semanticParseConfidence: 1,
+    };
+  } else {
+    route = await routeSkill({
+      message: params.message,
+      logger: params.logger,
+      emailAccount: { id: params.emailAccountId, email: params.email, userId: params.userId },
+    });
+  }
   emitRouteTelemetry({
     logger: params.logger,
     requestId,
@@ -174,7 +204,10 @@ export async function runBaselineSkillTurn(params: {
   });
 
   if (!route.skillId) {
-    return { kind: "clarify", text: route.clarificationPrompt ?? "What would you like to do?" };
+    return {
+      kind: "clarify",
+      text: route.clarificationPrompt ?? "What would you like to do?",
+    };
   }
 
   if (route.skillId === "multi_action_inbox_calendar") {
@@ -197,10 +230,15 @@ export async function runBaselineSkillTurn(params: {
       sourceEmailMessageId: params.sourceEmailMessageId,
       sourceEmailThreadId: params.sourceEmailThreadId,
       sourceCalendarEventId: params.sourceCalendarEventId,
+      seedResolvedSlots: params.seedResolvedSlots,
     });
 
     if (composite.kind === "clarify") {
-      return { kind: "clarify", text: composite.text };
+      return {
+        kind: "clarify",
+        text: composite.text,
+        continuation: composite.continuation,
+      };
     }
 
     const parsed = await resolveSlots(getBaselineSkill("multi_action_inbox_calendar"), params.message, {
@@ -210,6 +248,7 @@ export async function runBaselineSkillTurn(params: {
       sourceEmailMessageId: params.sourceEmailMessageId,
       sourceEmailThreadId: params.sourceEmailThreadId,
       sourceCalendarEventId: params.sourceCalendarEventId,
+      seedResolvedSlots: params.seedResolvedSlots,
     });
     const actions = Array.isArray(parsed.resolved.composite_actions)
       ? (parsed.resolved.composite_actions as string[]).filter((part) => part.trim().length > 0)
@@ -327,9 +366,16 @@ export async function runBaselineSkillTurn(params: {
     sourceEmailMessageId: params.sourceEmailMessageId,
     sourceEmailThreadId: params.sourceEmailThreadId,
     sourceCalendarEventId: params.sourceCalendarEventId,
+    seedResolvedSlots: params.seedResolvedSlots,
   });
 
-  if (outcome.kind === "clarify") return { kind: "clarify", text: outcome.text };
+  if (outcome.kind === "clarify") {
+    return {
+      kind: "clarify",
+      text: outcome.text,
+      continuation: outcome.continuation,
+    };
+  }
 
   return {
     kind: "executed",
@@ -366,6 +412,7 @@ async function executeSingleSkill(params: {
   sourceEmailMessageId?: string;
   sourceEmailThreadId?: string;
   sourceCalendarEventId?: string;
+  seedResolvedSlots?: ResolvedSlots;
 }): Promise<ExecuteOutcome> {
   const skill = getBaselineSkill(params.routeSkillId);
   const slots = await resolveSlots(skill, params.message, {
@@ -375,6 +422,7 @@ async function executeSingleSkill(params: {
     sourceEmailMessageId: params.sourceEmailMessageId,
     sourceEmailThreadId: params.sourceEmailThreadId,
     sourceCalendarEventId: params.sourceCalendarEventId,
+    seedResolvedSlots: params.seedResolvedSlots,
   });
 
   emitSkillTelemetry(params.logger, {
@@ -398,6 +446,15 @@ async function executeSingleSkill(params: {
       status: "blocked",
       diagnosticsCode: "missing_required_slots",
       diagnosticsCategory: "missing_context",
+      continuation: {
+        skillId: params.routeSkillId,
+        resolvedSlots: slots.resolved,
+        missingSlots: slots.missingRequired,
+        ambiguousSlots: slots.ambiguous,
+        ...(slots.clarificationPrompt
+          ? { clarificationPrompt: slots.clarificationPrompt }
+          : {}),
+      },
     };
   }
 

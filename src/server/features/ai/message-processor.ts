@@ -16,6 +16,11 @@ import { PrivacyService } from "@/features/privacy/service";
 import { MemoryRecordingService } from "@/features/memory/service";
 import type { Logger } from "@/server/lib/logger";
 import { runBaselineSkillTurn } from "@/features/ai/skills/runtime";
+import {
+  getActivePendingSkillRunState,
+  markPendingSkillRunStateResolved,
+  savePendingSkillRunState,
+} from "@/features/ai/skills/pending-run-state";
 import { runOrchestrationPreflight } from "@/server/features/ai/orchestration/preflight";
 import { createGenerateText } from "@/server/lib/llms";
 import { getModel } from "@/server/lib/llms/model";
@@ -813,6 +818,18 @@ export async function processMessage(
   const messageContent =
     input.message ?? extractLatestUserMessage(input.messages ?? []);
 
+  let sourceEmailContextCache: SourceEmailContext | null = null;
+  const getSourceEmailContext = async (): Promise<SourceEmailContext> => {
+    if (sourceEmailContextCache) return sourceEmailContextCache;
+    sourceEmailContextCache = await resolveSourceEmailContext({
+      userId: user.id,
+      emailAccountId: emailAccount.id,
+      providerMessageId: context.messageId,
+      providerThreadId: context.threadId,
+    });
+    return sourceEmailContextCache;
+  };
+
   const resolvedProvider =
     (emailAccount as Record<string, unknown>).provider as string | undefined ??
     emailAccount.account?.provider;
@@ -851,6 +868,93 @@ export async function processMessage(
     return { text: pendingDecisionResult.text, approvals: [], interactivePayloads: [] };
   }
 
+  const pendingSkillStateContext = {
+    provider: context.provider,
+    conversationId,
+    channelId: context.channelId,
+    threadId: context.threadId,
+  };
+
+  const pendingSkillState = await getActivePendingSkillRunState({
+    userId: user.id,
+    emailAccountId: emailAccount.id,
+    context: pendingSkillStateContext,
+  });
+
+  if (pendingSkillState) {
+    const sourceEmailContext = await getSourceEmailContext();
+    const continuationResult = await runBaselineSkillTurn({
+      provider: context.provider,
+      userId: user.id,
+      emailAccountId: emailAccount.id,
+      email: emailAccount.email,
+      providerName: resolvedProvider,
+      message: messageContent,
+      logger,
+      conversationId,
+      channelId: context.channelId,
+      threadId: context.threadId,
+      messageId: context.messageId,
+      teamId: context.teamId,
+      sourceEmailMessageId: sourceEmailContext.messageId,
+      sourceEmailThreadId: sourceEmailContext.threadId,
+      sourceCalendarEventId: sourceEmailContext.eventId,
+      forcedSkillId: pendingSkillState.skillId,
+      seedResolvedSlots: pendingSkillState.resolvedSlots,
+    });
+
+    if (continuationResult.kind === "clarify" && continuationResult.continuation) {
+      await savePendingSkillRunState({
+        userId: user.id,
+        emailAccountId: emailAccount.id,
+        context: pendingSkillStateContext,
+        skillId: continuationResult.continuation.skillId,
+        resolvedSlots: continuationResult.continuation.resolvedSlots,
+        missingSlots: continuationResult.continuation.missingSlots,
+        ambiguousSlots: continuationResult.continuation.ambiguousSlots,
+        clarificationPrompt: continuationResult.continuation.clarificationPrompt,
+        existingStateId: pendingSkillState.id,
+      });
+    } else {
+      await markPendingSkillRunStateResolved({ stateId: pendingSkillState.id });
+    }
+
+    const continuationText = continuationResult.text ?? "";
+    const continuationInteractivePayloads =
+      continuationResult.kind === "executed"
+        ? continuationResult.interactivePayloads
+        : [];
+    const continuationApprovals =
+      continuationResult.kind === "executed"
+        ? continuationResult.approvals
+        : [];
+
+    await persistAssistantMessage(
+      user.id,
+      conversationId,
+      continuationText,
+      context.provider,
+      logger,
+      context.channelId,
+      context.threadId,
+      context.messageId ?? context.threadId ?? messageContent,
+      continuationInteractivePayloads.length > 0 || continuationApprovals.length > 0
+        ? {
+            interactivePayloads: continuationInteractivePayloads,
+            approvals: continuationApprovals,
+          }
+        : undefined,
+    );
+
+    triggerMemoryRecording(user.id, emailAccount.email, logger);
+
+    return {
+      text: continuationText,
+      approvals: continuationApprovals,
+      interactivePayloads: continuationInteractivePayloads,
+    };
+  }
+
   // Orchestration preflight: avoid the skills runtime (router/slots/executor)
   // for conversational turns to reduce latency and LLM/tool costs.
   const preflight = await runOrchestrationPreflight({
@@ -885,12 +989,7 @@ export async function processMessage(
     return { text, approvals: [], interactivePayloads: [] };
   }
 
-  const sourceEmailContext = await resolveSourceEmailContext({
-    userId: user.id,
-    emailAccountId: emailAccount.id,
-    providerMessageId: context.messageId,
-    providerThreadId: context.threadId,
-  });
+  const sourceEmailContext = await getSourceEmailContext();
 
   const skillsResult = await runBaselineSkillTurn({
     provider: context.provider,
@@ -909,6 +1008,19 @@ export async function processMessage(
     sourceEmailThreadId: sourceEmailContext.threadId,
     sourceCalendarEventId: sourceEmailContext.eventId,
   });
+
+  if (skillsResult.kind === "clarify" && skillsResult.continuation) {
+    await savePendingSkillRunState({
+      userId: user.id,
+      emailAccountId: emailAccount.id,
+      context: pendingSkillStateContext,
+      skillId: skillsResult.continuation.skillId,
+      resolvedSlots: skillsResult.continuation.resolvedSlots,
+      missingSlots: skillsResult.continuation.missingSlots,
+      ambiguousSlots: skillsResult.continuation.ambiguousSlots,
+      clarificationPrompt: skillsResult.continuation.clarificationPrompt,
+    });
+  }
 
   const text = skillsResult.text ?? "";
   const interactivePayloads =
