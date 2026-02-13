@@ -17,6 +17,7 @@ type ExecuteOutcome =
       kind: "clarify";
       text: string;
       interactivePayloads: unknown[];
+      approvals: Array<{ id: string; requestPayload?: unknown }>;
       status: "blocked";
       diagnosticsCode?: string;
       diagnosticsCategory?: string;
@@ -25,6 +26,7 @@ type ExecuteOutcome =
       kind: "executed";
       text: string;
       interactivePayloads: unknown[];
+      approvals: Array<{ id: string; requestPayload?: unknown }>;
       status: "success" | "partial" | "blocked" | "failed";
       diagnosticsCode?: string;
       diagnosticsCategory?: string;
@@ -112,6 +114,10 @@ export async function runBaselineSkillTurn(params: {
   message: string;
   logger: Logger;
   conversationId?: string;
+  channelId?: string;
+  threadId?: string;
+  messageId?: string;
+  teamId?: string;
   sourceEmailMessageId?: string;
   sourceEmailThreadId?: string;
   sourceCalendarEventId?: string;
@@ -121,6 +127,7 @@ export async function runBaselineSkillTurn(params: {
       kind: "executed";
       text: string;
       interactivePayloads: unknown[];
+      approvals: Array<{ id: string; requestPayload?: unknown }>;
       debug: {
         skillId: string;
         status: string;
@@ -182,6 +189,11 @@ export async function runBaselineSkillTurn(params: {
       timeZone,
       capabilities,
       policyContext,
+      conversationId: params.conversationId,
+      channelId: params.channelId,
+      threadId: params.threadId,
+      messageId: params.messageId,
+      teamId: params.teamId,
       sourceEmailMessageId: params.sourceEmailMessageId,
       sourceEmailThreadId: params.sourceEmailThreadId,
       sourceCalendarEventId: params.sourceCalendarEventId,
@@ -210,7 +222,13 @@ export async function runBaselineSkillTurn(params: {
       };
     }
 
-    const actionResults: Array<{ action: string; status: string; text: string; payloads: unknown[] }> = [];
+    const actionResults: Array<{
+      action: string;
+      status: string;
+      text: string;
+      payloads: unknown[];
+      approvals: Array<{ id: string; requestPayload?: unknown }>;
+    }> = [];
     for (let i = 0; i < Math.min(actions.length, 6); i += 1) {
       const actionText = actions[i]!;
       const subRequestId = `${requestId}-a${i + 1}`;
@@ -234,6 +252,7 @@ export async function runBaselineSkillTurn(params: {
             actionRoute.clarificationPrompt ??
             "I couldn't safely map this sub-action. Please make it more specific.",
           payloads: [],
+          approvals: [],
         });
         continue;
       }
@@ -249,6 +268,11 @@ export async function runBaselineSkillTurn(params: {
         timeZone,
         capabilities,
         policyContext,
+        conversationId: params.conversationId,
+        channelId: params.channelId,
+        threadId: params.threadId,
+        messageId: params.messageId,
+        teamId: params.teamId,
         sourceEmailMessageId: params.sourceEmailMessageId,
         sourceEmailThreadId: params.sourceEmailThreadId,
         sourceCalendarEventId: params.sourceCalendarEventId,
@@ -259,6 +283,7 @@ export async function runBaselineSkillTurn(params: {
         status: actionOutcome.status,
         text: actionOutcome.text,
         payloads: actionOutcome.interactivePayloads,
+        approvals: actionOutcome.approvals,
       });
     }
 
@@ -269,6 +294,7 @@ export async function runBaselineSkillTurn(params: {
         : "blocked";
 
     const interactivePayloads = actionResults.flatMap((r) => r.payloads);
+    const approvals = actionResults.flatMap((r) => r.approvals);
     const lines = actionResults.map(
       (r, idx) => `${idx + 1}. ${r.action}\n   - ${r.text}`,
     );
@@ -277,6 +303,7 @@ export async function runBaselineSkillTurn(params: {
       kind: "executed",
       text: lines.join("\n"),
       interactivePayloads,
+      approvals,
       debug: { skillId: route.skillId, status: finalStatus },
     };
   }
@@ -292,6 +319,11 @@ export async function runBaselineSkillTurn(params: {
     timeZone,
     capabilities,
     policyContext,
+    conversationId: params.conversationId,
+    channelId: params.channelId,
+    threadId: params.threadId,
+    messageId: params.messageId,
+    teamId: params.teamId,
     sourceEmailMessageId: params.sourceEmailMessageId,
     sourceEmailThreadId: params.sourceEmailThreadId,
     sourceCalendarEventId: params.sourceCalendarEventId,
@@ -303,6 +335,7 @@ export async function runBaselineSkillTurn(params: {
     kind: "executed",
     text: outcome.text,
     interactivePayloads: outcome.interactivePayloads,
+    approvals: outcome.approvals,
     debug: {
       skillId: route.skillId,
       status: outcome.status,
@@ -325,6 +358,11 @@ async function executeSingleSkill(params: {
   timeZone: string;
   capabilities: Awaited<ReturnType<typeof createCapabilities>>;
   policyContext: Awaited<ReturnType<typeof loadSkillPolicyContext>>;
+  conversationId?: string;
+  channelId?: string;
+  threadId?: string;
+  messageId?: string;
+  teamId?: string;
   sourceEmailMessageId?: string;
   sourceEmailThreadId?: string;
   sourceCalendarEventId?: string;
@@ -356,6 +394,7 @@ async function executeSingleSkill(params: {
       kind: "clarify",
       text: slots.clarificationPrompt ?? "I need one more detail to continue.",
       interactivePayloads: [],
+      approvals: [],
       status: "blocked",
       diagnosticsCode: "missing_required_slots",
       diagnosticsCategory: "missing_context",
@@ -370,6 +409,17 @@ async function executeSingleSkill(params: {
       logger: params.logger,
       emailAccount: params.emailAccount,
       policyContext: params.policyContext,
+      approvalContext: {
+        provider: params.provider,
+        conversationId: params.conversationId,
+        channelId: params.channelId,
+        threadId: params.threadId,
+        messageId: params.messageId,
+        teamId: params.teamId,
+        sourceEmailMessageId: params.sourceEmailMessageId,
+        sourceEmailThreadId: params.sourceEmailThreadId,
+        sourceCalendarEventId: params.sourceCalendarEventId,
+      },
     },
   });
 
@@ -401,6 +451,7 @@ async function executeSingleSkill(params: {
     kind: "executed",
     text: result.responseText,
     interactivePayloads: result.interactivePayloads,
+    approvals: Array.isArray(result.approvals) ? result.approvals : [],
     status: result.status,
     diagnosticsCode: result.diagnostics.code,
     diagnosticsCategory: result.diagnostics.category,

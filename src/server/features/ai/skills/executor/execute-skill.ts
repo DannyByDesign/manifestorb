@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import type { SkillContract, CapabilityName } from "@/server/features/ai/skills/contracts/skill-contract";
 import type { SlotResolutionResult } from "@/server/features/ai/skills/slots/resolve-slots";
 import type { SkillCapabilities } from "@/server/features/ai/capabilities";
@@ -14,6 +15,29 @@ import { evaluateApprovalRequirement } from "@/server/features/approvals/rules";
 import { resolvePolicyConflict } from "@/server/features/ai/skills/policy/conflict-resolver";
 import type { SkillPolicyContext } from "@/server/features/ai/skills/policy/context";
 import { createCapabilityIdempotencyKey } from "@/server/features/ai/capabilities/idempotency";
+import { ApprovalService, getApprovalExpiry } from "@/server/features/approvals/service";
+import { createApprovalActionToken } from "@/server/features/approvals/action-token";
+import prisma from "@/server/db/client";
+import { env } from "@/env";
+import type { CreateApprovalParams } from "@/server/features/approvals/types";
+
+interface SkillApprovalRecord {
+  id: string;
+  requestPayload: Record<string, unknown>;
+}
+
+interface SkillResumeState {
+  lastQueriedEmailIds?: string[];
+  lastQueriedEmailItems?: unknown[];
+  lastQueriedCalendarItems?: unknown[];
+}
+
+interface SkillResumeOptions {
+  approvedStepId: string;
+  bypassPolicyForStepId: string;
+  executeOnlyApprovedStep?: boolean;
+  initialState?: SkillResumeState;
+}
 
 export interface SkillExecutionResult {
   status: "success" | "partial" | "blocked" | "failed";
@@ -39,6 +63,7 @@ export interface SkillExecutionResult {
     category: "missing_context" | "policy" | "transient" | "provider" | "unsupported" | "unknown";
   };
   failureReason?: string;
+  approvals?: SkillApprovalRecord[];
 }
 
 export const EXECUTOR_SUPPORTED_CAPABILITIES: ReadonlySet<CapabilityName> = new Set<
@@ -131,6 +156,67 @@ function renderTemplate(skill: SkillContract, status: SkillExecutionResult["stat
 
 function isFailure(result: ToolResult): boolean {
   return result.success !== true;
+}
+
+function deriveStepIdFromPolicyPrecheckNode(nodeId: string): string {
+  const prefix = "policy_precheck_";
+  return nodeId.startsWith(prefix) ? nodeId.slice(prefix.length) : nodeId;
+}
+
+function buildApprovalActionUrl(params: {
+  approvalId: string;
+  action: "approve" | "deny";
+}): string {
+  const token = createApprovalActionToken({
+    approvalId: params.approvalId,
+    action: params.action,
+  });
+  const path =
+    params.action === "approve"
+      ? `/approvals/${params.approvalId}`
+      : `/approvals/${params.approvalId}/deny`;
+  return `${env.NEXT_PUBLIC_BASE_URL}${path}?token=${token}`;
+}
+
+function buildSkillApprovalInteractivePayload(params: {
+  approvalId: string;
+  summary: string;
+}): {
+  type: "approval_request";
+  approvalId: string;
+  summary: string;
+  actions: Array<{
+    label: string;
+    style: "primary" | "danger";
+    value: string;
+    url?: string;
+  }>;
+} {
+  let approveUrl: string | undefined;
+  let denyUrl: string | undefined;
+
+  try {
+    approveUrl = buildApprovalActionUrl({
+      approvalId: params.approvalId,
+      action: "approve",
+    });
+    denyUrl = buildApprovalActionUrl({
+      approvalId: params.approvalId,
+      action: "deny",
+    });
+  } catch {
+    // Fall back to value-only actions when tokenized URL generation is unavailable.
+  }
+
+  return {
+    type: "approval_request",
+    approvalId: params.approvalId,
+    summary: params.summary,
+    actions: [
+      { label: "Approve", style: "primary", value: "approve", ...(approveUrl ? { url: approveUrl } : {}) },
+      { label: "Deny", style: "danger", value: "deny", ...(denyUrl ? { url: denyUrl } : {}) },
+    ],
+  };
 }
 
 function mapCapabilityToApprovalContext(params: {
@@ -447,7 +533,19 @@ export async function executeSkill(params: {
     logger: Logger;
     emailAccount: { id: string; email: string; userId: string };
     policyContext?: SkillPolicyContext;
+    approvalContext?: {
+      provider?: string;
+      conversationId?: string;
+      channelId?: string;
+      threadId?: string;
+      messageId?: string;
+      teamId?: string;
+      sourceEmailMessageId?: string;
+      sourceEmailThreadId?: string;
+      sourceCalendarEventId?: string;
+    };
   };
+  resume?: SkillResumeOptions;
 }): Promise<SkillExecutionResult> {
   const { skill, slots, capabilities, runtime } = params;
 
@@ -474,9 +572,10 @@ export async function executeSkill(params: {
   let stepsExecuted = 0;
   const toolResults: Record<string, ToolResult> = {};
   const interactivePayloads: unknown[] = [];
-  let lastQueriedEmailIds: string[] = [];
-  let lastQueriedEmailItems: unknown[] = [];
-  let lastQueriedCalendarItems: unknown[] = [];
+  const approvals: SkillApprovalRecord[] = [];
+  let lastQueriedEmailIds: string[] = params.resume?.initialState?.lastQueriedEmailIds ?? [];
+  let lastQueriedEmailItems: unknown[] = params.resume?.initialState?.lastQueriedEmailItems ?? [];
+  let lastQueriedCalendarItems: unknown[] = params.resume?.initialState?.lastQueriedCalendarItems ?? [];
   let lastCapabilityStepId = "";
   const mutationResultCache = new Map<string, ToolResult>();
   const actionEvents: SkillExecutionResult["actionEvents"] = [];
@@ -485,6 +584,9 @@ export async function executeSkill(params: {
   const compiledPlan = compileSkillPlan({ skill, slotResolution: slots });
   const mutatingPolicyByCapability: Partial<Record<CapabilityName, Awaited<ReturnType<typeof evaluateApprovalRequirement>>>> =
     {};
+  const resumeStepId = params.resume?.approvedStepId;
+  let resumeActive = !resumeStepId;
+  let resumeStepFound = !resumeStepId;
 
   const runWithTiming = async (
     stepId: string,
@@ -527,10 +629,30 @@ export async function executeSkill(params: {
 
   try {
     for (const node of compiledPlan.nodes) {
+      if (!resumeActive) {
+        if (node.type === "policy_precheck" && node.id === `policy_precheck_${resumeStepId}`) {
+          continue;
+        }
+        if (node.type === "capability_call" && node.id === resumeStepId) {
+          resumeActive = true;
+          resumeStepFound = true;
+        } else {
+          continue;
+        }
+      }
+
       if (node.type === "conditional_skip") continue;
       if (node.type === "transform") continue;
       if (node.type === "conditional") continue;
       if (node.type === "policy_precheck") {
+        const precheckStepId = deriveStepIdFromPolicyPrecheckNode(node.id);
+        if (
+          params.resume?.bypassPolicyForStepId &&
+          precheckStepId === params.resume.bypassPolicyForStepId
+        ) {
+          continue;
+        }
+
         const policyContext = mapCapabilityToApprovalContext({
           capability: node.capability,
           slots: slots.resolved as Record<string, unknown>,
@@ -545,6 +667,76 @@ export async function executeSkill(params: {
           const conflict = resolvePolicyConflict({
             capability: node.capability,
             approval,
+          });
+          const blockedStepId = deriveStepIdFromPolicyPrecheckNode(node.id);
+          const approvalPayload: CreateApprovalParams["requestPayload"] = {
+            actionType: "skill_execution_resume",
+            description: conflict.userMessage,
+            skillId: skill.id,
+            stepId: blockedStepId,
+            capability: node.capability,
+            tool: policyContext.toolName,
+            args: policyContext.args,
+            emailAccountId: runtime.emailAccount.id,
+            conversationId: runtime.approvalContext?.conversationId,
+            threadId: runtime.approvalContext?.threadId,
+            messageId: runtime.approvalContext?.messageId,
+            sourceEmailMessageId: runtime.approvalContext?.sourceEmailMessageId,
+            sourceEmailThreadId: runtime.approvalContext?.sourceEmailThreadId,
+            sourceCalendarEventId: runtime.approvalContext?.sourceCalendarEventId,
+            resume: {
+              resolvedSlots: slots.resolved as Record<string, unknown>,
+              executionState: {
+                lastQueriedEmailIds,
+              },
+            },
+          };
+          const idempotencyFingerprint = createHash("sha256")
+            .update(
+              JSON.stringify({
+                userId: runtime.emailAccount.userId,
+                skillId: skill.id,
+                stepId: blockedStepId,
+                capability: node.capability,
+                resume: approvalPayload.resume,
+              }),
+            )
+            .digest("hex");
+          const approvalService = new ApprovalService(prisma);
+          const expiresInSeconds = await getApprovalExpiry(runtime.emailAccount.userId);
+          const approvalRequest = await approvalService.createRequest({
+            userId: runtime.emailAccount.userId,
+            provider: runtime.approvalContext?.provider ?? "web",
+            externalContext: {
+              conversationId: runtime.approvalContext?.conversationId,
+              channelId: runtime.approvalContext?.channelId,
+              threadId: runtime.approvalContext?.threadId,
+              messageId: runtime.approvalContext?.messageId,
+              workspaceId: runtime.approvalContext?.teamId,
+            },
+            requestPayload: approvalPayload,
+            idempotencyKey: `skill-approval:${runtime.emailAccount.userId}:${idempotencyFingerprint}`,
+            expiresInSeconds,
+          });
+          approvals.push({
+            id: approvalRequest.id,
+            requestPayload: approvalPayload,
+          });
+          interactivePayloads.push(
+            buildSkillApprovalInteractivePayload({
+              approvalId: approvalRequest.id,
+              summary: conflict.suggestedAlternative
+                ? `${conflict.userMessage} ${conflict.suggestedAlternative}`
+                : conflict.userMessage,
+            }),
+          );
+          actionEvents.push({
+            stepId: blockedStepId,
+            capability: node.capability,
+            success: false,
+            itemCount: 0,
+            policyDecision: "blocked",
+            errorCode: "approval_required",
           });
           policyBlockCount += 1;
           return {
@@ -563,6 +755,7 @@ export async function executeSkill(params: {
             repairAttemptCount,
             diagnostics: { code: conflict.reasonCode, category: "policy" },
             failureReason: "approval_required",
+            approvals,
           };
         }
         continue;
@@ -1418,6 +1611,65 @@ export async function executeSkill(params: {
         itemCount: result?.meta?.itemCount ?? 0,
         policyDecision: policyDecision?.requiresApproval ? "blocked" : "allowed",
       });
+      if (params.resume?.executeOnlyApprovedStep && step.id === resumeStepId) {
+        break;
+      }
+    }
+
+    if (resumeStepId && !resumeStepFound) {
+      return {
+        status: "failed",
+        responseText: "I couldn't resume that approved action because its execution step was not found.",
+        postconditionsPassed: false,
+        stepsExecuted,
+        stepGraphSize: compiledPlan.nodes.length,
+        toolChain,
+        stepDurationsMs,
+        interactivePayloads,
+        actionEvents,
+        policyBlockCount,
+        repairAttemptCount,
+        diagnostics: { code: "approved_step_not_found", category: "unsupported" },
+        failureReason: "approved_step_not_found",
+      };
+    }
+
+    if (params.resume?.executeOnlyApprovedStep && resumeStepId) {
+      const resumedResult = toolResults[resumeStepId];
+      if (!resumedResult || isFailure(resumedResult)) {
+        return {
+          status: "failed",
+          responseText:
+            resumedResult?.message ??
+            resumedResult?.error ??
+            "I couldn't complete the approved action.",
+          postconditionsPassed: false,
+          stepsExecuted,
+          stepGraphSize: compiledPlan.nodes.length,
+          toolChain,
+          stepDurationsMs,
+          interactivePayloads,
+          actionEvents,
+          policyBlockCount,
+          repairAttemptCount,
+          diagnostics: { code: resumedResult?.error ?? "approved_execution_failed", category: "provider" },
+          failureReason: resumedResult?.error ?? "approved_execution_failed",
+        };
+      }
+      return {
+        status: "success",
+        responseText: resumedResult.message ?? renderTemplate(skill, "success"),
+        postconditionsPassed: true,
+        stepsExecuted,
+        stepGraphSize: compiledPlan.nodes.length,
+        toolChain,
+        stepDurationsMs,
+        interactivePayloads,
+        actionEvents,
+        policyBlockCount,
+        repairAttemptCount,
+        diagnostics: { code: "ok", category: "unknown" },
+      };
     }
 
     const postconditionsPassed = validateSkillPostconditions({ skill, toolResults });

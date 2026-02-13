@@ -901,6 +901,10 @@ export async function processMessage(
     message: messageContent,
     logger,
     conversationId,
+    channelId: context.channelId,
+    threadId: context.threadId,
+    messageId: context.messageId,
+    teamId: context.teamId,
     sourceEmailMessageId: sourceEmailContext.messageId,
     sourceEmailThreadId: sourceEmailContext.threadId,
     sourceCalendarEventId: sourceEmailContext.eventId,
@@ -909,6 +913,7 @@ export async function processMessage(
   const text = skillsResult.text ?? "";
   const interactivePayloads =
     skillsResult.kind === "executed" ? skillsResult.interactivePayloads : [];
+  const approvals = skillsResult.kind === "executed" ? skillsResult.approvals : [];
 
   // Persist assistant message for all providers, respecting PrivacyService.
   await persistAssistantMessage(
@@ -920,11 +925,12 @@ export async function processMessage(
     context.channelId,
     context.threadId,
     context.messageId ?? context.threadId ?? messageContent,
-    // For now: store interactive payloads only (no free-form tool call logs).
-    interactivePayloads.length > 0 ? { interactivePayloads } : undefined,
+    interactivePayloads.length > 0 || approvals.length > 0
+      ? { interactivePayloads, approvals }
+      : undefined,
   );
 
   triggerMemoryRecording(user.id, emailAccount.email, logger);
 
-  return { text, approvals: [], interactivePayloads };
+  return { text, approvals, interactivePayloads };
 }
