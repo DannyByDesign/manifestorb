@@ -25,9 +25,10 @@ import {
   formatDateTimeForUser,
   parseDateBoundInTimeZone,
 } from "@/features/ai/tools/timezone";
-import { ApprovalService } from "@/features/approvals/service";
+import { ApprovalService, getApprovalExpiry } from "@/features/approvals/service";
 import { createInAppNotification } from "@/features/notifications/create";
 import { applyTaskPreferencePayloadsForUser } from "@/features/preferences/service";
+import { evaluatePolicyDecision } from "@/server/features/policy-plane/pdp";
 
 const MODULE = "ai-actions";
 
@@ -40,7 +41,7 @@ type ActionFunction<T extends Partial<Omit<ActionItem, "type">>> = (options: {
   emailAccountId: string;
   executedRule: ExecutedRule;
   logger: Logger;
-}) => Promise<any>;
+}) => Promise<unknown>;
 
 export const runActionFunction = async (options: {
   client: EmailProvider;
@@ -51,6 +52,8 @@ export const runActionFunction = async (options: {
   emailAccountId: string;
   executedRule: ExecutedRule;
   logger: Logger;
+  policyBypass?: boolean;
+  policySource?: "skills" | "planner" | "automation" | "scheduled";
 }) => {
   const { action, userEmail, logger } = options;
   const log = logger.with({ module: MODULE });
@@ -68,6 +71,94 @@ export const runActionFunction = async (options: {
     args,
     logger: log,
   };
+
+  if (!options.policyBypass) {
+    const policyContext = buildAutomationActionPolicyContext({
+      action,
+      email: options.email,
+    });
+    if (policyContext) {
+      const decision = await evaluatePolicyDecision({
+        userId: options.userId,
+        toolName: policyContext.toolName,
+        args: policyContext.args,
+        context: { source: options.policySource ?? "automation" },
+      });
+
+      if (decision.kind === "require_approval" && decision.approval?.requiresApproval) {
+        const approvalService = new ApprovalService(prisma);
+        const expiresInSeconds = await getApprovalExpiry(options.userId);
+        const idempotencyKey = [
+          "automation-action",
+          options.userId,
+          options.executedRule.id,
+          action.id,
+        ].join(":");
+
+        const approvalRequest = await approvalService.createRequest({
+          userId: options.userId,
+          provider: "web",
+          externalContext: {
+            source: "automation",
+            threadId: options.email.threadId,
+            messageId: options.email.id,
+          },
+          requestPayload: {
+            actionType: "rule_action_execute",
+            description:
+              decision.approval.matchedRule?.name ??
+              `Automation action ${action.type} requires approval`,
+            tool: policyContext.toolName,
+            args: policyContext.args,
+            executedRuleId: options.executedRule.id,
+            actionId: action.id,
+            emailAccountId: options.emailAccountId,
+            messageId: options.email.id,
+            threadId: options.email.threadId,
+          },
+          idempotencyKey,
+          expiresInSeconds,
+        });
+
+        try {
+          await createInAppNotification({
+            userId: options.userId,
+            title: "Automation action requires approval",
+            body: `Amodel blocked automation action ${action.type} until you approve it.`,
+            type: "approval",
+            dedupeKey: idempotencyKey,
+            metadata: {
+              approvalRequestId: approvalRequest.id,
+              executedRuleId: options.executedRule.id,
+              actionId: action.id,
+              actionType: action.type,
+              messageId: options.email.id,
+              threadId: options.email.threadId,
+            },
+          });
+        } catch (notificationError) {
+          log.warn("Failed to create in-app notification for automation approval", {
+            error: notificationError,
+            approvalRequestId: approvalRequest.id,
+          });
+        }
+
+        return {
+          approvalRequested: true,
+          approvalRequestId: approvalRequest.id,
+          blockedReason: decision.message,
+        };
+      }
+
+      if (decision.kind === "block") {
+        return {
+          blockedByPolicy: true,
+          blockedReason: decision.message,
+        };
+      }
+    }
+  }
+
   switch (type) {
     case ActionType.ARCHIVE:
       return archive(opts);
@@ -115,6 +206,105 @@ export const runActionFunction = async (options: {
     }
   }
 };
+
+function parseCommaSeparatedEmails(value: string | null | undefined): string[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
+function buildAutomationActionPolicyContext(params: {
+  action: ActionItem;
+  email: EmailForAction;
+}): { toolName: string; args: Record<string, unknown> } | null {
+  const { action, email } = params;
+  const recipientEmails = [
+    ...parseCommaSeparatedEmails(action.to),
+    ...parseCommaSeparatedEmails(action.cc),
+    ...parseCommaSeparatedEmails(action.bcc),
+  ];
+
+  const baseArgs = {
+    resource: "email",
+    ids: [email.threadId],
+  };
+
+  switch (action.type) {
+    case ActionType.REPLY:
+    case ActionType.SEND_EMAIL:
+    case ActionType.FORWARD:
+    case ActionType.NOTIFY_SENDER:
+      return {
+        toolName: "send",
+        args: {
+          resource: "email",
+          to: recipientEmails,
+          operation: "send_email",
+        },
+      };
+    case ActionType.DRAFT_EMAIL:
+      return {
+        toolName: "create",
+        args: {
+          resource: "email",
+          to: recipientEmails,
+          operation: "create_email_draft",
+        },
+      };
+    case ActionType.CREATE_CALENDAR_EVENT:
+      return {
+        toolName: "create",
+        args: {
+          resource: "calendar",
+          to: recipientEmails,
+          operation: "create_calendar_event",
+        },
+      };
+    case ActionType.CREATE_TASK:
+      return {
+        toolName: "create",
+        args: {
+          resource: "task",
+          operation: "create_task",
+        },
+      };
+    case ActionType.ARCHIVE:
+      return { toolName: "modify", args: { ...baseArgs, operation: "archive_email" } };
+    case ActionType.MARK_SPAM:
+      return { toolName: "modify", args: { ...baseArgs, operation: "trash_email" } };
+    case ActionType.MARK_READ:
+    case ActionType.LABEL:
+    case ActionType.MOVE_FOLDER:
+      return { toolName: "modify", args: { ...baseArgs, operation: "update_email" } };
+    case ActionType.SET_TASK_PREFERENCES:
+      return {
+        toolName: "modify",
+        args: {
+          resource: "preferences",
+          operation: "update_preferences",
+        },
+      };
+    case ActionType.CALL_WEBHOOK:
+      return {
+        toolName: "modify",
+        args: {
+          resource: "workflow",
+          operation: "run_workflow",
+        },
+      };
+    case ActionType.SCHEDULE_MEETING:
+    case ActionType.DIGEST:
+    case ActionType.NOTIFY_USER:
+      return null;
+    default:
+      return {
+        toolName: "modify",
+        args: { ...baseArgs, operation: "update_email" },
+      };
+  }
+}
 
 const archive: ActionFunction<Record<string, unknown>> = async ({
   client,
@@ -500,7 +690,7 @@ export const notify_user: ActionFunction<Record<string, unknown>> = async ({
   }
 };
 
-const set_task_preferences: ActionFunction<{ payload?: any }> = async ({
+const set_task_preferences: ActionFunction<{ payload?: unknown }> = async ({
   userId,
   args,
   logger,
@@ -518,7 +708,7 @@ const set_task_preferences: ActionFunction<{ payload?: any }> = async ({
   });
 };
 
-const create_task: ActionFunction<{ payload?: any }> = async ({
+const create_task: ActionFunction<{ payload?: unknown }> = async ({
   userId,
   emailAccountId,
   args,
@@ -559,7 +749,7 @@ const create_task: ActionFunction<{ payload?: any }> = async ({
   return task;
 };
 
-const create_calendar_event: ActionFunction<{ payload?: any }> = async ({
+const create_calendar_event: ActionFunction<{ payload?: unknown }> = async ({
   userId,
   emailAccountId,
   args,

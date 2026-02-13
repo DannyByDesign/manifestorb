@@ -29,6 +29,18 @@ type SkillExecutionResumePayload = {
   };
 };
 
+type RuleActionExecutePayload = {
+  actionType: "rule_action_execute";
+  description?: string;
+  tool?: string;
+  args?: Record<string, unknown>;
+  executedRuleId?: string;
+  actionId?: string;
+  emailAccountId?: string;
+  messageId?: string;
+  threadId?: string;
+};
+
 function mapCapabilityToApprovalTool(capability: string): "send" | "create" | "modify" | "delete" {
   if (
     capability === "email.sendNow" ||
@@ -71,6 +83,21 @@ function parseSkillExecutionResumePayload(payload: {
     return null;
   }
   return payload as unknown as SkillExecutionResumePayload;
+}
+
+function parseRuleActionExecutePayload(payload: {
+  [key: string]: unknown;
+}): RuleActionExecutePayload | null {
+  if (payload.actionType !== "rule_action_execute") return null;
+  if (
+    typeof payload.executedRuleId !== "string" ||
+    payload.executedRuleId.length === 0 ||
+    typeof payload.actionId !== "string" ||
+    payload.actionId.length === 0
+  ) {
+    return null;
+  }
+  return payload as unknown as RuleActionExecutePayload;
 }
 
 export async function executeApprovalRequest(params: {
@@ -222,6 +249,69 @@ export async function executeApprovalRequest(params: {
       throw new Error(
         "Schedule proposals require an explicit slot selection; use the schedule-proposal resolve endpoint.",
       );
+    }
+
+    if (payload.actionType === "rule_action_execute") {
+      const ruleActionPayload = parseRuleActionExecutePayload(payload as Record<string, unknown>);
+      if (!ruleActionPayload) {
+        throw new Error("Invalid rule_action_execute approval payload");
+      }
+
+      const { resolveEmailAccount } = await import("@/server/lib/user-utils");
+      const emailAccount = resolveEmailAccount(request.user, ruleActionPayload.emailAccountId);
+      if (!emailAccount) {
+        throw new Error("No email account found for rule action approval execution");
+      }
+
+      const executedRule = await prisma.executedRule.findUnique({
+        where: { id: ruleActionPayload.executedRuleId },
+        include: { actionItems: true },
+      });
+      if (!executedRule) {
+        throw new Error("Executed rule not found for rule action approval execution");
+      }
+
+      const actionToRun = executedRule.actionItems.find(
+        (action) => action.id === ruleActionPayload.actionId,
+      );
+      if (!actionToRun) {
+        throw new Error("Rule action not found for approval execution");
+      }
+
+      const { createEmailProvider } = await import("@/features/email/provider");
+      const { runActionFunction } = await import("@/features/ai/actions");
+      const provider =
+        (emailAccount as { account?: { provider?: string } }).account?.provider ?? "google";
+      const emailProvider = await createEmailProvider({
+        emailAccountId: emailAccount.id,
+        provider,
+        logger,
+      });
+
+      const messageId = ruleActionPayload.messageId ?? executedRule.messageId;
+      const message = await emailProvider.getMessage(messageId);
+      const executionResult = await runActionFunction({
+        client: emailProvider,
+        email: message,
+        action: actionToRun,
+        userEmail: emailAccount.email,
+        userId: request.userId,
+        emailAccountId: emailAccount.id,
+        executedRule,
+        logger,
+        policyBypass: true,
+      });
+
+      return {
+        decisionRecord,
+        executionResult: {
+          success: true,
+          message: "Approved automation action executed.",
+          data: executionResult,
+        },
+        toolName: typeof ruleActionPayload.tool === "string" ? ruleActionPayload.tool : "modify",
+        request,
+      };
     }
 
     if (payload.actionType === "ambiguous_time") {

@@ -33,8 +33,8 @@
 
 ## Phase 3 PRs
 
-- [ ] PR3.1: Route rule automation action dispatch through PDP.
-- [ ] PR3.2: Route scheduled action execution through PDP.
+- [x] PR3.1: Route rule automation action dispatch through PDP.
+- [x] PR3.2: Route scheduled action execution through PDP.
 - [ ] PR3.3: Remove direct mutation paths that bypass PDP.
 
 ## Phase 4 PRs

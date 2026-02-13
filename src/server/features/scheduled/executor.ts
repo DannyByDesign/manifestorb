@@ -210,6 +210,7 @@ async function executeDelayedAction({
     emailAccountId: emailAccount.id,
     executedRule,
     logger: log,
+    policySource: "scheduled",
   });
 
   log.info("Successfully executed delayed action", {
