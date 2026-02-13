@@ -461,6 +461,11 @@ function deriveOperation(
   resource: string | undefined,
   args: Record<string, unknown> | undefined,
 ): string {
+  const explicitOperation = normalizeApprovalOperationKey(
+    typeof args?.operation === "string" ? args.operation : undefined,
+  );
+  if (explicitOperation) return explicitOperation;
+
   const changes = isPlainObject(args?.changes) ? args.changes : undefined;
   const data = isPlainObject(args?.data) ? args.data : undefined;
 

@@ -118,12 +118,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
               : `Found ${slots.length} available slots.`,
         };
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return {
-          success: false,
-          error: message,
-          message: "I couldn't compute availability right now.",
-        };
+        return calendarFailure(error, "I couldn't compute availability right now.");
       }
     },
 

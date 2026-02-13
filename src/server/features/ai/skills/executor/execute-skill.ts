@@ -13,6 +13,7 @@ import { executeWithRepair } from "@/server/features/ai/skills/executor/repair";
 import { evaluateApprovalRequirement } from "@/server/features/approvals/rules";
 import { resolvePolicyConflict } from "@/server/features/ai/skills/policy/conflict-resolver";
 import type { SkillPolicyContext } from "@/server/features/ai/skills/policy/context";
+import { createCapabilityIdempotencyKey } from "@/server/features/ai/capabilities/idempotency";
 
 export interface SkillExecutionResult {
   status: "success" | "partial" | "blocked" | "failed";
@@ -40,6 +41,80 @@ export interface SkillExecutionResult {
   failureReason?: string;
 }
 
+export const EXECUTOR_SUPPORTED_CAPABILITIES: ReadonlySet<CapabilityName> = new Set<
+  CapabilityName
+>([
+  "email.searchThreads",
+  "email.searchThreadsAdvanced",
+  "email.searchSent",
+  "email.searchInbox",
+  "email.getThreadMessages",
+  "email.getMessagesBatch",
+  "email.getLatestMessage",
+  "email.batchArchive",
+  "email.batchTrash",
+  "email.markReadUnread",
+  "email.applyLabels",
+  "email.removeLabels",
+  "email.moveThread",
+  "email.markSpam",
+  "email.unsubscribeSender",
+  "email.blockSender",
+  "email.bulkSenderArchive",
+  "email.bulkSenderTrash",
+  "email.bulkSenderLabel",
+  "email.snoozeThread",
+  "email.listFilters",
+  "email.createFilter",
+  "email.deleteFilter",
+  "email.listDrafts",
+  "email.getDraft",
+  "email.createDraft",
+  "email.updateDraft",
+  "email.deleteDraft",
+  "email.sendDraft",
+  "email.sendNow",
+  "email.reply",
+  "email.forward",
+  "email.scheduleSend",
+  "calendar.findAvailability",
+  "calendar.listEvents",
+  "calendar.searchEventsByAttendee",
+  "calendar.getEvent",
+  "calendar.createEvent",
+  "calendar.updateEvent",
+  "calendar.deleteEvent",
+  "calendar.manageAttendees",
+  "calendar.updateRecurringMode",
+  "calendar.rescheduleEvent",
+  "calendar.setWorkingHours",
+  "calendar.setWorkingLocation",
+  "calendar.setOutOfOffice",
+  "calendar.createFocusBlock",
+  "calendar.createBookingSchedule",
+  "planner.composeDayPlan",
+  "planner.compileMultiActionPlan",
+]);
+
+const READ_ONLY_CAPABILITIES: ReadonlySet<CapabilityName> = new Set<CapabilityName>([
+  "email.searchThreads",
+  "email.searchThreadsAdvanced",
+  "email.searchSent",
+  "email.searchInbox",
+  "email.getThreadMessages",
+  "email.getMessagesBatch",
+  "email.getLatestMessage",
+  "email.listFilters",
+  "email.listDrafts",
+  "email.getDraft",
+  "calendar.findAvailability",
+  "calendar.listEvents",
+  "calendar.searchEventsByAttendee",
+  "calendar.getEvent",
+  "planner.composeDayPlan",
+  "planner.compileMultiActionPlan",
+]);
+
 function enforceAllowed(skill: SkillContract, capability: CapabilityName): void {
   if (!skill.allowed_tools.includes(capability)) {
     throw new Error(`allowed_tools_violation: ${capability} not allowed for ${skill.id}`);
@@ -58,10 +133,50 @@ function isFailure(result: ToolResult): boolean {
   return result.success !== true;
 }
 
-function mapCapabilityToApprovalContext(capability: CapabilityName): {
+function mapCapabilityToApprovalContext(params: {
+  capability: CapabilityName;
+  slots: Record<string, unknown>;
+}): {
   toolName: string;
   args: Record<string, unknown>;
 } {
+  const { capability, slots } = params;
+  const threadIds = Array.isArray(slots.thread_ids)
+    ? (slots.thread_ids as string[])
+    : typeof slots.thread_id === "string"
+      ? [slots.thread_id]
+      : [];
+  const eventIds =
+    typeof slots.event_id === "string" ? [slots.event_id] : [];
+  const recipientEmails = [
+    ...(Array.isArray(slots.recipient)
+      ? (slots.recipient as unknown[]).filter(
+          (value): value is string => typeof value === "string",
+        )
+      : []),
+    ...getParticipantEmails(slots.participants),
+    ...(typeof slots.attendee_email === "string" ? [slots.attendee_email] : []),
+  ];
+
+  const commonIds = threadIds.length > 0 ? threadIds : eventIds;
+  const operationByCapability: Partial<Record<CapabilityName, string>> = {
+    "email.batchTrash": "delete_email",
+    "calendar.deleteEvent": "delete_calendar_event",
+    "email.sendNow": "send_email",
+    "email.sendDraft": "send_email",
+    "email.reply": "send_email",
+    "email.forward": "send_email",
+    "calendar.createEvent": "create_calendar_event",
+    "email.createDraft": "create_email_draft",
+    "email.unsubscribeSender": "unsubscribe_sender",
+    "email.bulkSenderTrash": "bulk_trash_senders",
+    "email.bulkSenderArchive": "bulk_archive_senders",
+    "email.bulkSenderLabel": "bulk_label_senders",
+    "email.batchArchive": "archive_email",
+    "calendar.rescheduleEvent": "update_calendar_event",
+  };
+  const operation = operationByCapability[capability];
+
   if (
     capability.startsWith("email.delete") ||
     capability === "email.batchTrash" ||
@@ -69,7 +184,11 @@ function mapCapabilityToApprovalContext(capability: CapabilityName): {
   ) {
     return {
       toolName: "delete",
-      args: { resource: capability.startsWith("calendar") ? "calendar" : "email" },
+      args: {
+        resource: capability.startsWith("calendar") ? "calendar" : "email",
+        ids: commonIds,
+        ...(operation ? { operation } : {}),
+      },
     };
   }
   if (
@@ -80,7 +199,11 @@ function mapCapabilityToApprovalContext(capability: CapabilityName): {
   ) {
     return {
       toolName: "send",
-      args: { resource: "email" },
+      args: {
+        resource: "email",
+        to: recipientEmails,
+        ...(operation ? { operation } : {}),
+      },
     };
   }
   if (
@@ -89,12 +212,98 @@ function mapCapabilityToApprovalContext(capability: CapabilityName): {
   ) {
     return {
       toolName: "create",
-      args: { resource: capability.startsWith("calendar") ? "calendar" : "email" },
+      args: {
+        resource: capability.startsWith("calendar") ? "calendar" : "email",
+        ...(recipientEmails.length > 0 ? { to: recipientEmails } : {}),
+        ...(operation ? { operation } : {}),
+      },
+    };
+  }
+  if (capability === "email.unsubscribeSender") {
+    return {
+      toolName: "modify",
+      args: {
+        resource: "email",
+        ids: threadIds,
+        changes: { unsubscribe: true },
+        ...(operation ? { operation } : {}),
+      },
+    };
+  }
+  if (capability === "email.bulkSenderTrash") {
+    return {
+      toolName: "modify",
+      args: {
+        resource: "email",
+        ids: threadIds,
+        changes: { bulk_trash_senders: true },
+        ...(operation ? { operation } : {}),
+      },
+    };
+  }
+  if (capability === "email.bulkSenderArchive") {
+    return {
+      toolName: "modify",
+      args: {
+        resource: "email",
+        ids: threadIds,
+        changes: { bulk_archive_senders: true },
+        ...(operation ? { operation } : {}),
+      },
+    };
+  }
+  if (capability === "email.bulkSenderLabel") {
+    return {
+      toolName: "modify",
+      args: {
+        resource: "email",
+        ids: threadIds,
+        changes: { bulk_label_senders: true },
+        ...(operation ? { operation } : {}),
+      },
+    };
+  }
+  if (capability === "email.batchArchive") {
+    return {
+      toolName: "modify",
+      args: {
+        resource: "email",
+        ids: threadIds,
+        changes: { archive: true },
+        ...(operation ? { operation } : {}),
+      },
+    };
+  }
+  if (capability === "email.markSpam") {
+    return {
+      toolName: "modify",
+      args: {
+        resource: "email",
+        ids: threadIds,
+        changes: { trash: true },
+        ...(operation ? { operation } : {}),
+      },
+    };
+  }
+  if (capability.startsWith("calendar.")) {
+    return {
+      toolName: "modify",
+      args: {
+        resource: "calendar",
+        ids: eventIds,
+        to: recipientEmails,
+        ...(operation ? { operation } : {}),
+      },
     };
   }
   return {
     toolName: "modify",
-    args: { resource: capability.startsWith("calendar") ? "calendar" : "email" },
+    args: {
+      resource: capability.startsWith("calendar") ? "calendar" : "email",
+      ids: commonIds,
+      ...(recipientEmails.length > 0 ? { to: recipientEmails } : {}),
+      ...(operation ? { operation } : {}),
+    },
   };
 }
 
@@ -269,6 +478,7 @@ export async function executeSkill(params: {
   let lastQueriedEmailItems: unknown[] = [];
   let lastQueriedCalendarItems: unknown[] = [];
   let lastCapabilityStepId = "";
+  const mutationResultCache = new Map<string, ToolResult>();
   const actionEvents: SkillExecutionResult["actionEvents"] = [];
   let policyBlockCount = 0;
   let repairAttemptCount = 0;
@@ -280,10 +490,38 @@ export async function executeSkill(params: {
     stepId: string,
     execute: () => Promise<ToolResult>,
   ): Promise<ToolResult> => {
+    const currentCapability = toolChain[toolChain.length - 1];
+    const isMutating = Boolean(
+      currentCapability && !READ_ONLY_CAPABILITIES.has(currentCapability),
+    );
+    const mutationKey =
+      isMutating && currentCapability
+        ? createCapabilityIdempotencyKey({
+            scope: skill.idempotency_scope,
+            userId: runtime.emailAccount.userId,
+            emailAccountId: runtime.emailAccount.id,
+            capability: currentCapability,
+            seed: stepId,
+            payload: slots.resolved as Record<string, unknown>,
+          })
+        : null;
+
+    if (mutationKey && mutationResultCache.has(mutationKey)) {
+      return mutationResultCache.get(mutationKey)!;
+    }
+
     const startedAt = Date.now();
-    const { result, attempts } = await executeWithRepair(execute);
+    const { result, attempts } = await executeWithRepair(
+      execute,
+      isMutating
+        ? { maxAttempts: 1, baseDelayMs: 150 }
+        : { maxAttempts: 3, baseDelayMs: 300 },
+    );
     stepDurationsMs[stepId] = Date.now() - startedAt;
     repairAttemptCount += Math.max(0, attempts - 1);
+    if (mutationKey) {
+      mutationResultCache.set(mutationKey, result);
+    }
     return result;
   };
 
@@ -293,7 +531,10 @@ export async function executeSkill(params: {
       if (node.type === "transform") continue;
       if (node.type === "conditional") continue;
       if (node.type === "policy_precheck") {
-        const policyContext = mapCapabilityToApprovalContext(node.capability);
+        const policyContext = mapCapabilityToApprovalContext({
+          capability: node.capability,
+          slots: slots.resolved as Record<string, unknown>,
+        });
         const approval = await evaluateApprovalRequirement({
           userId: runtime.emailAccount.userId,
           toolName: policyContext.toolName,
@@ -1183,6 +1424,25 @@ export async function executeSkill(params: {
     const lastMessage = lastCapabilityStepId
       ? toolResults[lastCapabilityStepId]?.message
       : undefined;
+
+    if (!postconditionsPassed) {
+      return {
+        status: "failed",
+        responseText:
+          "I couldn't verify that the action completed successfully. Please retry with a more specific target.",
+        postconditionsPassed: false,
+        stepsExecuted,
+        stepGraphSize: compiledPlan.nodes.length,
+        toolChain,
+        stepDurationsMs,
+        interactivePayloads,
+        actionEvents,
+        policyBlockCount,
+        repairAttemptCount,
+        diagnostics: { code: "postconditions_failed", category: "provider" },
+        failureReason: "postconditions_failed",
+      };
+    }
 
     // Skill-specific response rendering when the last tool result isn't user-facing.
     if (skill.id === "inbox_thread_summarize_actions") {

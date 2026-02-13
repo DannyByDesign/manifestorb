@@ -129,27 +129,6 @@ export async function parseSemanticRequest(params: {
     });
   }
 
-  // If the heuristic is already single-domain and clear, avoid extra LLM call.
-  if (heuristic.length === 1) {
-    return semanticRequestSchema.parse({
-      intents: heuristic,
-      tasks: [
-        {
-          id: "task_1",
-          intent: heuristic[0],
-          action: raw,
-          entities: [],
-          constraints: [],
-          confidence: 0.72,
-        },
-      ],
-      policyHints: [],
-      unresolved: [],
-      confidence: 0.72,
-      raw,
-    });
-  }
-
   try {
     const modelOptions = getModel();
     const generateObject = createGenerateObject({

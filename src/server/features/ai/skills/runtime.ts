@@ -1,9 +1,11 @@
 import { createHash } from "crypto";
 import type { Logger } from "@/server/lib/logger";
 import { getBaselineSkill } from "@/server/features/ai/skills/registry/baseline-registry";
+import { baselineSkills } from "@/server/features/ai/skills/baseline";
 import { routeSkill } from "@/server/features/ai/skills/router/route-skill";
 import { resolveSlots } from "@/server/features/ai/skills/slots/resolve-slots";
 import { executeSkill } from "@/server/features/ai/skills/executor/execute-skill";
+import { EXECUTOR_SUPPORTED_CAPABILITIES } from "@/server/features/ai/skills/executor/execute-skill";
 import { createCapabilities } from "@/server/features/ai/capabilities";
 import { emitSkillTelemetry } from "@/server/features/ai/skills/telemetry/emit";
 import { resolveDefaultCalendarTimeZone } from "@/server/features/ai/tools/calendar-time";
@@ -27,6 +29,27 @@ type ExecuteOutcome =
       diagnosticsCode?: string;
       diagnosticsCategory?: string;
     };
+
+let capabilityCoverageChecked = false;
+
+function assertBaselineSkillCapabilitiesSupported(): void {
+  if (capabilityCoverageChecked) return;
+  const unsupported: string[] = [];
+  for (const skill of baselineSkills) {
+    for (const step of skill.plan) {
+      if (!step.capability) continue;
+      if (!EXECUTOR_SUPPORTED_CAPABILITIES.has(step.capability)) {
+        unsupported.push(`${skill.id}:${step.id}:${step.capability}`);
+      }
+    }
+  }
+  if (unsupported.length > 0) {
+    throw new Error(
+      `unsupported_skill_capabilities:${unsupported.join(",")}`,
+    );
+  }
+  capabilityCoverageChecked = true;
+}
 
 function emitRouteTelemetry(params: {
   logger: Logger;
@@ -91,6 +114,7 @@ export async function runBaselineSkillTurn(params: {
   conversationId?: string;
   sourceEmailMessageId?: string;
   sourceEmailThreadId?: string;
+  sourceCalendarEventId?: string;
 }): Promise<
   | { kind: "clarify"; text: string }
   | {
@@ -105,6 +129,8 @@ export async function runBaselineSkillTurn(params: {
       };
     }
 > {
+  assertBaselineSkillCapabilitiesSupported();
+
   const requestId = createHash("sha256")
     .update(`${params.userId}:${params.provider}:${Date.now()}:${params.message}`)
     .digest("hex")
@@ -158,6 +184,7 @@ export async function runBaselineSkillTurn(params: {
       policyContext,
       sourceEmailMessageId: params.sourceEmailMessageId,
       sourceEmailThreadId: params.sourceEmailThreadId,
+      sourceCalendarEventId: params.sourceCalendarEventId,
     });
 
     if (composite.kind === "clarify") {
@@ -170,6 +197,7 @@ export async function runBaselineSkillTurn(params: {
       timeZone,
       sourceEmailMessageId: params.sourceEmailMessageId,
       sourceEmailThreadId: params.sourceEmailThreadId,
+      sourceCalendarEventId: params.sourceCalendarEventId,
     });
     const actions = Array.isArray(parsed.resolved.composite_actions)
       ? (parsed.resolved.composite_actions as string[]).filter((part) => part.trim().length > 0)
@@ -223,6 +251,7 @@ export async function runBaselineSkillTurn(params: {
         policyContext,
         sourceEmailMessageId: params.sourceEmailMessageId,
         sourceEmailThreadId: params.sourceEmailThreadId,
+        sourceCalendarEventId: params.sourceCalendarEventId,
       });
 
       actionResults.push({
@@ -265,6 +294,7 @@ export async function runBaselineSkillTurn(params: {
     policyContext,
     sourceEmailMessageId: params.sourceEmailMessageId,
     sourceEmailThreadId: params.sourceEmailThreadId,
+    sourceCalendarEventId: params.sourceCalendarEventId,
   });
 
   if (outcome.kind === "clarify") return { kind: "clarify", text: outcome.text };
@@ -297,6 +327,7 @@ async function executeSingleSkill(params: {
   policyContext: Awaited<ReturnType<typeof loadSkillPolicyContext>>;
   sourceEmailMessageId?: string;
   sourceEmailThreadId?: string;
+  sourceCalendarEventId?: string;
 }): Promise<ExecuteOutcome> {
   const skill = getBaselineSkill(params.routeSkillId);
   const slots = await resolveSlots(skill, params.message, {
@@ -305,6 +336,7 @@ async function executeSingleSkill(params: {
     timeZone: params.timeZone,
     sourceEmailMessageId: params.sourceEmailMessageId,
     sourceEmailThreadId: params.sourceEmailThreadId,
+    sourceCalendarEventId: params.sourceCalendarEventId,
   });
 
   emitSkillTelemetry(params.logger, {

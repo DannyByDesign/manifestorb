@@ -67,6 +67,7 @@ export interface MessageProcessorResult {
 type SourceEmailContext = {
   messageId?: string;
   threadId?: string;
+  eventId?: string;
 };
 
 async function resolveSourceEmailContext({
@@ -81,6 +82,59 @@ async function resolveSourceEmailContext({
   providerThreadId?: string;
 }): Promise<SourceEmailContext> {
   const select = { messageId: true, threadId: true } as const;
+  let eventIdFromMetadata: string | undefined;
+
+  if (providerMessageId || providerThreadId) {
+    const recentNotifications = await prisma.inAppNotification.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      take: 25,
+      select: { metadata: true },
+    });
+
+    for (const notification of recentNotifications) {
+      const metadata =
+        notification.metadata && typeof notification.metadata === "object"
+          ? (notification.metadata as Record<string, unknown>)
+          : null;
+      if (!metadata) continue;
+
+      const metadataMessageId =
+        typeof metadata.messageId === "string" ? metadata.messageId : undefined;
+      const metadataThreadId =
+        typeof metadata.threadId === "string" ? metadata.threadId : undefined;
+      const metadataEventId =
+        typeof metadata.eventId === "string" ? metadata.eventId : undefined;
+
+      const isMatch =
+        (providerMessageId && metadataMessageId === providerMessageId) ||
+        (providerThreadId && metadataThreadId === providerThreadId);
+      if (!isMatch) continue;
+
+      if (metadataEventId) {
+        eventIdFromMetadata = metadataEventId;
+      }
+
+      const resolved = await prisma.emailMessage.findFirst({
+        where: {
+          emailAccountId,
+          OR: [
+            ...(metadataMessageId ? [{ messageId: metadataMessageId }] : []),
+            ...(metadataThreadId ? [{ threadId: metadataThreadId }] : []),
+          ],
+        },
+        orderBy: { date: "desc" },
+        select,
+      });
+      if (resolved) {
+        return {
+          messageId: resolved.messageId,
+          threadId: resolved.threadId,
+          ...(eventIdFromMetadata ? { eventId: eventIdFromMetadata } : {}),
+        };
+      }
+    }
+  }
 
   if (providerMessageId) {
     const byMessage = await prisma.emailMessage.findFirst({
@@ -91,7 +145,11 @@ async function resolveSourceEmailContext({
       select,
     });
     if (byMessage) {
-      return { messageId: byMessage.messageId, threadId: byMessage.threadId };
+      return {
+        messageId: byMessage.messageId,
+        threadId: byMessage.threadId,
+        ...(eventIdFromMetadata ? { eventId: eventIdFromMetadata } : {}),
+      };
     }
   }
 
@@ -102,55 +160,18 @@ async function resolveSourceEmailContext({
       select,
     });
     if (byThread) {
-      return { messageId: byThread.messageId, threadId: byThread.threadId };
+      return {
+        messageId: byThread.messageId,
+        threadId: byThread.threadId,
+        ...(eventIdFromMetadata ? { eventId: eventIdFromMetadata } : {}),
+      };
     }
   }
 
   if (!providerMessageId && !providerThreadId) {
     return {};
   }
-
-  const recentNotifications = await prisma.inAppNotification.findMany({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-    take: 25,
-    select: { metadata: true },
-  });
-
-  for (const notification of recentNotifications) {
-    const metadata =
-      notification.metadata && typeof notification.metadata === "object"
-        ? (notification.metadata as Record<string, unknown>)
-        : null;
-    if (!metadata) continue;
-
-    const metadataMessageId =
-      typeof metadata.messageId === "string" ? metadata.messageId : undefined;
-    const metadataThreadId =
-      typeof metadata.threadId === "string" ? metadata.threadId : undefined;
-
-    const isMatch =
-      (providerMessageId && metadataMessageId === providerMessageId) ||
-      (providerThreadId && metadataThreadId === providerThreadId);
-    if (!isMatch) continue;
-
-    const resolved = await prisma.emailMessage.findFirst({
-      where: {
-        emailAccountId,
-        OR: [
-          ...(metadataMessageId ? [{ messageId: metadataMessageId }] : []),
-          ...(metadataThreadId ? [{ threadId: metadataThreadId }] : []),
-        ],
-      },
-      orderBy: { date: "desc" },
-      select,
-    });
-    if (resolved) {
-      return { messageId: resolved.messageId, threadId: resolved.threadId };
-    }
-  }
-
-  return {};
+  return eventIdFromMetadata ? { eventId: eventIdFromMetadata } : {};
 }
 
 function extractLatestUserMessage(messages: ModelMessage[]): string {
@@ -331,6 +352,7 @@ export async function processMessage(
     conversationId,
     sourceEmailMessageId: sourceEmailContext.messageId,
     sourceEmailThreadId: sourceEmailContext.threadId,
+    sourceCalendarEventId: sourceEmailContext.eventId,
   });
 
   const text = skillsResult.text ?? "";

@@ -144,20 +144,6 @@ export async function routeSkill(params: {
     confidence: semantic.confidence,
   });
 
-  if (intentFamilies.families.length === 0) {
-    return {
-      skillId: null,
-      confidence: semantic.confidence,
-      reason: "semantic:no_intent_family",
-      semanticParseConfidence: semantic.confidence,
-      routedFamilies: [],
-      unresolvedEntities: semantic.unresolved,
-      clarificationPrompt:
-        intentFamilies.clarificationPrompt ??
-        "Should I help with inbox actions, calendar actions, or both?",
-    };
-  }
-
   if (
     intentFamilies.isMultiIntent &&
     intentFamilies.families.includes("cross_surface_planning")
@@ -166,17 +152,6 @@ export async function routeSkill(params: {
       skillId: "multi_action_inbox_calendar",
       confidence: Math.max(intentFamilies.confidence, 0.74),
       reason: "semantic:cross_surface_planning",
-      semanticParseConfidence: semantic.confidence,
-      routedFamilies: intentFamilies.families,
-      unresolvedEntities: semantic.unresolved,
-    };
-  }
-
-  // Fast-path heuristic: if deterministic routing is already high confidence, take it.
-  const heuristic = routeSkillDeterministic(params.message);
-  if (heuristic.skillId && heuristic.confidence >= 0.9) {
-    return {
-      ...heuristic,
       semanticParseConfidence: semantic.confidence,
       routedFamilies: intentFamilies.families,
       unresolvedEntities: semantic.unresolved,
@@ -225,6 +200,7 @@ export async function routeSkill(params: {
     };
   } catch (error) {
     params.logger.warn("[skills-router] LLM route failed; falling back to heuristic", { error });
+    const heuristic = routeSkillDeterministic(params.message);
     return {
       ...heuristic,
       semanticParseConfidence: semantic.confidence,

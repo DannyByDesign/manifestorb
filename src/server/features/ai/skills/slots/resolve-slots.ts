@@ -331,6 +331,53 @@ function normalizeSlotShorthands(resolved: ResolvedSlots, timeZone: string): Res
   return out;
 }
 
+function referencesEmailContext(message: string): boolean {
+  return /\b(this|that|last)\s+(email|thread|message|one)\b/i.test(message);
+}
+
+function referencesEventContext(message: string): boolean {
+  return /\b(this|that|last)\s+(meeting|event|one)\b/i.test(message);
+}
+
+function bindContextualReferences(params: {
+  skill: SkillContract;
+  message: string;
+  sourceEmailThreadId?: string;
+  sourceEmailMessageId?: string;
+  sourceCalendarEventId?: string;
+  resolved: ResolvedSlots;
+}): ResolvedSlots {
+  const out: ResolvedSlots = { ...params.resolved };
+  const allSlots = new Set<string>([
+    ...params.skill.required_slots,
+    ...params.skill.optional_slots,
+  ]);
+
+  const needsThreadId = allSlots.has("thread_id") || allSlots.has("thread_ids");
+  const needsMessageId = allSlots.has("message_id");
+  const needsEventId = allSlots.has("event_id");
+
+  const emailRef = referencesEmailContext(params.message);
+  if (emailRef || /\blast one\b/i.test(params.message)) {
+    if (needsThreadId && params.sourceEmailThreadId) {
+      if (out.thread_id === undefined) out.thread_id = params.sourceEmailThreadId as never;
+      if (out.thread_ids === undefined) out.thread_ids = [params.sourceEmailThreadId] as never;
+    }
+    if (needsMessageId && params.sourceEmailMessageId && out.message_id === undefined) {
+      out.message_id = params.sourceEmailMessageId as never;
+    }
+  }
+
+  const eventRef = referencesEventContext(params.message);
+  if ((eventRef || /\blast one\b/i.test(params.message)) && needsEventId) {
+    if (params.sourceCalendarEventId && out.event_id === undefined) {
+      out.event_id = params.sourceCalendarEventId as never;
+    }
+  }
+
+  return out;
+}
+
 async function resolveMissingSlotsWithLLM(params: {
   logger: Logger;
   emailAccount: { id: string; email: string; userId: string };
@@ -390,6 +437,7 @@ export async function resolveSlots(
     timeZone: string;
     sourceEmailThreadId?: string;
     sourceEmailMessageId?: string;
+    sourceCalendarEventId?: string;
   },
 ): Promise<SlotResolutionResult> {
   const resolved: ResolvedSlots = {};
@@ -411,18 +459,27 @@ export async function resolveSlots(
     resolved.message_id = env.sourceEmailMessageId as never;
   }
 
+  const contextBound = bindContextualReferences({
+    skill,
+    message,
+    sourceEmailThreadId: env.sourceEmailThreadId,
+    sourceEmailMessageId: env.sourceEmailMessageId,
+    sourceCalendarEventId: env.sourceCalendarEventId,
+    resolved,
+  });
+
   const semanticNormalization = normalizeSemanticEntities({
     rawMessage: message,
-    entities: Object.entries(resolved).map(([key, value]) => ({ key, value })),
+    entities: Object.entries(contextBound).map(([key, value]) => ({ key, value })),
     timeZone: env.timeZone,
   });
   for (const slot of [...skill.required_slots, ...skill.optional_slots]) {
-    if (resolved[slot] === undefined && semanticNormalization.normalized[slot] !== undefined) {
-      resolved[slot] = semanticNormalization.normalized[slot] as never;
+    if (contextBound[slot] === undefined && semanticNormalization.normalized[slot] !== undefined) {
+      contextBound[slot] = semanticNormalization.normalized[slot] as never;
     }
   }
 
-  const normalized = normalizeSlotShorthands(applySkillDefaults(skill, resolved), env.timeZone);
+  const normalized = normalizeSlotShorthands(applySkillDefaults(skill, contextBound), env.timeZone);
 
   // Validate extracted shapes; drop invalid.
   const validated = resolvedSlotsSchema.safeParse(normalized);

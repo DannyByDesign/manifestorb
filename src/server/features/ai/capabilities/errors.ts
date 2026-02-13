@@ -30,17 +30,22 @@ export function classifyCapabilityError(error: unknown): CapabilityError {
     lower.includes("invalid_grant") ||
     lower.includes("reconnect") ||
     lower.includes("refresh token") ||
-    lower.includes("unauthorized")
+    lower.includes("unauthorized") ||
+    lower.includes("401")
   ) {
     return { code: "auth_error", message };
   }
-  if (lower.includes("permission") || lower.includes("forbidden")) {
+  if (lower.includes("permission") || lower.includes("forbidden") || lower.includes("403")) {
     return { code: "permission_denied", message };
   }
-  if (lower.includes("rate limit") || lower.includes("too many requests")) {
+  if (
+    lower.includes("rate limit") ||
+    lower.includes("too many requests") ||
+    lower.includes("429")
+  ) {
     return { code: "rate_limit", message };
   }
-  if (lower.includes("not found") || lower.includes("missing")) {
+  if (lower.includes("not found") || lower.includes("missing") || lower.includes("404")) {
     return { code: "not_found", message };
   }
   if (lower.includes("invalid") || lower.includes("must be")) {
@@ -71,8 +76,17 @@ export function capabilityFailureResult(
   const classified = classifyCapabilityError(error);
   return {
     success: false,
-    error: `${classified.code}:${classified.message}`,
+    error: classified.code,
     message: fallbackMessage,
-    meta,
+    meta:
+      meta && typeof meta === "object"
+        ? ({
+            ...meta,
+            capabilityErrorMessage: classified.message,
+          } as ToolResult["meta"])
+        : ({
+            resource: "unknown",
+            capabilityErrorMessage: classified.message,
+          } as ToolResult["meta"]),
   };
 }

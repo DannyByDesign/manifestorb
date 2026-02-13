@@ -61,6 +61,11 @@ export async function runOrchestrationPreflight(params: {
     };
   }
 
+  const operationalOverride = runOperationalOverride(message);
+  if (operationalOverride) {
+    return operationalOverride;
+  }
+
   const fastPath = runFastPathDecision({
     message,
     hasPendingApproval: params.hasPendingApproval,
@@ -113,6 +118,39 @@ Rules:
     });
     return fallbackPreflight(message);
   }
+}
+
+function runOperationalOverride(message: string): PreflightDecision | null {
+  const normalized = message.toLowerCase().trim();
+  const hasResourceToken =
+    /\b(email|emails|inbox|thread|message|messages|calendar|meeting|meetings|event|events|schedule|task|tasks|rules?|preferences?)\b/u.test(
+      normalized,
+    );
+  const hasActionVerb =
+    /\b(archive|trash|delete|cancel|reschedule|schedule|book|move|mark|set|update|modify|create|draft|reply|forward|send|unsubscribe|block|snooze|find|check|show|list)\b/u.test(
+      normalized,
+    );
+  const hasOperationalFraming =
+    /\b(can you|could you|please|help me|i need you to|i want you to)\b/u.test(normalized) ||
+    /\bthat (email|thread|message|meeting|event)\b/u.test(normalized);
+
+  if (!(hasResourceToken && hasActionVerb && hasOperationalFraming)) {
+    return null;
+  }
+
+  return {
+    mode: /\b(archive|trash|delete|cancel|reschedule|schedule|book|move|mark|set|update|modify|create|draft|reply|forward|send|unsubscribe|block|snooze)\b/u.test(
+      normalized,
+    )
+      ? "action"
+      : "lookup",
+    needsTools: true,
+    needsInternalData: true,
+    contextTier: 2,
+    allowProactiveNudges: false,
+    confidence: 0.92,
+    resourceHints: collectFastPathHints(normalized),
+  };
 }
 
 function fallbackPreflight(message: string): PreflightDecision {

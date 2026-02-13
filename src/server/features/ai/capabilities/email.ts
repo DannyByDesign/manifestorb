@@ -1224,9 +1224,12 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         const classified = classifyCapabilityError(error);
         return {
           success: false,
-          error: `${classified.code}:${classified.message}`,
+          error: classified.code,
           message: "I couldn't schedule that send right now.",
-          meta: { resource: "email" },
+          meta: {
+            resource: "email",
+            capabilityErrorMessage: classified.message,
+          },
         };
       }
     },
