@@ -15,26 +15,12 @@ import { ConversationService } from "@/features/conversations/service";
 import { PrivacyService } from "@/features/privacy/service";
 import { MemoryRecordingService } from "@/features/memory/service";
 import type { Logger } from "@/server/lib/logger";
-import { runBaselineSkillTurn } from "@/features/ai/skills/runtime";
-import {
-  getActivePendingSkillRunState,
-  markPendingSkillRunStateResolved,
-  savePendingSkillRunState,
-} from "@/features/ai/skills/pending-run-state";
-import {
-  getActivePendingPlannerRunState,
-  markPendingPlannerRunStateResolved,
-  savePendingPlannerRunState,
-} from "@/features/ai/planner/pending-plan-state";
-import { runOrchestrationPreflight } from "@/server/features/ai/orchestration/preflight";
-import { createGenerateText } from "@/server/lib/llms";
-import { getModel } from "@/server/lib/llms/model";
+import { runOpenWorldRuntimeTurn } from "@/server/features/ai/runtime";
 import { ApprovalService } from "@/features/approvals/service";
 import { executeApprovalRequest } from "@/features/approvals/execute";
 import { resolveScheduleProposalRequestById } from "@/features/calendar/schedule-proposal";
 import { resolveAmbiguousTimeRequestById } from "@/features/calendar/ambiguous-time";
 import { ensureProviderSchemaRegistryInitialized } from "@/server/features/ai/provider-schemas/bootstrap";
-import { emitSkillTelemetry } from "@/server/features/ai/skills/telemetry/emit";
 
 export interface ProcessorContext {
   conversationId?: string;
@@ -781,48 +767,6 @@ function triggerMemoryRecording(userId: string, email: string, logger: Logger): 
   })();
 }
 
-function isTrivialAck(message: string): boolean {
-  const normalized = message.trim().toLowerCase();
-  if (!normalized) return true;
-  return /^(ok|okay|cool|nice|thanks|thank you|thx|got it|sounds good|👍)$/iu.test(normalized);
-}
-
-function shouldPersistPlannerContinuation(params: {
-  text: string;
-  missingFields?: string[];
-}): boolean {
-  if (params.missingFields?.includes("plan_build_failed")) {
-    return false;
-  }
-  return !/couldn't build an execution plan from that yet/i.test(params.text);
-}
-
-async function generateConversationalReply(params: {
-  emailAccount: { id: string; email: string; userId: string };
-  message: string;
-  logger: Logger;
-}): Promise<string> {
-  if (isTrivialAck(params.message)) {
-    return "Got it.";
-  }
-
-  const modelOptions = getModel("economy");
-  const generateText = createGenerateText({
-    emailAccount: params.emailAccount,
-    label: "conversational-preflight-reply",
-    modelOptions,
-  });
-
-  const result = await generateText({
-    model: modelOptions.model,
-    system:
-      "You are Amodel. Be concise and helpful. If the user is not asking to check or change real inbox/calendar state, answer conversationally without mentioning tools.",
-    prompt: params.message.trim(),
-  });
-
-  return result.text.trim() || "How can I help?";
-}
-
 export async function processMessage(
   input: MessageProcessorInput,
 ): Promise<MessageProcessorResult> {
@@ -835,10 +779,6 @@ export async function processMessage(
 
   const messageContent =
     input.message ?? extractLatestUserMessage(input.messages ?? []);
-  const orchestrationRequestId = createHash("sha256")
-    .update(`${user.id}:${context.provider}:${Date.now()}:${messageContent}`)
-    .digest("hex")
-    .slice(0, 16);
 
   let sourceEmailContextCache: SourceEmailContext | null = null;
   const getSourceEmailContext = async (): Promise<SourceEmailContext> => {
@@ -890,340 +830,27 @@ export async function processMessage(
     return { text: pendingDecisionResult.text, approvals: [], interactivePayloads: [] };
   }
 
-  const pendingRunStateContext = {
-    provider: context.provider,
-    conversationId,
-    channelId: context.channelId,
-    threadId: context.threadId,
-  };
-
-  const pendingSkillState = await getActivePendingSkillRunState({
-    userId: user.id,
-    emailAccountId: emailAccount.id,
-    context: pendingRunStateContext,
-  });
-
-  if (pendingSkillState) {
-    const sourceEmailContext = await getSourceEmailContext();
-    const continuationResult = await runBaselineSkillTurn({
-      provider: context.provider,
-      userId: user.id,
-      emailAccountId: emailAccount.id,
-      email: emailAccount.email,
-      providerName: resolvedProvider,
-      message: messageContent,
-      logger,
-      conversationId,
-      channelId: context.channelId,
-      threadId: context.threadId,
-      messageId: context.messageId,
-      teamId: context.teamId,
-      sourceEmailMessageId: sourceEmailContext.messageId,
-      sourceEmailThreadId: sourceEmailContext.threadId,
-      sourceCalendarEventId: sourceEmailContext.eventId,
-      forcedSkillId: pendingSkillState.skillId,
-      seedResolvedSlots: pendingSkillState.resolvedSlots,
-    });
-
-    if (continuationResult.kind === "clarify" && continuationResult.continuation?.type === "skill") {
-      await savePendingSkillRunState({
-        userId: user.id,
-        emailAccountId: emailAccount.id,
-        context: pendingRunStateContext,
-        skillId: continuationResult.continuation.state.skillId,
-        resolvedSlots: continuationResult.continuation.state.resolvedSlots,
-        missingSlots: continuationResult.continuation.state.missingSlots,
-        ambiguousSlots: continuationResult.continuation.state.ambiguousSlots,
-        clarificationPrompt: continuationResult.continuation.state.clarificationPrompt,
-        existingStateId: pendingSkillState.id,
-      });
-    } else if (
-      continuationResult.kind === "clarify" &&
-      continuationResult.continuation?.type === "planner"
-    ) {
-      await markPendingSkillRunStateResolved({ stateId: pendingSkillState.id, status: "CANCELED" });
-      if (
-        shouldPersistPlannerContinuation({
-          text: continuationResult.text ?? "",
-          missingFields: continuationResult.continuation.state.missingFields,
-        })
-      ) {
-        await savePendingPlannerRunState({
-          userId: user.id,
-          emailAccountId: emailAccount.id,
-          context: pendingRunStateContext,
-          baseMessage: continuationResult.continuation.state.baseMessage,
-          candidateCapabilities: continuationResult.continuation.state.candidateCapabilities,
-          clarificationPrompt: continuationResult.continuation.state.clarificationPrompt,
-          missingFields: continuationResult.continuation.state.missingFields,
-        });
-      }
-    } else {
-      await markPendingSkillRunStateResolved({ stateId: pendingSkillState.id });
-    }
-
-    const continuationText = continuationResult.text ?? "";
-    const continuationInteractivePayloads =
-      continuationResult.kind === "executed"
-        ? continuationResult.interactivePayloads
-        : [];
-    const continuationApprovals =
-      continuationResult.kind === "executed"
-        ? continuationResult.approvals
-        : [];
-
-    await persistAssistantMessage(
-      user.id,
-      conversationId,
-      continuationText,
-      context.provider,
-      logger,
-      context.channelId,
-      context.threadId,
-      context.messageId ?? context.threadId ?? messageContent,
-      continuationInteractivePayloads.length > 0 || continuationApprovals.length > 0
-        ? {
-            interactivePayloads: continuationInteractivePayloads,
-            approvals: continuationApprovals,
-          }
-        : undefined,
-    );
-
-    triggerMemoryRecording(user.id, emailAccount.email, logger);
-
-    return {
-      text: continuationText,
-      approvals: continuationApprovals,
-      interactivePayloads: continuationInteractivePayloads,
-    };
-  }
-
-  const pendingPlannerState = await getActivePendingPlannerRunState({
-    userId: user.id,
-    emailAccountId: emailAccount.id,
-    context: pendingRunStateContext,
-  });
-
-  if (pendingPlannerState) {
-    const sourceEmailContext = await getSourceEmailContext();
-    const continuationResult = await runBaselineSkillTurn({
-      provider: context.provider,
-      userId: user.id,
-      emailAccountId: emailAccount.id,
-      email: emailAccount.email,
-      providerName: resolvedProvider,
-      message: messageContent,
-      logger,
-      conversationId,
-      channelId: context.channelId,
-      threadId: context.threadId,
-      messageId: context.messageId,
-      teamId: context.teamId,
-      sourceEmailMessageId: sourceEmailContext.messageId,
-      sourceEmailThreadId: sourceEmailContext.threadId,
-      sourceCalendarEventId: sourceEmailContext.eventId,
-      forcedRouteType: "planner",
-      continuationBaseMessage: pendingPlannerState.baseMessage,
-      seedPlannerCandidateCapabilities: pendingPlannerState.candidateCapabilities,
-    });
-
-    if (continuationResult.kind === "clarify" && continuationResult.continuation?.type === "planner") {
-      if (
-        shouldPersistPlannerContinuation({
-          text: continuationResult.text ?? "",
-          missingFields: continuationResult.continuation.state.missingFields,
-        })
-      ) {
-        await savePendingPlannerRunState({
-          userId: user.id,
-          emailAccountId: emailAccount.id,
-          context: pendingRunStateContext,
-          baseMessage: continuationResult.continuation.state.baseMessage,
-          candidateCapabilities: continuationResult.continuation.state.candidateCapabilities,
-          clarificationPrompt: continuationResult.continuation.state.clarificationPrompt,
-          missingFields: continuationResult.continuation.state.missingFields,
-          existingStateId: pendingPlannerState.id,
-        });
-      } else {
-        await markPendingPlannerRunStateResolved({
-          stateId: pendingPlannerState.id,
-          status: "CANCELED",
-        });
-      }
-    } else if (
-      continuationResult.kind === "clarify" &&
-      continuationResult.continuation?.type === "skill"
-    ) {
-      await markPendingPlannerRunStateResolved({
-        stateId: pendingPlannerState.id,
-        status: "CANCELED",
-      });
-      await savePendingSkillRunState({
-        userId: user.id,
-        emailAccountId: emailAccount.id,
-        context: pendingRunStateContext,
-        skillId: continuationResult.continuation.state.skillId,
-        resolvedSlots: continuationResult.continuation.state.resolvedSlots,
-        missingSlots: continuationResult.continuation.state.missingSlots,
-        ambiguousSlots: continuationResult.continuation.state.ambiguousSlots,
-        clarificationPrompt: continuationResult.continuation.state.clarificationPrompt,
-      });
-    } else {
-      await markPendingPlannerRunStateResolved({ stateId: pendingPlannerState.id });
-    }
-
-    const continuationText = continuationResult.text ?? "";
-    const continuationInteractivePayloads =
-      continuationResult.kind === "executed"
-        ? continuationResult.interactivePayloads
-        : [];
-    const continuationApprovals =
-      continuationResult.kind === "executed"
-        ? continuationResult.approvals
-        : [];
-
-    await persistAssistantMessage(
-      user.id,
-      conversationId,
-      continuationText,
-      context.provider,
-      logger,
-      context.channelId,
-      context.threadId,
-      context.messageId ?? context.threadId ?? messageContent,
-      continuationInteractivePayloads.length > 0 || continuationApprovals.length > 0
-        ? {
-            interactivePayloads: continuationInteractivePayloads,
-            approvals: continuationApprovals,
-          }
-        : undefined,
-    );
-
-    triggerMemoryRecording(user.id, emailAccount.email, logger);
-
-    return {
-      text: continuationText,
-      approvals: continuationApprovals,
-      interactivePayloads: continuationInteractivePayloads,
-    };
-  }
-
-  // Orchestration preflight: avoid the skills runtime (router/slots/executor)
-  // for conversational turns to reduce latency and LLM/tool costs.
-  const preflightStartedAt = Date.now();
-  const preflight = await runOrchestrationPreflight({
-    message: messageContent,
-    provider: context.provider,
-    userId: user.id,
-    emailAccount: { id: emailAccount.id, email: emailAccount.email, userId: user.id },
-    hasPendingApproval: pendingContext.hasPendingApproval,
-    hasPendingScheduleProposal: pendingContext.hasPendingScheduleProposal,
-  });
-  const preflightDurationMs = Date.now() - preflightStartedAt;
-
-  if (!preflight.needsTools) {
-    const renderStartedAt = Date.now();
-    const text = await generateConversationalReply({
-      emailAccount: { id: emailAccount.id, email: emailAccount.email, userId: user.id },
-      message: messageContent,
-      logger,
-    });
-    const renderDurationMs = Date.now() - renderStartedAt;
-
-    await persistAssistantMessage(
-      user.id,
-      conversationId,
-      text,
-      context.provider,
-      logger,
-      context.channelId,
-      context.threadId,
-      context.messageId ?? context.threadId ?? messageContent,
-    );
-
-    triggerMemoryRecording(user.id, emailAccount.email, logger);
-    emitSkillTelemetry(logger, {
-      name: "orchestration.stage.latency",
-      requestId: orchestrationRequestId,
-      provider: context.provider,
-      routeType: "chat",
-      stageDurationsMs: {
-        preflight: preflightDurationMs,
-        render: renderDurationMs,
-      },
-      totalMs: preflightDurationMs + renderDurationMs,
-    });
-
-    return { text, approvals: [], interactivePayloads: [] };
-  }
-
-  emitSkillTelemetry(logger, {
-    name: "orchestration.stage.latency",
-    requestId: orchestrationRequestId,
-    provider: context.provider,
-    routeType: "skill",
-    stageDurationsMs: {
-      preflight: preflightDurationMs,
-    },
-    totalMs: preflightDurationMs,
-  });
-
   const sourceEmailContext = await getSourceEmailContext();
-
-  const skillsResult = await runBaselineSkillTurn({
+  const runtimeResult = await runOpenWorldRuntimeTurn({
     provider: context.provider,
+    providerName: resolvedProvider,
     userId: user.id,
     emailAccountId: emailAccount.id,
     email: emailAccount.email,
-    providerName: resolvedProvider,
     message: messageContent,
+    messages: input.messages,
     logger,
     conversationId,
     channelId: context.channelId,
     threadId: context.threadId,
     messageId: context.messageId,
-    teamId: context.teamId,
     sourceEmailMessageId: sourceEmailContext.messageId,
     sourceEmailThreadId: sourceEmailContext.threadId,
-    sourceCalendarEventId: sourceEmailContext.eventId,
   });
 
-  if (skillsResult.kind === "clarify" && skillsResult.continuation) {
-    if (skillsResult.continuation.type === "skill") {
-      await savePendingSkillRunState({
-        userId: user.id,
-        emailAccountId: emailAccount.id,
-        context: pendingRunStateContext,
-        skillId: skillsResult.continuation.state.skillId,
-        resolvedSlots: skillsResult.continuation.state.resolvedSlots,
-        missingSlots: skillsResult.continuation.state.missingSlots,
-        ambiguousSlots: skillsResult.continuation.state.ambiguousSlots,
-        clarificationPrompt: skillsResult.continuation.state.clarificationPrompt,
-      });
-    } else {
-      if (
-        shouldPersistPlannerContinuation({
-          text: skillsResult.text ?? "",
-          missingFields: skillsResult.continuation.state.missingFields,
-        })
-      ) {
-        await savePendingPlannerRunState({
-          userId: user.id,
-          emailAccountId: emailAccount.id,
-          context: pendingRunStateContext,
-          baseMessage: skillsResult.continuation.state.baseMessage,
-          candidateCapabilities: skillsResult.continuation.state.candidateCapabilities,
-          clarificationPrompt: skillsResult.continuation.state.clarificationPrompt,
-          missingFields: skillsResult.continuation.state.missingFields,
-        });
-      }
-    }
-  }
-
-  const text = skillsResult.text ?? "";
-  const interactivePayloads =
-    skillsResult.kind === "executed" ? skillsResult.interactivePayloads : [];
-  const approvals = skillsResult.kind === "executed" ? skillsResult.approvals : [];
+  const text = runtimeResult.text ?? "";
+  const interactivePayloads = runtimeResult.interactivePayloads;
+  const approvals = runtimeResult.approvals;
 
   // Persist assistant message for all providers, respecting PrivacyService.
   await persistAssistantMessage(
