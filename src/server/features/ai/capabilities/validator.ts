@@ -1,4 +1,4 @@
-import type { CapabilityName } from "@/server/features/ai/skills/contracts/skill-contract";
+import type { CapabilityName } from "@/server/features/ai/contracts/capability-contract";
 import {
   getCapabilityDefinition,
   type CapabilityDefinition,

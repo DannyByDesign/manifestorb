@@ -1,6 +1,6 @@
 import type { ZodTypeAny } from "zod";
 import type { ToolResult } from "@/server/features/ai/tools/types";
-import type { CapabilityName } from "@/server/features/ai/skills/contracts/skill-contract";
+import type { CapabilityName } from "@/server/features/ai/contracts/capability-contract";
 import type { CapabilityDefinition } from "@/server/features/ai/capabilities/registry";
 import type { SkillCapabilities } from "@/server/features/ai/capabilities";
 import type { PolicyApprovalRecord, PolicyExecutionContext } from "@/server/features/ai/policy/enforcement";

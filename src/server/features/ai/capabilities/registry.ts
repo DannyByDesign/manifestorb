@@ -2,7 +2,7 @@ import { z } from "zod";
 import {
   capabilityNameSchema,
   type CapabilityName,
-} from "@/server/features/ai/skills/contracts/skill-contract";
+} from "@/server/features/ai/contracts/capability-contract";
 
 export type CapabilityRiskLevel = "safe" | "caution" | "dangerous";
 export type CapabilityIntentFamily =

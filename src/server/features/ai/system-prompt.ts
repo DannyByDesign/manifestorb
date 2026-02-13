@@ -2,8 +2,7 @@
  * Minimal global policy/style shell.
  *
  * Operational behavior for inbox/calendar actions is implemented in the
- * skills runtime (`skills/router`, `skills/slots`, `skills/executor`) and
- * NOT in prompt prose.
+ * open-world runtime tool layer and NOT in prompt prose.
  */
 
 export type Platform = "web" | "slack" | "discord" | "telegram";
@@ -44,8 +43,7 @@ Global policy:
 - Respect user privacy and account boundaries.
 ${sidecarFormatting}
 
-All inbox/calendar operational logic is enforced by the skills runtime and capability layer.
+All inbox/calendar operational logic is enforced by the open-world runtime and capability layer.
 Do not invent tool names, fake side effects, or bypass execution constraints.
 ${customInstructions ? `\nUser custom instructions:\n${customInstructions}` : ""}`;
 }
-

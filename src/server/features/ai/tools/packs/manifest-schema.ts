@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { capabilityNameSchema } from "@/server/features/ai/skills/contracts/skill-contract";
+import { capabilityNameSchema } from "@/server/features/ai/contracts/capability-contract";
 
 export const toolPackManifestSchema = z
   .object({
