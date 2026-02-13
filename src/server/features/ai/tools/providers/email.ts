@@ -10,6 +10,7 @@ import {
 } from "@/features/email/types";
 import { SafeError } from "@/server/lib/error";
 import { runInBatches } from "@/server/features/ai/tools/common/concurrency";
+import { createOperationIdempotencyToken } from "@/server/features/ai/tools/common/idempotency";
 import {
     isProviderRateLimitError,
     withRetries,
@@ -340,6 +341,22 @@ export async function createEmailProvider(
 
             // Track which threads we've already processed to avoid duplicate operations
             const processedThreads = new Set<string>();
+            const markProcessed = (operation: string, threadId: string) =>
+              processedThreads.add(
+                createOperationIdempotencyToken({
+                  scope: "email.modify",
+                  operation,
+                  entityId: threadId,
+                }),
+              );
+            const isProcessed = (operation: string, threadId: string) =>
+              processedThreads.has(
+                createOperationIdempotencyToken({
+                  scope: "email.modify",
+                  operation,
+                  entityId: threadId,
+                }),
+              );
 
             await runInBatches(ids, 3, async (id) => {
                 try {
@@ -352,30 +369,30 @@ export async function createEmailProvider(
                         }
 
                         // Archive (thread-level operation)
-                        if (changes.archive && !processedThreads.has(`archive:${threadId}`)) {
+                        if (changes.archive && !isProcessed("archive", threadId)) {
                             await service.archiveThread(threadId, account.email);
-                            processedThreads.add(`archive:${threadId}`);
+                            markProcessed("archive", threadId);
                         }
 
                         // Trash (thread-level operation)
-                        if (changes.trash && !processedThreads.has(`trash:${threadId}`)) {
+                        if (changes.trash && !isProcessed("trash", threadId)) {
                             await service.trashThread(threadId, account.email, "ai");
-                            processedThreads.add(`trash:${threadId}`);
+                            markProcessed("trash", threadId);
                         }
 
                         // Read/Unread (thread-level operation)
-                        if (changes.read !== undefined && !processedThreads.has(`read:${threadId}`)) {
+                        if (changes.read !== undefined && !isProcessed("read", threadId)) {
                             await service.markReadThread(threadId, changes.read);
-                            processedThreads.add(`read:${threadId}`);
+                            markProcessed("read", threadId);
                         }
                         // Follow-up flag approximation: enable -> unread, disable -> read
                         if (
                             changes.followUp !== undefined &&
-                            !processedThreads.has(`followUp:${threadId}`)
+                            !isProcessed("followUp", threadId)
                         ) {
                             const read = changes.followUp === "disable";
                             await service.markReadThread(threadId, read);
-                            processedThreads.add(`followUp:${threadId}`);
+                            markProcessed("followUp", threadId);
                         }
 
                         // Labels
@@ -388,11 +405,11 @@ export async function createEmailProvider(
                                 }
                             }
                             // Removing labels is a thread-level operation
-                            if (remove && remove.length > 0 && !processedThreads.has(`removeLabels:${threadId}`)) {
-                                await service.removeThreadLabels(threadId, remove);
-                                processedThreads.add(`removeLabels:${threadId}`);
-                            }
-                        }
+                              if (remove && remove.length > 0 && !isProcessed("removeLabels", threadId)) {
+                                  await service.removeThreadLabels(threadId, remove);
+                                  markProcessed("removeLabels", threadId);
+                              }
+                          }
                         // Sender unsubscribe/block action (message-level)
                         if (changes.unsubscribe) {
                             await service.blockUnsubscribedEmail(id);
@@ -402,21 +419,33 @@ export async function createEmailProvider(
                         if (
                             typeof changes.targetFolderId === "string" &&
                             changes.targetFolderId.length > 0 &&
-                            !processedThreads.has(`move:${threadId}`)
-                        ) {
-                            await service.moveThreadToFolder(threadId, account.email, changes.targetFolderId);
-                            processedThreads.add(`move:${threadId}`);
-                        }
+                              !isProcessed("move", threadId)
+                          ) {
+                              await service.moveThreadToFolder(threadId, account.email, changes.targetFolderId);
+                              markProcessed("move", threadId);
+                          }
                       },
                       {
                         attempts: 3,
                         baseDelayMs: 700,
                         isRetryable: isProviderRateLimitError,
                         onRetry: ({ attempt, attempts, delayMs }) => {
-                          logger.warn("Rate limited in email provider operation; retrying", {
+                          logger.warn("openworld.provider.retry", {
+                            domain: "email",
+                            operation: "modify",
+                            provider: account.provider,
                             attempt,
                             attempts,
                             delayMs,
+                          });
+                        },
+                        onExhausted: ({ attempts, error }) => {
+                          logger.error("openworld.provider.retry_exhausted", {
+                            domain: "email",
+                            operation: "modify",
+                            provider: account.provider,
+                            attempts,
+                            error,
                           });
                         },
                       },

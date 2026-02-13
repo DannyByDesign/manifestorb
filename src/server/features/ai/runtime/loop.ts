@@ -4,6 +4,7 @@ import type { RuntimeSession } from "@/server/features/ai/runtime/types";
 import { runRuntimeAttempt } from "@/server/features/ai/runtime/attempt";
 import { buildRuntimeExecutionPlan } from "@/server/features/ai/runtime/planner";
 import type { ToolResult } from "@/server/features/ai/tools/types";
+import { emitRuntimeTelemetry } from "@/server/features/ai/runtime/telemetry/schema";
 
 function extractListFromResultData(data: unknown): unknown[] {
   if (Array.isArray(data)) return data;
@@ -111,7 +112,7 @@ async function runDirectSingleRead(session: RuntimeSession): Promise<{ text: str
   const tool = session.tools[definition.toolName];
   if (!tool?.execute) return null;
 
-  session.input.logger.info("openworld.runtime.direct_read", {
+  emitRuntimeTelemetry(session.input.logger, "openworld.runtime.direct_read", {
     userId: session.input.userId,
     provider: session.input.provider,
     capabilityId: step.capabilityId,
@@ -130,7 +131,7 @@ async function runDirectSingleRead(session: RuntimeSession): Promise<{ text: str
 export async function runRuntimeLoop(session: RuntimeSession): Promise<{ text: string }> {
   try {
     session.plan = await buildRuntimeExecutionPlan(session);
-    session.input.logger.info("openworld.runtime.plan", {
+    emitRuntimeTelemetry(session.input.logger, "openworld.runtime.plan", {
       userId: session.input.userId,
       provider: session.input.provider,
       source: session.plan.source,
@@ -139,6 +140,26 @@ export async function runRuntimeLoop(session: RuntimeSession): Promise<{ text: s
       stepCount: session.plan.steps.length,
       issueCount: session.plan.issues.length,
     });
+
+    if (
+      session.plan.steps.length === 0 &&
+      session.plan.needsClarification &&
+      session.plan.needsClarification.trim().length > 0
+    ) {
+      emitRuntimeTelemetry(
+        session.input.logger,
+        "openworld.runtime.clarification_required",
+        {
+          userId: session.input.userId,
+          provider: session.input.provider,
+          prompt: session.plan.needsClarification.trim(),
+          confidence: session.plan.confidence,
+        },
+      );
+      return {
+        text: session.plan.needsClarification.trim(),
+      };
+    }
 
     const direct = await runDirectSingleRead(session);
     if (direct) {

@@ -10,6 +10,13 @@ import {
   classifyCapabilityError,
 } from "@/server/features/ai/capabilities/errors";
 import { createCapabilityIdempotencyKey } from "@/server/features/ai/capabilities/idempotency";
+import {
+  getEmailMessages,
+  getEmailThread,
+  modifyEmailMessages,
+  searchEmailThreads,
+  trashEmailMessages,
+} from "@/server/features/ai/tools/email/primitives";
 
 export interface EmailCapabilities {
   searchThreads(filter: Record<string, unknown>): Promise<ToolResult>;
@@ -141,7 +148,7 @@ async function coerceToMessageIds(
 
   for (const id of normalized) {
     try {
-      const thread = await provider.getThread(id);
+      const thread = await getEmailThread(provider, id);
       if (thread.messages.length > 0) {
         out.push(thread.messages[0]!.id);
         continue;
@@ -165,7 +172,7 @@ async function coerceToThreadIds(
 
   for (const id of normalized) {
     try {
-      const thread = await provider.getThread(id);
+      const thread = await getEmailThread(provider, id);
       out.push(thread.id);
       continue;
     } catch {
@@ -173,7 +180,7 @@ async function coerceToThreadIds(
     }
 
     try {
-      const messages = await provider.get([id]);
+      const messages = await getEmailMessages(provider, [id]);
       if (messages.length > 0) {
         out.push(messages[0]!.threadId);
       }
@@ -196,7 +203,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         filter && typeof filter.dateRange === "object"
           ? (filter.dateRange as Record<string, unknown>)
           : undefined;
-      const result = await provider.search({
+      const result = await searchEmailThreads(provider, {
         query: typeof filter.query === "string" ? filter.query : "",
         limit: typeof filter.limit === "number" ? filter.limit : 25,
         fetchAll: Boolean(filter.fetchAll),
@@ -288,7 +295,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
 
     async getThreadMessages(threadId) {
       try {
-        const thread = await provider.getThread(threadId);
+        const thread = await getEmailThread(provider, threadId);
         const messages = Array.isArray(thread.messages) ? thread.messages : [];
         return {
           success: true,
@@ -318,7 +325,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         };
       }
       try {
-        const messages = await provider.get(normalized);
+        const messages = await getEmailMessages(provider, normalized);
         return {
           success: true,
           data: messages,
@@ -335,7 +342,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
 
     async getLatestMessage(threadId) {
       try {
-        const thread = await provider.getThread(threadId);
+        const thread = await getEmailThread(provider, threadId);
         const messages = [...thread.messages].sort((a, b) => {
           const aMs = a.date ? new Date(a.date).getTime() : 0;
           const bMs = b.date ? new Date(b.date).getTime() : 0;
@@ -371,7 +378,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         };
       }
       try {
-        const result = await provider.modify(messageIds, { archive: true });
+        const result = await modifyEmailMessages(provider, messageIds, { archive: true });
         return {
           success: result.success,
           data: { count: result.count },
@@ -399,7 +406,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         };
       }
       try {
-        const result = await provider.trash(messageIds);
+        const result = await trashEmailMessages(provider, messageIds);
         return {
           success: result.success,
           data: { count: result.count },
@@ -427,7 +434,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         };
       }
       try {
-        const result = await provider.modify(messageIds, { read });
+        const result = await modifyEmailMessages(provider, messageIds, { read });
         return {
           success: result.success,
           data: { count: result.count, read },
@@ -458,7 +465,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         };
       }
       try {
-        const result = await provider.modify(messageIds, {
+        const result = await modifyEmailMessages(provider, messageIds, {
           labels: { add: normalizedLabels },
         });
         return {
@@ -489,7 +496,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         };
       }
       try {
-        const result = await provider.modify(messageIds, {
+        const result = await modifyEmailMessages(provider, messageIds, {
           labels: { remove: normalizedLabels },
         });
         return {
@@ -654,7 +661,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         };
       }
       try {
-        const result = await provider.modify(messageIds, { archive: true });
+        const result = await modifyEmailMessages(provider, messageIds, { archive: true });
         return {
           success: result.success,
           data: { count: result.count },
@@ -679,7 +686,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         };
       }
       try {
-        const result = await provider.trash(messageIds);
+        const result = await trashEmailMessages(provider, messageIds);
         return {
           success: result.success,
           data: { count: result.count },
@@ -704,7 +711,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         };
       }
       try {
-        const result = await provider.modify(messageIds, {
+        const result = await modifyEmailMessages(provider, messageIds, {
           labels: { add: [filter.labelId.trim()] },
         });
         return {
@@ -745,7 +752,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       }
       try {
         const messageIds = await coerceToMessageIds(capEnv, ids);
-        const result = await provider.modify(messageIds, {
+        const result = await modifyEmailMessages(provider, messageIds, {
           followUp: "enable",
           read: false,
         });

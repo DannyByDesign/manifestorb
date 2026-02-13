@@ -3,6 +3,14 @@ import type { CapabilityEnvironment } from "@/server/features/ai/capabilities/ty
 import prisma from "@/server/db/client";
 import type { CalendarEventUpdateInput } from "@/features/calendar/event-types";
 import { capabilityFailureResult } from "@/server/features/ai/capabilities/errors";
+import {
+  createCalendarEvent,
+  deleteCalendarEvent,
+  findCalendarAvailability,
+  getCalendarEvent,
+  listCalendarEvents,
+  updateCalendarEvent,
+} from "@/server/features/ai/tools/calendar/primitives";
 
 export interface CalendarCapabilities {
   findAvailability(filter: Record<string, unknown>): Promise<ToolResult>;
@@ -102,7 +110,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
         const start = typeof startRaw === "string" ? new Date(startRaw) : undefined;
         const end = typeof endRaw === "string" ? new Date(endRaw) : undefined;
 
-        const slots = await provider.findAvailableSlots({
+        const slots = await findCalendarAvailability(provider, {
           durationMinutes,
           ...(start && !Number.isNaN(start.getTime()) ? { start } : {}),
           ...(end && !Number.isNaN(end.getTime()) ? { end } : {}),
@@ -138,7 +146,12 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           "";
         const attendeeEmail = safeString(filter.attendeeEmail);
 
-        const events = await provider.searchEvents(query, { start, end }, attendeeEmail);
+        const events = await listCalendarEvents(provider, {
+          query,
+          start,
+          end,
+          attendeeEmail,
+        });
         const data = toEventListData(events);
         return {
           success: true,
@@ -173,7 +186,12 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           safeString(filter.attendee) ??
           safeString(filter.email);
 
-        const events = await provider.searchEvents(query, { start, end }, attendeeEmail);
+        const events = await listCalendarEvents(provider, {
+          query,
+          start,
+          end,
+          attendeeEmail,
+        });
         const data = toEventListData(events);
         return {
           success: true,
@@ -203,7 +221,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
         };
       }
       try {
-        const event = await provider.getEvent({
+        const event = await getCalendarEvent(provider, {
           eventId,
           ...(safeString(input.calendarId) ? { calendarId: safeString(input.calendarId) } : {}),
         });
@@ -239,8 +257,8 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
         : [];
 
       try {
-        const event = await provider.createEvent({
-          input: {
+        const event = await createCalendarEvent(provider, {
+          event: {
             title,
             start,
             end,
@@ -288,10 +306,12 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
       const mode = modeRaw === "single" || modeRaw === "series" ? modeRaw : undefined;
 
       try {
-        const updated = await provider.updateEvent({
-          ...(safeString(input.calendarId) ? { calendarId: safeString(input.calendarId) } : {}),
+        const updated = await updateCalendarEvent(provider, {
+          ...(safeString(input.calendarId)
+            ? { calendarId: safeString(input.calendarId) }
+            : {}),
           eventId,
-          input: {
+          event: {
             ...(safeString((changes as Record<string, unknown>).title)
               ? { title: safeString((changes as Record<string, unknown>).title) }
               : {}),
@@ -347,8 +367,10 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
       }
       const mode = input.mode === "single" || input.mode === "series" ? input.mode : "single";
       try {
-        await provider.deleteEvent({
-          ...(safeString(input.calendarId) ? { calendarId: safeString(input.calendarId) } : {}),
+        await deleteCalendarEvent(provider, {
+          ...(safeString(input.calendarId)
+            ? { calendarId: safeString(input.calendarId) }
+            : {}),
           eventId,
           deleteOptions: { mode },
         });
@@ -391,10 +413,12 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
 
       const mode = input.mode === "single" || input.mode === "series" ? input.mode : "single";
       try {
-        const updated = await provider.updateEvent({
-          ...(safeString(input.calendarId) ? { calendarId: safeString(input.calendarId) } : {}),
+        const updated = await updateCalendarEvent(provider, {
+          ...(safeString(input.calendarId)
+            ? { calendarId: safeString(input.calendarId) }
+            : {}),
           eventId,
-          input: { attendees, mode },
+          event: { attendees, mode },
         });
         return {
           success: true,
@@ -426,10 +450,12 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
       }
 
       try {
-        const updated = await provider.updateEvent({
-          ...(safeString(input.calendarId) ? { calendarId: safeString(input.calendarId) } : {}),
+        const updated = await updateCalendarEvent(provider, {
+          ...(safeString(input.calendarId)
+            ? { calendarId: safeString(input.calendarId) }
+            : {}),
           eventId,
-          input: {
+          event: {
             ...(input.changes ?? {}),
             mode: input.mode,
           },
@@ -465,7 +491,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
       }
 
       try {
-        const current = await provider.getEvent({ eventId: targetEventId });
+        const current = await getCalendarEvent(provider, { eventId: targetEventId });
         if (!current) return { success: false, error: "event_not_found", message: "I couldn't find that event." };
 
         const explicitStart = toDate(changes.start);
@@ -487,7 +513,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
             toDate(changes.windowEnd) ??
             new Date(windowStart.getTime() + 14 * 24 * 60 * 60 * 1000);
           const durationMinutes = Math.max(1, Math.round(durationMs / 60_000));
-          const slots = await provider.findAvailableSlots({
+          const slots = await findCalendarAvailability(provider, {
             durationMinutes,
             start: windowStart,
             end: windowEnd,
@@ -514,9 +540,9 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           start,
           end,
         };
-        const updated = await provider.updateEvent({
+        const updated = await updateCalendarEvent(provider, {
           eventId: targetEventId,
-          input: updateInput,
+          event: updateInput,
         });
         return {
           success: true,
@@ -617,8 +643,8 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
         };
       }
       try {
-        const event = await provider.createEvent({
-          input: {
+        const event = await createCalendarEvent(provider, {
+          event: {
             title: safeString(data.title) ?? "Out of office",
             start,
             end,
@@ -651,8 +677,8 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
         };
       }
       try {
-        const event = await provider.createEvent({
-          input: {
+        const event = await createCalendarEvent(provider, {
+          event: {
             title: safeString(data.title) ?? "Focus time",
             start,
             end,

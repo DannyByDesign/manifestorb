@@ -30,6 +30,7 @@ export async function withRetries<T>(
       delayMs: number;
       error: unknown;
     }) => void;
+    onExhausted?: (params: { attempts: number; error: unknown }) => void;
   },
 ): Promise<T> {
   const attempts = Math.max(1, options?.attempts ?? 3);
@@ -44,6 +45,12 @@ export async function withRetries<T>(
     } catch (error) {
       lastError = error;
       if (!isRetryable(error) || attempt >= attempts) {
+        if (isRetryable(error) && attempt >= attempts) {
+          options?.onExhausted?.({
+            attempts,
+            error,
+          });
+        }
         throw error;
       }
       const jitter = jitterMaxMs > 0 ? Math.floor(Math.random() * jitterMaxMs) : 0;

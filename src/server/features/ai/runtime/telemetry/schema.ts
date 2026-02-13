@@ -1,0 +1,72 @@
+import { z } from "zod";
+import type { Logger } from "@/server/lib/logger";
+
+const baseSchema = z.object({
+  userId: z.string().min(1),
+  provider: z.string().min(1),
+});
+
+export const runtimePlanTelemetrySchema = baseSchema.extend({
+  source: z.string().min(1),
+  intent: z.enum(["read", "mutate", "mixed", "unknown"]),
+  confidence: z.number().min(0).max(1),
+  stepCount: z.number().int().nonnegative(),
+  issueCount: z.number().int().nonnegative(),
+});
+
+export const runtimeDirectReadTelemetrySchema = baseSchema.extend({
+  capabilityId: z.string().min(1),
+  confidence: z.number().min(0).max(1),
+});
+
+export const runtimeTurnCompletedTelemetrySchema = baseSchema.extend({
+  durationMs: z.number().int().nonnegative(),
+  stepCount: z.number().int().nonnegative(),
+  successes: z.number().int().nonnegative(),
+  blocked: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  approvalsCount: z.number().int().nonnegative(),
+  interactivePayloadsCount: z.number().int().nonnegative(),
+});
+
+export const runtimePrecheckFailedTelemetrySchema = baseSchema.extend({
+  issues: z.array(z.string().min(1)).min(1).max(16),
+});
+
+export const runtimeClarificationRequiredTelemetrySchema = baseSchema.extend({
+  prompt: z.string().min(1).max(320),
+  confidence: z.number().min(0).max(1),
+});
+
+const runtimeTelemetrySchemas = {
+  "openworld.runtime.plan": runtimePlanTelemetrySchema,
+  "openworld.runtime.direct_read": runtimeDirectReadTelemetrySchema,
+  "openworld.turn.completed": runtimeTurnCompletedTelemetrySchema,
+  "openworld.runtime.precheck_failed": runtimePrecheckFailedTelemetrySchema,
+  "openworld.runtime.clarification_required":
+    runtimeClarificationRequiredTelemetrySchema,
+} as const;
+
+export type RuntimeTelemetryEventName = keyof typeof runtimeTelemetrySchemas;
+type RuntimeTelemetryPayload<T extends RuntimeTelemetryEventName> = z.infer<
+  (typeof runtimeTelemetrySchemas)[T]
+>;
+
+export function emitRuntimeTelemetry<T extends RuntimeTelemetryEventName>(
+  logger: Logger,
+  event: T,
+  payload: RuntimeTelemetryPayload<T>,
+) {
+  const parsed = runtimeTelemetrySchemas[event].safeParse(payload);
+  if (!parsed.success) {
+    logger.warn("openworld.runtime.telemetry.invalid", {
+      event,
+      issues: parsed.error.issues.map((issue) => ({
+        path: issue.path.join("."),
+        message: issue.message,
+      })),
+    });
+    return;
+  }
+  logger.info(event, parsed.data);
+}
