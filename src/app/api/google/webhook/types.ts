@@ -1,5 +1,4 @@
 import type { gmail_v1 } from "@googleapis/gmail";
-import type { RuleWithActions } from "@/server/types";
 import type { EmailAccountWithAI } from "@/server/lib/llms/types";
 import type { EmailAccount } from "@/generated/prisma/client";
 
@@ -16,7 +15,6 @@ export type ProcessHistoryOptions = {
   history: gmail_v1.Schema$History[];
   gmail: gmail_v1.Gmail;
   accessToken: string;
-  rules: RuleWithActions[];
   hasAutomationRules: boolean;
   hasAiAccess: boolean;
   emailAccount: Pick<

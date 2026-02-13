@@ -13,6 +13,11 @@ import { CalendarServiceImpl } from "@/features/calendar/scheduling/CalendarServ
 import { TimeSlotManagerImpl } from "@/features/calendar/scheduling/TimeSlotManager";
 import type { SchedulingSettings, SchedulingTask } from "@/features/calendar/scheduling/types";
 import { resolveDefaultCalendarTimeZone } from "../calendar-time";
+import { mapInBatches } from "@/server/features/ai/tools/common/concurrency";
+import {
+  isProviderRateLimitError,
+  withRetries,
+} from "@/server/features/ai/tools/common/retry";
 
 export interface CalendarProvider {
   searchEvents(
@@ -53,20 +58,38 @@ export async function createCalendarProvider(
   const scopedLogger = createScopedLogger("tools/calendar");
   const providers = await createCalendarEventProviders(account.id, logger);
   const providerByType = new Map(providers.map((provider) => [provider.provider, provider]));
-  const mapWithConcurrency = async <T, U>(
-    items: T[],
-    concurrency: number,
-    mapper: (item: T) => Promise<U>,
-  ): Promise<U[]> => {
-    if (items.length === 0) return [];
-    const safeConcurrency = Math.max(1, concurrency);
-    const out: U[] = [];
-    for (let i = 0; i < items.length; i += safeConcurrency) {
-      const chunk = items.slice(i, i + safeConcurrency);
-      const mapped = await Promise.all(chunk.map((item) => mapper(item)));
-      out.push(...mapped);
-    }
-    return out;
+
+  const withProviderRetry = async <T>(
+    operation: string,
+    providerType: string,
+    fn: () => Promise<T>,
+  ): Promise<T> => {
+    return withRetries(fn, {
+      attempts: 3,
+      baseDelayMs: 700,
+      isRetryable: isProviderRateLimitError,
+      onRetry: ({ attempt, attempts, delayMs }) => {
+        scopedLogger.warn("openworld.provider.retry", {
+          domain: "calendar",
+          operation,
+          provider: providerType,
+          attempt,
+          attempts,
+          delayMs,
+          userId,
+        });
+      },
+      onExhausted: ({ attempts, error }) => {
+        scopedLogger.error("openworld.provider.retry_exhausted", {
+          domain: "calendar",
+          operation,
+          provider: providerType,
+          attempts,
+          userId,
+          error,
+        });
+      },
+    });
   };
 
   const resolveCalendarTarget = async (calendarId?: string) => {
@@ -192,7 +215,7 @@ export async function createCalendarProvider(
           return [];
         }
 
-        const results = await mapWithConcurrency(calendars, 3, (calendar) => {
+        const results = await mapInBatches(calendars, 3, (calendar) => {
             const provider = providerByType.get(
               calendar.connection.provider as "google" | "microsoft",
             );
@@ -200,20 +223,30 @@ export async function createCalendarProvider(
               return Promise.resolve<CalendarEvent[]>([]);
             }
             if (attendeeEmail) {
-              return provider.fetchEventsWithAttendee({
-                attendeeEmail,
-                timeMin: range.start,
-                timeMax: range.end,
-                maxResults: 250,
-                calendarId: calendar.calendarId,
-              });
+              return withProviderRetry(
+                "searchEvents.fetchEventsWithAttendee",
+                provider.provider,
+                () =>
+                  provider.fetchEventsWithAttendee({
+                    attendeeEmail,
+                    timeMin: range.start,
+                    timeMax: range.end,
+                    maxResults: 250,
+                    calendarId: calendar.calendarId,
+                  }),
+              );
             }
-            return provider.fetchEvents({
-              timeMin: range.start,
-              timeMax: range.end,
-              maxResults: 250,
-              calendarId: calendar.calendarId,
-            });
+            return withProviderRetry(
+              "searchEvents.fetchEvents",
+              provider.provider,
+              () =>
+                provider.fetchEvents({
+                  timeMin: range.start,
+                  timeMax: range.end,
+                  maxResults: 250,
+                  calendarId: calendar.calendarId,
+                }),
+            );
           });
         events = results.flat();
       } else {
@@ -232,7 +265,7 @@ export async function createCalendarProvider(
         })) ?? [];
 
         if (calendars.length > 0) {
-          const results = await mapWithConcurrency(calendars, 3, (calendar) => {
+          const results = await mapInBatches(calendars, 3, (calendar) => {
               const provider = providerByType.get(
                 calendar.connection.provider as "google" | "microsoft",
               );
@@ -240,37 +273,57 @@ export async function createCalendarProvider(
                 return Promise.resolve<CalendarEvent[]>([]);
               }
               if (attendeeEmail) {
-                return provider.fetchEventsWithAttendee({
-                  attendeeEmail,
-                  timeMin: range.start,
-                  timeMax: range.end,
-                  maxResults: 250,
-                  calendarId: calendar.calendarId,
-                });
+                return withProviderRetry(
+                  "searchEvents.fetchEventsWithAttendee",
+                  provider.provider,
+                  () =>
+                    provider.fetchEventsWithAttendee({
+                      attendeeEmail,
+                      timeMin: range.start,
+                      timeMax: range.end,
+                      maxResults: 250,
+                      calendarId: calendar.calendarId,
+                    }),
+                );
               }
-              return provider.fetchEvents({
-                timeMin: range.start,
-                timeMax: range.end,
-                maxResults: 250,
-                calendarId: calendar.calendarId,
-              });
+              return withProviderRetry(
+                "searchEvents.fetchEvents",
+                provider.provider,
+                () =>
+                  provider.fetchEvents({
+                    timeMin: range.start,
+                    timeMax: range.end,
+                    maxResults: 250,
+                    calendarId: calendar.calendarId,
+                  }),
+              );
             });
           events = results.flat();
         } else {
-          const results = await mapWithConcurrency(providers, 3, (provider) => {
+          const results = await mapInBatches(providers, 3, (provider) => {
               if (attendeeEmail) {
-                return provider.fetchEventsWithAttendee({
-                  attendeeEmail,
-                  timeMin: range.start,
-                  timeMax: range.end,
-                  maxResults: 250,
-                });
+                return withProviderRetry(
+                  "searchEvents.fetchEventsWithAttendee",
+                  provider.provider,
+                  () =>
+                    provider.fetchEventsWithAttendee({
+                      attendeeEmail,
+                      timeMin: range.start,
+                      timeMax: range.end,
+                      maxResults: 250,
+                    }),
+                );
               }
-              return provider.fetchEvents({
-                timeMin: range.start,
-                timeMax: range.end,
-                maxResults: 250,
-              });
+              return withProviderRetry(
+                "searchEvents.fetchEvents",
+                provider.provider,
+                () =>
+                  provider.fetchEvents({
+                    timeMin: range.start,
+                    timeMax: range.end,
+                    maxResults: 250,
+                  }),
+              );
             });
           events = results.flat();
         }
@@ -374,22 +427,30 @@ export async function createCalendarProvider(
     getEvent: async ({ eventId, calendarId }) => {
       const { provider, calendarId: resolvedId } =
         await getProviderFor(calendarId);
-      return provider.getEvent(eventId, resolvedId);
+      return withProviderRetry("getEvent", provider.provider, () =>
+        provider.getEvent(eventId, resolvedId),
+      );
     },
     createEvent: async ({ calendarId, input }) => {
       const { provider, calendarId: resolvedId } =
         await getProviderFor(calendarId);
-      return provider.createEvent(resolvedId, input);
+      return withProviderRetry("createEvent", provider.provider, () =>
+        provider.createEvent(resolvedId, input),
+      );
     },
     updateEvent: async ({ calendarId, eventId, input }) => {
       const { provider, calendarId: resolvedId } =
         await getProviderFor(calendarId);
-      return provider.updateEvent(resolvedId, eventId, input);
+      return withProviderRetry("updateEvent", provider.provider, () =>
+        provider.updateEvent(resolvedId, eventId, input),
+      );
     },
     deleteEvent: async ({ calendarId, eventId, deleteOptions }) => {
       const { provider, calendarId: resolvedId } =
         await getProviderFor(calendarId);
-      await provider.deleteEvent(resolvedId, eventId, deleteOptions);
+      await withProviderRetry("deleteEvent", provider.provider, () =>
+        provider.deleteEvent(resolvedId, eventId, deleteOptions),
+      );
     },
   };
 }

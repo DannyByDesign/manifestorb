@@ -5,7 +5,8 @@ import { unwatchEmails } from "@/features/email/watch-manager";
 import { createEmailProvider } from "@/features/email/provider";
 import prisma from "@/server/db/client";
 import type { Logger } from "@/server/lib/logger";
-import { resumePausedEmailRules } from "@/features/rules/management";
+import { listEffectiveCanonicalRules } from "@/server/features/policy-plane/repository";
+import { isRuleActiveNow } from "@/server/features/policy-plane/canonical-schema";
 
 export async function getWebhookEmailAccount(
   where: { email: string } | { watchEmailsSubscriptionId: string },
@@ -33,10 +34,6 @@ export async function getWebhookEmailAccount(
           expires_at: true,
           disconnectedAt: true,
         },
-      },
-      rules: {
-        where: { enabled: true },
-        include: { actions: true },
       },
       user: {
         select: {
@@ -94,16 +91,6 @@ export async function getWebhookEmailAccount(
 
   if (!emailAccount) {
     logger.error("Account not found", where);
-  }
-
-  if (emailAccount) {
-    const resumed = await resumePausedEmailRules(emailAccount.id);
-    if (resumed.count > 0) {
-      emailAccount = await prisma.emailAccount.findUnique({
-        where: { id: emailAccount.id },
-        ...query,
-      });
-    }
   }
 
   return emailAccount;
@@ -182,7 +169,18 @@ export async function validateWebhookAccount(
     return { success: false, response: NextResponse.json({ ok: true }) };
   }
 
-  const hasAutomationRules = emailAccount.rules.length > 0;
+  const canonicalRules = await listEffectiveCanonicalRules({
+    userId: emailAccount.userId,
+    emailAccountId: emailAccount.id,
+    type: "automation",
+  });
+  const hasAutomationRules = canonicalRules.some((rule) =>
+    isRuleActiveNow({
+      enabled: rule.enabled,
+      expiresAt: rule.expiresAt,
+      disabledUntil: rule.disabledUntil,
+    }),
+  );
 
   if (!hasAutomationRules) {
     logger.info("Has no rules enabled");

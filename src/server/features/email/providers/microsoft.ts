@@ -36,7 +36,7 @@ import {
 } from "@/server/integrations/microsoft/label";
 import { trashThread } from "@/server/integrations/microsoft/trash";
 import { markSpam } from "@/server/integrations/microsoft/spam";
-import { handlePreviousDraftDeletion } from "@/features/rules/ai/draft-management";
+import { handlePreviousDraftDeletion } from "@/server/features/email/draft-management";
 import { type Logger, createScopedLogger } from "@/server/lib/logger";
 import {
   getThreadMessages,

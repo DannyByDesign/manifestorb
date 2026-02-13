@@ -1,5 +1,5 @@
 import { messageVisibility } from "@/server/integrations/google/constants";
-import { getRuleLabel } from "@/features/rules/consts";
+import { getRuleLabel } from "@/server/features/policy-plane/system-config";
 import { SystemType } from "@/generated/prisma/enums";
 
 export const PARENT_LABEL = "Amodel";

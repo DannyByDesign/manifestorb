@@ -3,20 +3,19 @@ import { isMicrosoftProvider } from "@/features/email/provider-types";
 import { ActionType, SystemType } from "@/generated/prisma/enums";
 import { env } from "@/env";
 
-const ruleConfig: Record<
-  SystemType,
-  {
-    name: string;
-    instructions: string;
-    label: string;
-    draftReply?: boolean;
-    runOnThreads: boolean;
-    categoryAction: "label" | "label_archive" | "move_folder";
-    categoryActionMicrosoft?: "move_folder";
-    tooltipText: string;
-    shouldLearn: boolean;
-  }
-> = {
+type SystemRuleConfig = {
+  name: string;
+  instructions: string;
+  label: string;
+  draftReply?: boolean;
+  runOnThreads: boolean;
+  categoryAction: "label" | "label_archive" | "move_folder";
+  categoryActionMicrosoft?: "move_folder";
+  tooltipText: string;
+  shouldLearn: boolean;
+};
+
+const ruleConfig: Record<SystemType, SystemRuleConfig> = {
   [SystemType.TO_REPLY]: {
     name: "To Reply",
     instructions: "Emails I need to respond to",
@@ -122,33 +121,41 @@ const ruleConfig: Record<
   },
 };
 
-export function getRuleConfig(systemType: SystemType) {
-  if (!ruleConfig[systemType])
+export function getRuleConfig(systemType: SystemType): SystemRuleConfig {
+  if (!ruleConfig[systemType]) {
     throw new Error(`Invalid system type: ${systemType}`);
+  }
   return ruleConfig[systemType];
 }
 
-export function getRuleName(systemType: SystemType) {
-  return getRuleConfig(systemType).name;
+export function getRuleLabel(systemType: SystemType): string {
+  return getRuleConfig(systemType).label;
 }
 
-export function getRuleLabel(systemType: SystemType) {
-  return getRuleConfig(systemType).label;
+export function getRuleName(systemType: SystemType): string {
+  return getRuleConfig(systemType).name;
 }
 
 export function shouldLearnFromLabelRemoval(systemType: SystemType): boolean {
   return getRuleConfig(systemType).shouldLearn;
 }
 
-export function getCategoryAction(systemType: SystemType, provider: string) {
+export function getCategoryAction(
+  systemType: SystemType,
+  provider: string,
+): "label" | "label_archive" | "move_folder" {
   const config = getRuleConfig(systemType);
-
   if (isMicrosoftProvider(provider)) {
     return config.categoryActionMicrosoft || config.categoryAction;
   }
-
   return config.categoryAction;
 }
+
+type ActionTypeConfig = {
+  type: ActionType;
+  includeLabel?: boolean;
+  includeFolder?: boolean;
+};
 
 export const SYSTEM_RULE_ORDER: SystemType[] = [
   SystemType.TO_REPLY,
@@ -291,18 +298,7 @@ export function getDefaultActions(
   return actions;
 }
 
-type ActionTypeConfig = {
-  type: ActionType;
-  includeLabel?: boolean;
-  includeFolder?: boolean;
-};
-
-export function getActionTypesForCategoryAction({
-  categoryAction,
-  systemType,
-  draftReply = false,
-  hasDigest = false,
-}: {
+export function getActionTypesForCategoryAction(params: {
   categoryAction: "label" | "label_archive" | "move_folder";
   systemType?: SystemType;
   draftReply?: boolean;
@@ -310,29 +306,30 @@ export function getActionTypesForCategoryAction({
 }): ActionTypeConfig[] {
   const actionTypes: ActionTypeConfig[] = [];
 
-  if (categoryAction === "move_folder") {
+  if (params.categoryAction === "move_folder") {
     actionTypes.push({ type: ActionType.MOVE_FOLDER, includeFolder: true });
   } else {
     actionTypes.push({ type: ActionType.LABEL, includeLabel: true });
   }
 
-  if (categoryAction === "label_archive") {
+  if (params.categoryAction === "label_archive") {
     actionTypes.push({ type: ActionType.ARCHIVE });
+  }
 
-    if (
-      systemType === SystemType.COLD_EMAIL &&
-      env.NEXT_PUBLIC_IS_RESEND_CONFIGURED
-    ) {
+  if (params.draftReply) {
+    actionTypes.push({ type: ActionType.DRAFT_EMAIL });
+  }
+
+  if (params.categoryAction === "label_archive" && params.systemType === SystemType.COLD_EMAIL) {
+    if (env.NEXT_PUBLIC_IS_RESEND_CONFIGURED) {
       actionTypes.push({ type: ActionType.NOTIFY_SENDER });
     }
   }
 
-  if (draftReply) {
-    actionTypes.push({ type: ActionType.DRAFT_EMAIL });
-  }
-
-  if (hasDigest) {
-    actionTypes.push({ type: ActionType.DIGEST });
+  if (params.hasDigest) {
+    actionTypes.push({
+      type: ActionType.DIGEST,
+    });
   }
 
   return actionTypes;

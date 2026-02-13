@@ -4,7 +4,7 @@ import {
   getCategoryAction,
   getRuleConfig,
   getRuleLabel,
-} from "@/features/rules/consts";
+} from "@/server/features/policy-plane/system-config";
 import { SystemType } from "@/generated/prisma/enums";
 import {
   MailIcon,

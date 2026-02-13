@@ -8,6 +8,15 @@ function buildSystemPrompt(session: RuntimeSession): string {
   const skillSection = session.skillSnapshot.promptSection
     ? `\n\nCapability Hints:\n${session.skillSnapshot.promptSection}`
     : "";
+  const planSection =
+    session.plan && session.plan.steps.length > 0
+      ? `\n\nExecution Plan:\n${session.plan.steps
+          .map((step, index) => {
+            const args = JSON.stringify(step.args);
+            return `${index + 1}. ${step.capabilityId} args=${args}`;
+          })
+          .join("\n")}\nFollow this plan unless tool outputs require adapting.`
+      : "";
 
   return [
     "You are Amodel, an open-world AI operations agent for inbox and calendar.",
@@ -18,6 +27,7 @@ function buildSystemPrompt(session: RuntimeSession): string {
     "If blocked by policy or approval requirements, explain exactly what is blocked and why.",
     "If information is missing, ask one concise clarification question.",
     skillSection,
+    planSection,
   ]
     .filter(Boolean)
     .join("\n");

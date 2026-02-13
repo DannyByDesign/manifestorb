@@ -7,6 +7,7 @@ import type {
   ToolExecutionSummary,
   RuntimeToolDefinition,
 } from "@/server/features/ai/tools/fabric/types";
+import type { RuntimeExecutionPlan } from "@/server/features/ai/runtime/planner/types";
 
 export interface OpenWorldTurnInput {
   provider: string;
@@ -29,6 +30,7 @@ export interface RuntimeSession {
   input: OpenWorldTurnInput;
   capabilities: SkillCapabilities;
   skillSnapshot: RuntimeSkillSnapshot;
+  plan?: RuntimeExecutionPlan;
   tools: ToolSet;
   toolRegistry: RuntimeToolDefinition[];
   artifacts: ToolExecutionArtifacts;

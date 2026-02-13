@@ -9,7 +9,7 @@ import type { EmailAccount } from "@/generated/prisma/client";
 import { extractEmailAddress, extractNameFromEmail } from "@/server/lib/email";
 import { isIgnoredSender } from "@/server/lib/filter-ignored-senders";
 import type { EmailProvider } from "@/features/email/types";
-import type { ParsedMessage, RuleWithActions } from "@/server/lib/types";
+import type { ParsedMessage } from "@/server/lib/types";
 import type { EmailAccountWithAI } from "@/server/lib/llms/types";
 import type { Logger } from "@/server/lib/logger";
 import { captureException } from "@/server/lib/error";
@@ -17,7 +17,6 @@ import { executeCanonicalEmailAutomations } from "@/server/features/policy-plane
 
 export type SharedProcessHistoryOptions = {
   provider: EmailProvider;
-  rules: RuleWithActions[];
   hasAutomationRules: boolean;
   hasAiAccess: boolean;
   emailAccount: EmailAccountWithAI &

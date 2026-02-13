@@ -5,6 +5,7 @@ import type { OpenWorldTurnInput, OpenWorldTurnResult } from "@/server/features/
 import { runRuntimePrecheck } from "@/server/features/ai/runtime/context/precheck";
 import { hydrateRuntimeContext } from "@/server/features/ai/runtime/context/hydrator";
 import { withUserRuntimeConcurrencyLimit } from "@/server/features/ai/runtime/concurrency";
+import { emitRuntimeTelemetry } from "@/server/features/ai/runtime/telemetry/schema";
 
 export async function runOpenWorldRuntimeTurn(
   input: OpenWorldTurnInput,
@@ -13,6 +14,11 @@ export async function runOpenWorldRuntimeTurn(
     const startedAt = Date.now();
     const precheck = runRuntimePrecheck(input);
     if (!precheck.ok) {
+      emitRuntimeTelemetry(input.logger, "openworld.runtime.precheck_failed", {
+        userId: input.userId,
+        provider: input.provider,
+        issues: precheck.issues,
+      });
       return {
         text:
           precheck.userMessage ??
@@ -38,7 +44,7 @@ export async function runOpenWorldRuntimeTurn(
     const successes = result.toolSummaries.filter((summary) => summary.outcome === "success").length;
     const blocked = result.toolSummaries.filter((summary) => summary.outcome === "blocked").length;
     const failed = result.toolSummaries.filter((summary) => summary.outcome === "failed").length;
-    input.logger.info("openworld.turn.completed", {
+    emitRuntimeTelemetry(input.logger, "openworld.turn.completed", {
       userId: input.userId,
       provider: input.provider,
       durationMs,

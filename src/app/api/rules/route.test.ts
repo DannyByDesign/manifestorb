@@ -7,12 +7,10 @@ vi.mock("@/server/auth", () => ({ auth: vi.fn() }));
 vi.mock("@/server/lib/user/email-account", () => ({
   findUserEmailAccountWithProvider: vi.fn(),
 }));
-vi.mock("@/features/rules/management", () => ({
-  listEmailRules: vi.fn(),
-  resumePausedEmailRules: vi.fn(),
+vi.mock("@/features/policies/service", () => ({
+  listAssistantPolicies: vi.fn(),
 }));
 vi.mock("@/features/approvals/rules", () => ({
-  listApprovalRuleConfigs: vi.fn(),
   getApprovalOperationLabel: vi.fn((operation: string) => operation),
   normalizeApprovalOperationKey: vi.fn((operation?: string) => operation),
   upsertApprovalRule: vi.fn(),
@@ -20,15 +18,13 @@ vi.mock("@/features/approvals/rules", () => ({
 
 import { auth } from "@/server/auth";
 import { findUserEmailAccountWithProvider } from "@/server/lib/user/email-account";
-import { listEmailRules, resumePausedEmailRules } from "@/features/rules/management";
-import { listApprovalRuleConfigs, upsertApprovalRule } from "@/features/approvals/rules";
+import { listAssistantPolicies } from "@/features/policies/service";
+import { upsertApprovalRule } from "@/features/approvals/rules";
 import { GET, POST } from "./route";
 
 const mockAuth = vi.mocked(auth);
 const mockFindEmailAccount = vi.mocked(findUserEmailAccountWithProvider);
-const mockListEmailRules = vi.mocked(listEmailRules);
-const mockResumePausedEmailRules = vi.mocked(resumePausedEmailRules);
-const mockListApprovalRuleConfigs = vi.mocked(listApprovalRuleConfigs);
+const mockListAssistantPolicies = vi.mocked(listAssistantPolicies);
 const mockUpsertApprovalRule = vi.mocked(upsertApprovalRule);
 
 describe("rules API route", () => {
@@ -40,9 +36,13 @@ describe("rules API route", () => {
       about: "About me",
       account: { provider: "google" },
     } as never);
-    mockResumePausedEmailRules.mockResolvedValue({ count: 0 } as never);
-    mockListEmailRules.mockResolvedValue([] as never);
-    mockListApprovalRuleConfigs.mockResolvedValue([] as never);
+    mockListAssistantPolicies.mockResolvedValue({
+      preferences: {},
+      emailRules: [],
+      rulePlaneRules: [],
+      approvalRules: [],
+      summary: { emailRuleCount: 0, approvalRuleCount: 0 },
+    } as never);
   });
 
   it("returns 401 when unauthenticated", async () => {
@@ -52,25 +52,25 @@ describe("rules API route", () => {
   });
 
   it("returns combined email + approval rules with summary", async () => {
-    mockListEmailRules.mockResolvedValue([{ id: "er-1", name: "Archive newsletters" }] as never);
-    mockListApprovalRuleConfigs.mockResolvedValue([
-      {
-        toolName: "send",
-        defaultPolicy: "always",
-        rules: [
-          {
-            id: "ar-1",
-            name: "External send requires approval",
-            operation: "send_email",
-            policy: "always",
-            enabled: true,
-            disabledUntil: undefined,
-            conditions: undefined,
-            priority: 10,
-          },
-        ],
-      },
-    ] as never);
+    mockListAssistantPolicies.mockResolvedValue({
+      preferences: {},
+      emailRules: [{ id: "er-1", name: "Archive newsletters" }],
+      rulePlaneRules: [],
+      approvalRules: [
+        {
+          id: "ar-1",
+          name: "External send requires approval",
+          toolName: "send",
+          operation: "send_email",
+          policy: "always",
+          enabled: true,
+          disabledUntil: undefined,
+          conditions: undefined,
+          priority: 10,
+        },
+      ],
+      summary: { emailRuleCount: 1, approvalRuleCount: 1 },
+    } as never);
 
     const response = await GET();
     const body = await response.json();

@@ -14,7 +14,7 @@ import { createEmailProvider } from "@/features/email/provider";
 import type { EmailProvider } from "@/features/email/types";
 import { getColdEmailRule } from "@/features/cold-email/cold-email-rule";
 import { internalDateToDate } from "@/server/lib/date";
-import { saveLearnedPattern } from "@/features/rules/learned-patterns";
+import { saveLearnedPattern } from "@/server/features/policy-plane/learning-patterns";
 
 export const markNotColdEmailAction = actionClient
   .metadata({ name: "markNotColdEmail" })

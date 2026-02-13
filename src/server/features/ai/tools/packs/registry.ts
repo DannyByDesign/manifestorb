@@ -7,6 +7,8 @@ export function listInternalToolPacks(): ToolPackManifest[] {
       id: "core-inbox-calendar-policy",
       name: "Core Inbox Calendar Policy",
       enabled: true,
+      dependencies: [],
+      requiredFlags: [],
       capabilities: listCapabilityDefinitions().map((definition) => definition.id),
     },
   ];

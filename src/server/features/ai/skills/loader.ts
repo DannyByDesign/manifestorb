@@ -47,7 +47,10 @@ function parseTags(frontmatter: Record<string, string>): string[] {
 }
 
 export function loadRuntimeSkills(): RuntimeSkill[] {
-  const skillsRoot = path.join(process.cwd(), "skills");
+  const skillsRoot = path.join(
+    process.cwd(),
+    "src/server/features/ai/skills/catalog",
+  );
   let files: string[] = [];
   try {
     if (!statSync(skillsRoot).isDirectory()) return [];

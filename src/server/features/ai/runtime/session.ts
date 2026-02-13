@@ -28,6 +28,7 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
 
   const registry = filterToolRegistry(buildRuntimeToolRegistry(), {
     includeDangerous: true,
+    message: input.message,
   });
 
   const artifacts = {

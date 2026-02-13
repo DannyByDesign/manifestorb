@@ -39,7 +39,7 @@ import {
 } from "@/server/integrations/google/label";
 import { trashThread } from "@/server/integrations/google/trash";
 import { markSpam } from "@/server/integrations/google/spam";
-import { handlePreviousDraftDeletion } from "@/features/rules/ai/draft-management";
+import { handlePreviousDraftDeletion } from "@/server/features/email/draft-management";
 import {
   getThreadMessages,
   getThreadsFromSenderWithSubject,
