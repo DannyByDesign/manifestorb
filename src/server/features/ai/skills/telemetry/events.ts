@@ -1,12 +1,9 @@
 import type { CapabilityName } from "@/server/features/ai/skills/contracts/skill-contract";
 import type { SkillId } from "@/server/features/ai/skills/baseline/skill-ids";
 
-export type SkillsMode = "off" | "shadow" | "on";
-
 export type SkillTelemetryEvent =
   | {
       name: "skill.route.completed";
-      skillsMode: SkillsMode;
       requestId: string;
       provider: string;
       skillId: SkillId | null;
@@ -15,7 +12,6 @@ export type SkillTelemetryEvent =
     }
   | {
       name: "skill.slot_resolution.completed";
-      skillsMode: SkillsMode;
       requestId: string;
       provider: string;
       skillId: SkillId;
@@ -24,7 +20,6 @@ export type SkillTelemetryEvent =
     }
   | {
       name: "skill.execution.completed";
-      skillsMode: SkillsMode;
       requestId: string;
       provider: string;
       skillId: SkillId;

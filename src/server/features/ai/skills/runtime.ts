@@ -9,7 +9,6 @@ import { emitSkillTelemetry } from "@/server/features/ai/skills/telemetry/emit";
 import { resolveDefaultCalendarTimeZone } from "@/server/features/ai/tools/calendar-time";
 
 export async function runBaselineSkillTurn(params: {
-  skillsMode: "off" | "shadow" | "on";
   provider: string;
   userId: string;
   emailAccountId: string;
@@ -47,7 +46,6 @@ export async function runBaselineSkillTurn(params: {
   });
   emitSkillTelemetry(params.logger, {
     name: "skill.route.completed",
-    skillsMode: params.skillsMode,
     requestId,
     provider: params.provider,
     skillId: route.skillId,
@@ -69,7 +67,6 @@ export async function runBaselineSkillTurn(params: {
   });
   emitSkillTelemetry(params.logger, {
     name: "skill.slot_resolution.completed",
-    skillsMode: params.skillsMode,
     requestId,
     provider: params.provider,
     skillId: route.skillId,
@@ -99,7 +96,6 @@ export async function runBaselineSkillTurn(params: {
   const result = await executeSkill({ skill, slots, capabilities });
   emitSkillTelemetry(params.logger, {
     name: "skill.execution.completed",
-    skillsMode: params.skillsMode,
     requestId,
     provider: params.provider,
     skillId: route.skillId,

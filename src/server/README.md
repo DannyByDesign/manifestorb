@@ -76,7 +76,6 @@ Migration and verification scripts.
 ```typescript
 // Features
 import { createAgentTools } from "@/features/ai/tools";
-import { aiProcessAssistantChat } from "@/features/web-chat/ai/chat";
 
 // Integrations
 import { getGmailClient } from "@/integrations/google/client";

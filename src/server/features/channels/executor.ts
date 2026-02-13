@@ -65,7 +65,9 @@ export async function runOneShotAgent({
   const interactivePayloads = Array.isArray(result.interactivePayloads)
     ? (result.interactivePayloads as unknown[]).filter(
         (payload): payload is InteractivePayload =>
-          Boolean(payload) && typeof payload === "object" && "type" in (payload as any),
+          Boolean(payload) &&
+          typeof payload === "object" &&
+          "type" in (payload as Record<string, unknown>),
       )
     : [];
 

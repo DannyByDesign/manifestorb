@@ -107,4 +107,4 @@ const approvalService = new ApprovalService(prisma);
 // Wrap tools with approval flow in executor/chat
 ```
 
-See `features/channels/executor.ts` and `features/web-chat/ai/chat.ts` for implementation. Approvals use secure action tokens (`features/approvals/action-token.ts`).
+See `features/channels/executor.ts` and `features/ai/message-processor.ts` for implementation. Approvals use secure action tokens (`features/approvals/action-token.ts`).
