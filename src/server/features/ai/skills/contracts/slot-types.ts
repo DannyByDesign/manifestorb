@@ -30,6 +30,7 @@ export const slotValueSchema = z.union([
   z.boolean(),
   z.array(z.string()),
   z.array(z.number()),
+  z.record(z.string(), z.unknown()),
   timeRangeSlotSchema,
   participantSlotSchema,
   sendWindowSlotSchema,

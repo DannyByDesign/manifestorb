@@ -21,6 +21,7 @@ import prisma from "@/server/db/client";
 import { env } from "@/env";
 import type { CreateApprovalParams } from "@/server/features/approvals/types";
 import { evaluatePolicyDecision } from "@/server/features/policy-plane/pdp";
+import { createPolicyExecutionLog } from "@/server/features/policy-plane/policy-logs";
 
 interface SkillApprovalRecord {
   id: string;
@@ -120,6 +121,12 @@ export const EXECUTOR_SUPPORTED_CAPABILITIES: ReadonlySet<CapabilityName> = new 
   "calendar.createBookingSchedule",
   "planner.composeDayPlan",
   "planner.compileMultiActionPlan",
+  "policy.listRules",
+  "policy.compileRule",
+  "policy.createRule",
+  "policy.updateRule",
+  "policy.disableRule",
+  "policy.deleteRule",
 ]);
 
 const READ_ONLY_CAPABILITIES: ReadonlySet<CapabilityName> = new Set<CapabilityName>([
@@ -139,6 +146,8 @@ const READ_ONLY_CAPABILITIES: ReadonlySet<CapabilityName> = new Set<CapabilityNa
   "calendar.getEvent",
   "planner.composeDayPlan",
   "planner.compileMultiActionPlan",
+  "policy.listRules",
+  "policy.compileRule",
 ]);
 
 function enforceAllowed(skill: SkillContract, capability: CapabilityName): void {
@@ -261,6 +270,12 @@ function mapCapabilityToApprovalContext(params: {
     "email.bulkSenderLabel": "bulk_label_senders",
     "email.batchArchive": "archive_email",
     "calendar.rescheduleEvent": "update_calendar_event",
+    "policy.listRules": "list_rules",
+    "policy.compileRule": "compile_rule",
+    "policy.createRule": "create_rule",
+    "policy.updateRule": "update_rule",
+    "policy.disableRule": "disable_rule",
+    "policy.deleteRule": "delete_rule",
   };
   const operation = operationByCapability[capability];
 
@@ -383,6 +398,51 @@ function mapCapabilityToApprovalContext(params: {
       },
     };
   }
+  if (capability === "policy.listRules") {
+    return {
+      toolName: "query",
+      args: {
+        resource: "rule",
+        ...(operation ? { operation } : {}),
+      },
+    };
+  }
+  if (capability === "policy.compileRule") {
+    return {
+      toolName: "analyze",
+      args: {
+        resource: "rule",
+        ...(operation ? { operation } : {}),
+      },
+    };
+  }
+  if (capability === "policy.createRule") {
+    return {
+      toolName: "create",
+      args: {
+        resource: "rule",
+        ...(operation ? { operation } : {}),
+      },
+    };
+  }
+  if (capability === "policy.updateRule" || capability === "policy.disableRule") {
+    return {
+      toolName: "modify",
+      args: {
+        resource: "rule",
+        ...(operation ? { operation } : {}),
+      },
+    };
+  }
+  if (capability === "policy.deleteRule") {
+    return {
+      toolName: "delete",
+      args: {
+        resource: "rule",
+        ...(operation ? { operation } : {}),
+      },
+    };
+  }
   return {
     toolName: "modify",
     args: {
@@ -392,6 +452,46 @@ function mapCapabilityToApprovalContext(params: {
       ...(operation ? { operation } : {}),
     },
   };
+}
+
+async function logSkillExecution(params: {
+  runtime: {
+    emailAccount: { id: string; userId: string };
+    approvalContext?: {
+      conversationId?: string;
+      channelId?: string;
+      threadId?: string;
+      messageId?: string;
+    };
+  };
+  capability: CapabilityName;
+  args: Record<string, unknown>;
+  outcome: "executed" | "deferred_approval" | "blocked" | "failed";
+  result?: Record<string, unknown>;
+  error?: string;
+}) {
+  try {
+    await createPolicyExecutionLog({
+      userId: params.runtime.emailAccount.userId,
+      emailAccountId: params.runtime.emailAccount.id,
+      source: "skills",
+      toolName: params.capability,
+      mutationResource:
+        typeof params.args.resource === "string" ? params.args.resource : undefined,
+      mutationOperation:
+        typeof params.args.operation === "string" ? params.args.operation : undefined,
+      args: params.args,
+      outcome: params.outcome,
+      result: params.result,
+      error: params.error,
+      conversationId: params.runtime.approvalContext?.conversationId,
+      channelId: params.runtime.approvalContext?.channelId,
+      threadId: params.runtime.approvalContext?.threadId,
+      messageId: params.runtime.approvalContext?.messageId,
+    });
+  } catch {
+    // Policy execution logging must never block skill execution.
+  }
 }
 
 function toolClarificationPrompt(result: ToolResult): string | null {
@@ -585,6 +685,11 @@ export async function executeSkill(params: {
   const compiledPlan = compileSkillPlan({ skill, slotResolution: slots });
   const mutatingPolicyByCapability: Partial<Record<CapabilityName, ApprovalEvaluation>> =
     {};
+  const mutatingPolicyArgsByCapability: Partial<Record<CapabilityName, Record<string, unknown>>> =
+    {};
+  const mutatingPolicyTransformByCapability: Partial<
+    Record<CapabilityName, Record<string, unknown>>
+  > = {};
   const resumeStepId = params.resume?.approvedStepId;
   let resumeActive = !resumeStepId;
   let resumeStepFound = !resumeStepId;
@@ -658,17 +763,48 @@ export async function executeSkill(params: {
           capability: node.capability,
           slots: slots.resolved as Record<string, unknown>,
         });
+        mutatingPolicyArgsByCapability[node.capability] = policyContext.args;
         const policyDecision = await evaluatePolicyDecision({
           userId: runtime.emailAccount.userId,
+          emailAccountId: runtime.emailAccount.id,
           toolName: policyContext.toolName,
           args: policyContext.args,
-          context: { source: "skills" },
+          rawArgs: policyContext.args,
+          context: {
+            source: "skills",
+            provider: (runtime.approvalContext?.provider as
+              | "web"
+              | "slack"
+              | "discord"
+              | "telegram"
+              | "system"
+              | undefined) ?? "system",
+            conversationId: runtime.approvalContext?.conversationId,
+            channelId: runtime.approvalContext?.channelId,
+            threadId: runtime.approvalContext?.threadId,
+            messageId: runtime.approvalContext?.messageId,
+          },
         });
         const approval = policyDecision.approval;
         if (approval) {
           mutatingPolicyByCapability[node.capability] = approval;
         }
+        if (
+          policyDecision.kind === "allow_with_transform" &&
+          policyDecision.transformedArgs &&
+          typeof policyDecision.transformedArgs === "object"
+        ) {
+          mutatingPolicyTransformByCapability[node.capability] =
+            policyDecision.transformedArgs;
+        }
         if (policyDecision.kind === "block") {
+          await logSkillExecution({
+            runtime,
+            capability: node.capability,
+            args: policyContext.args,
+            outcome: "blocked",
+            error: policyDecision.message,
+          });
           actionEvents.push({
             stepId: deriveStepIdFromPolicyPrecheckNode(node.id),
             capability: node.capability,
@@ -753,6 +889,13 @@ export async function executeSkill(params: {
           approvals.push({
             id: approvalRequest.id,
             requestPayload: approvalPayload,
+          });
+          await logSkillExecution({
+            runtime,
+            capability: node.capability,
+            args: policyContext.args,
+            outcome: "deferred_approval",
+            result: { approvalRequestId: approvalRequest.id },
           });
           interactivePayloads.push(
             buildSkillApprovalInteractivePayload({
@@ -1319,9 +1462,16 @@ export async function executeSkill(params: {
           break;
         }
         case "calendar.createEvent": {
+          const transformed =
+            mutatingPolicyTransformByCapability[step.capability] ?? {};
           const title = typeof slots.resolved.title === "string" ? slots.resolved.title : "New event";
           const start = typeof slots.resolved.start === "string" ? slots.resolved.start : undefined;
-          const durationMinutes = typeof slots.resolved.duration === "number" ? slots.resolved.duration : undefined;
+          const durationMinutes =
+            typeof slots.resolved.duration === "number"
+              ? slots.resolved.duration
+              : typeof transformed.durationMinutes === "number"
+                ? transformed.durationMinutes
+                : undefined;
           const end =
             typeof slots.resolved.end === "string"
               ? slots.resolved.end
@@ -1342,6 +1492,10 @@ export async function executeSkill(params: {
               ...(participants.length > 0 ? { attendees: participants } : {}),
               ...(typeof slots.resolved.location === "string" ? { location: slots.resolved.location } : {}),
               ...(typeof slots.resolved.agenda === "string" ? { description: slots.resolved.agenda } : {}),
+              ...(typeof transformed.timeZone === "string"
+                ? { timeZone: transformed.timeZone }
+                : {}),
+              ...(typeof durationMinutes === "number" ? { durationMinutes } : {}),
             }),
           );
           break;
@@ -1434,23 +1588,51 @@ export async function executeSkill(params: {
           break;
         }
         case "calendar.rescheduleEvent": {
+          const transformed =
+            mutatingPolicyTransformByCapability[step.capability] ?? {};
           const eventId = String(slots.resolved.event_id ?? "");
           const window = getAvailabilityWindowFromSlot(slots.resolved.reschedule_window);
+          const policyContext =
+            transformed.policyContext &&
+            typeof transformed.policyContext === "object"
+              ? (transformed.policyContext as Record<string, unknown>)
+              : {};
           toolResults[step.id] = await runWithTiming(step.id, () =>
             capabilities.calendar.rescheduleEvent([eventId], {
               reschedule: "next_available",
               ...(window?.start ? { after: window.start } : {}),
               ...(window?.end ? { before: window.end } : {}),
+              ...(Object.keys(policyContext).length > 0 ? { policyContext } : {}),
             }),
           );
           break;
         }
         case "calendar.setWorkingHours": {
+          const transformed =
+            mutatingPolicyTransformByCapability[step.capability] ?? {};
           const changes: Record<string, unknown> = {};
           if (typeof slots.resolved.timezone === "string") changes.timeZone = slots.resolved.timezone;
+          if (typeof transformed.timeZone === "string" && changes.timeZone === undefined) {
+            changes.timeZone = transformed.timeZone;
+          }
           if (typeof slots.resolved.workHourStart === "number") changes.workHourStart = slots.resolved.workHourStart;
+          if (
+            typeof transformed.workHourStart === "number" &&
+            changes.workHourStart === undefined
+          ) {
+            changes.workHourStart = transformed.workHourStart;
+          }
           if (typeof slots.resolved.workHourEnd === "number") changes.workHourEnd = slots.resolved.workHourEnd;
+          if (
+            typeof transformed.workHourEnd === "number" &&
+            changes.workHourEnd === undefined
+          ) {
+            changes.workHourEnd = transformed.workHourEnd;
+          }
           if (Array.isArray(slots.resolved.workDays)) changes.workDays = slots.resolved.workDays;
+          if (Array.isArray(transformed.workDays) && changes.workDays === undefined) {
+            changes.workDays = transformed.workDays;
+          }
           if (skill.id === "calendar_working_hours_ooo" && (changes.workHourStart === undefined || changes.workHourEnd === undefined)) {
             return {
               status: "blocked",
@@ -1513,6 +1695,8 @@ export async function executeSkill(params: {
           break;
         }
         case "calendar.createFocusBlock": {
+          const transformed =
+            mutatingPolicyTransformByCapability[step.capability] ?? {};
           const window = getAvailabilityWindowFromSlot(slots.resolved.focus_block_window);
           if (
             isOutsideWorkingHours({
@@ -1543,14 +1727,24 @@ export async function executeSkill(params: {
               title: "Focus time",
               ...(window?.start ? { start: window.start } : {}),
               ...(window?.end ? { end: window.end } : {}),
+              ...(typeof transformed.timeZone === "string"
+                ? { timeZone: transformed.timeZone }
+                : {}),
             }),
           );
           break;
         }
         case "calendar.createBookingSchedule": {
+          const transformed =
+            mutatingPolicyTransformByCapability[step.capability] ?? {};
           toolResults[step.id] = await runWithTiming(step.id, () =>
             capabilities.calendar.createBookingSchedule({
-              bookingLink: typeof slots.resolved.booking_link === "string" ? slots.resolved.booking_link : undefined,
+              bookingLink:
+                typeof slots.resolved.booking_link === "string"
+                  ? slots.resolved.booking_link
+                  : typeof transformed.bookingLink === "string"
+                    ? transformed.bookingLink
+                    : undefined,
             }),
           );
           break;
@@ -1576,6 +1770,146 @@ export async function executeSkill(params: {
               actions,
               constraints: {},
             }),
+          );
+          break;
+        }
+        case "policy.listRules": {
+          const type =
+            slots.resolved.rule_type === "guardrail" ||
+            slots.resolved.rule_type === "automation" ||
+            slots.resolved.rule_type === "preference"
+              ? slots.resolved.rule_type
+              : undefined;
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.policy.listRules({ ...(type ? { type } : {}) }),
+          );
+          break;
+        }
+        case "policy.compileRule": {
+          const input =
+            typeof slots.resolved.rule_input === "string"
+              ? slots.resolved.rule_input
+              : "";
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.policy.compileRule({ input }),
+          );
+          break;
+        }
+        case "policy.createRule": {
+          const ruleAction = String(slots.resolved.rule_action ?? "create").toLowerCase();
+          const input =
+            typeof slots.resolved.rule_input === "string"
+              ? slots.resolved.rule_input
+              : "";
+          const ruleId =
+            typeof slots.resolved.rule_id === "string"
+              ? slots.resolved.rule_id
+              : "";
+
+          if (ruleAction === "list") {
+            const type =
+              slots.resolved.rule_type === "guardrail" ||
+              slots.resolved.rule_type === "automation" ||
+              slots.resolved.rule_type === "preference"
+                ? slots.resolved.rule_type
+                : undefined;
+            toolResults[step.id] = await runWithTiming(step.id, () =>
+              capabilities.policy.listRules({ ...(type ? { type } : {}) }),
+            );
+            break;
+          }
+
+          if (ruleAction === "preview" || ruleAction === "compile") {
+            toolResults[step.id] = await runWithTiming(step.id, () =>
+              capabilities.policy.compileRule({ input }),
+            );
+            break;
+          }
+
+          if (ruleAction === "disable" || ruleAction === "pause") {
+            toolResults[step.id] = await runWithTiming(step.id, () =>
+              capabilities.policy.disableRule({
+                id: ruleId,
+                ...(typeof slots.resolved.disabled_until === "string"
+                  ? { disabledUntil: slots.resolved.disabled_until }
+                  : {}),
+              }),
+            );
+            break;
+          }
+
+          if (ruleAction === "delete" || ruleAction === "remove") {
+            toolResults[step.id] = await runWithTiming(step.id, () =>
+              capabilities.policy.deleteRule({ id: ruleId }),
+            );
+            break;
+          }
+
+          if (ruleAction === "update" || ruleAction === "edit") {
+            const patch =
+              slots.resolved.rule_patch &&
+              typeof slots.resolved.rule_patch === "object" &&
+              !Array.isArray(slots.resolved.rule_patch)
+                ? (slots.resolved.rule_patch as Record<string, unknown>)
+                : {};
+            toolResults[step.id] = await runWithTiming(step.id, () =>
+              capabilities.policy.updateRule({
+                id: ruleId,
+                patch,
+              }),
+            );
+            break;
+          }
+
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.policy.createRule({
+              input,
+              activate: true,
+            }),
+          );
+          break;
+        }
+        case "policy.updateRule": {
+          const ruleId =
+            typeof slots.resolved.rule_id === "string"
+              ? slots.resolved.rule_id
+              : "";
+          const patch =
+            slots.resolved.rule_patch &&
+            typeof slots.resolved.rule_patch === "object" &&
+            !Array.isArray(slots.resolved.rule_patch)
+              ? (slots.resolved.rule_patch as Record<string, unknown>)
+              : {};
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.policy.updateRule({
+              id: ruleId,
+              patch,
+            }),
+          );
+          break;
+        }
+        case "policy.disableRule": {
+          const ruleId =
+            typeof slots.resolved.rule_id === "string"
+              ? slots.resolved.rule_id
+              : "";
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.policy.disableRule({
+              id: ruleId,
+              ...(typeof slots.resolved.disabled_until === "string"
+                ? { disabledUntil: slots.resolved.disabled_until }
+                : {}),
+            }),
+          );
+          break;
+        }
+        case "policy.deleteRule": {
+          const ruleId =
+            typeof slots.resolved.rule_id === "string"
+              ? slots.resolved.rule_id
+              : "";
+          toolResults[step.id] = await runWithTiming(step.id, () =>
+            capabilities.policy.deleteRule({ id: ruleId }),
           );
           break;
         }
@@ -1608,6 +1942,21 @@ export async function executeSkill(params: {
           : null,
       });
       if (result && isFailure(result)) {
+        if (!READ_ONLY_CAPABILITIES.has(step.capability)) {
+          const policyArgs =
+            mutatingPolicyArgsByCapability[step.capability] ??
+            mapCapabilityToApprovalContext({
+              capability: step.capability,
+              slots: slots.resolved as Record<string, unknown>,
+            }).args;
+          await logSkillExecution({
+            runtime,
+            capability: step.capability,
+            args: policyArgs,
+            outcome: "failed",
+            error: result.error ?? result.message ?? "capability_failed",
+          });
+        }
         actionEvents.push({
           stepId: step.id,
           capability: step.capability,
@@ -1643,6 +1992,24 @@ export async function executeSkill(params: {
         itemCount: result?.meta?.itemCount ?? 0,
         policyDecision: policyDecision?.requiresApproval ? "blocked" : "allowed",
       });
+      if (!READ_ONLY_CAPABILITIES.has(step.capability)) {
+        const policyArgs =
+          mutatingPolicyArgsByCapability[step.capability] ??
+          mapCapabilityToApprovalContext({
+            capability: step.capability,
+            slots: slots.resolved as Record<string, unknown>,
+          }).args;
+        await logSkillExecution({
+          runtime,
+          capability: step.capability,
+          args: policyArgs,
+          outcome: "executed",
+          result:
+            result?.data && typeof result.data === "object"
+              ? (result.data as Record<string, unknown>)
+              : { value: result?.data ?? null },
+        });
+      }
       if (params.resume?.executeOnlyApprovedStep && step.id === resumeStepId) {
         break;
       }

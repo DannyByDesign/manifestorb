@@ -41,7 +41,7 @@ function createLinkedAccount() {
 
 function mockConversationCreate() {
   prisma.conversation.create.mockImplementation(
-    async ({ data }: { data: { userId: string; provider: string; channelId: string; threadId: string } }) =>
+    async (args) =>
       ({
         id: "conv-1",
         createdAt: new Date(),
@@ -49,7 +49,7 @@ function mockConversationCreate() {
         isPrimary: false,
         relatedEmailThreadId: null,
         relatedCalendarEventId: null,
-        ...data,
+        ...(args?.data ?? {}),
       }) as never,
   );
 }
@@ -96,14 +96,17 @@ describe("ChannelRouter", () => {
       },
     });
 
-    const providerOnlyLookup = prisma.conversation.findFirst.mock.calls.some(([arg]) => {
-      const where = (arg as { where?: Record<string, unknown> })?.where ?? {};
-      return (
-        where.userId === "user-1" &&
-        where.provider === "slack" &&
-        !Object.prototype.hasOwnProperty.call(where, "channelId")
-      );
-    });
+    const providerOnlyLookup = prisma.conversation.findFirst.mock.calls.some(
+      (call) => {
+        const arg = call[0] as { where?: Record<string, unknown> } | undefined;
+        const where = arg?.where ?? {};
+        return (
+          where.userId === "user-1" &&
+          where.provider === "slack" &&
+          !Object.prototype.hasOwnProperty.call(where, "channelId")
+        );
+      },
+    );
     expect(providerOnlyLookup).toBe(false);
 
     expect(runOneShotAgent).toHaveBeenCalledWith(

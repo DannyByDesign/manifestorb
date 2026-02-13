@@ -24,6 +24,7 @@ import { calendarAttendeeManagementSkill } from "./calendar-attendee-management"
 import { calendarRecurringSeriesManagementSkill } from "./calendar-recurring-series-management";
 import { calendarWorkingLocationManagementSkill } from "./calendar-working-location-management";
 import { multiActionInboxCalendarSkill } from "./multi-action-inbox-calendar";
+import { rulePlaneManagementSkill } from "./rule-plane-management";
 
 export const baselineSkills = [
   inboxTriageTodaySkill,
@@ -52,4 +53,5 @@ export const baselineSkills = [
   calendarRecurringSeriesManagementSkill,
   calendarWorkingLocationManagementSkill,
   multiActionInboxCalendarSkill,
+  rulePlaneManagementSkill,
 ] as const;

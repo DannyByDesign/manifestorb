@@ -52,6 +52,8 @@ describe("GET /api/google/calendar/auth-url", () => {
     const json = await res.json();
 
     expect(json.url).toBe("http://google/calendar");
-    expect(res.cookies.get(CALENDAR_STATE_COOKIE_NAME)?.value).toBe("state-1");
+    expect(res.headers.get("set-cookie")).toContain(
+      `${CALENDAR_STATE_COOKIE_NAME}=state-1`,
+    );
   });
 });

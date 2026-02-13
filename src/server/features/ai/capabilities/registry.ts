@@ -14,7 +14,7 @@ export type CapabilityIntentFamily =
   | "cross_surface_planning";
 
 export interface CapabilityEffectDescriptor {
-  resource: "email" | "calendar" | "planner" | "preferences";
+  resource: "email" | "calendar" | "planner" | "preferences" | "rule";
   mutates: boolean;
 }
 
@@ -749,6 +749,93 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       intentFamilies: ["cross_surface_planning"],
       tags: ["planner", "multi-action", "orchestration"],
       effects: [{ resource: "planner", mutates: false }],
+    },
+    {
+      id: "policy.listRules",
+      description: "List unified rule-plane rules by optional type filter.",
+      inputSchema: z.object({
+        type: z.enum(["guardrail", "automation", "preference"]).optional(),
+      }).strict(),
+      outputSchema: z.unknown(),
+      readOnly: true,
+      riskLevel: "safe",
+      approvalOperation: "query",
+      intentFamilies: ["inbox_controls", "calendar_policy"],
+      tags: ["rule", "policy", "guardrail", "automation", "preference", "list"],
+      effects: [{ resource: "rule", mutates: false }],
+    },
+    {
+      id: "policy.compileRule",
+      description: "Compile a natural-language rule request into canonical preview output.",
+      inputSchema: z.object({
+        input: z.string().min(1),
+      }).strict(),
+      outputSchema: z.unknown(),
+      readOnly: true,
+      riskLevel: "safe",
+      approvalOperation: "analyze",
+      intentFamilies: ["inbox_controls", "calendar_policy"],
+      tags: ["rule", "policy", "compile", "preview", "nl"],
+      effects: [{ resource: "rule", mutates: false }],
+    },
+    {
+      id: "policy.createRule",
+      description: "Create and optionally activate a canonical rule from natural language.",
+      inputSchema: z.object({
+        input: z.string().min(1),
+        activate: z.boolean().optional(),
+      }).strict(),
+      outputSchema: z.unknown(),
+      readOnly: false,
+      riskLevel: "caution",
+      approvalOperation: "create_rule",
+      intentFamilies: ["inbox_controls", "calendar_policy"],
+      tags: ["rule", "policy", "create", "activate", "automation"],
+      effects: [{ resource: "rule", mutates: true }],
+    },
+    {
+      id: "policy.updateRule",
+      description: "Update an existing canonical rule patch.",
+      inputSchema: z.object({
+        id: z.string().min(1),
+        patch: unknownObject,
+      }).strict(),
+      outputSchema: z.unknown(),
+      readOnly: false,
+      riskLevel: "caution",
+      approvalOperation: "update_rule",
+      intentFamilies: ["inbox_controls", "calendar_policy"],
+      tags: ["rule", "policy", "update", "edit"],
+      effects: [{ resource: "rule", mutates: true }],
+    },
+    {
+      id: "policy.disableRule",
+      description: "Disable a canonical rule immediately or until a timestamp.",
+      inputSchema: z.object({
+        id: z.string().min(1),
+        disabledUntil: z.string().optional(),
+      }).strict(),
+      outputSchema: z.unknown(),
+      readOnly: false,
+      riskLevel: "caution",
+      approvalOperation: "update_rule",
+      intentFamilies: ["inbox_controls", "calendar_policy"],
+      tags: ["rule", "policy", "disable", "pause"],
+      effects: [{ resource: "rule", mutates: true }],
+    },
+    {
+      id: "policy.deleteRule",
+      description: "Delete a canonical rule.",
+      inputSchema: z.object({
+        id: z.string().min(1),
+      }).strict(),
+      outputSchema: z.unknown(),
+      readOnly: false,
+      riskLevel: "dangerous",
+      approvalOperation: "delete_rule",
+      intentFamilies: ["inbox_controls", "calendar_policy"],
+      tags: ["rule", "policy", "delete", "remove"],
+      effects: [{ resource: "rule", mutates: true }],
     },
   ];
 }

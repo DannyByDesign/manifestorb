@@ -253,6 +253,46 @@ function resolveSlotValue(slot: string, message: string): unknown {
     if (domainMatch?.[0]) return domainMatch[0];
   }
 
+  if (slot === "rule_action") {
+    if (/\b(list|show|view)\b/i.test(lower)) return "list";
+    if (/\b(preview|compile|dry[\s-]?run)\b/i.test(lower)) return "preview";
+    if (/\b(disable|pause|turn off)\b/i.test(lower)) return "disable";
+    if (/\b(delete|remove)\b/i.test(lower)) return "delete";
+    if (/\b(update|edit|change)\b/i.test(lower)) return "update";
+    if (/\b(create|add|enable|activate)\b/i.test(lower)) return "create";
+  }
+  if (slot === "rule_input") {
+    return message.trim();
+  }
+  if (slot === "rule_id") {
+    const m =
+      message.match(/rule[_\s-]?id[:\s]+([a-zA-Z0-9:_-]+)/i) ??
+      message.match(/\b(rule_[a-zA-Z0-9:_-]+)\b/i);
+    if (m?.[1]) return m[1];
+  }
+  if (slot === "rule_type") {
+    if (/\bguardrail(s)?\b/i.test(lower)) return "guardrail";
+    if (/\bautomation(s)?\b/i.test(lower)) return "automation";
+    if (/\bpreference(s)?\b/i.test(lower)) return "preference";
+  }
+  if (slot === "disabled_until") {
+    const iso = extractIsoDateTime(message);
+    if (iso) return iso;
+  }
+  if (slot === "rule_patch") {
+    const patchMatch = message.match(/patch[:\s]+(\{[\s\S]+\})/i);
+    if (patchMatch?.[1]) {
+      try {
+        const parsed = JSON.parse(patchMatch[1]);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          return parsed;
+        }
+      } catch {
+        // Ignore parse failures; this slot will be missing.
+      }
+    }
+  }
+
   if (slot === "policy_type") {
     if (/working hours?/i.test(lower)) return "working_hours";
     if (/out of office|ooo/i.test(lower)) return "out_of_office";

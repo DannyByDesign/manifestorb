@@ -12,6 +12,7 @@ import { invokeCapability } from "@/server/features/ai/planner/invoke-capability
 import { mapPlannerCapabilityToApprovalContext } from "@/server/features/ai/planner/policy-context";
 import type { Logger } from "@/server/lib/logger";
 import { evaluatePolicyDecision } from "@/server/features/policy-plane/pdp";
+import { createPolicyExecutionLog } from "@/server/features/policy-plane/policy-logs";
 
 function topologicalSort(plan: PlannerPlan): string[] {
   const deps = new Map<string, Set<string>>();
@@ -156,7 +157,53 @@ function isReadOnly(capability: CapabilityName): boolean {
   if (capability === "calendar.searchEventsByAttendee") return true;
   if (capability === "calendar.getEvent") return true;
   if (capability.startsWith("planner.")) return true;
+  if (capability === "policy.listRules") return true;
+  if (capability === "policy.compileRule") return true;
   return false;
+}
+
+async function logPlannerExecution(params: {
+  userId: string;
+  emailAccountId: string;
+  source: "planner";
+  capability: CapabilityName;
+  args: Record<string, unknown>;
+  outcome: "executed" | "deferred_approval" | "blocked" | "failed";
+  result?: Record<string, unknown>;
+  error?: string;
+  context?: {
+    conversationId?: string;
+    channelId?: string;
+    threadId?: string;
+    messageId?: string;
+  };
+}) {
+  try {
+    const mapped = mapPlannerCapabilityToApprovalContext({
+      capability: params.capability,
+      args: params.args,
+    });
+    await createPolicyExecutionLog({
+      userId: params.userId,
+      emailAccountId: params.emailAccountId,
+      source: params.source,
+      toolName: params.capability,
+      mutationResource:
+        typeof mapped.args.resource === "string" ? mapped.args.resource : undefined,
+      mutationOperation:
+        typeof mapped.args.operation === "string" ? mapped.args.operation : undefined,
+      args: mapped.args,
+      outcome: params.outcome,
+      result: params.result,
+      error: params.error,
+      conversationId: params.context?.conversationId,
+      channelId: params.context?.channelId,
+      threadId: params.context?.threadId,
+      messageId: params.context?.messageId,
+    });
+  } catch {
+    // execution logging must never block planner execution.
+  }
 }
 
 export async function executePlannerPlan(params: {
@@ -190,7 +237,7 @@ export async function executePlannerPlan(params: {
     if (!step) continue;
 
     const resolvedArgs = resolveTemplates(step.args, stepOutputs);
-    const args =
+    let args =
       resolvedArgs && typeof resolvedArgs === "object" && !Array.isArray(resolvedArgs)
         ? (resolvedArgs as Record<string, unknown>)
         : {};
@@ -202,12 +249,37 @@ export async function executePlannerPlan(params: {
       });
       const policyDecision = await evaluatePolicyDecision({
         userId: params.userId,
+        emailAccountId: params.emailAccountId,
         toolName: policyContext.toolName,
         args: policyContext.args,
-        context: { source: "planner" },
+        rawArgs: args,
+        context: {
+          source: "planner",
+          provider:
+            params.provider === "web" ||
+            params.provider === "slack" ||
+            params.provider === "discord" ||
+            params.provider === "telegram"
+              ? params.provider
+              : "system",
+          conversationId: params.context?.conversationId,
+          channelId: params.context?.channelId,
+          threadId: params.context?.threadId,
+          messageId: params.context?.messageId,
+        },
       });
       const approvalDecision = policyDecision.approval;
       if (policyDecision.kind === "block") {
+        await logPlannerExecution({
+          userId: params.userId,
+          emailAccountId: params.emailAccountId,
+          source: "planner",
+          capability: step.capability,
+          args,
+          outcome: "blocked",
+          error: policyDecision.message,
+          context: params.context,
+        });
         stepResults.push({
           stepId,
           capability: step.capability,
@@ -285,6 +357,16 @@ export async function executePlannerPlan(params: {
           id: approvalRequest.id,
           requestPayload,
         });
+        await logPlannerExecution({
+          userId: params.userId,
+          emailAccountId: params.emailAccountId,
+          source: "planner",
+          capability: step.capability,
+          args,
+          outcome: "deferred_approval",
+          result: { approvalRequestId: approvalRequest.id },
+          context: params.context,
+        });
         interactivePayloads.push(
           buildApprovalPayload({
             approvalId: approvalRequest.id,
@@ -309,6 +391,13 @@ export async function executePlannerPlan(params: {
           diagnosticsCategory: "policy",
         };
       }
+      if (
+        policyDecision.kind === "allow_with_transform" &&
+        policyDecision.transformedArgs &&
+        typeof policyDecision.transformedArgs === "object"
+      ) {
+        args = policyDecision.transformedArgs;
+      }
     }
 
     const { result } = await executeWithRepair(
@@ -325,6 +414,18 @@ export async function executePlannerPlan(params: {
     );
 
     if (!result.success) {
+      if (!isReadOnly(step.capability)) {
+        await logPlannerExecution({
+          userId: params.userId,
+          emailAccountId: params.emailAccountId,
+          source: "planner",
+          capability: step.capability,
+          args,
+          outcome: "failed",
+          error: result.error ?? result.message ?? "capability_failed",
+          context: params.context,
+        });
+      }
       if (result.clarification?.prompt) {
         stepResults.push({
           stepId,
@@ -368,6 +469,21 @@ export async function executePlannerPlan(params: {
     }
 
     stepOutputs[stepId] = result.data ?? null;
+    if (!isReadOnly(step.capability)) {
+      await logPlannerExecution({
+        userId: params.userId,
+        emailAccountId: params.emailAccountId,
+        source: "planner",
+        capability: step.capability,
+        args,
+        outcome: "executed",
+        result:
+          result.data && typeof result.data === "object"
+            ? (result.data as Record<string, unknown>)
+            : { value: result.data ?? null },
+        context: params.context,
+      });
+    }
     stepResults.push({
       stepId,
       capability: step.capability,

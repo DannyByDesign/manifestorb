@@ -299,7 +299,10 @@ export async function executeApprovalRequest(params: {
         emailAccountId: emailAccount.id,
         executedRule,
         logger,
-        policyBypass: true,
+        policyBypass: {
+          approvalRequestId: request.id,
+          reason: "approved_replay",
+        },
       });
 
       return {

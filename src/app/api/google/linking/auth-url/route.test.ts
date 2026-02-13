@@ -41,8 +41,8 @@ describe("GET /api/google/linking/auth-url", () => {
     const json = await res.json();
 
     expect(json.url).toBe("http://google/auth");
-    expect(res.cookies.get(GOOGLE_LINKING_STATE_COOKIE_NAME)?.value).toBe(
-      "state-1",
+    expect(res.headers.get("set-cookie")).toContain(
+      `${GOOGLE_LINKING_STATE_COOKIE_NAME}=state-1`,
     );
   });
 });

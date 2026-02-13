@@ -1,5 +1,4 @@
 import prisma from "@/server/db/client";
-import { runRules } from "@/features/rules/ai/run-rules";
 import { categorizeSender } from "@/features/categorize/senders/categorize";
 import { isAssistantEmail } from "@/features/web-chat/is-assistant-email";
 import { processAssistantEmail } from "@/features/web-chat/process-assistant-email";
@@ -14,6 +13,7 @@ import type { ParsedMessage, RuleWithActions } from "@/server/lib/types";
 import type { EmailAccountWithAI } from "@/server/lib/llms/types";
 import type { Logger } from "@/server/lib/logger";
 import { captureException } from "@/server/lib/error";
+import { executeCanonicalEmailAutomations } from "@/server/features/policy-plane/automation-executor";
 
 export type SharedProcessHistoryOptions = {
   provider: EmailProvider;
@@ -43,9 +43,7 @@ export async function processHistoryItem(
   const {
     provider,
     emailAccount,
-    hasAutomationRules,
     hasAiAccess,
-    rules,
     logger,
   } = options;
 
@@ -172,37 +170,26 @@ export async function processHistoryItem(
       }
     }
 
-    logger.info("Pre-rules check", { hasAutomationRules, hasAiAccess });
+    logger.info("Running canonical automation executor", { hasAiAccess });
 
-    if (hasAutomationRules && hasAiAccess) {
-      logger.info("Running rules...");
+    const canonicalAutomationResults = await executeCanonicalEmailAutomations({
+      provider,
+      message: parsedMessage,
+      emailAccount,
+      logger,
+    });
 
-      const ruleResults = await runRules({
-        provider: provider as any,
-        emailAccount: emailAccount as any,
-        message: parsedMessage,
-        rules: rules as any,
-        isTest: false,
-        modelType: "chat",
-        logger,
-      });
+    const shouldSuppressNotificationFromCanonical = canonicalAutomationResults.some(
+      (result) =>
+        result.status === "applied" &&
+        result.actionTypes.some(
+          (type) => type === ActionType.ARCHIVE || type === ActionType.MARK_READ,
+        ),
+    );
 
-      // Check if any rule archived or deleted the message
-      const shouldSuppressNotification = ruleResults.some((result) => {
-        const isSkipped = result.status === "SKIPPED";
-        if (isSkipped) return false;
-
-        return result.actionItems?.some(
-          (action) =>
-            action.type === ActionType.ARCHIVE ||
-            action.type === ActionType.MARK_READ
-        );
-      });
-
-      if (shouldSuppressNotification) {
-        logger.info("Suppressing notification due to rule outcome (Archive/Delete/Read)");
-        return;
-      }
+    if (shouldSuppressNotificationFromCanonical) {
+      logger.info("Suppressing notification due to rule outcome (Archive/Delete/Read)");
+      return;
     }
 
     // Remove follow-up label if present (they replied, so follow-up no longer needed)

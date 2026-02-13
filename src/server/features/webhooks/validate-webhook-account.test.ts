@@ -38,6 +38,7 @@ describe("validateWebhookAccount", () => {
       autoCategorizeSenders: false,
       watchEmailsSubscriptionId: "subscription-id",
       multiRuleSelectionEnabled: false,
+      aiRuleTimeoutMs: null,
       timezone: null,
       calendarBookingLink: null,
       watchEmailsSubscriptionHistory: [],

@@ -118,6 +118,66 @@ export function mapPlannerCapabilityToApprovalContext(params: {
     return { toolName: "analyze", args: { resource: "report" } };
   }
 
+  if (capability === "policy.listRules") {
+    return {
+      toolName: "query",
+      args: {
+        resource: "rule",
+        operation: "list_rules",
+      },
+    };
+  }
+
+  if (capability === "policy.compileRule") {
+    return {
+      toolName: "analyze",
+      args: {
+        resource: "rule",
+        operation: "compile_rule",
+      },
+    };
+  }
+
+  if (capability === "policy.createRule") {
+    return {
+      toolName: "create",
+      args: {
+        resource: "rule",
+        operation: "create_rule",
+      },
+    };
+  }
+
+  if (capability === "policy.updateRule") {
+    return {
+      toolName: "modify",
+      args: {
+        resource: "rule",
+        operation: "update_rule",
+      },
+    };
+  }
+
+  if (capability === "policy.disableRule") {
+    return {
+      toolName: "modify",
+      args: {
+        resource: "rule",
+        operation: "disable_rule",
+      },
+    };
+  }
+
+  if (capability === "policy.deleteRule") {
+    return {
+      toolName: "delete",
+      args: {
+        resource: "rule",
+        operation: "delete_rule",
+      },
+    };
+  }
+
   return {
     toolName: "query",
     args: {

@@ -29,10 +29,11 @@ import { ApprovalService, getApprovalExpiry } from "@/features/approvals/service
 import { createInAppNotification } from "@/features/notifications/create";
 import { applyTaskPreferencePayloadsForUser } from "@/features/preferences/service";
 import { evaluatePolicyDecision } from "@/server/features/policy-plane/pdp";
+import { createPolicyExecutionLog } from "@/server/features/policy-plane/policy-logs";
 
 const MODULE = "ai-actions";
 
-type ActionFunction<T extends Partial<Omit<ActionItem, "type">>> = (options: {
+type ActionFunction<T extends Record<string, unknown>> = (options: {
   client: EmailProvider;
   email: EmailForAction;
   args: T;
@@ -43,16 +44,29 @@ type ActionFunction<T extends Partial<Omit<ActionItem, "type">>> = (options: {
   logger: Logger;
 }) => Promise<unknown>;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
 function parseDateOrNull(value: unknown): Date | null {
   if (typeof value !== "string" && typeof value !== "number" && !(value instanceof Date)) {
     return null;
   }
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function asPayloadObject(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function asOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function asOptionalBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function asOptionalNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 export const runActionFunction = async (options: {
@@ -64,7 +78,7 @@ export const runActionFunction = async (options: {
   emailAccountId: string;
   executedRule: ExecutedRule;
   logger: Logger;
-  policyBypass?: boolean;
+  policyBypass?: { approvalRequestId: string; reason: "approved_replay" };
   policySource?: "skills" | "planner" | "automation" | "scheduled";
 }) => {
   const { action, userEmail, logger } = options;
@@ -92,9 +106,15 @@ export const runActionFunction = async (options: {
     if (policyContext) {
       const decision = await evaluatePolicyDecision({
         userId: options.userId,
+        emailAccountId: options.emailAccountId,
         toolName: policyContext.toolName,
         args: policyContext.args,
-        context: { source: options.policySource ?? "automation" },
+        context: {
+          source: options.policySource ?? "automation",
+          provider: "system",
+          messageId: options.email.id,
+          threadId: options.email.threadId,
+        },
       });
 
       if (decision.kind === "require_approval" && decision.approval?.requiresApproval) {
@@ -155,6 +175,26 @@ export const runActionFunction = async (options: {
           });
         }
 
+        await createPolicyExecutionLog({
+          userId: options.userId,
+          emailAccountId: options.emailAccountId,
+          source: options.policySource ?? "automation",
+          toolName: policyContext.toolName,
+          mutationResource:
+            typeof policyContext.args.resource === "string"
+              ? policyContext.args.resource
+              : undefined,
+          mutationOperation:
+            typeof policyContext.args.operation === "string"
+              ? policyContext.args.operation
+              : undefined,
+          args: policyContext.args,
+          outcome: "deferred_approval",
+          result: { approvalRequestId: approvalRequest.id },
+          threadId: options.email.threadId,
+          messageId: options.email.id,
+        });
+
         return {
           approvalRequested: true,
           approvalRequestId: approvalRequest.id,
@@ -163,6 +203,25 @@ export const runActionFunction = async (options: {
       }
 
       if (decision.kind === "block") {
+        await createPolicyExecutionLog({
+          userId: options.userId,
+          emailAccountId: options.emailAccountId,
+          source: options.policySource ?? "automation",
+          toolName: policyContext.toolName,
+          mutationResource:
+            typeof policyContext.args.resource === "string"
+              ? policyContext.args.resource
+              : undefined,
+          mutationOperation:
+            typeof policyContext.args.operation === "string"
+              ? policyContext.args.operation
+              : undefined,
+          args: policyContext.args,
+          outcome: "blocked",
+          error: decision.message,
+          threadId: options.email.threadId,
+          messageId: options.email.id,
+        });
         return {
           blockedByPolicy: true,
           blockedReason: decision.message,
@@ -171,52 +230,118 @@ export const runActionFunction = async (options: {
     }
   }
 
-  switch (type) {
-    case ActionType.ARCHIVE:
-      return archive(opts);
-    case ActionType.LABEL:
-      return label(opts);
-    case ActionType.DRAFT_EMAIL:
-      return draft(opts);
-    case ActionType.REPLY:
-      ensureEmailSendingEnabled();
-      return reply(opts);
-    case ActionType.SEND_EMAIL:
-      ensureEmailSendingEnabled();
-      return send_email(opts);
-    case ActionType.FORWARD:
-      ensureEmailSendingEnabled();
-      return forward(opts);
-    case ActionType.MARK_SPAM:
-      return mark_spam(opts);
-    case ActionType.CALL_WEBHOOK:
-      return call_webhook(opts);
-    case ActionType.MARK_READ:
-      return mark_read(opts);
-    case ActionType.DIGEST:
-      return digest(opts);
-    case ActionType.MOVE_FOLDER:
-      return move_folder(opts);
-    case ActionType.NOTIFY_SENDER:
-      return notify_sender(opts);
-    case ActionType.NOTIFY_USER:
-      return notify_user(opts);
-    case ActionType.SET_TASK_PREFERENCES:
-      return set_task_preferences(opts);
-    case ActionType.CREATE_TASK:
-      return create_task(opts);
-    case ActionType.CREATE_CALENDAR_EVENT:
-      return create_calendar_event(opts);
-    case ActionType.SCHEDULE_MEETING:
-      return schedule_meeting(opts);
-    default: {
-      await import("./actions/register-defaults");
-      const { getAction } = await import("./actions/registry");
-      const registered = getAction(String(type));
-      if (registered) return registered.execute(opts);
-      throw new Error(`Unknown action: ${action}`);
+  let executionResult: unknown;
+  try {
+    switch (type) {
+      case ActionType.ARCHIVE:
+        executionResult = await archive(opts);
+        break;
+      case ActionType.LABEL:
+        executionResult = await label(opts);
+        break;
+      case ActionType.DRAFT_EMAIL:
+        executionResult = await draft(opts);
+        break;
+      case ActionType.REPLY:
+        ensureEmailSendingEnabled();
+        executionResult = await reply(opts);
+        break;
+      case ActionType.SEND_EMAIL:
+        ensureEmailSendingEnabled();
+        executionResult = await send_email(opts);
+        break;
+      case ActionType.FORWARD:
+        ensureEmailSendingEnabled();
+        executionResult = await forward(opts);
+        break;
+      case ActionType.MARK_SPAM:
+        executionResult = await mark_spam(opts);
+        break;
+      case ActionType.CALL_WEBHOOK:
+        executionResult = await call_webhook(opts);
+        break;
+      case ActionType.MARK_READ:
+        executionResult = await mark_read(opts);
+        break;
+      case ActionType.DIGEST:
+        executionResult = await digest(opts);
+        break;
+      case ActionType.MOVE_FOLDER:
+        executionResult = await move_folder(opts);
+        break;
+      case ActionType.NOTIFY_SENDER:
+        executionResult = await notify_sender(opts);
+        break;
+      case ActionType.NOTIFY_USER:
+        executionResult = await notify_user(opts);
+        break;
+      case ActionType.SET_TASK_PREFERENCES:
+        executionResult = await set_task_preferences(opts);
+        break;
+      case ActionType.CREATE_TASK:
+        executionResult = await create_task(opts);
+        break;
+      case ActionType.CREATE_CALENDAR_EVENT:
+        executionResult = await create_calendar_event(opts);
+        break;
+      case ActionType.SCHEDULE_MEETING:
+        executionResult = await schedule_meeting(opts);
+        break;
+      default: {
+        await import("./actions/register-defaults");
+        const { getAction } = await import("./actions/registry");
+        const registered = getAction(String(type));
+        if (!registered) {
+          throw new Error(`Unknown action: ${action}`);
+        }
+        executionResult = await registered.execute(opts);
+      }
     }
+  } catch (error) {
+    await createPolicyExecutionLog({
+      userId: options.userId,
+      emailAccountId: options.emailAccountId,
+      source: options.policySource ?? "automation",
+      toolName: options.policyBypass ? "approved_replay" : "action_execution",
+      mutationResource: "email",
+      mutationOperation: String(type).toLowerCase(),
+      args: {
+        actionType: type,
+        actionId: action.id,
+        messageId: options.email.id,
+        threadId: options.email.threadId,
+      },
+      outcome: "failed",
+      error: error instanceof Error ? error.message : String(error),
+      threadId: options.email.threadId,
+      messageId: options.email.id,
+    });
+    throw error;
   }
+
+  await createPolicyExecutionLog({
+    userId: options.userId,
+    emailAccountId: options.emailAccountId,
+    source: options.policySource ?? "automation",
+    toolName: options.policyBypass ? "approved_replay" : "action_execution",
+    mutationResource: "email",
+    mutationOperation: String(type).toLowerCase(),
+    args: {
+      actionType: type,
+      actionId: action.id,
+      messageId: options.email.id,
+      threadId: options.email.threadId,
+    },
+    outcome: "executed",
+    result:
+      executionResult && typeof executionResult === "object"
+        ? (executionResult as Record<string, unknown>)
+        : { value: executionResult },
+    threadId: options.email.threadId,
+    messageId: options.email.id,
+  });
+
+  return executionResult;
 };
 
 function parseCommaSeparatedEmails(value: string | null | undefined): string[] {
@@ -707,8 +832,8 @@ const set_task_preferences: ActionFunction<{ payload?: ActionItem["payload"] }> 
   args,
   logger,
 }) => {
-  const payload = args.payload;
-  if (!isRecord(payload)) {
+  const payload = asPayloadObject(args.payload);
+  if (!payload) {
     logger.warn("Missing payload for set_task_preferences action");
     return;
   }
@@ -726,75 +851,66 @@ const create_task: ActionFunction<{ payload?: ActionItem["payload"] }> = async (
   args,
   logger,
 }) => {
-  const payload = args.payload;
-  if (!isRecord(payload)) {
+  const payload = asPayloadObject(args.payload);
+  if (!payload) {
     logger.warn("Missing payload for create_task action");
     return;
   }
 
-  const title =
-    typeof payload.title === "string" && payload.title.trim().length > 0
-      ? payload.title
-      : null;
+  const title = asOptionalString(payload.title);
   if (!title) {
-    logger.warn("create_task payload missing title", { payload });
+    logger.warn("Task payload missing title", { payload });
     return;
   }
-
+  const statusRaw = asOptionalString(payload.status);
   const status =
-    payload.status === "PENDING" ||
-    payload.status === "IN_PROGRESS" ||
-    payload.status === "COMPLETED" ||
-    payload.status === "CANCELLED"
-      ? payload.status
+    statusRaw === "PENDING" ||
+    statusRaw === "IN_PROGRESS" ||
+    statusRaw === "COMPLETED" ||
+    statusRaw === "CANCELLED"
+      ? statusRaw
       : "PENDING";
-
+  const priorityRaw = asOptionalString(payload.priority);
   const priority =
-    payload.priority === "NONE" ||
-    payload.priority === "LOW" ||
-    payload.priority === "MEDIUM" ||
-    payload.priority === "HIGH"
-      ? payload.priority
+    priorityRaw === "NONE" ||
+    priorityRaw === "LOW" ||
+    priorityRaw === "MEDIUM" ||
+    priorityRaw === "HIGH"
+      ? priorityRaw
       : "NONE";
-
+  const energyRaw = asOptionalString(payload.energyLevel);
   const energyLevel =
-    payload.energyLevel === "LOW" ||
-    payload.energyLevel === "MEDIUM" ||
-    payload.energyLevel === "HIGH"
-      ? payload.energyLevel
+    energyRaw === "LOW" || energyRaw === "MEDIUM" || energyRaw === "HIGH"
+      ? energyRaw
       : null;
-
+  const preferredTimeRaw = asOptionalString(payload.preferredTime);
   const preferredTime =
-    payload.preferredTime === "MORNING" ||
-    payload.preferredTime === "AFTERNOON" ||
-    payload.preferredTime === "EVENING"
-      ? payload.preferredTime
+    preferredTimeRaw === "MORNING" ||
+    preferredTimeRaw === "AFTERNOON" ||
+    preferredTimeRaw === "EVENING"
+      ? preferredTimeRaw
       : null;
-
+  const reschedulePolicyRaw = asOptionalString(payload.reschedulePolicy);
   const reschedulePolicy =
-    payload.reschedulePolicy === "FIXED" ||
-    payload.reschedulePolicy === "FLEXIBLE" ||
-    payload.reschedulePolicy === "APPROVAL_REQUIRED"
-      ? payload.reschedulePolicy
+    reschedulePolicyRaw === "FIXED" ||
+    reschedulePolicyRaw === "FLEXIBLE" ||
+    reschedulePolicyRaw === "APPROVAL_REQUIRED"
+      ? reschedulePolicyRaw
       : "FLEXIBLE";
-
   const task = await prisma.task.create({
     data: {
       userId,
       title,
-      description: typeof payload.description === "string" ? payload.description : null,
-      durationMinutes:
-        typeof payload.durationMinutes === "number" ? payload.durationMinutes : null,
+      description: asOptionalString(payload.description) ?? null,
+      durationMinutes: asOptionalNumber(payload.durationMinutes) ?? null,
       status,
       priority,
       energyLevel,
       preferredTime,
       dueDate: parseDateOrNull(payload.dueDate),
       startDate: parseDateOrNull(payload.startDate),
-      isAutoScheduled:
-        typeof payload.isAutoScheduled === "boolean" ? payload.isAutoScheduled : true,
-      scheduleLocked:
-        typeof payload.scheduleLocked === "boolean" ? payload.scheduleLocked : false,
+      isAutoScheduled: asOptionalBoolean(payload.isAutoScheduled) ?? true,
+      scheduleLocked: asOptionalBoolean(payload.scheduleLocked) ?? false,
       reschedulePolicy,
     },
   });
@@ -816,23 +932,22 @@ const create_calendar_event: ActionFunction<{ payload?: ActionItem["payload"] }>
   args,
   logger,
 }) => {
-  const payload = args.payload;
-  if (!isRecord(payload)) {
+  const payload = asPayloadObject(args.payload);
+  if (!payload) {
     logger.warn("Missing payload for create_calendar_event action");
     return;
   }
 
-  if (payload.start == null || payload.end == null) {
+  const start = asOptionalString(payload.start);
+  const end = asOptionalString(payload.end);
+  if (!start || !end) {
     logger.warn("Calendar event payload missing start/end", {
       payload,
     });
     return;
   }
 
-  const title =
-    typeof payload.title === "string" && payload.title.trim().length > 0
-      ? payload.title
-      : null;
+  const title = asOptionalString(payload.title);
   if (!title) {
     logger.warn("Calendar event payload missing title", {
       payload,
@@ -853,8 +968,7 @@ const create_calendar_event: ActionFunction<{ payload?: ActionItem["payload"] }>
     return;
   }
   const effectiveTimeZone = resolveCalendarTimeZoneForRequest({
-    requestedTimeZone:
-      typeof payload.timeZone === "string" ? payload.timeZone : undefined,
+    requestedTimeZone: asOptionalString(payload.timeZone),
     defaultTimeZone: defaultCalendarTimeZone.timeZone,
   });
   if ("error" in effectiveTimeZone) {
@@ -867,12 +981,12 @@ const create_calendar_event: ActionFunction<{ payload?: ActionItem["payload"] }>
     return;
   }
   const parsedStart = parseDateBoundInTimeZone(
-    String(payload.start),
+    start,
     effectiveTimeZone.timeZone,
     "start",
   );
   const parsedEnd = parseDateBoundInTimeZone(
-    String(payload.end),
+    end,
     effectiveTimeZone.timeZone,
     "end",
   );
@@ -891,18 +1005,17 @@ const create_calendar_event: ActionFunction<{ payload?: ActionItem["payload"] }>
   );
 
   const event = await calendarProvider.createEvent({
-    calendarId: typeof payload.calendarId === "string" ? payload.calendarId : undefined,
+    calendarId: asOptionalString(payload.calendarId),
     input: {
       title,
-      description: typeof payload.description === "string" ? payload.description : undefined,
+      description: asOptionalString(payload.description),
       start: parsedStart,
       end: parsedEnd,
-      allDay: typeof payload.allDay === "boolean" ? payload.allDay : undefined,
-      isRecurring: typeof payload.isRecurring === "boolean" ? payload.isRecurring : undefined,
-      recurrenceRule:
-        typeof payload.recurrenceRule === "string" ? payload.recurrenceRule : undefined,
+      allDay: asOptionalBoolean(payload.allDay),
+      isRecurring: asOptionalBoolean(payload.isRecurring),
+      recurrenceRule: asOptionalString(payload.recurrenceRule),
       timeZone: effectiveTimeZone.timeZone,
-      location: typeof payload.location === "string" ? payload.location : undefined,
+      location: asOptionalString(payload.location),
     },
   });
 

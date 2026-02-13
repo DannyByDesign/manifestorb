@@ -46,6 +46,27 @@ type IntegrationStatusResponse = {
   };
 };
 
+type CanonicalRuleItem = {
+  id: string;
+  type: "guardrail" | "automation" | "preference";
+  name?: string;
+  description?: string;
+  enabled: boolean;
+  priority: number;
+  source: { mode: string };
+  match: { resource: string; operation?: string };
+};
+
+type RulePlaneResponse = {
+  rules: CanonicalRuleItem[];
+  summary: {
+    total: number;
+    guardrails: number;
+    automations: number;
+    preferences: number;
+  };
+};
+
 function extractErrorMessage(payload: unknown, status: number): string {
   if (payload && typeof payload === "object") {
     const record = payload as Record<string, unknown>;
@@ -98,19 +119,28 @@ async function requestSimpleAuthUrl(endpoint: string): Promise<string> {
 
 export function AuthConnectionPanel() {
   const [status, setStatus] = useState<IntegrationStatusResponse | null>(null);
+  const [rulePlane, setRulePlane] = useState<RulePlaneResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState<string | null>(null);
+  const [ruleInput, setRuleInput] = useState("");
+  const [ruleCompilerNote, setRuleCompilerNote] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/integrations/status", {
-        cache: "no-store",
-      });
-      const data = (await response.json()) as IntegrationStatusResponse;
-      setStatus(data);
+      const [statusResponse, rulesResponse] = await Promise.all([
+        fetch("/api/integrations/status", { cache: "no-store" }),
+        fetch("/api/rule-plane", { cache: "no-store" }),
+      ]);
+      const statusData = (await statusResponse.json()) as IntegrationStatusResponse;
+      setStatus(statusData);
+
+      if (rulesResponse.ok) {
+        const rulesData = (await rulesResponse.json()) as RulePlaneResponse;
+        setRulePlane(rulesData);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load status.");
     } finally {
@@ -185,6 +215,115 @@ export function AuthConnectionPanel() {
       setConnecting(null);
     }
   }, [refresh, status?.authenticated]);
+
+  const previewRule = useCallback(async () => {
+    if (!status?.authenticated || !ruleInput.trim()) return;
+    setConnecting("rule-preview");
+    setRuleCompilerNote(null);
+    setError(null);
+    try {
+      const response = await fetch("/api/rule-plane/compile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input: ruleInput }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(extractErrorMessage(payload, response.status));
+      }
+      const compiled = payload?.compiled as
+        | {
+            explanation?: string;
+            needsClarification?: boolean;
+            clarificationPrompt?: string;
+            diagnostics?: { confidence?: number; warnings?: string[] };
+          }
+        | undefined;
+      const confidence =
+        typeof compiled?.diagnostics?.confidence === "number"
+          ? compiled.diagnostics.confidence.toFixed(2)
+          : "n/a";
+      const warnings = Array.isArray(compiled?.diagnostics?.warnings)
+        ? compiled?.diagnostics?.warnings?.join("; ")
+        : "";
+      const prompt =
+        compiled?.needsClarification && compiled?.clarificationPrompt
+          ? ` Clarification: ${compiled.clarificationPrompt}`
+          : "";
+      const warningText = warnings ? ` Warnings: ${warnings}` : "";
+      setRuleCompilerNote(
+        `${compiled?.explanation ?? "Compiled preview."} (confidence ${confidence}).${warningText}${prompt}`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to preview rule.");
+    } finally {
+      setConnecting(null);
+    }
+  }, [ruleInput, status?.authenticated]);
+
+  const activateRule = useCallback(async () => {
+    if (!status?.authenticated || !ruleInput.trim()) return;
+    setConnecting("rule-activate");
+    setRuleCompilerNote(null);
+    setError(null);
+    try {
+      const response = await fetch("/api/rule-plane", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "compile",
+          input: ruleInput,
+          activate: true,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(extractErrorMessage(payload, response.status));
+      }
+      if (payload?.activated) {
+        setRuleCompilerNote("Rule activated.");
+        setRuleInput("");
+      } else {
+        const compiled = payload?.compiled as
+          | {
+              explanation?: string;
+              clarificationPrompt?: string;
+            }
+          | undefined;
+        setRuleCompilerNote(
+          `${compiled?.explanation ?? "Rule draft needs clarification."}${compiled?.clarificationPrompt ? ` ${compiled.clarificationPrompt}` : ""}`,
+        );
+      }
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to activate rule.");
+    } finally {
+      setConnecting(null);
+    }
+  }, [refresh, ruleInput, status?.authenticated]);
+
+  const deleteRule = useCallback(
+    async (ruleId: string) => {
+      if (!status?.authenticated) return;
+      setConnecting(`rule-delete:${ruleId}`);
+      setError(null);
+      try {
+        const response = await fetch(`/api/rule-plane/${ruleId}`, {
+          method: "DELETE",
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(extractErrorMessage(payload, response.status));
+        }
+        await refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to delete rule.");
+      } finally {
+        setConnecting(null);
+      }
+    },
+    [refresh, status?.authenticated],
+  );
 
   return (
     <div className="w-full max-w-md rounded-2xl border border-white/20 bg-black/40 p-4 text-sm text-white shadow-xl backdrop-blur-md">
@@ -347,6 +486,75 @@ export function AuthConnectionPanel() {
                   ? "configured"
                   : "missing"}
               </p>
+            </div>
+          )}
+
+          {status?.authenticated && (
+            <div className="rounded-lg border border-white/20 bg-white/5 p-2">
+              <div className="font-medium">Rule Plane (Unified)</div>
+              <p className="text-white/80">
+                Guardrails: {rulePlane?.summary.guardrails ?? 0} | Automations:{" "}
+                {rulePlane?.summary.automations ?? 0} | Preferences:{" "}
+                {rulePlane?.summary.preferences ?? 0}
+              </p>
+              <textarea
+                value={ruleInput}
+                onChange={(event) => setRuleInput(event.target.value)}
+                placeholder="Example: Always require approval before deleting calendar events."
+                className="mt-2 h-20 w-full rounded border border-white/20 bg-black/30 p-2 text-xs text-white placeholder:text-white/50"
+              />
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void previewRule()}
+                  disabled={connecting !== null || !ruleInput.trim()}
+                  className="rounded border border-white/30 px-2 py-1 text-xs disabled:opacity-60"
+                >
+                  Preview
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void activateRule()}
+                  disabled={connecting !== null || !ruleInput.trim()}
+                  className="rounded bg-white px-2 py-1 text-xs text-black disabled:opacity-60"
+                >
+                  Activate
+                </button>
+              </div>
+              {ruleCompilerNote && (
+                <p className="mt-2 text-xs text-emerald-100">{ruleCompilerNote}</p>
+              )}
+              <div className="mt-3 space-y-1">
+                {(rulePlane?.rules ?? []).slice(0, 8).map((rule) => (
+                  <div
+                    key={rule.id}
+                    className="rounded border border-white/10 bg-black/20 p-2 text-xs"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium">
+                        [{rule.type}] {rule.name ?? rule.id}
+                      </span>
+                      {rule.id.startsWith("legacy-") ? (
+                        <span className="text-white/60">legacy</span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => void deleteRule(rule.id)}
+                          disabled={connecting !== null}
+                          className="rounded border border-red-300/50 px-1.5 py-0.5 text-[10px] text-red-100 disabled:opacity-60"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-white/70">
+                      {rule.match.resource}
+                      {rule.match.operation ? ` / ${rule.match.operation}` : ""}
+                      {rule.enabled ? "" : " (disabled)"}
+                    </p>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

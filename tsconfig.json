@@ -24,39 +24,66 @@
       }
     ],
     "paths": {
-      "zod/v3": ["./node_modules/zod"],
-      "zod/v4": ["./node_modules/zod"],
-
-      "@/server/*": ["./src/server/*"],
-      "@/integrations/*": ["./src/server/integrations/*"],
-      
-      "@/features/*": ["./src/server/features/*"],
-      "@/actions/*": ["./src/server/actions/*"],
-      "@/types/*": ["./src/server/types/*"],
-
-      "@/components/*": ["./src/components/*"],
-      "@/shaders/*": ["./src/shaders/*"],
-      "@/lib/*": ["./src/lib/*"],
-      "@/hooks/*": ["./src/hooks/*"],
-
-      "@/enterprise/*": ["./src/enterprise/*"],
-      "@/tests/*": ["./tests/*"],
-      "@amodel/*": ["./src/server/packages/*"],
-      "@/generated/*": ["./generated/*"],
-
-      "@/*": ["./src/*"]
+      "zod/v3": [
+        "./node_modules/zod"
+      ],
+      "zod/v4": [
+        "./node_modules/zod"
+      ],
+      "@/server/*": [
+        "./src/server/*"
+      ],
+      "@/integrations/*": [
+        "./src/server/integrations/*"
+      ],
+      "@/features/*": [
+        "./src/server/features/*"
+      ],
+      "@/actions/*": [
+        "./src/server/actions/*"
+      ],
+      "@/types/*": [
+        "./src/server/types/*"
+      ],
+      "@/components/*": [
+        "./src/components/*"
+      ],
+      "@/shaders/*": [
+        "./src/shaders/*"
+      ],
+      "@/lib/*": [
+        "./src/lib/*"
+      ],
+      "@/hooks/*": [
+        "./src/hooks/*"
+      ],
+      "@/enterprise/*": [
+        "./src/enterprise/*"
+      ],
+      "@/tests/*": [
+        "./tests/*"
+      ],
+      "@amodel/*": [
+        "./src/server/packages/*"
+      ],
+      "@/generated/*": [
+        "./generated/*"
+      ],
+      "@/*": [
+        "./src/*"
+      ]
     }
   },
   "include": [
     "next-env.d.ts",
     "src/**/*.ts",
     "src/**/*.tsx",
-    "src/**/*.mts",
-    ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts"
+    "src/**/*.mts"
   ],
   "exclude": [
     "node_modules",
-    "surfaces"
+    "surfaces",
+    "**/*.test.ts",
+    "**/*.test.tsx"
   ]
 }

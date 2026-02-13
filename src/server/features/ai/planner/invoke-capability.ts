@@ -224,6 +224,35 @@ export async function invokeCapability(params: {
           : [],
         constraints: args.constraints ? asObject(args.constraints) : undefined,
       });
+    case "policy.listRules":
+      return capabilities.policy.listRules({
+        ...(args.type === "guardrail" || args.type === "automation" || args.type === "preference"
+          ? { type: args.type }
+          : {}),
+      });
+    case "policy.compileRule":
+      return capabilities.policy.compileRule({
+        input: asString(args.input) ?? "",
+      });
+    case "policy.createRule":
+      return capabilities.policy.createRule({
+        input: asString(args.input) ?? "",
+        activate: asBoolean(args.activate),
+      });
+    case "policy.updateRule":
+      return capabilities.policy.updateRule({
+        id: asString(args.id) ?? "",
+        patch: args.patch ? asObject(args.patch) : {},
+      });
+    case "policy.disableRule":
+      return capabilities.policy.disableRule({
+        id: asString(args.id) ?? "",
+        disabledUntil: asString(args.disabledUntil),
+      });
+    case "policy.deleteRule":
+      return capabilities.policy.deleteRule({
+        id: asString(args.id) ?? "",
+      });
     default:
       return {
         success: false,

@@ -91,5 +91,7 @@ function isMutatingCapability(capability: CapabilityName): boolean {
   if (capability === "calendar.getEvent") return false;
   if (capability === "planner.composeDayPlan") return false;
   if (capability === "planner.compileMultiActionPlan") return false;
+  if (capability === "policy.listRules") return false;
+  if (capability === "policy.compileRule") return false;
   return true;
 }

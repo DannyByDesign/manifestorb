@@ -54,6 +54,7 @@ const routeRules: Array<{ skillId: SkillId; confidence: number; patterns: RegExp
   { skillId: "calendar_working_hours_ooo", confidence: 0.9, patterns: [/working hours?/i, /out of office/i, /ooo/i] },
   { skillId: "calendar_booking_page_setup", confidence: 0.86, patterns: [/booking page/i, /appointment schedule/i, /booking slots/i] },
   { skillId: "calendar_meeting_load_rebalance", confidence: 0.84, patterns: [/meeting load/i, /rebalance/i, /too many meetings/i] },
+  { skillId: "rule_plane_management", confidence: 0.9, patterns: [/rule plane/i, /\bguardrail\b/i, /\bautomation rule\b/i, /\bpreference rule\b/i, /\bpolicy rule\b/i, /\brule id\b/i] },
   { skillId: "daily_plan_inbox_calendar", confidence: 0.84, patterns: [/plan my day/i, /daily plan/i, /today's plan/i] },
   { skillId: "multi_action_inbox_calendar", confidence: 0.82, patterns: [/ and /i, /also/i, /then /i, /plus /i] },
 ];
@@ -81,7 +82,7 @@ function buildClarifyResult(params: {
 }
 
 function shouldUsePlannerFallbackFromHeuristic(message: string): boolean {
-  return /\b(email|inbox|calendar|meeting|event|schedule|reschedule|draft|reply|forward|archive|trash|label|unsubscribe|block|availability|focus|working hours|out of office|booking)\b/i.test(
+  return /\b(email|inbox|calendar|meeting|event|schedule|reschedule|draft|reply|forward|archive|trash|label|unsubscribe|block|availability|focus|working hours|out of office|booking|rule|policy|guardrail|automation)\b/i.test(
     message,
   );
 }

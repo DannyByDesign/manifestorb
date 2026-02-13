@@ -104,6 +104,9 @@ model User {
 
   approvalRequests  ApprovalRequest[]
   approvalDecisions ApprovalDecision[]
+  canonicalRules     CanonicalRule[]
+  policyDecisionLogs PolicyDecisionLog[]
+  policyExecutionLogs PolicyExecutionLog[]
   pendingSkillRunStates PendingSkillRunState[]
   pendingPlannerRunStates PendingPlannerRunState[]
   inAppNotifications InAppNotification[]
@@ -202,6 +205,9 @@ model EmailAccount {
   calendarEventShadows CalendarEventShadow[]
   calendarEventPolicies CalendarEventPolicy[]
   calendarPlanRuns      CalendarPlanRun[]
+  canonicalRules        CanonicalRule[]
+  policyDecisionLogs    PolicyDecisionLog[]
+  policyExecutionLogs   PolicyExecutionLog[]
   pendingSkillRunStates PendingSkillRunState[]
   pendingPlannerRunStates PendingPlannerRunState[]
   @@index([userId])
@@ -1647,6 +1653,126 @@ model PendingPlannerRunState {
   @@index([userId, emailAccountId, status, expiresAt])
   @@index([userId, provider, channelId, threadId, status, expiresAt])
   @@index([conversationId, status, expiresAt])
+}
+
+model CanonicalRule {
+  id                 String   @id @default(cuid())
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  version            Int      @default(1)
+  type               String // "guardrail" | "automation" | "preference"
+  enabled            Boolean  @default(true)
+  priority           Int      @default(0)
+  name               String?
+  description        String?
+  scope              Json?
+  match              Json
+  trigger            Json?
+  decision           String?
+  transform          Json?
+  actionPlan         Json?
+  preferencePatch    Json?
+  expiresAt          DateTime?
+  disabledUntil      DateTime?
+  sourceMode         String   @default("system") // "ui" | "ai_nl" | "migration" | "system"
+  sourceNl           String?  @db.Text
+  sourceMessageId    String?
+  sourceConversationId String?
+  compilerVersion    String?
+  compilerConfidence Float?
+  compilerWarnings   Json?
+  legacyRefType      String?
+  legacyRefId        String?
+
+  userId             String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emailAccountId     String?
+  emailAccount       EmailAccount? @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
+
+  versions           CanonicalRuleVersion[]
+  decisionLogs       PolicyDecisionLog[]
+
+  @@index([userId, type, enabled, priority])
+  @@index([emailAccountId, type, enabled, priority])
+  @@index([legacyRefType, legacyRefId])
+}
+
+model CanonicalRuleVersion {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  canonicalRuleId String
+  canonicalRule   CanonicalRule @relation(fields: [canonicalRuleId], references: [id], onDelete: Cascade)
+  version         Int
+  payload         Json
+  sourceMode      String?
+
+  @@unique([canonicalRuleId, version])
+  @@index([createdAt])
+}
+
+model PolicyDecisionLog {
+  id                String   @id @default(cuid())
+  createdAt         DateTime @default(now())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emailAccountId    String?
+  emailAccount      EmailAccount? @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
+  canonicalRuleId   String?
+  canonicalRule     CanonicalRule? @relation(fields: [canonicalRuleId], references: [id], onDelete: SetNull)
+
+  source            String
+  toolName          String
+  mutationResource  String?
+  mutationOperation String?
+  args              Json
+  decisionKind      String
+  reasonCode        String
+  message           String
+  requiresApproval  Boolean  @default(false)
+  approvalPayload   Json?
+  transformedArgs   Json?
+  correlationId     String?
+  conversationId    String?
+  channelId         String?
+  threadId          String?
+  messageId         String?
+
+  executionLogs     PolicyExecutionLog[]
+
+  @@index([userId, createdAt])
+  @@index([emailAccountId, createdAt])
+  @@index([decisionKind, createdAt])
+  @@index([correlationId, createdAt])
+}
+
+model PolicyExecutionLog {
+  id                String   @id @default(cuid())
+  createdAt         DateTime @default(now())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emailAccountId    String?
+  emailAccount      EmailAccount? @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
+  policyDecisionLogId String?
+  policyDecisionLog PolicyDecisionLog? @relation(fields: [policyDecisionLogId], references: [id], onDelete: SetNull)
+
+  source            String
+  toolName          String
+  mutationResource  String?
+  mutationOperation String?
+  args              Json
+  outcome           String // "executed" | "deferred_approval" | "blocked" | "failed" | "skipped"
+  result            Json?
+  error             String?
+  correlationId     String?
+  conversationId    String?
+  channelId         String?
+  threadId          String?
+  messageId         String?
+
+  @@index([userId, createdAt])
+  @@index([emailAccountId, createdAt])
+  @@index([outcome, createdAt])
+  @@index([correlationId, createdAt])
 }
 
 // -- RLM Context Models --

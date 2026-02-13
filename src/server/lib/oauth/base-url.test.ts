@@ -8,8 +8,9 @@ async function loadResolver({
   baseUrl?: string;
 }) {
   vi.resetModules();
-  process.env.NODE_ENV = nodeEnv;
-  process.env.NEXT_PUBLIC_BASE_URL = baseUrl;
+  (process.env as Record<string, string | undefined>).NODE_ENV = nodeEnv;
+  (process.env as Record<string, string | undefined>).NEXT_PUBLIC_BASE_URL =
+    baseUrl;
   return import("./base-url");
 }
 

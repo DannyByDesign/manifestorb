@@ -1,6 +1,6 @@
-import prisma from "@/server/db/client";
 import { createEmailProvider } from "@/features/email/provider";
-import { runRules } from "@/features/rules/ai/run-rules";
+import { ActionType } from "@/generated/prisma/enums";
+import { executeCanonicalEmailAutomations } from "@/server/features/policy-plane/automation-executor";
 import type { Logger } from "@/server/lib/logger";
 import type { EmailAccountWithAI } from "@/server/lib/llms/types";
 import type { ParsedMessage } from "@/server/types";
@@ -29,33 +29,19 @@ export async function bulkProcessInboxEmails({
       logger,
     });
 
-    const [messages, rules] = await Promise.all([
-      emailProvider.getInboxMessages(maxEmails),
-      prisma.rule.findMany({
-        where: {
-          emailAccountId: emailAccount.id,
-          enabled: true,
-        },
-        include: { actions: true },
-      }),
-    ]);
+    const messages = await emailProvider.getInboxMessages(maxEmails);
 
     if (messages.length === 0) {
       logger.info("No inbox emails to process");
       return;
     }
 
-    if (rules.length === 0) {
-      logger.info("No rules found");
-      return;
-    }
-
     const uniqueMessages = getLatestMessagePerThread(messages);
 
-    logger.info("Processing emails with rules", {
-      ruleCount: rules.length,
+    logger.info("Processing emails with canonical rule plane automations", {
       emailCount: uniqueMessages.length,
       totalFetched: messages.length,
+      skipArchive,
     });
 
     let processedCount = 0;
@@ -63,15 +49,12 @@ export async function bulkProcessInboxEmails({
 
     for (const message of uniqueMessages) {
       try {
-        await runRules({
+        await executeCanonicalEmailAutomations({
           provider: emailProvider,
           message,
-          rules,
           emailAccount,
-          isTest: false,
-          modelType: "economy",
           logger,
-          skipArchive,
+          ...(skipArchive ? { skipActionTypes: [ActionType.ARCHIVE] } : {}),
         });
         processedCount++;
       } catch (error) {

@@ -25,6 +25,7 @@ export const BASELINE_SKILL_IDS = [
   "calendar_recurring_series_management",
   "calendar_working_location_management",
   "multi_action_inbox_calendar",
+  "rule_plane_management",
 ] as const;
 
 export type SkillId = (typeof BASELINE_SKILL_IDS)[number];

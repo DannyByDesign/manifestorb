@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import prisma from "@/server/db/client";
+import { Prisma } from "@/generated/prisma/client";
 import { resolvedSlotsSchema, type ResolvedSlots } from "@/server/features/ai/skills/contracts/slot-types";
 import { BASELINE_SKILL_IDS, type SkillId } from "@/server/features/ai/skills/baseline/skill-ids";
 
@@ -37,6 +38,10 @@ function toStringArray(value: unknown): string[] {
 function parseResolvedSlots(value: unknown): ResolvedSlots {
   const parsed = resolvedSlotsSchema.safeParse(value);
   return parsed.success ? parsed.data : {};
+}
+
+function toJsonInput(value: ResolvedSlots): Prisma.InputJsonValue {
+  return value as Prisma.InputJsonValue;
 }
 
 function scoreCandidate(params: {
@@ -198,7 +203,7 @@ export async function savePendingSkillRunState(params: {
       data: {
         status: "PENDING",
         skillId: params.skillId,
-        resolvedSlots: params.resolvedSlots,
+        resolvedSlots: toJsonInput(params.resolvedSlots),
         missingSlots: params.missingSlots,
         ambiguousSlots: params.ambiguousSlots,
         clarificationPrompt: params.clarificationPrompt ?? null,
@@ -260,7 +265,7 @@ export async function savePendingSkillRunState(params: {
         skillId: params.skillId,
         context: params.context,
       }),
-      resolvedSlots: params.resolvedSlots,
+      resolvedSlots: toJsonInput(params.resolvedSlots),
       missingSlots: params.missingSlots,
       ambiguousSlots: params.ambiguousSlots,
       clarificationPrompt: params.clarificationPrompt ?? null,

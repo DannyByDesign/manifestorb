@@ -2,6 +2,7 @@ import { createCapabilityToolContext } from "@/server/features/ai/capabilities/c
 import { createEmailCapabilities } from "@/server/features/ai/capabilities/email";
 import { createCalendarCapabilities } from "@/server/features/ai/capabilities/calendar";
 import { createPlannerCapabilities } from "@/server/features/ai/capabilities/planner";
+import { createPolicyCapabilities } from "@/server/features/ai/capabilities/policy";
 import type { CapabilityRuntimeContext } from "@/server/features/ai/capabilities/types";
 
 export async function createCapabilities(runtime: CapabilityRuntimeContext) {
@@ -12,6 +13,7 @@ export async function createCapabilities(runtime: CapabilityRuntimeContext) {
     email: createEmailCapabilities(env),
     calendar: createCalendarCapabilities(env),
     planner: createPlannerCapabilities(),
+    policy: createPolicyCapabilities(env),
   };
 }
 

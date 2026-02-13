@@ -83,7 +83,7 @@ function heuristicIntents(message: string): SemanticIntent[] {
   ) {
     if (/draft|reply|forward|send/i.test(lower)) intents.add("inbox_compose");
     if (/archive|trash|label|spam|unsubscribe|block|mark/i.test(lower)) intents.add("inbox_mutate");
-    if (/filter|rule|cleanup|newsletter|subscription/i.test(lower)) intents.add("inbox_controls");
+    if (/filter|rule|policy|guardrail|cleanup|newsletter|subscription/i.test(lower)) intents.add("inbox_controls");
     if (!intents.has("inbox_compose") && !intents.has("inbox_mutate")) intents.add("inbox_read");
   }
 

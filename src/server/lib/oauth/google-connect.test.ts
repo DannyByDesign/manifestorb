@@ -17,7 +17,8 @@ afterEach(() => {
   process.env.GOOGLE_CLIENT_SECRET = ORIGINAL_ENV.GOOGLE_CLIENT_SECRET;
   process.env.NEXT_PUBLIC_WORKOS_REDIRECT_URI =
     ORIGINAL_ENV.NEXT_PUBLIC_WORKOS_REDIRECT_URI;
-  process.env.NODE_ENV = ORIGINAL_ENV.NODE_ENV;
+  (process.env as Record<string, string | undefined>).NODE_ENV =
+    ORIGINAL_ENV.NODE_ENV;
   vi.restoreAllMocks();
 });
 
@@ -39,7 +40,7 @@ describe("google-connect", () => {
     process.env.GOOGLE_CLIENT_ID = "";
     process.env.GOOGLE_CLIENT_SECRET = "";
     process.env.NEXT_PUBLIC_WORKOS_REDIRECT_URI = "";
-    process.env.NODE_ENV = "production";
+    (process.env as Record<string, string | undefined>).NODE_ENV = "production";
 
     const diagnostics = getGoogleOAuthConfigDiagnostics(
       "http://localhost:3000",
@@ -55,4 +56,3 @@ describe("google-connect", () => {
     );
   });
 });
-

@@ -52,6 +52,12 @@ export const capabilityNameSchema = z.enum([
   "calendar.createBookingSchedule",
   "planner.composeDayPlan",
   "planner.compileMultiActionPlan",
+  "policy.listRules",
+  "policy.compileRule",
+  "policy.createRule",
+  "policy.updateRule",
+  "policy.disableRule",
+  "policy.deleteRule",
 ]);
 
 export type CapabilityName = z.infer<typeof capabilityNameSchema>;
