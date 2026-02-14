@@ -8,7 +8,10 @@ import {
   resolveCalendarTimeZoneForRequest,
   resolveDefaultCalendarTimeZone,
 } from "@/server/features/ai/tools/calendar-time";
-import { parseDateBoundInTimeZone } from "@/server/features/ai/tools/timezone";
+import {
+  formatDateTimeForUser,
+  parseDateBoundInTimeZone,
+} from "@/server/features/ai/tools/timezone";
 import {
   createCalendarEvent,
   deleteCalendarEvent,
@@ -76,16 +79,32 @@ function toEventListData(
     location?: string;
     description?: string;
   }>,
+  options?: { timeZone?: string },
 ): Array<Record<string, unknown>> {
-  return events.map((event) => ({
-    id: event.id,
-    title: event.title,
-    start: event.startTime.toISOString(),
-    end: event.endTime.toISOString(),
-    attendees: event.attendees.map((attendee) => attendee.email),
-    location: event.location ?? null,
-    snippet: event.description ?? "",
-  }));
+  return events.map((event) => {
+    const start = event.startTime.toISOString();
+    const end = event.endTime.toISOString();
+    const startLocal =
+      options?.timeZone
+        ? formatDateTimeForUser(event.startTime, options.timeZone)
+        : null;
+    const endLocal =
+      options?.timeZone
+        ? formatDateTimeForUser(event.endTime, options.timeZone)
+        : null;
+
+    return {
+      id: event.id,
+      title: event.title,
+      start,
+      end,
+      startLocal,
+      endLocal,
+      attendees: event.attendees.map((attendee) => attendee.email),
+      location: event.location ?? null,
+      snippet: event.description ?? "",
+    };
+  });
 }
 
 function calendarFailure(error: unknown, message: string): ToolResult {
@@ -281,7 +300,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           end: range.end,
           attendeeEmail,
         });
-        const data = toEventListData(events);
+        const data = toEventListData(events, { timeZone: range.timeZone });
         return {
           success: true,
           data,
@@ -328,7 +347,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           end: range.end,
           attendeeEmail,
         });
-        const data = toEventListData(events);
+        const data = toEventListData(events, { timeZone: range.timeZone });
         return {
           success: true,
           data,
@@ -434,6 +453,14 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
             title: event.title,
             start: event.startTime.toISOString(),
             end: event.endTime.toISOString(),
+            startLocal: formatDateTimeForUser(
+              event.startTime,
+              resolvedTimeZone.timeZone,
+            ),
+            endLocal: formatDateTimeForUser(
+              event.endTime,
+              resolvedTimeZone.timeZone,
+            ),
             attendees: event.attendees.map((attendee) => attendee.email),
           },
           message: "Event created.",
@@ -529,6 +556,14 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
             title: updated.title,
             start: updated.startTime.toISOString(),
             end: updated.endTime.toISOString(),
+            startLocal: formatDateTimeForUser(
+              updated.startTime,
+              resolvedTimeZone.timeZone,
+            ),
+            endLocal: formatDateTimeForUser(
+              updated.endTime,
+              resolvedTimeZone.timeZone,
+            ),
             attendees: updated.attendees.map((attendee) => attendee.email),
           },
           message: "Event updated.",
@@ -637,6 +672,9 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
       }
 
       try {
+        const defaultTimeZone = await getDefaultTimeZone();
+        const displayTimeZone =
+          "error" in defaultTimeZone ? "UTC" : defaultTimeZone.timeZone;
         const updated = await updateCalendarEvent(provider, {
           ...(safeString(input.calendarId)
             ? { calendarId: safeString(input.calendarId) }
@@ -654,6 +692,14 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
             mode: input.mode,
             start: updated.startTime.toISOString(),
             end: updated.endTime.toISOString(),
+            startLocal: formatDateTimeForUser(
+              updated.startTime,
+              displayTimeZone,
+            ),
+            endLocal: formatDateTimeForUser(
+              updated.endTime,
+              displayTimeZone,
+            ),
           },
           message: "Recurring event updated.",
           meta: { resource: "calendar", itemCount: 1 },
@@ -797,6 +843,22 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
             previousEnd: current.endTime.toISOString(),
             newStart: updated.startTime.toISOString(),
             newEnd: updated.endTime.toISOString(),
+            previousStartLocal: formatDateTimeForUser(
+              current.startTime,
+              resolvedTimeZone.timeZone,
+            ),
+            previousEndLocal: formatDateTimeForUser(
+              current.endTime,
+              resolvedTimeZone.timeZone,
+            ),
+            newStartLocal: formatDateTimeForUser(
+              updated.startTime,
+              resolvedTimeZone.timeZone,
+            ),
+            newEndLocal: formatDateTimeForUser(
+              updated.endTime,
+              resolvedTimeZone.timeZone,
+            ),
           },
           message: "Event rescheduled.",
           meta: { resource: "calendar", itemCount: 1 },
@@ -921,7 +983,19 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
         });
         return {
           success: true,
-          data: { id: event.id, start: event.startTime.toISOString(), end: event.endTime.toISOString() },
+          data: {
+            id: event.id,
+            start: event.startTime.toISOString(),
+            end: event.endTime.toISOString(),
+            startLocal: formatDateTimeForUser(
+              event.startTime,
+              resolvedTimeZone.timeZone,
+            ),
+            endLocal: formatDateTimeForUser(
+              event.endTime,
+              resolvedTimeZone.timeZone,
+            ),
+          },
           message: "Out-of-office event created.",
           meta: { resource: "calendar", itemCount: 1 },
         };
@@ -978,7 +1052,19 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
         });
         return {
           success: true,
-          data: { id: event.id, start: event.startTime.toISOString(), end: event.endTime.toISOString() },
+          data: {
+            id: event.id,
+            start: event.startTime.toISOString(),
+            end: event.endTime.toISOString(),
+            startLocal: formatDateTimeForUser(
+              event.startTime,
+              resolvedTimeZone.timeZone,
+            ),
+            endLocal: formatDateTimeForUser(
+              event.endTime,
+              resolvedTimeZone.timeZone,
+            ),
+          },
           message: "Focus block created.",
           meta: { resource: "calendar", itemCount: 1 },
         };

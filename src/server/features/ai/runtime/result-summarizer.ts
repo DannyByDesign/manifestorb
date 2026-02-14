@@ -21,12 +21,21 @@ function summarizeItem(item: unknown): string {
         ? record.title
         : undefined;
   const from = typeof record.from === "string" ? record.from : undefined;
+  const localWhen =
+    typeof record.dateLocal === "string"
+      ? record.dateLocal
+      : typeof record.startLocal === "string"
+        ? record.startLocal
+        : typeof record.endLocal === "string"
+          ? record.endLocal
+          : undefined;
   const when =
-    typeof record.date === "string"
+    localWhen ??
+    (typeof record.date === "string"
       ? record.date
       : typeof record.start === "string"
         ? record.start
-        : undefined;
+        : undefined);
 
   if (!subject && !from && !when) return "details unavailable";
   if (subject && from && when) return `from ${from} — "${subject}" (${when})`;

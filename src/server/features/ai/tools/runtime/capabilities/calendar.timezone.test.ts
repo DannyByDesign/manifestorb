@@ -104,8 +104,20 @@ describe("runtime calendar timezone handling", () => {
   });
 
   it("routes listEvents window through calendar timezone resolver", async () => {
+    vi.mocked(listCalendarEvents).mockResolvedValueOnce([
+      {
+        id: "evt-1",
+        title: "Standup",
+        startTime: new Date("2026-02-16T17:00:00.000Z"),
+        endTime: new Date("2026-02-16T17:30:00.000Z"),
+        attendees: [],
+      },
+    ] as never[]);
+
     const caps = createCalendarCapabilities(buildEnv());
-    await caps.listEvents({ dateRange: { after: "2026-02-16", before: "2026-02-16" } });
+    const result = await caps.listEvents({
+      dateRange: { after: "2026-02-16", before: "2026-02-16" },
+    });
 
     expect(resolveCalendarTimeRange).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -121,6 +133,12 @@ describe("runtime calendar timezone handling", () => {
         end: new Date("2026-02-17T07:59:59.999Z"),
       }),
     );
+
+    const item = Array.isArray(result.data)
+      ? (result.data[0] as Record<string, unknown> | undefined)
+      : undefined;
+    expect(typeof item?.start).toBe("string");
+    expect(typeof item?.startLocal).toBe("string");
   });
 
   it("parses local createEvent datetime in user timezone before provider call", async () => {
@@ -148,4 +166,3 @@ describe("runtime calendar timezone handling", () => {
     expect(callArg.event.end.toISOString()).toBe("2026-02-16T18:00:00.000Z");
   });
 });
-

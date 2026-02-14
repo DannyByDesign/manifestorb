@@ -22,6 +22,7 @@ import {
   searchEmailThreads,
   trashEmailMessages,
 } from "@/server/features/ai/tools/email/primitives";
+import { formatDateTimeForUser } from "@/server/features/ai/tools/timezone";
 
 export interface EmailCapabilities {
   searchThreads(filter: Record<string, unknown>): Promise<ToolResult>;
@@ -121,16 +122,32 @@ function uniqueIds(ids: string[]): string[] {
   return Array.from(new Set(ids.map((id) => id.trim()).filter(Boolean)));
 }
 
-function toSearchItems(messages: ParsedMessage[]): Array<Record<string, unknown>> {
-  return messages.map((message) => ({
-    id: message.id,
-    threadId: message.threadId,
-    title: message.subject || "(No Subject)",
-    snippet: message.snippet || message.textPlain?.slice(0, 160) || "",
-    date: message.date,
-    from: message.headers?.from ?? "",
-    to: message.headers?.to ?? "",
-  }));
+function toSearchItems(
+  messages: ParsedMessage[],
+  options?: { timeZone?: string },
+): Array<Record<string, unknown>> {
+  return messages.map((message) => {
+    const timestampMs = messageTimestampMs(message);
+    const normalizedDate =
+      timestampMs > 0
+        ? new Date(timestampMs).toISOString()
+        : message.date ?? null;
+    const dateLocal =
+      options?.timeZone && timestampMs > 0
+        ? formatDateTimeForUser(new Date(timestampMs), options.timeZone)
+        : null;
+
+    return {
+      id: message.id,
+      threadId: message.threadId,
+      title: message.subject || "(No Subject)",
+      snippet: message.snippet || message.textPlain?.slice(0, 160) || "",
+      date: normalizedDate,
+      dateLocal,
+      from: message.headers?.from ?? "",
+      to: message.headers?.to ?? "",
+    };
+  });
 }
 
 function messageTimestampMs(message: ParsedMessage): number {
@@ -246,63 +263,62 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         (typeof dateRange?.timeZone === "string" ? dateRange.timeZone : undefined) ??
         (typeof dateRange?.timezone === "string" ? dateRange.timezone : undefined);
 
+      const resolvedTimeZone = await resolveEffectiveTimeZone(requestedTimeZone);
+      if ("error" in resolvedTimeZone) {
+        return {
+          success: false,
+          error: "invalid_time_zone",
+          message: resolvedTimeZone.error,
+          clarification: {
+            kind: "invalid_fields",
+            prompt: "Please provide a valid IANA timezone, like America/Los_Angeles.",
+            missingFields: ["timeZone"],
+          },
+        };
+      }
+      const displayTimeZone = resolvedTimeZone.timeZone;
+
       let before: Date | undefined;
       let after: Date | undefined;
-      if (typeof dateRange?.before === "string" || typeof dateRange?.after === "string") {
-        const resolvedTimeZone = await resolveEffectiveTimeZone(requestedTimeZone);
-        if ("error" in resolvedTimeZone) {
+      if (typeof dateRange?.before === "string") {
+        before = parseDateBoundInTimeZone(
+          dateRange.before,
+          displayTimeZone,
+          "end",
+        ) ?? undefined;
+        if (!before) {
           return {
             success: false,
-            error: "invalid_time_zone",
-            message: resolvedTimeZone.error,
+            error: "invalid_date_range_before",
+            message:
+              "Invalid dateRange.before. Use ISO-8601 or local date/datetime.",
             clarification: {
               kind: "invalid_fields",
-              prompt: "Please provide a valid IANA timezone, like America/Los_Angeles.",
-              missingFields: ["timeZone"],
+              prompt: "I need a valid end date for that email search.",
+              missingFields: ["dateRange.before"],
             },
           };
         }
+      }
 
-        if (typeof dateRange?.before === "string") {
-          before = parseDateBoundInTimeZone(
-            dateRange.before,
-            resolvedTimeZone.timeZone,
-            "end",
-          ) ?? undefined;
-          if (!before) {
-            return {
-              success: false,
-              error: "invalid_date_range_before",
-              message:
-                "Invalid dateRange.before. Use ISO-8601 or local date/datetime.",
-              clarification: {
-                kind: "invalid_fields",
-                prompt: "I need a valid end date for that email search.",
-                missingFields: ["dateRange.before"],
-              },
-            };
-          }
-        }
-
-        if (typeof dateRange?.after === "string") {
-          after = parseDateBoundInTimeZone(
-            dateRange.after,
-            resolvedTimeZone.timeZone,
-            "start",
-          ) ?? undefined;
-          if (!after) {
-            return {
-              success: false,
-              error: "invalid_date_range_after",
-              message:
-                "Invalid dateRange.after. Use ISO-8601 or local date/datetime.",
-              clarification: {
-                kind: "invalid_fields",
-                prompt: "I need a valid start date for that email search.",
-                missingFields: ["dateRange.after"],
-              },
-            };
-          }
+      if (typeof dateRange?.after === "string") {
+        after = parseDateBoundInTimeZone(
+          dateRange.after,
+          displayTimeZone,
+          "start",
+        ) ?? undefined;
+        if (!after) {
+          return {
+            success: false,
+            error: "invalid_date_range_after",
+            message:
+              "Invalid dateRange.after. Use ISO-8601 or local date/datetime.",
+            clarification: {
+              kind: "invalid_fields",
+              prompt: "I need a valid start date for that email search.",
+              missingFields: ["dateRange.after"],
+            },
+          };
         }
       }
 
@@ -349,7 +365,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       const sortedMessages = [...messages].sort(
         (a, b) => messageTimestampMs(b) - messageTimestampMs(a),
       );
-      const data = toSearchItems(sortedMessages);
+      const data = toSearchItems(sortedMessages, { timeZone: displayTimeZone });
       return {
         success: true,
         data,

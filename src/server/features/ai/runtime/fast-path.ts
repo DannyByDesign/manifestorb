@@ -73,8 +73,9 @@ function summarizeTopEmail(timeZone: string) {
 
     const subject = asString(top.title) ?? "No subject";
     const from = asString(top.from) ?? "unknown sender";
+    const localDate = asString(top.dateLocal);
     const date = asString(top.date);
-    const receivedAt = date ? formatInTimeZone(date, timeZone) : null;
+    const receivedAt = localDate ?? (date ? formatInTimeZone(date, timeZone) : null);
     const receivedText = receivedAt ? `, received ${receivedAt}` : "";
     return `Your newest inbox email is "${subject}" from ${from}${receivedText}.`;
   };
@@ -88,15 +89,16 @@ function summarizeEmailList(timeZone: string) {
   >[];
   if (items.length === 0) return "I don't see matching emails right now.";
 
-  const top = items.slice(0, 3).map((item) => {
-    const subject = asString(item.title) ?? "No subject";
-    const from = asString(item.from) ?? "unknown sender";
-    const date = asString(item.date);
-    const receivedAt = date ? formatInTimeZone(date, timeZone) : null;
-    return receivedAt
-      ? `"${subject}" from ${from} (${receivedAt})`
-      : `"${subject}" from ${from}`;
-  });
+    const top = items.slice(0, 3).map((item) => {
+      const subject = asString(item.title) ?? "No subject";
+      const from = asString(item.from) ?? "unknown sender";
+      const localDate = asString(item.dateLocal);
+      const date = asString(item.date);
+      const receivedAt = localDate ?? (date ? formatInTimeZone(date, timeZone) : null);
+      return receivedAt
+        ? `"${subject}" from ${from} (${receivedAt})`
+        : `"${subject}" from ${from}`;
+    });
 
   if (items.length === 1) return `I found one: ${top[0]}.`;
   if (items.length <= 3) return `Top ${items.length} emails: ${top.join("; ")}.`;
@@ -203,8 +205,10 @@ function summarizeCalendarList(timeZone: string) {
 
     const top = items.slice(0, 3).map((item) => {
       const title = asString(item.title) ?? "Untitled event";
+      const startLocal = asString(item.startLocal);
       const start = asString(item.start);
-      return start ? `"${title}" at ${formatInTimeZone(start, timeZone)}` : `"${title}"`;
+      const when = startLocal ?? (start ? formatInTimeZone(start, timeZone) : null);
+      return when ? `"${title}" at ${when}` : `"${title}"`;
     });
 
     if (items.length === 1) return `You have 1 event: ${top[0]}.`;

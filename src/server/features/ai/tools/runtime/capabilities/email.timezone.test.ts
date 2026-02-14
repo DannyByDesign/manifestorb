@@ -113,4 +113,42 @@ describe("runtime email timezone handling", () => {
     };
     expect(filter.receivedByMe).toBeUndefined();
   });
+
+  it("returns localized display time fields for inbox items", async () => {
+    vi.mocked(searchEmailThreads).mockResolvedValueOnce({
+      messages: [
+        {
+          id: "m-1",
+          threadId: "t-1",
+          snippet: "Test snippet",
+          historyId: "h-1",
+          inline: [],
+          headers: {
+            subject: "Hello",
+            from: "sender@example.com",
+            to: "user@example.com",
+            date: "Sat, 14 Feb 2026 03:32:14 +0000",
+          },
+          subject: "Hello",
+          textPlain: "Body",
+          date: "Sat, 14 Feb 2026 03:32:14 +0000",
+          internalDate: "1771039934000",
+        },
+      ] as never[],
+      nextPageToken: undefined,
+      totalEstimate: 1,
+    });
+
+    const caps = createEmailCapabilities(buildEnv());
+    const result = await caps.searchInbox({ limit: 1 });
+    expect(result.success).toBe(true);
+
+    const item = Array.isArray(result.data)
+      ? (result.data[0] as Record<string, unknown> | undefined)
+      : undefined;
+    expect(typeof item?.date).toBe("string");
+    expect(String(item?.date)).toContain("T");
+    expect(typeof item?.dateLocal).toBe("string");
+    expect(String(item?.dateLocal)).not.toContain("+0000");
+  });
 });

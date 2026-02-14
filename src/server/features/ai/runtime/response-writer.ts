@@ -4,6 +4,7 @@ import { getModel } from "@/server/lib/llms/model";
 import { buildAgentSystemPrompt, type Platform } from "@/server/features/ai/system-prompt";
 import type { RuntimeSession } from "@/server/features/ai/runtime/types";
 import type { RuntimeToolResult } from "@/server/features/ai/tools/contracts/tool-result";
+import { resolveDefaultCalendarTimeZone } from "@/server/features/ai/tools/calendar-time";
 import { env } from "@/env";
 
 const runtimeResponseSchema = z
@@ -56,6 +57,12 @@ export async function generateRuntimeUserReply(params: {
   fallbackText: string;
 }): Promise<string> {
   const { session, request, results, approvalsCount, mode, fallbackText } = params;
+  const resolvedTimeZone = await resolveDefaultCalendarTimeZone({
+    userId: session.input.userId,
+    emailAccountId: session.input.emailAccountId,
+  });
+  const userTimeZone =
+    "error" in resolvedTimeZone ? "UTC" : resolvedTimeZone.timeZone;
   const modelOptions = getModel("economy");
   const generate = createGenerateObject({
     emailAccount: {
@@ -86,12 +93,15 @@ export async function generateRuntimeUserReply(params: {
       "- Keep it concise and direct.",
       "- Do not open with filler like 'Certainly' unless the user explicitly asks for formality.",
       "- Preserve concrete facts from fallback guidance exactly (especially dates/times); do not reinterpret time zones.",
+      "- If evidence includes dateLocal/startLocal/endLocal, use those fields for user-facing times.",
+      "- Never present raw UTC offsets to the user unless they asked for UTC explicitly.",
       "- If mode is clarification, ask one concrete follow-up question.",
       "- If mode is approval_pending, clearly say approval is needed and what happens next.",
       "- Never claim success unless evidence confirms it.",
     ].join("\n"),
     prompt: [
       `Mode: ${mode}`,
+      `User timezone: ${userTimeZone}`,
       `User request: ${request}`,
       `Approvals count: ${approvalsCount}`,
       "Executed tool evidence JSON:",
