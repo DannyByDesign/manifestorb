@@ -50,6 +50,7 @@ export function makeToolPolicyMatcher(
     if (matchesAny(normalized, deny)) return false;
     if (allow.length === 0) return true;
     if (matchesAny(normalized, allow)) return true;
+    if (normalized === "apply_patch" && matchesAny("exec", allow)) return true;
     return false;
   };
 }

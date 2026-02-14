@@ -90,4 +90,12 @@ describe("policy matcher", () => {
     expect(allowed).toBe(true);
     expect(denied).toBe(false);
   });
+
+  it("allows apply_patch when exec is allowlisted", () => {
+    const allowed = isToolAllowedByPolicies(
+      "apply_patch",
+      [{ allow: ["exec"] }],
+    );
+    expect(allowed).toBe(true);
+  });
 });

@@ -1,21 +1,30 @@
 import { createCapabilities } from "@/server/features/ai/tools/runtime/capabilities";
 import { loadRuntimeSkills } from "@/server/features/ai/skills/loader";
 import { buildSkillPromptSnapshot } from "@/server/features/ai/skills/snapshot";
-import { assembleRuntimeTools } from "@/server/features/ai/tools/fabric/assembler";
 import { filterToolRegistryDetailed } from "@/server/features/ai/tools/fabric/policy-filter";
 import {
   buildRuntimeToolRegistryContext,
   buildToolNameLookup,
 } from "@/server/features/ai/tools/fabric/registry";
+import { toToolDefinitions } from "@/server/features/ai/tools/harness/tool-definition-adapter";
+import { splitSdkTools } from "@/server/features/ai/tools/harness/tool-split";
 import { classifyRuntimeSemanticContract } from "@/server/features/ai/runtime/semantic-contract";
 import { resolveEffectiveToolPolicy } from "@/server/features/ai/tools/policy/policy-resolver";
-import { expandPolicyWithPluginGroups } from "@/server/features/ai/tools/policy/tool-policy";
+import {
+  expandPolicyWithPluginGroups,
+  normalizeToolName,
+  stripPluginOnlyAllowlist,
+} from "@/server/features/ai/tools/policy/tool-policy";
 import { getModel } from "@/server/lib/llms/model";
 import prisma from "@/server/db/client";
 import type { RuntimeSession, OpenWorldTurnInput } from "@/server/features/ai/runtime/types";
 import type { ToolExecutionSummary } from "@/server/features/ai/tools/fabric/types";
 
 export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<RuntimeSession> {
+  const isSubagentSession = Boolean(
+    input.agentId && input.agentId.toLowerCase().includes("subagent"),
+  );
+
   const [capabilities, userAiConfig, semantic] = await Promise.all([
     createCapabilities({
       userId: input.userId,
@@ -74,6 +83,7 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
           toolByGroup: userAiConfig.toolByGroup,
           toolSandboxPolicy: userAiConfig.toolSandboxPolicy,
           toolSubagentPolicy: userAiConfig.toolSubagentPolicy,
+          isSubagentSession,
         }
       : undefined,
     agentId: input.agentId,
@@ -84,35 +94,61 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
     channelId: input.channelId,
   });
 
+  const coreToolNames = new Set(
+    fullRegistry.map((definition) => normalizeToolName(definition.toolName)).filter(Boolean),
+  );
+  const resolvePolicyLayer = (
+    policy: typeof resolvedLayers.profilePolicy,
+    label: string,
+  ) => {
+    const resolved = stripPluginOnlyAllowlist(
+      policy,
+      registryContext.pluginGroups,
+      coreToolNames,
+    );
+    if (resolved.unknownAllowlist.length > 0) {
+      const entries = resolved.unknownAllowlist.join(", ");
+      const suffix = resolved.strippedAllowlist
+        ? "Ignoring allowlist so core tools remain available. Use tools.alsoAllow for additive plugin tool enablement."
+        : "These entries won't match any tool unless the plugin is enabled.";
+      input.logger.warn(`tools: ${label} allowlist contains unknown entries (${entries}). ${suffix}`);
+    }
+    return expandPolicyWithPluginGroups(resolved.policy, registryContext.pluginGroups);
+  };
+
   const layeredPolicies = {
     ...resolvedLayers,
-    profilePolicy: expandPolicyWithPluginGroups(
+    profilePolicy: resolvePolicyLayer(
       resolvedLayers.profilePolicy,
-      registryContext.pluginGroups,
+      resolvedLayers.profile ? `tools.profile (${resolvedLayers.profile})` : "tools.profile",
     ),
-    providerProfilePolicy: expandPolicyWithPluginGroups(
+    providerProfilePolicy: resolvePolicyLayer(
       resolvedLayers.providerProfilePolicy,
-      registryContext.pluginGroups,
+      resolvedLayers.providerProfile
+        ? `tools.byProvider.profile (${resolvedLayers.providerProfile})`
+        : "tools.byProvider.profile",
     ),
-    globalPolicy: expandPolicyWithPluginGroups(
+    globalPolicy: resolvePolicyLayer(
       resolvedLayers.globalPolicy,
-      registryContext.pluginGroups,
+      "tools.allow",
     ),
-    globalProviderPolicy: expandPolicyWithPluginGroups(
+    globalProviderPolicy: resolvePolicyLayer(
       resolvedLayers.globalProviderPolicy,
-      registryContext.pluginGroups,
+      "tools.byProvider.allow",
     ),
-    agentPolicy: expandPolicyWithPluginGroups(
+    agentPolicy: resolvePolicyLayer(
       resolvedLayers.agentPolicy,
-      registryContext.pluginGroups,
+      input.agentId ? `agents.${input.agentId}.tools.allow` : "agent tools.allow",
     ),
-    agentProviderPolicy: expandPolicyWithPluginGroups(
+    agentProviderPolicy: resolvePolicyLayer(
       resolvedLayers.agentProviderPolicy,
-      registryContext.pluginGroups,
+      input.agentId
+        ? `agents.${input.agentId}.tools.byProvider.allow`
+        : "agent tools.byProvider.allow",
     ),
-    groupPolicy: expandPolicyWithPluginGroups(
+    groupPolicy: resolvePolicyLayer(
       resolvedLayers.groupPolicy,
-      registryContext.pluginGroups,
+      "group tools.allow",
     ),
     sandboxPolicy: expandPolicyWithPluginGroups(
       resolvedLayers.sandboxPolicy,
@@ -164,7 +200,7 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
 
   const summaries: ToolExecutionSummary[] = [];
 
-  const tools = assembleRuntimeTools({
+  const toolDefinitions = toToolDefinitions({
     registry,
     context: {
       policy: {
@@ -182,6 +218,10 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
     artifacts,
     summaries,
   });
+  const toolHarness = splitSdkTools({
+    tools: toolDefinitions,
+    sandboxEnabled: false,
+  });
 
   return {
     input,
@@ -193,10 +233,10 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
           maxSteps: userAiConfig.maxSteps ?? undefined,
           approvalInstructions: userAiConfig.approvalInstructions ?? undefined,
           customInstructions: userAiConfig.customInstructions ?? undefined,
-          conversationCategories: userAiConfig.conversationCategories ?? undefined,
-        }
-      : undefined,
-    tools,
+        conversationCategories: userAiConfig.conversationCategories ?? undefined,
+      }
+    : undefined,
+    toolHarness,
     toolRegistry: registry,
     toolLookup,
     artifacts,

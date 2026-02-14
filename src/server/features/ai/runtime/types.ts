@@ -1,9 +1,10 @@
-import type { ModelMessage, ToolSet } from "ai";
+import type { ModelMessage } from "ai";
 import type { Logger } from "@/server/lib/logger";
 import type { SkillCapabilities } from "@/server/features/ai/tools/runtime/capabilities";
 import type { RuntimeSkillSnapshot } from "@/server/features/ai/skills/types";
 import type { UserPromptConfig } from "@/server/features/ai/system-prompt";
 import type { RuntimeSemanticContract } from "@/server/features/ai/runtime/semantic-contract";
+import type { RuntimeToolHarness } from "@/server/features/ai/tools/harness/types";
 import type {
   ToolExecutionArtifacts,
   ToolExecutionSummary,
@@ -37,7 +38,7 @@ export interface RuntimeSession {
   semantic: RuntimeSemanticContract;
   skillSnapshot: RuntimeSkillSnapshot;
   userPromptConfig?: UserPromptConfig;
-  tools: ToolSet;
+  toolHarness: RuntimeToolHarness;
   toolRegistry: RuntimeToolDefinition[];
   toolLookup: Map<string, RuntimeToolDefinition>;
   artifacts: ToolExecutionArtifacts;

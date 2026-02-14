@@ -73,4 +73,21 @@ describe("policy resolver", () => {
     expect(resolved.agentPolicy?.allow).toEqual(["email.*"]);
     expect(resolved.agentProviderPolicy?.deny).toEqual(["email.batchTrash"]);
   });
+
+  it("adds subagent baseline deny list when subagent session is active", () => {
+    const resolved = resolveEffectiveToolPolicy({
+      config: {
+        isSubagentSession: true,
+        toolSubagentPolicy: {
+          allow: ["email.searchInbox"],
+          deny: ["calendar.deleteEvent"],
+        },
+      },
+    });
+
+    expect(resolved.subagentPolicy?.allow).toEqual(["email.searchInbox"]);
+    expect(resolved.subagentPolicy?.deny).toContain("calendar.deleteEvent");
+    expect(resolved.subagentPolicy?.deny).toContain("sessions_list");
+    expect(resolved.subagentPolicy?.deny).toContain("memory_get");
+  });
 });

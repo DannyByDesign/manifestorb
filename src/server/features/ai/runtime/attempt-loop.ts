@@ -1,4 +1,4 @@
-import { stepCountIs, type ModelMessage, type StepResult, type ToolSet } from "ai";
+import type { ModelMessage } from "ai";
 import { createGenerateText } from "@/server/lib/llms";
 import { getModel } from "@/server/lib/llms/model";
 import { buildAgentSystemPrompt, type Platform } from "@/server/features/ai/system-prompt";
@@ -12,6 +12,8 @@ import { matchRuntimeFastPath } from "@/server/features/ai/runtime/fast-path";
 import { buildRuntimeRoutingPlan } from "@/server/features/ai/runtime/router";
 import { resolveDefaultCalendarTimeZone } from "@/server/features/ai/tools/calendar-time";
 import { emitRuntimeTelemetry } from "@/server/features/ai/runtime/telemetry/schema";
+import { runRuntimeSessionRunner } from "@/server/features/ai/runtime/harness/session-runner";
+import { emitToolLifecycleEvents } from "@/server/features/ai/runtime/harness/tool-events";
 import type { RuntimeToolResult } from "@/server/features/ai/tools/contracts/tool-result";
 
 const RUNTIME_TURN_BUDGET_MS = 180_000;
@@ -139,71 +141,6 @@ function buildNativeRuntimeSystemPrompt(params: {
         ]
       : []),
   ].join("\n");
-}
-
-function classifyToolOutcome(output: unknown): "success" | "blocked" | "failed" | "unknown" {
-  if (!output || typeof output !== "object") return "unknown";
-  const result = output as Record<string, unknown>;
-  if (result.success === true) return "success";
-  if (result.success === false) {
-    const error = typeof result.error === "string" ? result.error : "";
-    if (
-      error.includes("permission") ||
-      error.includes("approval") ||
-      error.includes("blocked")
-    ) {
-      return "blocked";
-    }
-    return "failed";
-  }
-  return "unknown";
-}
-
-function emitNativeToolLifecycle(params: {
-  session: RuntimeSession;
-  steps: Array<StepResult<ToolSet>>;
-}): void {
-  const { session, steps } = params;
-
-  steps.forEach((step, index) => {
-    const stepIndex = index + 1;
-
-    for (const toolCall of step.toolCalls) {
-      emitRuntimeTelemetry(session.input.logger, "openworld.runtime.tool_lifecycle", {
-        userId: session.input.userId,
-        provider: session.input.provider,
-        phase: "start",
-        toolName: toolCall.toolName,
-        toolCallId: toolCall.toolCallId,
-        stepIndex,
-      });
-
-      emitRuntimeTelemetry(session.input.logger, "openworld.runtime.tool_lifecycle", {
-        userId: session.input.userId,
-        provider: session.input.provider,
-        phase: "update",
-        toolName: toolCall.toolName,
-        toolCallId: toolCall.toolCallId,
-        stepIndex,
-      });
-
-      const matchingResult = step.toolResults.find(
-        (result) => result.toolCallId === toolCall.toolCallId,
-      );
-
-      if (matchingResult) {
-        emitRuntimeTelemetry(session.input.logger, "openworld.runtime.tool_lifecycle", {
-          userId: session.input.userId,
-          provider: session.input.provider,
-          phase: "result",
-          toolName: matchingResult.toolName,
-          toolCallId: matchingResult.toolCallId,
-          stepIndex,
-          outcome: classifyToolOutcome(matchingResult.output),
-        });
-      }
-    }
-  });
 }
 
 function latestClarificationPrompt(results: RuntimeToolResult[]): string | null {
@@ -398,7 +335,8 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
       operation: "native_generate",
       timeoutMs: nativeTimeoutMs,
       run: () =>
-        generate({
+        runRuntimeSessionRunner({
+          generate,
           model: modelOptions.model,
           system: buildNativeRuntimeSystemPrompt({
             session,
@@ -406,8 +344,9 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
             lane: routingPlan.lane,
           }),
           messages,
-          tools: session.tools,
-          stopWhen: stepCountIs(nativeMaxSteps),
+          maxSteps: nativeMaxSteps,
+          builtInTools: session.toolHarness.builtInTools,
+          customTools: session.toolHarness.customTools,
         }),
     });
   } catch (error) {
@@ -437,7 +376,7 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
     };
   }
 
-  emitNativeToolLifecycle({
+  emitToolLifecycleEvents({
     session,
     steps: generation.steps,
   });

@@ -5,6 +5,20 @@ import type {
 } from "@/server/features/ai/tools/policy/types";
 import { resolveToolProfilePolicy } from "@/server/features/ai/tools/policy/tool-policy";
 
+const DEFAULT_SUBAGENT_TOOL_DENY = [
+  "sessions_list",
+  "sessions_history",
+  "sessions_send",
+  "sessions_spawn",
+  "gateway",
+  "agents_list",
+  "whatsapp_login",
+  "session_status",
+  "cron",
+  "memory_search",
+  "memory_get",
+];
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
@@ -104,6 +118,22 @@ function parseToolPolicyLike(value: unknown): ToolPolicyLike | undefined {
   return { allow, deny };
 }
 
+function resolveSubagentToolPolicy(params: {
+  policy: unknown;
+  isSubagentSession?: boolean;
+}): ToolPolicyLike | undefined {
+  const parsed = parseToolPolicyLike(params.policy);
+  if (!params.isSubagentSession) return parsed;
+
+  const deny = Array.from(
+    new Set([...(parsed?.deny ?? []), ...DEFAULT_SUBAGENT_TOOL_DENY]),
+  );
+  return {
+    allow: parsed?.allow,
+    deny,
+  };
+}
+
 function pickToolPolicy(config?: ToolPolicyConfig): ToolPolicyLike | undefined {
   if (!config) return undefined;
   const allow = Array.isArray(config.allow)
@@ -183,6 +213,7 @@ export interface RuntimePolicyResolverInput {
   toolByGroup?: unknown;
   toolSandboxPolicy?: unknown;
   toolSubagentPolicy?: unknown;
+  isSubagentSession?: boolean;
 }
 
 export function resolveEffectiveToolPolicy(params: {
@@ -254,7 +285,10 @@ export function resolveEffectiveToolPolicy(params: {
     agentProviderPolicy: pickToolPolicy(agentProviderPolicy),
     groupPolicy: pickToolPolicy(groupPolicy),
     sandboxPolicy: parseToolPolicyLike(cfg?.toolSandboxPolicy),
-    subagentPolicy: parseToolPolicyLike(cfg?.toolSubagentPolicy),
+    subagentPolicy: resolveSubagentToolPolicy({
+      policy: cfg?.toolSubagentPolicy,
+      isSubagentSession: cfg?.isSubagentSession,
+    }),
     profile,
     providerProfile,
     profilePolicy,

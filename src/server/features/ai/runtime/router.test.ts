@@ -99,7 +99,11 @@ function buildSession(message: string): RuntimeSession {
       selectedSkillIds: [],
       promptSection: "",
     },
-    tools: {} as RuntimeSession["tools"],
+    toolHarness: {
+      builtInTools: [],
+      customTools: [],
+      toolLookup: new Map(),
+    },
     toolRegistry: [],
     toolLookup: new Map(),
     artifacts: {

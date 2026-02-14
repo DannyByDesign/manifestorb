@@ -1,6 +1,6 @@
 # 2026-02-14 OpenClaw Tool Harness 1:1 Cutover Plan (Source of Truth)
 
-Status: Proposed
+Status: Implemented
 Owner: AI Runtime
 Scope: Replace amodel tool harness/loop with OpenClaw-equivalent harness while preserving amodel rule/policy enforcement semantics.
 
@@ -325,19 +325,38 @@ Acceptance:
 
 ## 11. Implementation Checklist
 
-- [ ] A1 split semantic pre-stage from deterministic filter chain
-- [ ] B1 add `apply_patch`/`exec` compatibility behavior
-- [ ] B2 add plugin-only allowlist stripping + diagnostics
-- [ ] B3 add default subagent deny baseline
-- [ ] C1 add tool-definition adapter module
-- [ ] C2 port execution error/abort behavior to adapter
-- [ ] D1 add provider-native session runner
-- [ ] D2 replace `attempt-loop.ts` harness internals
-- [ ] E1 add tool lifecycle parity emitter
-- [ ] F1 move `enforcePolicyForTool` into adapter execution wrapper
-- [ ] G1 remove legacy ToolSet harness path
-- [ ] G2 update runtime docs to final architecture
-- [ ] G3 run test/lint/typecheck gates
+- [x] A1 split semantic pre-stage from deterministic filter chain
+- [x] B1 add `apply_patch`/`exec` compatibility behavior
+- [x] B2 add plugin-only allowlist stripping + diagnostics
+- [x] B3 add default subagent deny baseline
+- [x] C1 add tool-definition adapter module
+- [x] C2 port execution error/abort behavior to adapter
+- [x] D1 add provider-native session runner
+- [x] D2 replace `attempt-loop.ts` harness internals
+- [x] E1 add tool lifecycle parity emitter
+- [x] F1 move `enforcePolicyForTool` into adapter execution wrapper
+- [x] G1 remove legacy ToolSet harness path
+- [x] G2 update runtime docs to final architecture
+- [x] G3 run test/lint/typecheck gates
+
+## 13. Execution Notes
+
+- Completed harness cutover modules:
+  - `src/server/features/ai/tools/harness/tool-definition-adapter.ts`
+  - `src/server/features/ai/tools/harness/tool-split.ts`
+  - `src/server/features/ai/runtime/harness/session-runner.ts`
+  - `src/server/features/ai/runtime/harness/tool-events.ts`
+- Runtime now uses harness path via:
+  - `src/server/features/ai/runtime/session.ts`
+  - `src/server/features/ai/runtime/attempt-loop.ts`
+  - `src/server/features/ai/runtime/tool-runtime.ts`
+- Legacy path removed:
+  - deleted `src/server/features/ai/tools/fabric/assembler.ts`
+- Added parity tests for matcher/policy/harness lifecycle.
+- Quality gate summary during implementation:
+  - Targeted runtime/harness/policy tests passed.
+  - `bun run build` passed (webpack warnings only).
+  - Full-repo `bun test-ai` and `bun lint` still report pre-existing unrelated failures outside runtime harness scope.
 
 ## 12. Notes for Execution
 

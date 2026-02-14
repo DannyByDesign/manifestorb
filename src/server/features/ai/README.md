@@ -29,7 +29,10 @@ This folder contains the assistant runtime used by inbox/calendar surfaces.
    - `planner_deep` (complex/cross-domain)
 4. `runtime/attempt-loop.ts` runs bounded model/tool iterations using lane budgets.
 5. Tool calls execute through:
-   - `tools/fabric/assembler.ts`
+   - `tools/harness/tool-definition-adapter.ts`
+   - `tools/harness/tool-split.ts`
+   - `runtime/harness/session-runner.ts`
+   - `runtime/harness/tool-events.ts`
    - `tools/runtime/capabilities/executors/*`
 6. Policy and approval checks run before mutating tool calls.
 
@@ -44,8 +47,10 @@ ai/
 │   ├── providers/                  # Email/calendar provider adapters
 │   ├── packs/                      # Tool pack manifests and loader
 │   ├── fabric/                     # Tool assembly + policy filter integration
+│   ├── harness/                    # OpenClaw-style tool definition/split harness
 │   ├── calendar/                   # Calendar tool primitives
 │   └── email/                      # Email tool primitives
+├── runtime/harness/                # Session runner + tool lifecycle emitters
 ├── policy/                         # Runtime policy hooks
 └── message-processor.ts            # Unified runtime entrypoint
 ```

@@ -19,11 +19,9 @@ export async function executeToolCall(params: {
   decision: RuntimeToolCall;
 }): Promise<RuntimeToolResult> {
   const { context, decision } = params;
-  const tool = context.session.tools[decision.toolName as keyof typeof context.session.tools] as
-    | { execute?: (args: Record<string, unknown>) => Promise<RuntimeToolResult> }
-    | undefined;
+  const tool = context.session.toolHarness.toolLookup.get(decision.toolName);
 
-  if (!tool?.execute) {
+  if (!tool) {
     return {
       success: false,
       error: `unsupported_tool:${decision.toolName}`,
