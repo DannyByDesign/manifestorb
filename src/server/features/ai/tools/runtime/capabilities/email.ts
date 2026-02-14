@@ -133,6 +133,18 @@ function toSearchItems(messages: ParsedMessage[]): Array<Record<string, unknown>
   }));
 }
 
+function messageTimestampMs(message: ParsedMessage): number {
+  if (typeof message.internalDate === "string" && message.internalDate.trim().length > 0) {
+    const asInt = Number.parseInt(message.internalDate, 10);
+    if (Number.isFinite(asInt) && asInt > 0) return asInt;
+  }
+  if (typeof message.date === "string" && message.date.trim().length > 0) {
+    const parsed = Date.parse(message.date);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return 0;
+}
+
 function asMetaItemCount(count: number): ToolResult["meta"] {
   return { resource: "email", itemCount: count };
 }
@@ -334,7 +346,10 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       const messages = Boolean(filter.subscriptionsOnly)
         ? result.messages.filter(isLikelySubscription)
         : result.messages;
-      const data = toSearchItems(messages);
+      const sortedMessages = [...messages].sort(
+        (a, b) => messageTimestampMs(b) - messageTimestampMs(a),
+      );
+      const data = toSearchItems(sortedMessages);
       return {
         success: true,
         data,
