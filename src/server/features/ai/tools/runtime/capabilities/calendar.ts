@@ -161,6 +161,14 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
         ? (filter.dateRange as Record<string, unknown>)
         : undefined;
     const requestedTimeZone = resolveRequestedTimeZone(filter, dateRange);
+    const relativeDateHintText = [
+      env.runtime.currentMessage,
+      safeString(filter.query),
+      safeString(filter.text),
+      safeString(filter.titleContains),
+    ]
+      .filter((value): value is string => Boolean(value && value.trim().length > 0))
+      .join(" ");
 
     return resolveCalendarTimeRange({
       userId: env.runtime.userId,
@@ -170,6 +178,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
         after: safeString(dateRange?.after),
         before: safeString(dateRange?.before),
       },
+      relativeDateHintText: relativeDateHintText.length > 0 ? relativeDateHintText : undefined,
       defaultWindow,
       missingBoundDurationMs,
     });

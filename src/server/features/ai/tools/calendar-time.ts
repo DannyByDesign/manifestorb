@@ -12,6 +12,7 @@ type ResolveCalendarTimeRangeOptions = {
   emailAccountId: string;
   requestedTimeZone?: string;
   dateRange?: DateRangeInput;
+  relativeDateHintText?: string;
   defaultWindow: "today" | "next_7_days";
   // When one bound is missing, derive the other using this window size.
   missingBoundDurationMs: number;
@@ -57,14 +58,6 @@ export async function resolveDefaultCalendarTimeZone(options: {
   error: string;
 }> {
   const { userId, emailAccountId } = options;
-  const emailAccount = await prisma.emailAccount.findUnique({
-    where: { id: emailAccountId },
-    select: { timezone: true },
-  });
-  if (isValidTimeZone(emailAccount?.timezone)) {
-    return { timeZone: emailAccount.timezone, source: "integration" };
-  }
-
   const primaryCalendar = await prisma.calendar.findFirst({
     where: {
       connection: {
@@ -103,6 +96,14 @@ export async function resolveDefaultCalendarTimeZone(options: {
     };
   }
 
+  const emailAccount = await prisma.emailAccount.findUnique({
+    where: { id: emailAccountId },
+    select: { timezone: true },
+  });
+  if (isValidTimeZone(emailAccount?.timezone)) {
+    return { timeZone: emailAccount.timezone, source: "integration" };
+  }
+
   const preferences = await prisma.taskPreference.findUnique({
     where: { userId },
     select: { timeZone: true },
@@ -115,6 +116,49 @@ export async function resolveDefaultCalendarTimeZone(options: {
     error:
       "Unable to determine calendar timezone. Please set a timezone in your connected calendar integration settings.",
   };
+}
+
+function formatLocalYmd(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function addLocalDays(date: Date, days: number): Date {
+  const out = new Date(date);
+  out.setDate(out.getDate() + days);
+  return out;
+}
+
+function inferRelativeDateRangeFromText(
+  text: string | undefined,
+  timeZone: string,
+): DateRangeInput | null {
+  if (!text) return null;
+  const normalized = text.toLowerCase();
+  const nowLocal = toZonedTime(new Date(), timeZone);
+
+  if (/\b(today|right now|now|tonight)\b/u.test(normalized)) {
+    const ymd = formatLocalYmd(nowLocal);
+    return { after: ymd, before: ymd };
+  }
+
+  if (/\btomorrow\b/u.test(normalized)) {
+    const ymd = formatLocalYmd(addLocalDays(nowLocal, 1));
+    return { after: ymd, before: ymd };
+  }
+
+  if (/\bthis week\b/u.test(normalized)) {
+    const start = addLocalDays(nowLocal, -nowLocal.getDay());
+    const end = addLocalDays(start, 6);
+    return {
+      after: formatLocalYmd(start),
+      before: formatLocalYmd(end),
+    };
+  }
+
+  return null;
 }
 
 export function resolveCalendarTimeZoneForRequest(options: {
@@ -137,7 +181,15 @@ export function resolveCalendarTimeZoneForRequest(options: {
 export async function resolveCalendarTimeRange(
   options: ResolveCalendarTimeRangeOptions,
 ): Promise<{ start: Date; end: Date; timeZone: string } | { error: string }> {
-  const { userId, emailAccountId, requestedTimeZone, dateRange, defaultWindow, missingBoundDurationMs } = options;
+  const {
+    userId,
+    emailAccountId,
+    requestedTimeZone,
+    dateRange,
+    relativeDateHintText,
+    defaultWindow,
+    missingBoundDurationMs,
+  } = options;
   const defaultTimeZone = await resolveDefaultCalendarTimeZone({
     userId,
     emailAccountId,
@@ -154,8 +206,11 @@ export async function resolveCalendarTimeRange(
   }
   const timeZone = resolvedTimeZone.timeZone;
   const now = new Date();
+  const inferredDateRange = inferRelativeDateRangeFromText(relativeDateHintText, timeZone);
+  const effectiveDateRange =
+    dateRange?.after || dateRange?.before ? dateRange : inferredDateRange ?? dateRange;
 
-  if (!dateRange?.after && !dateRange?.before) {
+  if (!effectiveDateRange?.after && !effectiveDateRange?.before) {
     if (defaultWindow === "today") {
       const today = startAndEndOfTodayInTimeZone(now, timeZone);
       return { ...today, timeZone };
@@ -167,12 +222,12 @@ export async function resolveCalendarTimeRange(
     };
   }
 
-  const parsedAfter = parseDateBoundInTimeZone(dateRange?.after, timeZone, "start");
-  if (dateRange?.after && !parsedAfter) {
+  const parsedAfter = parseDateBoundInTimeZone(effectiveDateRange?.after, timeZone, "start");
+  if (effectiveDateRange?.after && !parsedAfter) {
     return { error: "Invalid dateRange.after. Use an ISO-8601 timestamp or local date/time." };
   }
-  const parsedBefore = parseDateBoundInTimeZone(dateRange?.before, timeZone, "end");
-  if (dateRange?.before && !parsedBefore) {
+  const parsedBefore = parseDateBoundInTimeZone(effectiveDateRange?.before, timeZone, "end");
+  if (effectiveDateRange?.before && !parsedBefore) {
     return { error: "Invalid dateRange.before. Use an ISO-8601 timestamp or local date/time." };
   }
 
