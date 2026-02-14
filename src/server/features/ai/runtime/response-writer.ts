@@ -56,6 +56,7 @@ export async function generateRuntimeUserReply(params: {
   fallbackText: string;
 }): Promise<string> {
   const { session, request, results, approvalsCount, mode, fallbackText } = params;
+  const modelOptions = getModel("economy");
   const generate = createGenerateObject({
     emailAccount: {
       id: session.input.emailAccountId,
@@ -63,7 +64,7 @@ export async function generateRuntimeUserReply(params: {
       userId: session.input.userId,
     },
     label: "openworld-runtime-response-write",
-    modelOptions: getModel("economy"),
+    modelOptions,
     maxLLMRetries: 0,
   });
 
@@ -74,7 +75,7 @@ export async function generateRuntimeUserReply(params: {
   });
 
   const result = await generate({
-    model: getModel("economy").model,
+    model: modelOptions.model,
     schema: runtimeResponseSchema,
     system: [
       systemPrompt,

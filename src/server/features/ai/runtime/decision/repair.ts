@@ -18,6 +18,7 @@ export async function repairRuntimeDecisionArgs(params: {
   const { session, toolName, previousArgsJson, validationReason } = params;
   const tool = session.toolLookup.get(toolName);
   if (!tool) return null;
+  const modelOptions = getModel("economy");
 
   const generate = createGenerateObject({
     emailAccount: {
@@ -26,12 +27,12 @@ export async function repairRuntimeDecisionArgs(params: {
       userId: session.input.userId,
     },
     label: "openworld-runtime-decision-repair",
-    modelOptions: getModel("economy"),
+    modelOptions,
     maxLLMRetries: 0,
   });
 
   const result = await generate({
-    model: getModel("economy").model,
+    model: modelOptions.model,
     schema: repairSchema,
     system: [
       "Return JSON only.",

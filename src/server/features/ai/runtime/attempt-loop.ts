@@ -6,6 +6,7 @@ import { repairRuntimeDecisionArgs } from "@/server/features/ai/runtime/decision
 import { buildRuntimeTurnContext, executeToolCall } from "@/server/features/ai/runtime/tool-runtime";
 import { summarizeRuntimeResults } from "@/server/features/ai/runtime/result-summarizer";
 import { generateRuntimeUserReply } from "@/server/features/ai/runtime/response-writer";
+import { matchRuntimeFastPath } from "@/server/features/ai/runtime/fast-path";
 import type { RuntimeToolResult } from "@/server/features/ai/tools/contracts/tool-result";
 import type { ValidatedToolDecision } from "@/server/features/ai/runtime/decision/schema";
 
@@ -54,6 +55,54 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
   const context = buildRuntimeTurnContext(session);
   const results: RuntimeToolResult[] = [];
   const startedAt = Date.now();
+  const runFastPath = async (
+    mode: "strict" | "recovery",
+    attempt: number,
+  ): Promise<RuntimeLoopResult | null> => {
+    const fastPath = await matchRuntimeFastPath({ session, mode });
+    if (!fastPath) return null;
+
+    session.input.logger.info("Runtime fast path matched", {
+      mode,
+      attempt,
+      reason: fastPath.reason,
+      type: fastPath.type,
+      toolName: fastPath.type === "tool_call" ? fastPath.toolName : null,
+    });
+
+    if (fastPath.type === "respond") {
+      return {
+        text: fastPath.text,
+        stopReason: "completed",
+        attempts: attempt,
+      };
+    }
+
+    const result = await executeToolCall({
+      context,
+      decision: {
+        type: "tool_call",
+        toolName: fastPath.toolName,
+        args: fastPath.args,
+      },
+    });
+    results.push(result);
+
+    if (!result.success) {
+      return {
+        text: result.message ?? fastPath.onFailureText,
+        stopReason: "runtime_error",
+        attempts: attempt,
+      };
+    }
+
+    return {
+      text: fastPath.summarize(result),
+      stopReason: "completed",
+      attempts: attempt,
+    };
+  };
+
   const composeAssistantReply = async (params: {
     mode: "final" | "clarification" | "approval_pending" | "error";
     fallbackText: string;
@@ -84,6 +133,9 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
     }
   };
 
+  const strictFastPath = await runFastPath("strict", 1);
+  if (strictFastPath) return strictFastPath;
+
   for (let attempt = 1; attempt <= MAX_RUNTIME_ATTEMPTS; attempt += 1) {
     const budgetBeforeDecision = remainingBudgetMs(startedAt);
     if (budgetBeforeDecision <= 0) {
@@ -111,6 +163,8 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
         error,
         attempt,
       });
+      const recoveryFastPath = await runFastPath("recovery", attempt);
+      if (recoveryFastPath) return recoveryFastPath;
       return {
         text: "I hit a temporary issue planning that request. Please try once more.",
         stopReason: "runtime_error",

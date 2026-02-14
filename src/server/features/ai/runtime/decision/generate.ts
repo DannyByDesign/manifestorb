@@ -6,8 +6,11 @@ import {
   type RuntimeDecision,
 } from "@/server/features/ai/runtime/decision/schema";
 import type { RuntimeToolResult } from "@/server/features/ai/tools/contracts/tool-result";
-import { buildAgentSystemPrompt, type Platform } from "@/server/features/ai/system-prompt";
-import { env } from "@/env";
+
+const MAX_TOOL_CATALOG_ITEMS_FIRST_ATTEMPT = 14;
+const MAX_TOOL_CATALOG_ITEMS_FOLLOWUP = 24;
+const MAX_SKILL_SECTION_CHARS = 2200;
+const MAX_CUSTOM_INSTRUCTIONS_CHARS = 500;
 
 function compact(value: unknown, depth = 0): unknown {
   if (depth > 2) return typeof value === "object" ? "[truncated]" : value;
@@ -25,15 +28,24 @@ function compact(value: unknown, depth = 0): unknown {
   return out;
 }
 
-function formatToolCatalog(session: RuntimeSession): string {
-  return session.toolRegistry
+function formatToolCatalog(session: RuntimeSession, attempt: number): string {
+  const maxItems =
+    attempt <= 1
+      ? MAX_TOOL_CATALOG_ITEMS_FIRST_ATTEMPT
+      : MAX_TOOL_CATALOG_ITEMS_FOLLOWUP;
+  const selected = session.toolRegistry.slice(0, maxItems);
+  const lines = selected
     .map((tool) => {
       const mode = tool.metadata.readOnly ? "read_only" : "mutating";
       const families = tool.metadata.intentFamilies.join(",") || "general";
       const name = "name" in tool && typeof tool.name === "string" ? tool.name : tool.toolName;
       return `- ${name} | ${mode} | risk=${tool.metadata.riskLevel} | families=${families} | ${tool.description}`;
-    })
-    .join("\n");
+    });
+
+  const omitted = Math.max(session.toolRegistry.length - selected.length, 0);
+  if (omitted > 0) lines.push(`- ... ${omitted} more tools omitted for brevity`);
+
+  return lines.join("\n");
 }
 
 function formatEvidence(results: RuntimeToolResult[]): string {
@@ -47,30 +59,31 @@ function formatEvidence(results: RuntimeToolResult[]): string {
   return JSON.stringify(payload);
 }
 
-function toPlatform(provider: string): Platform {
-  if (provider === "slack" || provider === "discord" || provider === "telegram") {
-    return provider;
-  }
-  return "web";
-}
-
 function buildDecisionSystemPrompt(session: RuntimeSession): string {
-  const globalPrompt = buildAgentSystemPrompt({
-    platform: toPlatform(session.input.provider),
-    emailSendEnabled: env.NEXT_PUBLIC_EMAIL_SEND_ENABLED,
-    userConfig: session.userPromptConfig,
-  });
+  const custom = session.userPromptConfig?.customInstructions?.trim();
+  const compactCustom =
+    custom && custom.length > 0
+      ? custom.slice(0, MAX_CUSTOM_INSTRUCTIONS_CHARS)
+      : "";
 
   return [
-    globalPrompt,
-    "Runtime controller instructions:",
+    "You are the runtime decision controller for an inbox/calendar assistant.",
     "- Return JSON only.",
+    "- Be decisive. Prefer one clear action.",
     "- If the user is greeting, bantering, or asking for capabilities, respond directly without tools.",
     "- Use tool_call only when external data or side effects are required.",
     "- Use respond only when you can answer from conversation context or collected tool evidence.",
     "- Use clarify only when a required field is missing and cannot be inferred.",
+    "- If request is read-only and likely needs fresh data, choose one read-only tool call.",
+    "- Avoid chaining many steps for simple requests.",
     "- For tool_call, provide toolName and argsJson (JSON object string).",
     "- Do not call tools for small talk.",
+    ...(compactCustom
+      ? [
+          "User-specific constraints (truncated):",
+          compactCustom,
+        ]
+      : []),
   ].join("\n");
 }
 
@@ -80,6 +93,11 @@ export async function generateRuntimeDecision(params: {
   attempt: number;
 }): Promise<RuntimeDecision> {
   const { session, executedResults, attempt } = params;
+  const modelOptions = getModel("economy");
+  const toolCatalog = formatToolCatalog(session, attempt);
+  const skillSection = session.skillSnapshot.promptSection
+    ? session.skillSnapshot.promptSection.slice(0, MAX_SKILL_SECTION_CHARS)
+    : "";
   const generate = createGenerateObject({
     emailAccount: {
       id: session.input.emailAccountId,
@@ -87,26 +105,43 @@ export async function generateRuntimeDecision(params: {
       userId: session.input.userId,
     },
     label: "openworld-runtime-decision-generate",
-    modelOptions: getModel("economy"),
+    modelOptions,
     maxLLMRetries: 0,
   });
 
+  const prompt = [
+    `Attempt: ${attempt}`,
+    `User request: ${session.input.message}`,
+    ...(skillSection
+      ? ["Active skill guidance:", skillSection]
+      : []),
+    "Available tools:",
+    toolCatalog,
+    "Executed tool evidence JSON:",
+    formatEvidence(executedResults),
+    'Return: {"type":"tool_call|respond|clarify","toolName?":"...","argsJson?":"{...}","responseText?":"...","rationale?":"..."}',
+  ].join("\n\n");
+  const startedAt = Date.now();
+  session.input.logger.info("Runtime decision generation start", {
+    attempt,
+    toolCount: session.toolRegistry.length,
+    toolCatalogChars: toolCatalog.length,
+    skillSectionChars: skillSection.length,
+    promptChars: prompt.length,
+  });
+
   const result = await generate({
-    model: getModel("economy").model,
+    model: modelOptions.model,
     schema: runtimeDecisionSchema,
     system: buildDecisionSystemPrompt(session),
-    prompt: [
-      `Attempt: ${attempt}`,
-      `User request: ${session.input.message}`,
-      ...(session.skillSnapshot.promptSection
-        ? ["Active skill guidance:", session.skillSnapshot.promptSection]
-        : []),
-      "Available tools:",
-      formatToolCatalog(session),
-      "Executed tool evidence JSON:",
-      formatEvidence(executedResults),
-      'Return: {"type":"tool_call|respond|clarify","toolName?":"...","argsJson?":"{...}","responseText?":"...","rationale?":"..."}',
-    ].join("\n\n"),
+    prompt,
+  });
+
+  session.input.logger.info("Runtime decision generation complete", {
+    attempt,
+    durationMs: Date.now() - startedAt,
+    decisionType: result.object.type,
+    toolName: result.object.toolName ?? null,
   });
 
   return result.object;
