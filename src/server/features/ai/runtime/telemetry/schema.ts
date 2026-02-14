@@ -23,10 +23,20 @@ export const runtimeRouteSelectedTelemetrySchema = baseSchema.extend({
     "planner_deep",
   ]),
   reason: z.string().min(1).max(120),
+  nativeMaxSteps: z.number().int().nonnegative(),
+  nativeTurnTimeoutMs: z.number().int().nonnegative(),
   maxAttempts: z.number().int().positive(),
   decisionTimeoutMs: z.number().int().nonnegative(),
   toolCatalogLimit: z.number().int().nonnegative(),
   includeSkillGuidance: z.boolean(),
+});
+
+export const runtimeToolLifecycleTelemetrySchema = baseSchema.extend({
+  phase: z.enum(["start", "update", "result"]),
+  toolName: z.string().min(1).max(120),
+  toolCallId: z.string().min(1).max(160),
+  stepIndex: z.number().int().nonnegative(),
+  outcome: z.enum(["success", "blocked", "failed", "unknown"]).optional(),
 });
 
 export const runtimeDirectReadTelemetrySchema = baseSchema.extend({
@@ -65,6 +75,7 @@ const runtimeTelemetrySchemas = {
   "openworld.runtime.plan": runtimePlanTelemetrySchema,
   "openworld.runtime.route_selected": runtimeRouteSelectedTelemetrySchema,
   "openworld.runtime.direct_read": runtimeDirectReadTelemetrySchema,
+  "openworld.runtime.tool_lifecycle": runtimeToolLifecycleTelemetrySchema,
   "openworld.turn.completed": runtimeTurnCompletedTelemetrySchema,
   "openworld.runtime.precheck_failed": runtimePrecheckFailedTelemetrySchema,
   "openworld.runtime.clarification_required":

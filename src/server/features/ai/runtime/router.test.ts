@@ -60,6 +60,7 @@ describe("runtime router", () => {
     });
 
     expect(plan.lane).toBe("direct_response");
+    expect(plan.nativeMaxSteps).toBe(0);
     expect(plan.fastPathMatch?.type).toBe("respond");
   });
 
@@ -81,6 +82,8 @@ describe("runtime router", () => {
     });
 
     expect(plan.lane).toBe("planner_fast");
+    expect(plan.nativeMaxSteps).toBe(4);
+    expect(plan.nativeTurnTimeoutMs).toBe(25_000);
     expect(plan.decisionTimeoutMs).toBe(8_000);
     expect(plan.maxAttempts).toBe(2);
   });
@@ -91,6 +94,8 @@ describe("runtime router", () => {
     });
 
     expect(plan.lane).toBe("planner_standard");
+    expect(plan.nativeMaxSteps).toBe(8);
+    expect(plan.nativeTurnTimeoutMs).toBe(75_000);
     expect(plan.decisionTimeoutMs).toBe(20_000);
     expect(plan.maxAttempts).toBe(4);
   });
@@ -103,6 +108,8 @@ describe("runtime router", () => {
     });
 
     expect(plan.lane).toBe("planner_deep");
+    expect(plan.nativeMaxSteps).toBe(16);
+    expect(plan.nativeTurnTimeoutMs).toBe(165_000);
     expect(plan.decisionTimeoutMs).toBe(45_000);
     expect(plan.maxAttempts).toBe(6);
   });

@@ -1,9 +1,13 @@
 import type { RuntimeSession } from "@/server/features/ai/runtime/types";
-import type { ValidatedToolDecision } from "@/server/features/ai/runtime/decision/schema";
 import type { RuntimeToolResult } from "@/server/features/ai/tools/contracts/tool-result";
 
 export interface RuntimeTurnContext {
   session: RuntimeSession;
+}
+
+export interface RuntimeToolCall {
+  toolName: string;
+  args: Record<string, unknown>;
 }
 
 export function buildRuntimeTurnContext(session: RuntimeSession): RuntimeTurnContext {
@@ -12,7 +16,7 @@ export function buildRuntimeTurnContext(session: RuntimeSession): RuntimeTurnCon
 
 export async function executeToolCall(params: {
   context: RuntimeTurnContext;
-  decision: ValidatedToolDecision;
+  decision: RuntimeToolCall;
 }): Promise<RuntimeToolResult> {
   const { context, decision } = params;
   const tool = context.session.tools[decision.toolName as keyof typeof context.session.tools] as

@@ -11,6 +11,8 @@ export type RuntimeRoutingLane =
 export interface RuntimeRoutingPlan {
   lane: RuntimeRoutingLane;
   reason: string;
+  nativeMaxSteps: number;
+  nativeTurnTimeoutMs: number;
   maxAttempts: number;
   decisionTimeoutMs: number;
   repairTimeoutMs: number;
@@ -34,6 +36,8 @@ const ROUTE_PRESETS: Record<
   Omit<RuntimeRoutingPlan, "lane" | "reason" | "fastPathMatch">
 > = {
   planner_fast: {
+    nativeMaxSteps: 4,
+    nativeTurnTimeoutMs: 25_000,
     maxAttempts: 2,
     decisionTimeoutMs: 8_000,
     repairTimeoutMs: 3_000,
@@ -42,6 +46,8 @@ const ROUTE_PRESETS: Record<
     includeSkillGuidance: false,
   },
   planner_standard: {
+    nativeMaxSteps: 8,
+    nativeTurnTimeoutMs: 75_000,
     maxAttempts: 4,
     decisionTimeoutMs: 20_000,
     repairTimeoutMs: 8_000,
@@ -50,6 +56,8 @@ const ROUTE_PRESETS: Record<
     includeSkillGuidance: true,
   },
   planner_deep: {
+    nativeMaxSteps: 16,
+    nativeTurnTimeoutMs: 165_000,
     maxAttempts: 6,
     decisionTimeoutMs: 45_000,
     repairTimeoutMs: 12_000,
@@ -119,6 +127,8 @@ export async function buildRuntimeRoutingPlan(params: {
     return {
       lane: strictFastPath.type === "respond" ? "direct_response" : "macro_tool",
       reason: `fast_path:${strictFastPath.reason}`,
+      nativeMaxSteps: 0,
+      nativeTurnTimeoutMs: 0,
       maxAttempts: 1,
       decisionTimeoutMs: 0,
       repairTimeoutMs: 0,
