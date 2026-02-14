@@ -27,6 +27,7 @@ export async function repairRuntimeDecisionArgs(params: {
     },
     label: "openworld-runtime-decision-repair",
     modelOptions: getModel("economy"),
+    maxLLMRetries: 0,
   });
 
   const result = await generate({

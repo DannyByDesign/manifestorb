@@ -313,6 +313,7 @@ export async function getMessages(
     maxResults?: number;
     pageToken?: string;
     labelIds?: string[];
+    maxRetries?: number;
   },
 ): Promise<{
   messages: {
@@ -330,6 +331,7 @@ export async function getMessages(
       pageToken: options.pageToken,
       labelIds: options.labelIds,
     }),
+    options.maxRetries,
   );
 
   return {

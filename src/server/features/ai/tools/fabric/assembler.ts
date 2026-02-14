@@ -10,6 +10,46 @@ import type {
 } from "@/server/features/ai/tools/fabric/types";
 import type { ToolResult } from "@/server/features/ai/tools/types";
 
+const TOOL_EXECUTION_TIMEOUT_MS = 45_000;
+
+class ToolExecutionTimeoutError extends Error {
+  constructor(
+    readonly toolName: string,
+    readonly timeoutMs: number,
+  ) {
+    super(`tool_execution_timeout:${toolName}:${timeoutMs}`);
+    this.name = "ToolExecutionTimeoutError";
+  }
+}
+
+async function withToolTimeout<T>(params: {
+  toolName: string;
+  timeoutMs: number;
+  run: () => Promise<T>;
+}): Promise<T> {
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      params.run(),
+      new Promise<T>((_resolve, reject) => {
+        timeoutHandle = setTimeout(() => {
+          reject(new ToolExecutionTimeoutError(params.toolName, params.timeoutMs));
+        }, params.timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  }
+}
+
+function timeoutResult(toolName: string): ToolResult {
+  return {
+    success: false,
+    error: "tool_timeout",
+    message: `Tool ${toolName} took too long to respond. Please try again.`,
+  };
+}
+
 function truncateArray(value: unknown[], maxItems = 20): unknown[] {
   if (value.length <= maxItems) return value;
   return [...value.slice(0, maxItems), { truncated: true, omitted: value.length - maxItems }];
@@ -94,13 +134,27 @@ export function assembleRuntimeTools(params: {
           return result;
         }
 
-        const result = sanitizeResult(
-          await executeRuntimeTool({
-            toolName: definition.toolName as Parameters<typeof executeRuntimeTool>[0]["toolName"],
-            args: policy.args,
-            capabilities: params.context.capabilities,
-          }),
-        );
+        let result: ToolResult;
+        try {
+          result = sanitizeResult(
+            await withToolTimeout({
+              toolName: definition.toolName,
+              timeoutMs: TOOL_EXECUTION_TIMEOUT_MS,
+              run: () =>
+                executeRuntimeTool({
+                  toolName: definition.toolName as Parameters<typeof executeRuntimeTool>[0]["toolName"],
+                  args: policy.args,
+                  capabilities: params.context.capabilities,
+                }),
+            }),
+          );
+        } catch (error) {
+          if (error instanceof ToolExecutionTimeoutError) {
+            result = timeoutResult(definition.toolName);
+          } else {
+            throw error;
+          }
+        }
 
         if (result.interactive) {
           params.artifacts.interactivePayloads.push(result.interactive);

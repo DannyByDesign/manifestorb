@@ -24,6 +24,39 @@ import {
 
 const GMAIL_RECONNECT_MESSAGE =
     "Your Gmail connection is not active. Please reconnect your email in the Amodel web app (Settings -> Accounts) to use email features from Slack.";
+const SEARCH_TOTAL_TIMEOUT_MS = 25_000;
+const SEARCH_PAGE_TIMEOUT_MS = 15_000;
+
+class EmailOperationTimeoutError extends Error {
+    constructor(operation: string, timeoutMs: number) {
+        super(`email_operation_timeout:${operation}:${timeoutMs}`);
+        this.name = "EmailOperationTimeoutError";
+    }
+}
+
+async function withEmailOperationTimeout<T>(
+    operation: string,
+    timeoutMs: number,
+    run: () => Promise<T>,
+): Promise<T> {
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    try {
+        return await Promise.race([
+            run(),
+            new Promise<T>((_resolve, reject) => {
+                timeoutHandle = setTimeout(() => {
+                    reject(new EmailOperationTimeoutError(operation, timeoutMs));
+                }, timeoutMs);
+            }),
+        ]);
+    } finally {
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+    }
+}
+
+function remainingSearchBudget(deadlineMs: number): number {
+    return deadlineMs - Date.now();
+}
 
 function isGmailAuthError(err: unknown): boolean {
     if (err instanceof SafeError) {
@@ -261,6 +294,27 @@ export async function createEmailProvider(
             receivedByMe,
         }) => runThrottled("search", async () => {
             try {
+                const deadlineMs = Date.now() + SEARCH_TOTAL_TIMEOUT_MS;
+                const runPagedSearch = async (params: {
+                    query?: string;
+                    maxResults?: number;
+                    pageToken?: string;
+                    includeNonPrimary?: boolean;
+                    before?: Date;
+                    after?: Date;
+                    fetchAll?: boolean;
+                }) => {
+                    const remaining = remainingSearchBudget(deadlineMs);
+                    if (remaining <= 0) {
+                        throw new EmailOperationTimeoutError("search_total", SEARCH_TOTAL_TIMEOUT_MS);
+                    }
+                    return withEmailOperationTimeout(
+                        "search_page",
+                        Math.min(SEARCH_PAGE_TIMEOUT_MS, remaining),
+                        () => service.getMessagesWithPagination(params),
+                    );
+                };
+
                 const localFilterOptions = {
                     subjectContains,
                     bodyContains,
@@ -273,7 +327,7 @@ export async function createEmailProvider(
                 };
 
                 if (!hasLocalFilter(localFilterOptions)) {
-                    return await service.getMessagesWithPagination({
+                    return await runPagedSearch({
                         query,
                         maxResults: limit,
                         pageToken,
@@ -285,13 +339,13 @@ export async function createEmailProvider(
                 }
 
                 const targetCount = fetchAll ? (limit ?? 500) : (limit ?? 100);
-                const pageSize = Math.min(Math.max(targetCount, 20), 100);
+                const pageSize = Math.min(Math.max(targetCount, 10), 20);
                 const filtered: ParsedMessage[] = [];
                 let nextPageToken: string | undefined = pageToken;
                 let totalEstimate: number | undefined;
 
                 do {
-                    const res = await service.getMessagesWithPagination({
+                    const res = await runPagedSearch({
                         query,
                         maxResults: pageSize,
                         pageToken: nextPageToken,
@@ -316,6 +370,9 @@ export async function createEmailProvider(
                     totalEstimate,
                 };
             } catch (err: unknown) {
+                if (err instanceof EmailOperationTimeoutError) {
+                    throw new Error("Email search timed out before your provider responded.");
+                }
                 if (isGmailAuthError(err)) {
                     throw new Error(GMAIL_RECONNECT_MESSAGE);
                 }

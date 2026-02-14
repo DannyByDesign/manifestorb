@@ -88,6 +88,7 @@ export async function generateRuntimeDecision(params: {
     },
     label: "openworld-runtime-decision-generate",
     modelOptions: getModel("economy"),
+    maxLLMRetries: 0,
   });
 
   const result = await generate({

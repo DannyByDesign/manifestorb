@@ -9,33 +9,135 @@ import type { RuntimeToolResult } from "@/server/features/ai/tools/contracts/too
 import type { ValidatedToolDecision } from "@/server/features/ai/runtime/decision/schema";
 
 const MAX_RUNTIME_ATTEMPTS = 6;
+const RUNTIME_TURN_BUDGET_MS = 90_000;
+const DECISION_TIMEOUT_MS = 18_000;
+const REPAIR_TIMEOUT_MS = 8_000;
+
+class RuntimeOperationTimeoutError extends Error {
+  constructor(
+    readonly operation: string,
+    readonly timeoutMs: number,
+  ) {
+    super(`runtime_operation_timeout:${operation}:${timeoutMs}`);
+    this.name = "RuntimeOperationTimeoutError";
+  }
+}
+
+function remainingBudgetMs(startedAt: number): number {
+  return RUNTIME_TURN_BUDGET_MS - (Date.now() - startedAt);
+}
+
+async function withRuntimeTimeout<T>(params: {
+  operation: string;
+  timeoutMs: number;
+  run: () => Promise<T>;
+}): Promise<T> {
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      params.run(),
+      new Promise<T>((_resolve, reject) => {
+        timeoutHandle = setTimeout(() => {
+          reject(new RuntimeOperationTimeoutError(params.operation, params.timeoutMs));
+        }, params.timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  }
+}
 
 export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLoopResult> {
   const context = buildRuntimeTurnContext(session);
   const results: RuntimeToolResult[] = [];
+  const startedAt = Date.now();
 
   for (let attempt = 1; attempt <= MAX_RUNTIME_ATTEMPTS; attempt += 1) {
-    const decision = await generateRuntimeDecision({
-      session,
-      executedResults: results,
-      attempt,
-    });
+    const budgetBeforeDecision = remainingBudgetMs(startedAt);
+    if (budgetBeforeDecision <= 0) {
+      return {
+        text: "I couldn't complete that in time. Please try again and I'll run a faster pass.",
+        stopReason: "runtime_error",
+        attempts: attempt - 1,
+      };
+    }
+
+    let decision;
+    try {
+      decision = await withRuntimeTimeout({
+        operation: "decision_generate",
+        timeoutMs: Math.min(DECISION_TIMEOUT_MS, budgetBeforeDecision),
+        run: () =>
+          generateRuntimeDecision({
+            session,
+            executedResults: results,
+            attempt,
+          }),
+      });
+    } catch (error) {
+      session.input.logger.error("Runtime decision generation failed", {
+        error,
+        attempt,
+      });
+      return {
+        text: "I hit a temporary issue planning that request. Please try once more.",
+        stopReason: "runtime_error",
+        attempts: attempt,
+      };
+    }
 
     let validated = validateRuntimeDecision({ decision, session });
 
     if (!validated.ok && validated.toolName) {
-      const repairedArgsJson = await repairRuntimeDecisionArgs({
-        session,
-        toolName: validated.toolName,
-        previousArgsJson: validated.argsJson,
-        validationReason: validated.reason,
-      });
+      const failedValidation = validated;
+      const toolName = failedValidation.toolName;
+      if (!toolName) {
+        if (attempt >= MAX_RUNTIME_ATTEMPTS) {
+          return {
+            text: "I need one more detail before I can continue. Please restate the request in one sentence with the exact outcome you want.",
+            stopReason: "needs_clarification",
+            attempts: attempt,
+          };
+        }
+        continue;
+      }
+      const budgetBeforeRepair = remainingBudgetMs(startedAt);
+      if (budgetBeforeRepair <= 0) {
+        return {
+          text: "I couldn't complete that in time. Please try again and I'll run a faster pass.",
+          stopReason: "runtime_error",
+          attempts: attempt,
+        };
+      }
+
+      let repairedArgsJson: string | null = null;
+      try {
+        repairedArgsJson = await withRuntimeTimeout({
+          operation: "decision_repair",
+          timeoutMs: Math.min(REPAIR_TIMEOUT_MS, budgetBeforeRepair),
+          run: () =>
+            repairRuntimeDecisionArgs({
+              session,
+              toolName,
+              previousArgsJson: failedValidation.argsJson,
+              validationReason: failedValidation.reason,
+            }),
+        });
+      } catch (error) {
+        session.input.logger.warn("Runtime decision repair timed out or failed", {
+          error,
+          attempt,
+          toolName,
+          reason: failedValidation.reason,
+        });
+      }
 
       if (repairedArgsJson) {
         validated = validateRuntimeDecision({
           decision: {
             type: "tool_call",
-            toolName: validated.toolName,
+            toolName,
             argsJson: repairedArgsJson,
             rationale: decision.rationale,
           },
@@ -85,6 +187,24 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
     });
 
     results.push(result);
+
+    if (!result.success) {
+      if (
+        result.error === "tool_timeout" ||
+        result.error === "rate_limit" ||
+        result.error === "transient" ||
+        result.error === "auth_error" ||
+        result.error === "permission_denied"
+      ) {
+        return {
+          text:
+            result.message ??
+            "I couldn't complete that right now due to a temporary provider issue. Please try again.",
+          stopReason: "runtime_error",
+          attempts: attempt,
+        };
+      }
+    }
 
     if (result.clarification?.prompt) {
       return {

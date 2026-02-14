@@ -161,10 +161,12 @@ export function createGenerateObject({
   emailAccount,
   label,
   modelOptions,
+  maxLLMRetries,
 }: {
   emailAccount: Pick<EmailAccountWithAI, "email" | "id" | "userId">;
   label: string;
   modelOptions: ReturnType<typeof getModel>;
+  maxLLMRetries?: number;
 }): typeof generateObject {
   return async (...args) => {
     const [options, ...restArgs] = args;
@@ -235,7 +237,7 @@ export function createGenerateObject({
               NoObjectGeneratedError.isInstance(error) ||
               TypeValidationError.isInstance(error),
           }),
-        { label },
+        { label, maxRetries: maxLLMRetries },
       );
     } catch (error) {
       await handleError(

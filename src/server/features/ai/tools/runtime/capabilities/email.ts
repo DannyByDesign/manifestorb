@@ -294,10 +294,19 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         }
       }
 
+      const requestedLimit =
+        typeof filter.limit === "number" && Number.isFinite(filter.limit)
+          ? Math.floor(filter.limit)
+          : undefined;
+      const fetchAll = Boolean(filter.fetchAll);
+      const normalizedLimit = fetchAll
+        ? Math.min(Math.max(requestedLimit ?? 100, 1), 200)
+        : Math.min(Math.max(requestedLimit ?? 10, 1), 20);
+
       const result = await searchEmailThreads(provider, {
         query: typeof filter.query === "string" ? filter.query : "",
-        limit: typeof filter.limit === "number" ? filter.limit : 25,
-        fetchAll: Boolean(filter.fetchAll),
+        limit: normalizedLimit,
+        fetchAll,
         includeNonPrimary: Boolean(filter.subscriptionsOnly),
         before,
         after,

@@ -1116,6 +1116,8 @@ export class GmailProvider implements EmailProvider {
         query: query.trim() || undefined,
         maxResults: Math.min(targetCount - allMessages.length, 100),
         pageToken,
+        // Keep interactive inbox reads responsive instead of waiting on long Gmail backoff chains.
+        maxRetries: 1,
       });
 
       if (totalEstimate === undefined && response.resultSizeEstimate !== undefined) {

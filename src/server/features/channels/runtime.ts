@@ -3,7 +3,7 @@ import { createScopedLogger } from "@/server/lib/logger";
 
 const logger = createScopedLogger("ChannelsRuntime");
 const queues = new Map<string, PQueue>();
-const TASK_TIMEOUT_MS = 120_000;
+const TASK_TIMEOUT_MS = 95_000;
 
 function getQueue(key: string): PQueue {
   const existing = queues.get(key);
