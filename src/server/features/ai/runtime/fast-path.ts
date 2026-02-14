@@ -1,5 +1,6 @@
 import { toZonedTime } from "date-fns-tz";
 import { resolveDefaultCalendarTimeZone } from "@/server/features/ai/tools/calendar-time";
+import { classifySemanticFastPathIntent } from "@/server/features/ai/runtime/fast-path-semantic";
 import type { RuntimeSession } from "@/server/features/ai/runtime/types";
 import type { RuntimeToolResult } from "@/server/features/ai/tools/contracts/tool-result";
 
@@ -219,6 +220,19 @@ async function inferCalendarFastPath(
   if (!LIST_OR_SHOW_RE.test(normalized)) return null;
   if (isMutatingRequest(normalized)) return null;
 
+  return buildCalendarReadFastPath({
+    session,
+    normalized,
+    reason: "calendar_read_window",
+  });
+}
+
+async function buildCalendarReadFastPath(params: {
+  session: RuntimeSession;
+  normalized: string;
+  reason: string;
+}): Promise<RuntimeFastPathMatch | null> {
+  const { session, normalized, reason } = params;
   const tz = await resolveDefaultCalendarTimeZone({
     userId: session.input.userId,
     emailAccountId: session.input.emailAccountId,
@@ -230,7 +244,7 @@ async function inferCalendarFastPath(
     type: "tool_call",
     toolName: "calendar.listEvents",
     args: { dateRange, limit: 20 },
-    reason: "calendar_read_window",
+    reason,
     summarize: summarizeCalendarList(tz.timeZone),
     onFailureText: "I couldn't read your calendar right now. Please try again in a moment.",
   };
@@ -288,6 +302,64 @@ export async function matchRuntimeFastPath(params: {
 
   const calendarMatch = await inferCalendarFastPath(session, normalized);
   if (calendarMatch) return calendarMatch;
+
+  if (!isMutatingRequest(normalized)) {
+    const semantic = await classifySemanticFastPathIntent({
+      message: normalized,
+      mode,
+    });
+
+    if (semantic?.intent === "greeting") {
+      return {
+        type: "respond",
+        reason: "semantic_greeting",
+        text: "Hello. What would you like me to handle?",
+      };
+    }
+
+    if (semantic?.intent === "capabilities") {
+      return {
+        type: "respond",
+        reason: "semantic_capabilities",
+        text: fastCapabilitiesReply(),
+      };
+    }
+
+    if (semantic?.intent === "inbox_first_or_latest") {
+      return {
+        type: "tool_call",
+        toolName: "email.searchInbox",
+        args: { limit: 1, fetchAll: false },
+        reason: "semantic_email_first_or_latest",
+        summarize: summarizeTopEmail,
+        onFailureText: "I couldn't load your inbox right now. Please try again in a moment.",
+      };
+    }
+
+    if (semantic?.intent === "inbox_attention") {
+      return {
+        type: "tool_call",
+        toolName: "email.searchInbox",
+        args: {
+          query: "is:unread",
+          limit: 10,
+          fetchAll: false,
+        },
+        reason: "semantic_email_attention",
+        summarize: summarizeEmailList,
+        onFailureText: "I couldn't load inbox messages right now. Please try again in a moment.",
+      };
+    }
+
+    if (semantic?.intent === "calendar_read") {
+      const semanticCalendar = await buildCalendarReadFastPath({
+        session,
+        normalized,
+        reason: "semantic_calendar_read",
+      });
+      if (semanticCalendar) return semanticCalendar;
+    }
+  }
 
   if (mode === "strict") return null;
 
