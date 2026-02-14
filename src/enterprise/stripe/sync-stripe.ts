@@ -24,7 +24,6 @@ export const getStripeSubscriptionTier = ({
   }
   return null;
 };
-import { syncPremiumSeats } from "@/features/premium/server";
 import { ensureEmailAccountsWatched } from "@/features/email/watch-manager";
 import { captureException } from "@/server/lib/error";
 
@@ -176,8 +175,6 @@ export async function syncStripeDataToDb({
     logger.info("Successfully updated Premium record from Stripe data", {
       customerId,
     });
-
-    await syncPremiumSeats(updatedPremium.id);
 
     after(() => {
       const userIds = (updatedPremium as any).users.map((user: any) => user.id);

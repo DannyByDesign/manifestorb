@@ -1,7 +1,9 @@
-import { DEFAULT_COLD_EMAIL_PROMPT } from "@/features/cold-email/prompt";
 import { isMicrosoftProvider } from "@/features/email/provider-types";
 import { ActionType, SystemType } from "@/generated/prisma/enums";
 import { env } from "@/env";
+
+const DEFAULT_COLD_EMAIL_PROMPT =
+  "Unsolicited sales outreach from senders I have not previously engaged with.";
 
 type SystemRuleConfig = {
   name: string;

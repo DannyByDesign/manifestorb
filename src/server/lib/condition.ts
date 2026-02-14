@@ -1,10 +1,31 @@
 import { LogicalOperator } from "@/generated/prisma/enums";
 import { ConditionType, type CoreConditionType } from "@/server/lib/config";
-import type {
-  CreateRuleBody,
-  ZodCondition,
-} from "@/actions/rule.validation";
 import type { Logger } from "@/server/lib/logger";
+
+type ZodCondition =
+  | {
+      type: typeof ConditionType.AI;
+      instructions: string;
+    }
+  | {
+      type: typeof ConditionType.STATIC;
+      from: string | null;
+      to: string | null;
+      subject: string | null;
+      body: string | null;
+      instructions: null;
+    };
+
+type CreateRuleBody = {
+  conditions: Array<{
+    type: CoreConditionType;
+    instructions: string | null;
+    from: string | null;
+    to: string | null;
+    subject: string | null;
+    body: string | null;
+  }>;
+};
 
 export type RuleConditions = Partial<{
   groupId: string;
@@ -156,9 +177,7 @@ export const flattenConditions = (
         break;
       default:
         logger.warn("Unknown condition type", { condition });
-        // biome-ignore lint/correctness/noSwitchDeclarations: intentional exhaustive check
-        const exhaustiveCheck: never = condition.type;
-        return exhaustiveCheck;
+        return acc;
     }
     return acc;
   }, {} as FlattenedConditions);

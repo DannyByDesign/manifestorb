@@ -1,5 +1,4 @@
 import { withAuth } from "@workos-inc/authkit-nextjs";
-import { cookies } from "next/headers";
 import { createContact as createResendContact } from "@amodel/resend";
 import prisma from "@/server/db/client";
 import { createScopedLogger } from "@/server/lib/logger";
@@ -9,7 +8,6 @@ import {
   ErrorType,
 } from "@/server/lib/error-messages";
 import { isDuplicateError } from "@/server/db/client-helpers";
-import { claimPendingPremiumInvite } from "@/features/premium/server";
 
 const logger = createScopedLogger("auth");
 
@@ -145,89 +143,7 @@ async function postSignUp({
 
   await Promise.all([
     resend,
-    handlePendingPremiumInvite({ email }),
-    handleReferralOnSignUp({ userId, email }),
   ]);
-}
-
-async function handlePendingPremiumInvite({ email }: { email: string }) {
-  try {
-    logger.info("Handling pending premium invite", { email });
-
-    const premium = await prisma.premium.findFirst({
-      where: { pendingInvites: { has: email } },
-      select: {
-        id: true,
-        stripeSubscriptionId: true,
-      },
-    });
-
-    if (premium?.stripeSubscriptionId) {
-      const user = await prisma.user.findUnique({
-        where: { email },
-        select: { id: true },
-      });
-
-      if (user) {
-        await claimPendingPremiumInvite({
-          visitorId: user.id,
-          premiumId: premium.id,
-          email,
-        });
-        logger.info("Added user to premium from invite", { email });
-      }
-    }
-  } catch (error) {
-    logger.error("Error handling pending premium invite", { error, email });
-    captureException(error, {
-      extra: { email, location: "handlePendingPremiumInvite" },
-    });
-  }
-}
-
-export async function handleReferralOnSignUp({
-  userId,
-  email,
-}: {
-  userId: string;
-  email: string;
-}) {
-  try {
-    const cookieStore = await cookies();
-    const referralCookie = cookieStore.get("referral_code");
-
-    if (!referralCookie?.value) {
-      logger.info("No referral code found in cookies", { email });
-      return;
-    }
-
-    let referralCode = referralCookie.value;
-    try {
-      referralCode = decodeURIComponent(referralCode);
-    } catch {
-      // Use original value if decoding fails
-    }
-    logger.info("Processing referral for new user", {
-      email,
-      referralCode,
-    });
-
-    const { createReferral } = await import("@/features/referrals/referral-code");
-    await createReferral(userId, referralCode);
-    logger.info("Successfully created referral", {
-      email,
-      referralCode,
-    });
-  } catch (error) {
-    logger.error("Error processing referral on sign up", {
-      error,
-      userId,
-      email,
-    });
-    captureException(error, {
-      extra: { userId, email, location: "handleReferralOnSignUp" },
-    });
-  }
 }
 
 export async function saveTokens({

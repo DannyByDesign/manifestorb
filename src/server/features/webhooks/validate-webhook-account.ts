@@ -1,8 +1,4 @@
 import { NextResponse } from "next/server";
-import { env } from "@/env";
-import { hasAiAccess, isPremium } from "@/features/premium";
-import { unwatchEmails } from "@/features/email/watch-manager";
-import { createEmailProvider } from "@/features/email/provider";
 import prisma from "@/server/db/client";
 import type { Logger } from "@/server/lib/logger";
 import { listEffectiveCanonicalRules } from "@/server/features/policy-plane/repository";
@@ -36,14 +32,7 @@ export async function getWebhookEmailAccount(
         },
       },
       user: {
-        select: {
-          premium: {
-            select: {
-              stripeSubscriptionStatus: true,
-              tier: true,
-            },
-          },
-        },
+        select: { id: true },
       },
     },
   };
@@ -124,51 +113,6 @@ export async function validateWebhookAccount(
     return { success: false, response: NextResponse.json({ ok: true }) };
   }
 
-  const premium = env.NEXT_PUBLIC_BYPASS_PREMIUM_CHECKS
-    ? { tier: "BUSINESS_PLUS_ANNUALLY" as const }
-    : isPremium(
-
-      emailAccount.user.premium?.stripeSubscriptionStatus || null,
-    )
-      ? emailAccount.user.premium
-      : undefined;
-
-  const provider = await createEmailProvider({
-    emailAccountId: emailAccount.id,
-    provider: emailAccount.account?.provider,
-    logger,
-  });
-
-  if (!premium) {
-    logger.info("Account not premium", {
-
-      stripeSubscriptionStatus:
-        emailAccount.user.premium?.stripeSubscriptionStatus,
-    });
-    await unwatchEmails({
-      emailAccountId: emailAccount.id,
-      provider,
-      subscriptionId: emailAccount.watchEmailsSubscriptionId,
-      logger,
-    });
-    return { success: false, response: NextResponse.json({ ok: true }) };
-  }
-
-  const userHasAiAccess = hasAiAccess(premium.tier);
-
-  if (!userHasAiAccess) {
-    logger.info("Does not have ai access - unwatching", {
-      tier: premium.tier,
-    });
-    await unwatchEmails({
-      emailAccountId: emailAccount.id,
-      provider,
-      subscriptionId: emailAccount.watchEmailsSubscriptionId,
-      logger,
-    });
-    return { success: false, response: NextResponse.json({ ok: true }) };
-  }
-
   const canonicalRules = await listEffectiveCanonicalRules({
     userId: emailAccount.userId,
     emailAccountId: emailAccount.id,
@@ -200,7 +144,7 @@ export async function validateWebhookAccount(
     data: {
       emailAccount,
       hasAutomationRules,
-      hasAiAccess: userHasAiAccess,
+      hasAiAccess: true,
     },
   };
 }

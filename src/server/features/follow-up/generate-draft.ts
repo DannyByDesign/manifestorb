@@ -8,9 +8,6 @@ import { getEmailForLLM } from "@/server/lib/get-email-from-message";
 import { extractEmailAddress } from "@/server/lib/email";
 import { escapeHtml } from "@/server/lib/string";
 import prisma from "@/server/db/client";
-import { env } from "@/env";
-import { getOrCreateReferralCode } from "@/features/referrals/referral-code";
-import { generateReferralLink } from "@/features/referrals/referral-link";
 
 /**
  * Generates a follow-up draft for a thread that's awaiting a reply.
@@ -109,16 +106,8 @@ export async function generateFollowUpDraft({
       },
     });
 
-    if (
-      !env.NEXT_PUBLIC_DISABLE_REFERRAL_SIGNATURE &&
-      emailAccountWithSignatures?.includeReferralSignature
-    ) {
-      const referralSignature = await getOrCreateReferralCode(
-        emailAccount.userId,
-      );
-      const referralLink = generateReferralLink(referralSignature.code);
-      const htmlSignature = `Drafted by <a href="${referralLink}">Amodel</a>.`;
-      draftContent = `${draftContent}\n\n${htmlSignature}`;
+    if (emailAccountWithSignatures?.includeReferralSignature) {
+      draftContent = `${draftContent}\n\nDrafted by Amodel.`;
     }
 
     if (emailAccountWithSignatures?.signature) {

@@ -5,14 +5,11 @@ import type { Logger } from "@/server/lib/logger";
 import { callWebhook } from "@/server/lib/webhook";
 import type { ActionItem, EmailForAction } from "@/features/ai/types";
 import type { EmailProvider } from "@/features/email/types";
-import { enqueueDigestItem } from "@/features/digest/index";
 import { filterNullProperties } from "@/server/lib";
 import { labelMessageAndSync } from "@/server/lib/label.server";
 import { hasVariables } from "@/server/lib/template";
 import prisma from "@/server/db/client";
-import { sendColdEmailNotification } from "@/features/cold-email/send-notification";
 import { extractEmailAddress } from "@/server/integrations/google";
-import { captureException } from "@/server/lib/error";
 import { ensureEmailSendingEnabled } from "@/server/lib/mail";
 import { getEmailAccountWithAi } from "@/server/lib/user/get";
 import { scheduleTasksForUser } from "@/features/calendar/scheduling/TaskSchedulingService";
@@ -30,6 +27,7 @@ import { createInAppNotification } from "@/features/notifications/create";
 import { applyTaskPreferencePayloadsForUser } from "@/features/preferences/service";
 import { evaluatePolicyDecision } from "@/server/features/policy-plane/pdp";
 import { createPolicyExecutionLog } from "@/server/features/policy-plane/policy-logs";
+import { captureException } from "@/server/lib/error";
 
 const MODULE = "ai-actions";
 
@@ -668,14 +666,9 @@ const mark_read: ActionFunction<Record<string, unknown>> = async ({
 };
 
 const digest: ActionFunction<{ id?: string }> = async ({
-  email,
-  emailAccountId,
-  args,
   logger,
 }) => {
-  if (!args.id) return;
-  const actionId = args.id;
-  await enqueueDigestItem({ email, emailAccountId, actionId, logger });
+  logger.info("DIGEST action ignored (digest pipeline removed)");
 };
 
 const move_folder: ActionFunction<{
@@ -721,42 +714,9 @@ const move_folder: ActionFunction<{
 };
 
 const notify_sender: ActionFunction<Record<string, unknown>> = async ({
-  email,
-  emailAccountId,
-  userEmail,
   logger,
 }) => {
-  const senderEmail = extractEmailAddress(email.headers.from);
-  if (!senderEmail) {
-    logger.error("Could not extract sender email for notify_sender action");
-    return;
-  }
-
-  const result = await sendColdEmailNotification({
-    senderEmail,
-    recipientEmail: userEmail,
-    originalSubject: email.headers.subject,
-    originalMessageId: email.headers["message-id"],
-    logger,
-  });
-
-  if (!result.success) {
-    // Best-effort: don't fail the whole rule run if notification can't be sent.
-    logger.error("Cold email notification failed", {
-      senderEmail,
-      error: result.error,
-    });
-
-    captureException(
-      new Error(result.error ?? "Cold email notification failed"),
-      {
-        emailAccountId,
-        extra: { actionType: ActionType.NOTIFY_SENDER },
-        sampleRate: 0.01,
-      },
-    );
-    return;
-  }
+  logger.info("NOTIFY_SENDER action ignored (cold-email module removed)");
 };
 
 export const notify_user: ActionFunction<Record<string, unknown>> = async ({

@@ -14,10 +14,7 @@ import { stringifyEmail } from "@/server/lib/stringify-email";
 import { aiExtractFromEmailHistory } from "@/features/knowledge/ai/extract-from-email-history";
 import type { EmailProvider } from "@/features/email/types";
 import { aiCollectReplyContext } from "@/features/reply-tracker/ai/reply-context-collector";
-import { getOrCreateReferralCode } from "@/features/referrals/referral-code";
-import { generateReferralLink } from "@/features/referrals/referral-link";
 import { aiGetCalendarAvailability } from "@/features/calendar/ai/availability";
-import { env } from "@/env";
 import {
   getMeetingContext,
   formatMeetingContextForPrompt,
@@ -62,16 +59,8 @@ export async function fetchMessagesAndGenerateDraft(
   // Signatures and other trusted HTML are added AFTER escaping
   let finalResult = escapeHtml(result);
 
-  if (
-    !env.NEXT_PUBLIC_DISABLE_REFERRAL_SIGNATURE &&
-    emailAccountWithSignatures?.includeReferralSignature
-  ) {
-    const referralSignature = await getOrCreateReferralCode(
-      emailAccount.userId,
-    );
-    const referralLink = generateReferralLink(referralSignature.code);
-    const htmlSignature = `Drafted by <a href="${referralLink}">Amodel</a>.`;
-    finalResult = `${finalResult}\n\n${htmlSignature}`;
+  if (emailAccountWithSignatures?.includeReferralSignature) {
+    finalResult = `${finalResult}\n\nDrafted by Amodel.`;
   }
 
   if (emailAccountWithSignatures?.signature) {

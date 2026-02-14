@@ -1,5 +1,4 @@
 import prisma from "@/server/db/client";
-import { transferPremiumDuringMerge } from "@/server/lib/user/merge-premium";
 import type { Logger } from "@/server/lib/logger";
 
 interface MergeAccountOptions {
@@ -80,12 +79,6 @@ export async function mergeAccount({
     }
     return "partial_reassign";
   }
-
-  await transferPremiumDuringMerge({
-    sourceUserId,
-    targetUserId,
-    logger,
-  });
 
   await prisma.$transaction([
     prisma.account.update({

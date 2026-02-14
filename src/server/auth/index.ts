@@ -3,7 +3,7 @@
  * All session logic and WorkOS usage lives under src/server/auth/.
  */
 
-export { auth, saveTokens, handleReferralOnSignUp } from "./session";
+export { auth, saveTokens } from "./session";
 
 export {
   authkitMiddleware,

@@ -1,5 +1,4 @@
 import prisma from "@/server/db/client";
-import { hasAiAccess, getPremiumUserFilter } from "@/features/premium";
 import type { Logger } from "@/server/lib/logger";
 import { createEmailProvider } from "@/features/email/provider";
 import { captureException } from "@/server/lib/error";
@@ -36,7 +35,6 @@ async function getEmailAccountsToWatch(userIds: string[] | null) {
   return prisma.emailAccount.findMany({
     where: {
       ...(userIds ? { userId: { in: userIds } } : {}),
-      ...getPremiumUserFilter(),
       account: { disconnectedAt: null },
     },
     select: {
@@ -51,18 +49,6 @@ async function getEmailAccountsToWatch(userIds: string[] | null) {
           refresh_token: true,
           expires_at: true,
           disconnectedAt: true,
-        },
-      },
-      user: {
-        select: {
-          id: true,
-          premium: {
-            select: {
-              tier: true,
-
-              stripeSubscriptionStatus: true,
-            },
-          },
         },
       },
     },
@@ -127,28 +113,7 @@ async function watchEmailAccount(
   emailAccount: Awaited<ReturnType<typeof getEmailAccountsToWatch>>[number],
   logger: Logger,
 ): Promise<WatchEmailAccountResult | null> {
-  const { account, user, watchEmailsExpirationDate } = emailAccount;
-
-  const userHasAiAccess = hasAiAccess(user.premium?.tier || null);
-
-  if (!userHasAiAccess) {
-    logger.info("User does not have access to AI or cold email");
-
-    if (
-      watchEmailsExpirationDate &&
-      new Date(watchEmailsExpirationDate) < new Date()
-    ) {
-      await prisma.emailAccount.updateMany({
-        where: { id: emailAccount.id },
-        data: {
-          watchEmailsExpirationDate: null,
-          watchEmailsSubscriptionId: null,
-        },
-      });
-    }
-
-    return null;
-  }
+  const { account } = emailAccount;
 
   if (!account?.access_token || !account?.refresh_token) {
     logger.info("User has no access token or refresh token");

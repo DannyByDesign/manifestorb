@@ -1,5 +1,3 @@
-
-import type { CategoryAction } from "@/actions/rule.validation";
 import {
   getCategoryAction,
   getRuleConfig,
@@ -17,6 +15,13 @@ import {
 } from "lucide-react";
 
 type IconCircleColor = string;
+type CategoryAction =
+  | "label"
+  | "label_archive"
+  | "label_archive_delayed"
+  | "move_folder"
+  | "move_folder_delayed"
+  | "none";
 
 export const categoryConfig = (
   provider: string,

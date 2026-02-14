@@ -1,5 +1,4 @@
 import { SafeError } from "@/server/lib/error";
-import { hasAiAccess, isPremium } from "@/features/premium";
 import prisma from "@/server/db/client";
 
 export async function validateUserAndAiAccess({
@@ -18,27 +17,12 @@ export async function validateUserAndAiAccess({
       timezone: true,
       calendarBookingLink: true,
       user: {
-        select: {
-          premium: {
-            select: {
-              tier: true,
-              stripeSubscriptionStatus: true,
-            },
-          },
-        },
+        select: { id: true },
       },
       account: { select: { provider: true } },
     },
   });
   if (!emailAccount) throw new SafeError("User not found");
-
-  const isUserPremium = isPremium(
-    emailAccount.user.premium?.stripeSubscriptionStatus || null,
-  );
-  if (!isUserPremium) throw new SafeError("Please upgrade for AI access");
-
-  const userHasAiAccess = hasAiAccess(emailAccount.user.premium?.tier || null);
-  if (!userHasAiAccess) throw new SafeError("Please upgrade for AI access");
 
   return { emailAccount };
 }
