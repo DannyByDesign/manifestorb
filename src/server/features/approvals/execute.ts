@@ -322,8 +322,8 @@ export async function executeApprovalRequest(params: {
       }
 
       const { createCapabilities } = await import("@/server/features/ai/tools/runtime/capabilities");
-      const { executeRuntimeTool } = await import(
-        "@/server/features/ai/tools/runtime/capabilities/execute"
+      const { buildRuntimeToolRegistry, buildToolNameLookup } = await import(
+        "@/server/features/ai/tools/fabric/registry"
       );
       const capabilities = await createCapabilities({
         userId: request.userId,
@@ -349,11 +349,30 @@ export async function executeApprovalRequest(params: {
           ? (toolPayload.args as Record<string, unknown>)
           : {};
 
-      const executionResult = await executeRuntimeTool({
-        toolName: toolPayload.toolName as Parameters<
-          typeof executeRuntimeTool
-        >[0]["toolName"],
-        args: toolArgs,
+      const registry = buildRuntimeToolRegistry();
+      const lookup = buildToolNameLookup(registry);
+      const definition = lookup.get(toolPayload.toolName);
+      if (!definition) {
+        throw new Error(`Unsupported runtime tool: ${toolPayload.toolName}`);
+      }
+
+      const parsedArgs = definition.parameters.safeParse(toolArgs);
+      if (!parsedArgs.success) {
+        const invalidFields = parsedArgs.error.issues
+          .map((issue) => issue.path.join("."))
+          .filter((field) => field.length > 0);
+        throw new Error(
+          `Invalid tool approval args for ${toolPayload.toolName}: ${invalidFields.join(", ") || "invalid payload"}`,
+        );
+      }
+
+      const executionResult = await definition.execute({
+        args:
+          parsedArgs.data &&
+          typeof parsedArgs.data === "object" &&
+          !Array.isArray(parsedArgs.data)
+            ? (parsedArgs.data as Record<string, unknown>)
+            : {},
         capabilities,
       });
 

@@ -25,7 +25,7 @@ src/
 5. `src/server/features/ai/runtime/*`
 6. `src/server/features/ai/tools/*`
    - registry: `src/server/features/ai/tools/runtime/capabilities/registry.ts`
-   - execution: `src/server/features/ai/tools/runtime/capabilities/execute.ts`
+   - tool executors: `src/server/features/ai/tools/runtime/capabilities/executors/*`
 
 ## Inbound Inbox Automation Path
 

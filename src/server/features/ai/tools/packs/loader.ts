@@ -1,4 +1,5 @@
 import { getToolDefinition } from "@/server/features/ai/tools/runtime/capabilities/registry";
+import { resolveRuntimeToolExecutor } from "@/server/features/ai/tools/runtime/capabilities/executors";
 import { listInternalToolPacks } from "@/server/features/ai/tools/packs/registry";
 import {
   toolPackManifestSchema,
@@ -13,6 +14,7 @@ function toRuntimeDefinition(toolName: ToolPackManifest["tools"][number]): Runti
     description: definition.description,
     parameters: definition.inputSchema,
     metadata: definition,
+    execute: resolveRuntimeToolExecutor(definition.id),
   };
 }
 

@@ -29,7 +29,7 @@ Primary user turn flow:
 4. `src/server/features/ai/runtime/*`
 5. Tool execution via `src/server/features/ai/tools/*`
    - metadata registry: `src/server/features/ai/tools/runtime/capabilities/registry.ts`
-   - execution switch: `src/server/features/ai/tools/runtime/capabilities/execute.ts`
+   - tool executors: `src/server/features/ai/tools/runtime/capabilities/executors/*`
    - provider adapters: `src/server/features/ai/tools/providers/*`
 
 Approval and policy gates:

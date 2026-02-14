@@ -18,7 +18,7 @@ This folder contains the assistant runtime used by inbox/calendar surfaces.
 4. `runtime/attempt-loop.ts` runs bounded model/tool iterations using lane budgets.
 5. Tool calls execute through:
    - `tools/fabric/assembler.ts`
-   - `tools/runtime/capabilities/execute.ts`
+   - `tools/runtime/capabilities/executors/*`
 6. Policy and approval checks run before mutating tool calls.
 
 ## Important Directories

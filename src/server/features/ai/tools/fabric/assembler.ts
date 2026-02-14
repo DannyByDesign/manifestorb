@@ -1,5 +1,4 @@
 import type { ToolSet } from "ai";
-import { executeRuntimeTool } from "@/server/features/ai/tools/runtime/capabilities/execute";
 import { enforcePolicyForTool } from "@/server/features/ai/policy/enforcement";
 import { assertProviderCompatibleToolSchema } from "@/server/features/ai/tools/fabric/adapters/provider-schema";
 import type {
@@ -80,6 +79,23 @@ function blockedResult(message: string, code: string): ToolResult {
   };
 }
 
+function invalidToolArgsResult(
+  definition: RuntimeToolDefinition,
+  missingFields: string[],
+): ToolResult {
+  const fields = missingFields.length > 0 ? missingFields : ["tool_args"];
+  return {
+    success: false,
+    error: "invalid_tool_arguments",
+    message: `Tool ${definition.toolName} received invalid arguments.`,
+    clarification: {
+      kind: "invalid_fields",
+      prompt: `I need valid arguments to run ${definition.toolName}.`,
+      missingFields: fields,
+    },
+  };
+}
+
 export function assembleRuntimeTools(params: {
   registry: RuntimeToolDefinition[];
   context: ToolAssemblyContext;
@@ -134,6 +150,21 @@ export function assembleRuntimeTools(params: {
           return result;
         }
 
+        const parsedArgs = definition.parameters.safeParse(policy.args);
+        if (!parsedArgs.success) {
+          const missingFields = parsedArgs.error.issues
+            .map((issue) => issue.path.join("."))
+            .filter((field) => field.length > 0);
+          const result = invalidToolArgsResult(definition, missingFields);
+          params.summaries.push({
+            toolName: definition.toolName,
+            outcome: "failed",
+            durationMs: Date.now() - startedAt,
+            result,
+          });
+          return result;
+        }
+
         let result: ToolResult;
         try {
           result = sanitizeResult(
@@ -141,9 +172,13 @@ export function assembleRuntimeTools(params: {
               toolName: definition.toolName,
               timeoutMs: TOOL_EXECUTION_TIMEOUT_MS,
               run: () =>
-                executeRuntimeTool({
-                  toolName: definition.toolName as Parameters<typeof executeRuntimeTool>[0]["toolName"],
-                  args: policy.args,
+                definition.execute({
+                  args:
+                    parsedArgs.data &&
+                    typeof parsedArgs.data === "object" &&
+                    !Array.isArray(parsedArgs.data)
+                      ? (parsedArgs.data as Record<string, unknown>)
+                      : {},
                   capabilities: params.context.capabilities,
                 }),
             }),
