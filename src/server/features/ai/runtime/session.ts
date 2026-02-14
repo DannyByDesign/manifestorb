@@ -4,21 +4,33 @@ import { buildSkillPromptSnapshot } from "@/server/features/ai/skills/snapshot";
 import { assembleRuntimeTools } from "@/server/features/ai/tools/fabric/assembler";
 import { filterToolRegistry } from "@/server/features/ai/tools/fabric/policy-filter";
 import { buildRuntimeToolRegistry, buildToolNameLookup } from "@/server/features/ai/tools/fabric/registry";
+import prisma from "@/server/db/client";
 import type { RuntimeSession, OpenWorldTurnInput } from "@/server/features/ai/runtime/types";
 import type { ToolExecutionSummary } from "@/server/features/ai/tools/fabric/types";
 
 export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<RuntimeSession> {
-  const capabilities = await createCapabilities({
-    userId: input.userId,
-    emailAccountId: input.emailAccountId,
-    email: input.email,
-    provider: input.providerName,
-    logger: input.logger,
-    conversationId: input.conversationId,
-    currentMessage: input.message,
-    sourceEmailMessageId: input.sourceEmailMessageId,
-    sourceEmailThreadId: input.sourceEmailThreadId,
-  });
+  const [capabilities, userAiConfig] = await Promise.all([
+    createCapabilities({
+      userId: input.userId,
+      emailAccountId: input.emailAccountId,
+      email: input.email,
+      provider: input.providerName,
+      logger: input.logger,
+      conversationId: input.conversationId,
+      currentMessage: input.message,
+      sourceEmailMessageId: input.sourceEmailMessageId,
+      sourceEmailThreadId: input.sourceEmailThreadId,
+    }),
+    prisma.userAIConfig.findUnique({
+      where: { userId: input.userId },
+      select: {
+        maxSteps: true,
+        approvalInstructions: true,
+        customInstructions: true,
+        conversationCategories: true,
+      },
+    }),
+  ]);
 
   const loadedSkills = loadRuntimeSkills();
   const skillSnapshot = buildSkillPromptSnapshot({
@@ -62,6 +74,14 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
     input,
     capabilities,
     skillSnapshot,
+    userPromptConfig: userAiConfig
+      ? {
+          maxSteps: userAiConfig.maxSteps ?? undefined,
+          approvalInstructions: userAiConfig.approvalInstructions ?? undefined,
+          customInstructions: userAiConfig.customInstructions ?? undefined,
+          conversationCategories: userAiConfig.conversationCategories ?? undefined,
+        }
+      : undefined,
     tools,
     toolRegistry: registry,
     toolLookup,

@@ -2,6 +2,7 @@ import type { ModelMessage, ToolSet } from "ai";
 import type { Logger } from "@/server/lib/logger";
 import type { SkillCapabilities } from "@/server/features/ai/tools/runtime/capabilities";
 import type { RuntimeSkillSnapshot } from "@/server/features/ai/skills/types";
+import type { UserPromptConfig } from "@/server/features/ai/system-prompt";
 import type {
   ToolExecutionArtifacts,
   ToolExecutionSummary,
@@ -29,6 +30,7 @@ export interface RuntimeSession {
   input: OpenWorldTurnInput;
   capabilities: SkillCapabilities;
   skillSnapshot: RuntimeSkillSnapshot;
+  userPromptConfig?: UserPromptConfig;
   tools: ToolSet;
   toolRegistry: RuntimeToolDefinition[];
   toolLookup: Map<string, RuntimeToolDefinition>;

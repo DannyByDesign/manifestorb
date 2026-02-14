@@ -6,6 +6,8 @@ import {
   type RuntimeDecision,
 } from "@/server/features/ai/runtime/decision/schema";
 import type { RuntimeToolResult } from "@/server/features/ai/tools/contracts/tool-result";
+import { buildAgentSystemPrompt, type Platform } from "@/server/features/ai/system-prompt";
+import { env } from "@/env";
 
 function compact(value: unknown, depth = 0): unknown {
   if (depth > 2) return typeof value === "object" ? "[truncated]" : value;
@@ -45,6 +47,33 @@ function formatEvidence(results: RuntimeToolResult[]): string {
   return JSON.stringify(payload);
 }
 
+function toPlatform(provider: string): Platform {
+  if (provider === "slack" || provider === "discord" || provider === "telegram") {
+    return provider;
+  }
+  return "web";
+}
+
+function buildDecisionSystemPrompt(session: RuntimeSession): string {
+  const globalPrompt = buildAgentSystemPrompt({
+    platform: toPlatform(session.input.provider),
+    emailSendEnabled: env.NEXT_PUBLIC_EMAIL_SEND_ENABLED,
+    userConfig: session.userPromptConfig,
+  });
+
+  return [
+    globalPrompt,
+    "Runtime controller instructions:",
+    "- Return JSON only.",
+    "- If the user is greeting, bantering, or asking for capabilities, respond directly without tools.",
+    "- Use tool_call only when external data or side effects are required.",
+    "- Use respond only when you can answer from conversation context or collected tool evidence.",
+    "- Use clarify only when a required field is missing and cannot be inferred.",
+    "- For tool_call, provide toolName and argsJson (JSON object string).",
+    "- Do not call tools for small talk.",
+  ].join("\n");
+}
+
 export async function generateRuntimeDecision(params: {
   session: RuntimeSession;
   executedResults: RuntimeToolResult[];
@@ -64,17 +93,13 @@ export async function generateRuntimeDecision(params: {
   const result = await generate({
     model: getModel("economy").model,
     schema: runtimeDecisionSchema,
-    system: [
-      "You are the runtime controller for Amodel.",
-      "Return JSON only.",
-      "Prefer tool_call whenever external data/actions are required.",
-      "Use respond only when you can answer from tool evidence already collected.",
-      "Use clarify only when a required field is missing and cannot be inferred.",
-      "For tool_call, provide toolName and argsJson (JSON object string).",
-    ].join("\n"),
+    system: buildDecisionSystemPrompt(session),
     prompt: [
       `Attempt: ${attempt}`,
       `User request: ${session.input.message}`,
+      ...(session.skillSnapshot.promptSection
+        ? ["Active skill guidance:", session.skillSnapshot.promptSection]
+        : []),
       "Available tools:",
       formatToolCatalog(session),
       "Executed tool evidence JSON:",
