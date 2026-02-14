@@ -34,10 +34,6 @@ const inboundMessageSchema = z.object({
     content: z.string().min(1),
     context: inboundMessageContextSchema,
     attachments: z.array(inboundAttachmentSchema).optional(),
-    history: z.array(z.object({
-        role: z.enum(["user", "assistant"]),
-        content: z.string(),
-    })).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -71,7 +67,6 @@ export async function POST(req: NextRequest) {
             messageId: message.context.messageId,
             isDirectMessage: message.context.isDirectMessage,
             contentLength: message.content.length,
-            historyCount: message.history?.length ?? 0,
             attachmentsCount: message.attachments?.length ?? 0,
         });
 

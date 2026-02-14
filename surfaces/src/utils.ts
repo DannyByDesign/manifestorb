@@ -143,7 +143,6 @@ export async function forwardToBrain(params: {
     provider: "slack" | "discord" | "telegram";
     content: string;
     context: Record<string, unknown>;
-    history?: { role: "user" | "assistant"; content: string }[];
 }) {
     try {
         console.log(`[Surfaces] Forwarding to Brain (${params.provider})`, {
@@ -152,7 +151,6 @@ export async function forwardToBrain(params: {
             messageId: params.context?.messageId,
             isDirectMessage: params.context?.isDirectMessage,
             contentLength: params.content.length,
-            historyCount: params.history?.length ?? 0,
         });
         const response = await fetch(BRAIN_API_URL, {
             method: "POST",

@@ -16,13 +16,11 @@ export async function runOneShotAgent({
   user,
   emailAccount,
   message,
-  history,
   context,
 }: {
   user: User;
   emailAccount: EmailAccount;
   message: string;
-  history?: Array<{ role: "user" | "assistant"; content: string }>;
   context: {
     conversationId: string;
     channelId: string;
@@ -48,7 +46,6 @@ export async function runOneShotAgent({
       account: accountRow?.account,
     },
     message,
-    history,
     context: {
       conversationId: context.conversationId,
       channelId: context.channelId,
@@ -58,7 +55,6 @@ export async function runOneShotAgent({
       messageId: context.messageId,
       threadId: context.threadId,
     },
-    streaming: false,
     logger,
   });
 

@@ -17,7 +17,6 @@ export type InboundMessage = {
     content: string;
     context: InboundMessageContext;
     attachments?: InboundAttachment[];
-    history?: { role: "user" | "assistant"; content: string }[];
 };
 
 export type InboundAttachment = {

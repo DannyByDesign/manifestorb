@@ -400,7 +400,6 @@ export class ChannelRouter {
                             user: user,
                             emailAccount: emailAccount,
                             message: message.content,
-                            history: message.history,
                             context: {
                                 conversationId: conversation.id,
                                 channelId: message.context.channelId,

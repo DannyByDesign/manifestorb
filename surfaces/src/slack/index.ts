@@ -845,35 +845,6 @@ export async function startSlack() {
             });
 
             try {
-                let history: { role: "user" | "assistant"; content: string }[] = [];
-                try {
-                    const result = await app.client.conversations.replies({
-                        channel: channelId,
-                        ts: replyThreadTs,
-                        limit: 30,
-                        latest: messageTs,
-                        inclusive: false,
-                    });
-
-                    if (result.messages) {
-                        history = result.messages
-                            .filter((msg) => msg.ts !== messageTs)
-                            .map((msg) => ({
-                                role: (msg.bot_id ? "assistant" : "user") as "user" | "assistant",
-                                content: msg.text || "",
-                            }))
-                            .filter((msg) => msg.content !== "");
-                    }
-                } catch (err) {
-                    console.error("[Surfaces][Slack] Failed to fetch thread history", {
-                        channel: channelId,
-                        user: slackUserId,
-                        ts: messageTs,
-                        threadTs: replyThreadTs,
-                        error: err instanceof Error ? err.message : String(err),
-                    });
-                }
-
                 const brainResponse = await forwardToBrain({
                     provider: "slack",
                     content: messageText,
@@ -885,7 +856,6 @@ export async function startSlack() {
                         threadId: replyThreadTs,
                         isDirectMessage,
                     },
-                    history,
                 });
 
                 if (!brainResponse || !Array.isArray(brainResponse.responses)) {

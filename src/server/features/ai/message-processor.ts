@@ -44,12 +44,8 @@ export interface MessageProcessorInput {
   // Message input — exactly one of these is set
   message?: string; // For surfaces (single message)
   messages?: ModelMessage[]; // For web (array incl. history)
-  history?: Array<{ role: "user" | "assistant"; content: string }>; // Unused in skills runtime (kept for interface compatibility)
 
   context: ProcessorContext;
-
-  // Kept for interface compatibility; skills runtime is non-streaming.
-  streaming: boolean;
 
   logger: Logger;
 }
@@ -58,8 +54,6 @@ export interface MessageProcessorResult {
   text: string;
   approvals: unknown[];
   interactivePayloads: unknown[];
-  /** Only set when `streaming: true` */
-  stream?: unknown;
 }
 
 type SourceEmailContext = {
