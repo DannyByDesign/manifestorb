@@ -12,7 +12,7 @@ import type { ValidatedToolDecision } from "@/server/features/ai/runtime/decisio
 
 const MAX_RUNTIME_ATTEMPTS = 6;
 const RUNTIME_TURN_BUDGET_MS = 90_000;
-const DECISION_TIMEOUT_MS = 18_000;
+const DECISION_TIMEOUT_MS = 30_000;
 const REPAIR_TIMEOUT_MS = 8_000;
 const RESPONSE_WRITE_TIMEOUT_MS = 10_000;
 
