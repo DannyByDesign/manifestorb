@@ -5,6 +5,7 @@ import { validateRuntimeDecision } from "@/server/features/ai/runtime/decision/v
 import { repairRuntimeDecisionArgs } from "@/server/features/ai/runtime/decision/repair";
 import { buildRuntimeTurnContext, executeToolCall } from "@/server/features/ai/runtime/tool-runtime";
 import { summarizeRuntimeResults } from "@/server/features/ai/runtime/result-summarizer";
+import { generateRuntimeUserReply } from "@/server/features/ai/runtime/response-writer";
 import type { RuntimeToolResult } from "@/server/features/ai/tools/contracts/tool-result";
 import type { ValidatedToolDecision } from "@/server/features/ai/runtime/decision/schema";
 
@@ -12,6 +13,7 @@ const MAX_RUNTIME_ATTEMPTS = 6;
 const RUNTIME_TURN_BUDGET_MS = 90_000;
 const DECISION_TIMEOUT_MS = 18_000;
 const REPAIR_TIMEOUT_MS = 8_000;
+const RESPONSE_WRITE_TIMEOUT_MS = 10_000;
 
 class RuntimeOperationTimeoutError extends Error {
   constructor(
@@ -52,6 +54,35 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
   const context = buildRuntimeTurnContext(session);
   const results: RuntimeToolResult[] = [];
   const startedAt = Date.now();
+  const composeAssistantReply = async (params: {
+    mode: "final" | "clarification" | "approval_pending" | "error";
+    fallbackText: string;
+  }): Promise<string> => {
+    const budget = remainingBudgetMs(startedAt);
+    if (budget <= 1000) return params.fallbackText;
+
+    try {
+      return await withRuntimeTimeout({
+        operation: "response_write",
+        timeoutMs: Math.min(RESPONSE_WRITE_TIMEOUT_MS, budget),
+        run: () =>
+          generateRuntimeUserReply({
+            session,
+            request: session.input.message,
+            results,
+            approvalsCount: context.session.artifacts.approvals.length,
+            mode: params.mode,
+            fallbackText: params.fallbackText,
+          }),
+      });
+    } catch (error) {
+      session.input.logger.warn("Runtime response writer failed", {
+        error,
+        mode: params.mode,
+      });
+      return params.fallbackText;
+    }
+  };
 
   for (let attempt = 1; attempt <= MAX_RUNTIME_ATTEMPTS; attempt += 1) {
     const budgetBeforeDecision = remainingBudgetMs(startedAt);
@@ -94,8 +125,13 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
       const toolName = failedValidation.toolName;
       if (!toolName) {
         if (attempt >= MAX_RUNTIME_ATTEMPTS) {
+          const fallbackText =
+            "I need one more detail before I can continue. Please restate the request in one sentence with the exact outcome you want.";
           return {
-            text: "I need one more detail before I can continue. Please restate the request in one sentence with the exact outcome you want.",
+            text: await composeAssistantReply({
+              mode: "clarification",
+              fallbackText,
+            }),
             stopReason: "needs_clarification",
             attempts: attempt,
           };
@@ -148,8 +184,13 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
 
     if (!validated.ok) {
       if (attempt >= MAX_RUNTIME_ATTEMPTS) {
+        const fallbackText =
+          "I need one more detail before I can continue. Please restate the request in one sentence with the exact outcome you want.";
         return {
-          text: "I need one more detail before I can continue. Please restate the request in one sentence with the exact outcome you want.",
+          text: await composeAssistantReply({
+            mode: "clarification",
+            fallbackText,
+          }),
           stopReason: "needs_clarification",
           attempts: attempt,
         };
@@ -160,18 +201,29 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
     const resolvedDecision = validated.decision;
 
     if (resolvedDecision.type === "respond") {
+      const fallbackText = "Completed.";
       return {
-        text: resolvedDecision.responseText?.trim() || "Completed.",
+        text:
+          resolvedDecision.responseText?.trim() ||
+          (await composeAssistantReply({
+            mode: "final",
+            fallbackText,
+          })),
         stopReason: "completed",
         attempts: attempt,
       };
     }
 
     if (resolvedDecision.type === "clarify") {
+      const fallbackText =
+        "I need one more detail to proceed. What exact change should I make?";
       return {
         text:
           resolvedDecision.responseText?.trim() ||
-          "I need one more detail to proceed. What exact change should I make?",
+          (await composeAssistantReply({
+            mode: "clarification",
+            fallbackText,
+          })),
         stopReason: "needs_clarification",
         attempts: attempt,
       };
@@ -196,10 +248,14 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
         result.error === "auth_error" ||
         result.error === "permission_denied"
       ) {
+        const fallbackText =
+          result.message ??
+          "I couldn't complete that right now due to a temporary provider issue. Please try again.";
         return {
-          text:
-            result.message ??
-            "I couldn't complete that right now due to a temporary provider issue. Please try again.",
+          text: await composeAssistantReply({
+            mode: "error",
+            fallbackText,
+          }),
           stopReason: "runtime_error",
           attempts: attempt,
         };
@@ -207,19 +263,27 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
     }
 
     if (result.clarification?.prompt) {
+      const fallbackText = result.clarification.prompt;
       return {
-        text: result.clarification.prompt,
+        text: await composeAssistantReply({
+          mode: "clarification",
+          fallbackText,
+        }),
         stopReason: "needs_clarification",
         attempts: attempt,
       };
     }
 
     if (context.session.artifacts.approvals.length > 0) {
+      const fallbackText = summarizeRuntimeResults({
+        request: session.input.message,
+        results,
+        approvalsCount: context.session.artifacts.approvals.length,
+      });
       return {
-        text: summarizeRuntimeResults({
-          request: session.input.message,
-          results,
-          approvalsCount: context.session.artifacts.approvals.length,
+        text: await composeAssistantReply({
+          mode: "approval_pending",
+          fallbackText,
         }),
         stopReason: "approval_pending",
         attempts: attempt,
@@ -227,11 +291,15 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
     }
 
     if (result.success && attempt >= 2) {
+      const fallbackText = summarizeRuntimeResults({
+        request: session.input.message,
+        results,
+        approvalsCount: context.session.artifacts.approvals.length,
+      });
       return {
-        text: summarizeRuntimeResults({
-          request: session.input.message,
-          results,
-          approvalsCount: context.session.artifacts.approvals.length,
+        text: await composeAssistantReply({
+          mode: "final",
+          fallbackText,
         }),
         stopReason: "completed",
         attempts: attempt,
@@ -239,11 +307,15 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
     }
   }
 
+  const fallbackText = summarizeRuntimeResults({
+    request: session.input.message,
+    results,
+    approvalsCount: session.artifacts.approvals.length,
+  });
   return {
-    text: summarizeRuntimeResults({
-      request: session.input.message,
-      results,
-      approvalsCount: session.artifacts.approvals.length,
+    text: await composeAssistantReply({
+      mode: "final",
+      fallbackText,
     }),
     stopReason: "max_attempts",
     attempts: MAX_RUNTIME_ATTEMPTS,
