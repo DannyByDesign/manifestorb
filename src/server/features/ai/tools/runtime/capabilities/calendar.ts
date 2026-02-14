@@ -1,8 +1,8 @@
 import type { ToolResult } from "@/server/features/ai/tools/types";
-import type { CapabilityEnvironment } from "@/server/features/ai/tools/runtime/legacy/types";
+import type { CapabilityEnvironment } from "@/server/features/ai/tools/runtime/capabilities/types";
 import prisma from "@/server/db/client";
 import type { CalendarEventUpdateInput } from "@/features/calendar/event-types";
-import { capabilityFailureResult } from "@/server/features/ai/tools/runtime/legacy/errors";
+import { capabilityFailureResult } from "@/server/features/ai/tools/runtime/capabilities/errors";
 import {
   createCalendarEvent,
   deleteCalendarEvent,

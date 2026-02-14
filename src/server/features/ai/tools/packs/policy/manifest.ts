@@ -1,4 +1,4 @@
-import { listToolDefinitions } from "@/server/features/ai/tools/runtime/legacy/registry";
+import { listToolDefinitions } from "@/server/features/ai/tools/runtime/capabilities/registry";
 import type { ToolPackManifest } from "@/server/features/ai/tools/packs/manifest-schema";
 
 export function policyToolPackManifest(): ToolPackManifest {

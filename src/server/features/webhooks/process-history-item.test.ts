@@ -24,7 +24,7 @@ vi.mock("@/server/db/client", () => ({
     },
   },
 }));
-vi.mock("@/features/web-chat/is-assistant-email", () => ({
+vi.mock("@/features/assistant-email/is-assistant-email", () => ({
   isAssistantEmail: vi.fn().mockReturnValue(false),
 }));
 vi.mock("@/features/cold-email/is-cold-email", () => ({
@@ -35,7 +35,7 @@ vi.mock("@/features/cold-email/is-cold-email", () => ({
 vi.mock("@/features/categorize/senders/categorize", () => ({
   categorizeSender: vi.fn(),
 }));
-vi.mock("@/features/web-chat/process-assistant-email", () => ({
+vi.mock("@/features/assistant-email/process-assistant-email", () => ({
   processAssistantEmail: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@/features/reply-tracker/handle-outbound", () => ({

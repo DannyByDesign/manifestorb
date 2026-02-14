@@ -1,5 +1,5 @@
 import type { ToolResult } from "@/server/features/ai/tools/types";
-import type { CapabilityEnvironment } from "@/server/features/ai/tools/runtime/legacy/types";
+import type { CapabilityEnvironment } from "@/server/features/ai/tools/runtime/capabilities/types";
 import {
   compileAndActivateRulePlaneRule,
   compileRulePlaneRule,

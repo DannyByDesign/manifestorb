@@ -1,4 +1,4 @@
-import { createCapabilities } from "@/server/features/ai/tools/runtime/legacy";
+import { createCapabilities } from "@/server/features/ai/tools/runtime/capabilities";
 import { loadRuntimeSkills } from "@/server/features/ai/skills/loader";
 import { buildSkillPromptSnapshot } from "@/server/features/ai/skills/snapshot";
 import { assembleRuntimeTools } from "@/server/features/ai/tools/fabric/assembler";

@@ -1,4 +1,4 @@
-import { listToolDefinitions } from "@/server/features/ai/tools/runtime/legacy/registry";
+import { listToolDefinitions } from "@/server/features/ai/tools/runtime/capabilities/registry";
 
 export function listCalendarPackTools(): string[] {
   return listToolDefinitions()

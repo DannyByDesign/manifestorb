@@ -2,7 +2,7 @@ import { createHash } from "crypto";
 import prisma from "@/server/db/client";
 import { evaluatePolicyDecision } from "@/server/features/policy-plane/pdp";
 import { ApprovalService, getApprovalExpiry } from "@/server/features/approvals/service";
-import type { CapabilityDefinition as RuntimeToolMetadata } from "@/server/features/ai/tools/runtime/legacy/registry";
+import type { CapabilityDefinition as RuntimeToolMetadata } from "@/server/features/ai/tools/runtime/capabilities/registry";
 
 export interface PolicyExecutionContext {
   userId: string;

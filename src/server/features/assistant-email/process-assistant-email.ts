@@ -3,7 +3,7 @@ import type { Logger } from "@/server/lib/logger";
 import { extractEmailAddress } from "@/server/lib/email";
 import prisma from "@/server/db/client";
 import { emailToContent } from "@/server/lib/mail";
-import { isAssistantEmail } from "@/features/web-chat/is-assistant-email";
+import { isAssistantEmail } from "@/features/assistant-email/is-assistant-email";
 import { internalDateToDate } from "@/server/lib/date";
 import type { EmailProvider } from "@/features/email/types";
 import { labelMessageAndSync } from "@/server/lib/label.server";

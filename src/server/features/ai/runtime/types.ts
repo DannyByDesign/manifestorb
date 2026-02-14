@@ -1,6 +1,6 @@
 import type { ModelMessage, ToolSet } from "ai";
 import type { Logger } from "@/server/lib/logger";
-import type { SkillCapabilities } from "@/server/features/ai/tools/runtime/legacy";
+import type { SkillCapabilities } from "@/server/features/ai/tools/runtime/capabilities";
 import type { RuntimeSkillSnapshot } from "@/server/features/ai/skills/types";
 import type {
   ToolExecutionArtifacts,

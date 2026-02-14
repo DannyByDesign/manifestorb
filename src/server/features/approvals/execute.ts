@@ -321,9 +321,9 @@ export async function executeApprovalRequest(params: {
         throw new Error("No email account found for tool approval execution");
       }
 
-      const { createCapabilities } = await import("@/server/features/ai/tools/runtime/legacy");
+      const { createCapabilities } = await import("@/server/features/ai/tools/runtime/capabilities");
       const { executeRuntimeTool } = await import(
-        "@/server/features/ai/tools/runtime/legacy/execute"
+        "@/server/features/ai/tools/runtime/capabilities/execute"
       );
       const capabilities = await createCapabilities({
         userId: request.userId,

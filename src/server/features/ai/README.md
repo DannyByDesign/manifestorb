@@ -1,57 +1,39 @@
-# AI Runtime (Skills-First)
+# AI Runtime (Runtime-First)
 
-This module now runs a **skills-only** assistant architecture for inbox and calendar operations.
+This folder contains the assistant runtime used by inbox/calendar surfaces.
 
-## Source of Truth Plan
+## Execution Flow
 
-The migration and runtime boundary reference is:
+1. `message-processor.ts` receives the user turn.
+2. `runtime/session.ts` builds runtime context:
+   - tool capabilities
+   - skill prompt snapshot
+   - policy-filtered runtime tool registry
+3. `runtime/attempt-loop.ts` runs bounded model/tool iterations.
+4. Tool calls execute through:
+   - `tools/fabric/assembler.ts`
+   - `tools/runtime/capabilities/execute.ts`
+5. Policy and approval checks run before mutating tool calls.
 
-`docs/plans/AI_SKILLS_REFACTOR_SOURCE_OF_TRUTH.md`
-
-## Runtime Boundary
-
-1. `message-processor` runs conversational preflight.
-2. If the turn is conversational, it answers directly (no tool execution).
-3. If the turn is operational, it runs the skills runtime:
-   - router
-   - slot resolver
-   - semantic normalization
-   - policy precheck
-   - deterministic executor
-   - postcondition validator
-   - bounded repair
-4. All operational mutations flow through skill contracts and capability facades.
-
-There is no legacy LLM polymorphic tool-calling loop in the production assistant path.
-
-## Key Directories
+## Important Directories
 
 ```
 ai/
-├── capabilities/      # Narrow typed capability facades (email/calendar/planner)
-├── skills/
-│   ├── baseline/      # Baseline universal inbox/calendar skills
-│   ├── contracts/     # Skill schema + slot schema
-│   ├── executor/      # Deterministic execution + postconditions
-│   ├── policy/        # Policy context + conflict resolver
-│   ├── registry/      # Baseline registry
-│   ├── router/        # Closed-set skill routing
-│   ├── slots/         # Slot extraction + clarification
-│   └── telemetry/     # Runtime telemetry events
-├── orchestration/
-│   └── preflight.ts   # Conversational preflight gate
-├── message-processor.ts
-├── system-prompt.ts   # Minimal global policy/style shell
-└── tools/
-    ├── providers/     # Provider adapters used by capabilities
-    ├── calendar-time.ts
-    ├── timezone.ts
-    └── types.ts
+├── runtime/                        # Turn loop, session/context setup, response contract
+├── skills/                         # Prompt-layer skills catalog and composition
+├── tools/
+│   ├── runtime/capabilities/       # Canonical runtime tool metadata + execution
+│   ├── providers/                  # Email/calendar provider adapters
+│   ├── packs/                      # Tool pack manifests and loader
+│   ├── fabric/                     # Tool assembly + policy filter integration
+│   ├── calendar/                   # Calendar tool primitives
+│   └── email/                      # Email tool primitives
+├── policy/                         # Runtime policy hooks
+└── message-processor.ts            # Unified runtime entrypoint
 ```
 
-## Notes
+## Guardrails
 
-- Rule automation execution remains in rule-engine modules; that is separate from assistant turn execution.
-- Approval flows for schedule proposals and ambiguous time now execute through structured deterministic handlers, not polymorphic tool maps.
-- Multi-action requests are decomposed into sequential sub-actions with per-step policy enforcement.
-- Telemetry emits route/execution/action events with deterministic outcome taxonomy fields.
+- Mutating tools are policy-gated (`ai/policy/enforcement.ts`).
+- Approvals are persisted and replayed via `features/approvals`.
+- Runtime tool metadata is source-of-truth in `tools/runtime/capabilities/registry.ts`.

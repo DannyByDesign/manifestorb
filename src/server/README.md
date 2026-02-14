@@ -1,102 +1,60 @@
-# Server-Side Architecture
+# Server Architecture
 
-The `src/server` directory contains the backend logic of the application, organized into distinct layers.
+`src/server` contains backend runtime, domain services, and platform integrations.
 
-## Directory Structure
+See `src/ARCHITECTURE_MAP.md` for cross-`src` runtime entrypoint mapping.
+
+## Top-Level Structure
 
 ```
 server/
-├── actions/          # Server actions (next-safe-action handlers)
-├── auth/             # Authentication (WorkOS AuthKit)
-├── db/               # Database (Prisma client, extensions)
-├── features/         # Feature modules (domain logic)
-├── integrations/     # External API clients
-├── lib/              # Shared utilities
-├── packages/         # Internal packages (@amodel/*)
-├── scripts/          # Utility scripts
-└── types/            # Shared TypeScript types
+├── auth/            # Session/authn helpers
+├── db/              # Prisma client wiring
+├── features/        # Domain modules (AI, email, calendar, approvals, policy-plane)
+├── integrations/    # Google/Microsoft/Slack API clients
+├── lib/             # Cross-domain utilities
+├── packages/        # Internal packages (@amodel/*)
+├── scripts/         # Maintenance/backfill scripts
+├── types/           # Shared server-side types
+└── actions/         # Legacy next-safe-action surface (not core runtime path)
 ```
 
-## Layer Descriptions
+## Core Runtime Path
 
-### 1. `actions/` (Server Actions)
-Next-safe-action handlers for authenticated mutations.
-- `rule.ts` - Rule CRUD operations
-- `mail.ts` - Email operations
-- `calendar.ts` - Calendar operations
-- `validation/` - Zod schemas for each action
+Primary user turn flow:
 
-### 2. `features/` (Feature Modules)
-Self-contained domain logic organized by feature.
-- **`ai/`** - Skills-first AI orchestration, capability facades, and safety boundaries
-- **`web-chat/`** - Web UI chat assistant (rule management focus)
-- **`channels/`** - Multi-channel executor (Slack/Discord/Telegram); one-shot agent runtime
-- **`email/`** - Email provider abstraction
-- **`rules/`** - Automation rule engine
-- **`approvals/`** - Human-in-the-loop workflow; secure action tokens for approval links
-- **`calendar/`** - Calendar sync, watch renewal cron, and conflict resolution
-- **`tasks/`** - Task triage, panel API, approval-backed actions
-- **`notifications/`** - In-app and push notifications
-- **`memory/`** - RLM memory, embeddings, summaries
-- And more...
+1. API entrypoints in `src/app/api` (`/chat`, `/surfaces/inbound`, webhook routes)
+2. `src/server/features/channels/executor.ts`
+3. `src/server/features/ai/message-processor.ts`
+4. `src/server/features/ai/runtime/*`
+5. Tool execution via `src/server/features/ai/tools/*`
+   - metadata registry: `src/server/features/ai/tools/runtime/capabilities/registry.ts`
+   - execution switch: `src/server/features/ai/tools/runtime/capabilities/execute.ts`
+   - provider adapters: `src/server/features/ai/tools/providers/*`
 
-### 3. `integrations/` (External API Clients)
-Pure API wrappers with no business logic.
-- **`google/`** - Gmail, Calendar, People APIs
-- **`microsoft/`** - Microsoft Graph API
-- **`qstash/`** - Upstash queue service
+Approval and policy gates:
 
-### 4. `lib/` (Shared Utilities)
-Cross-cutting utilities used by multiple features.
-- **`llms/`** - LLM provider abstraction
-- **`redis/`** - Caching utilities
-- **`queue/`** - Queue utilities
-- **`parse/`** - Email/HTML parsing
-- **`logger.ts`** - Structured logging
-- **`error.ts`** - Error handling
+- Policy evaluation: `src/server/features/policy-plane/*`
+- Runtime enforcement: `src/server/features/ai/policy/enforcement.ts`
+- Approval execution: `src/server/features/approvals/*`
 
-### 5. `db/` (Database)
-Prisma client and extensions.
-- `client.ts` - Prisma client instance
-- `encryption.ts` - Token encryption
+## Domain Ownership
 
-### 6. `auth/` (Authentication)
-WorkOS AuthKit configuration and utilities.
-
-### 7. `packages/` (Internal Packages)
-Standalone packages used by the application.
-- `@amodel/resend` - Email templates
-- `@amodel/cli` - CLI tool
-
-### 8. `scripts/` (Utility Scripts)
-Migration and verification scripts.
+- `features/ai`: runtime loop, skills prompt composition, tool assembly.
+- `features/email`: provider abstraction and email operations.
+- `features/calendar`: availability, sync, scheduling, calendar provider logic.
+- `features/policy-plane`: canonical policy/rule compilation and decisioning.
+- `features/approvals`: HITL approval lifecycle and execution replay.
+- `features/webhooks`: inbound mailbox event processing.
+- `features/assistant-email`: assistant-via-email handling (`user+assistant@...` path).
 
 ## Import Conventions
 
-```typescript
-// Features
-import { processMessage } from "@/features/ai/message-processor";
-
-// Integrations
-import { getGmailClient } from "@/integrations/google/client";
-
-// Utilities
-import { createScopedLogger } from "@/server/lib/logger";
-
-// Database
+```ts
 import prisma from "@/server/db/client";
-
-// Actions
-import { createRuleAction } from "@/actions/rule";
+import { createScopedLogger } from "@/server/lib/logger";
+import { processMessage } from "@/features/ai/message-processor";
+import { createEmailProvider } from "@/features/email/provider";
 ```
 
-## Adding New Features
-
-1. Create `features/[feature-name]/`
-2. Add domain logic files
-3. If AI-powered, add `features/[feature-name]/ai/`
-4. Add validation schemas to `actions/validation/`
-5. Add server actions to `actions/[feature-name].ts`
-6. Add API routes to `app/api/[feature-name]/`
-
-See root `ARCHITECTURE.md` for the full architecture guide.
+Use `@/features/*` for domain code, `@/server/*` for platform infrastructure.

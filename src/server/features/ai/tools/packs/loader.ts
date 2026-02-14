@@ -1,4 +1,4 @@
-import { getToolDefinition } from "@/server/features/ai/tools/runtime/legacy/registry";
+import { getToolDefinition } from "@/server/features/ai/tools/runtime/capabilities/registry";
 import { listInternalToolPacks } from "@/server/features/ai/tools/packs/registry";
 import {
   toolPackManifestSchema,

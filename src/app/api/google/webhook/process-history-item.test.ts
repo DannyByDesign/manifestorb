@@ -3,10 +3,10 @@ import { processHistoryItem } from "./process-history-item";
 import { HistoryEventType } from "./types";
 import { NewsletterStatus } from "@/generated/prisma/enums";
 import type { gmail_v1 } from "@googleapis/gmail";
-import { isAssistantEmail } from "@/features/web-chat/is-assistant-email";
+import { isAssistantEmail } from "@/features/assistant-email/is-assistant-email";
 import { markMessageAsProcessing } from "@/server/lib/redis/message-processing";
 import { GmailLabel } from "@/server/integrations/google/label";
-import { processAssistantEmail } from "@/features/web-chat/process-assistant-email";
+import { processAssistantEmail } from "@/features/assistant-email/process-assistant-email";
 import { getEmailAccount } from "@/tests/support/helpers";
 import { createEmailProvider } from "@/features/email/provider";
 import { createScopedLogger } from "@/server/lib/logger";
@@ -40,7 +40,7 @@ vi.mock("@/server/integrations/google/thread", () => ({
     },
   ]),
 }));
-vi.mock("@/features/web-chat/is-assistant-email", () => ({
+vi.mock("@/features/assistant-email/is-assistant-email", () => ({
   isAssistantEmail: vi.fn().mockReturnValue(false),
 }));
 vi.mock("@/features/cold-email/is-cold-email", () => ({
@@ -51,7 +51,7 @@ vi.mock("@/features/cold-email/is-cold-email", () => ({
 vi.mock("@/features/categorize/senders/categorize", () => ({
   categorizeSender: vi.fn(),
 }));
-vi.mock("@/features/web-chat/process-assistant-email", () => ({
+vi.mock("@/features/assistant-email/process-assistant-email", () => ({
   processAssistantEmail: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@/app/api/google/webhook/process-label-removed-event", () => ({

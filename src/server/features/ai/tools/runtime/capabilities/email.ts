@@ -1,5 +1,5 @@
 import type { ToolResult } from "@/server/features/ai/tools/types";
-import type { CapabilityEnvironment } from "@/server/features/ai/tools/runtime/legacy/types";
+import type { CapabilityEnvironment } from "@/server/features/ai/tools/runtime/capabilities/types";
 import { env as appEnv } from "@/env";
 import { Client } from "@upstash/qstash";
 import { getInternalApiUrl } from "@/server/lib/internal-api";
@@ -8,8 +8,8 @@ import type { ParsedMessage } from "@/server/types";
 import {
   capabilityFailureResult,
   classifyCapabilityError,
-} from "@/server/features/ai/tools/runtime/legacy/errors";
-import { createCapabilityIdempotencyKey } from "@/server/features/ai/tools/runtime/legacy/idempotency";
+} from "@/server/features/ai/tools/runtime/capabilities/errors";
+import { createCapabilityIdempotencyKey } from "@/server/features/ai/tools/runtime/capabilities/idempotency";
 import {
   getEmailMessages,
   getEmailThread,

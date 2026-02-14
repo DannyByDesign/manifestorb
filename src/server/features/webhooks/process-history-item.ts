@@ -1,7 +1,7 @@
 import prisma from "@/server/db/client";
 import { categorizeSender } from "@/features/categorize/senders/categorize";
-import { isAssistantEmail } from "@/features/web-chat/is-assistant-email";
-import { processAssistantEmail } from "@/features/web-chat/process-assistant-email";
+import { isAssistantEmail } from "@/features/assistant-email/is-assistant-email";
+import { processAssistantEmail } from "@/features/assistant-email/process-assistant-email";
 import { handleOutboundMessage } from "@/features/reply-tracker/handle-outbound";
 import { clearFollowUpLabel } from "@/features/follow-up/labels";
 import { ActionType, NewsletterStatus } from "@/generated/prisma/enums";

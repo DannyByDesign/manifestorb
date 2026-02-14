@@ -1,5 +1,5 @@
 import type { ToolSet } from "ai";
-import { executeRuntimeTool } from "@/server/features/ai/tools/runtime/legacy/execute";
+import { executeRuntimeTool } from "@/server/features/ai/tools/runtime/capabilities/execute";
 import { enforcePolicyForTool } from "@/server/features/ai/policy/enforcement";
 import { assertProviderCompatibleToolSchema } from "@/server/features/ai/tools/fabric/adapters/provider-schema";
 import type {

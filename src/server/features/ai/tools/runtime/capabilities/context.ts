@@ -1,7 +1,7 @@
 import { createEmailProvider } from "@/server/features/ai/tools/providers/email";
 import { createCalendarProvider } from "@/server/features/ai/tools/providers/calendar";
 import type { ToolContext } from "@/server/features/ai/tools/types";
-import type { CapabilityRuntimeContext } from "@/server/features/ai/tools/runtime/legacy/types";
+import type { CapabilityRuntimeContext } from "@/server/features/ai/tools/runtime/capabilities/types";
 
 export async function createCapabilityToolContext(
   runtime: CapabilityRuntimeContext,

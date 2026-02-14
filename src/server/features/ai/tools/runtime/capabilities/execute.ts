@@ -1,6 +1,6 @@
-import type { SkillCapabilities } from "@/server/features/ai/tools/runtime/legacy";
+import type { SkillCapabilities } from "@/server/features/ai/tools/runtime/capabilities";
 import type { ToolResult } from "@/server/features/ai/tools/types";
-import type { ToolName } from "@/server/features/ai/tools/runtime/legacy/registry";
+import type { ToolName } from "@/server/features/ai/tools/runtime/capabilities/registry";
 
 function asStringArray(value: unknown): string[] {
   return Array.isArray(value)
