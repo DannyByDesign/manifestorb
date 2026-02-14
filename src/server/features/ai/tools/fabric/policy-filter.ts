@@ -1,5 +1,7 @@
 import type { RuntimeSemanticContract } from "@/server/features/ai/runtime/semantic-contract";
 import type { RuntimeToolDefinition } from "@/server/features/ai/tools/fabric/types";
+import { filterToolsByPolicy } from "@/server/features/ai/tools/policy/policy-matcher";
+import type { ResolvedLayeredToolPolicies } from "@/server/features/ai/tools/policy/types";
 import type { CapabilityIntentFamily } from "@/server/features/ai/tools/runtime/capabilities/registry";
 
 export interface ToolFilterParams {
@@ -8,6 +10,26 @@ export interface ToolFilterParams {
   strictReadOnly?: boolean;
   semantic?: RuntimeSemanticContract;
   maxTools?: number;
+  layeredPolicies?: ResolvedLayeredToolPolicies;
+  additionalGroups?: Record<string, string[]>;
+}
+
+export interface ToolFilterDiagnostics {
+  counts: {
+    before: number;
+    semanticCandidate: number;
+    afterProfile: number;
+    afterProviderProfile: number;
+    afterGlobal: number;
+    afterGlobalProvider: number;
+    afterAgent: number;
+    afterAgentProvider: number;
+    afterGroup: number;
+    afterSandbox: number;
+    afterSubagent: number;
+    afterRisk: number;
+    afterLimit: number;
+  };
 }
 
 const MUTATION_RE =
@@ -18,8 +40,8 @@ const POLICY_RE = /\b(rule|policy|approval|permission|automation|preference)\b/u
 
 const PROFILE_LIMITS: Record<NonNullable<RuntimeSemanticContract["routeProfile"]>, number> = {
   fast: 12,
-  standard: 22,
-  deep: 36,
+  standard: 24,
+  deep: 40,
 };
 
 function intersectsIntentFamily(
@@ -81,10 +103,7 @@ function scoreToolRelevance(
 
   if (semantic) {
     const families = familiesForSemanticContract(semantic);
-    if (families.length > 0 && intersectsIntentFamily(definition, families)) {
-      score += 8;
-    }
-
+    if (families.length > 0 && intersectsIntentFamily(definition, families)) score += 8;
     if (semantic.requestedOperation === "read" && definition.metadata.readOnly) score += 5;
     if (
       semantic.requestedOperation !== "read" &&
@@ -93,17 +112,12 @@ function scoreToolRelevance(
     ) {
       score += 4;
     }
-
-    if (semantic.riskLevel === "low" && definition.metadata.riskLevel === "dangerous") score -= 8;
-    if (semantic.riskLevel === "medium" && definition.metadata.riskLevel === "dangerous") score -= 2;
-    if (semantic.riskLevel === "high" && definition.metadata.riskLevel === "dangerous") score += 2;
   }
 
   if (message.length > 0) {
     for (const tag of tags) {
       if (message.includes(tag.toLowerCase())) score += 1;
     }
-
     const hints = lexicalDomainHints(message);
     if (hints.includes("inbox") && definition.metadata.intentFamilies.some((family) => family.startsWith("inbox_"))) {
       score += 3;
@@ -130,65 +144,104 @@ function scoreToolRelevance(
   return score;
 }
 
-function fallbackToolSubset(
+function semanticCandidateRegistry(
   registry: RuntimeToolDefinition[],
   params: ToolFilterParams,
 ): RuntimeToolDefinition[] {
   const semantic = params.semantic;
-  const allowDangerous = params.includeDangerous === true;
-  let working = registry.filter((definition) =>
-    allowDangerous ? true : definition.metadata.riskLevel !== "dangerous",
-  );
-
-  if (semantic) {
-    const families = familiesForSemanticContract(semantic);
-    if (families.length > 0) {
-      const familySubset = working.filter((definition) => intersectsIntentFamily(definition, families));
-      if (familySubset.length > 0) working = familySubset;
-    }
-    if (semantic.requestedOperation === "read") {
-      const readonlySubset = working.filter((definition) => definition.metadata.readOnly);
-      if (readonlySubset.length > 0) working = readonlySubset;
-    }
-  }
-
-  const limit = Math.max(6, Math.min(params.maxTools ?? 8, 12));
-  return working.slice(0, limit);
-}
-
-export function filterToolRegistry(
-  registry: RuntimeToolDefinition[],
-  params: ToolFilterParams,
-): RuntimeToolDefinition[] {
-  const semantic = params.semantic;
-
-  if (semantic?.intent === "greeting" || semantic?.intent === "capabilities") {
-    return [];
-  }
+  if (!semantic) return registry;
+  if (semantic.intent === "greeting" || semantic.intent === "capabilities") return [];
+  if (semantic.requestedOperation === "meta") return [];
 
   let working = [...registry];
-
-  if (params.strictReadOnly || semantic?.requestedOperation === "read") {
-    working = working.filter((definition) => definition.metadata.readOnly);
-  }
-
-  if (!params.includeDangerous || semantic?.riskLevel !== "high") {
-    working = working.filter((definition) => definition.metadata.riskLevel !== "dangerous");
-  }
-
-  if (semantic?.requestedOperation === "meta") {
-    return [];
-  }
-
-  if (semantic) {
-    const allowedFamilies = familiesForSemanticContract(semantic);
-    if (allowedFamilies.length > 0) {
-      const familyFiltered = working.filter((definition) =>
-        intersectsIntentFamily(definition, allowedFamilies),
-      );
-      if (familyFiltered.length > 0) working = familyFiltered;
+  const semanticFamilies = familiesForSemanticContract(semantic);
+  if (semanticFamilies.length > 0) {
+    const familyFiltered = working.filter((definition) =>
+      intersectsIntentFamily(definition, semanticFamilies),
+    );
+    if (familyFiltered.length > 0) {
+      working = familyFiltered;
     }
   }
+
+  if (semantic.requestedOperation === "read" || params.strictReadOnly) {
+    const readOnly = working.filter((definition) => definition.metadata.readOnly);
+    if (readOnly.length > 0) {
+      working = readOnly;
+    }
+  }
+
+  return working;
+}
+
+function applyLayeredDeterministicPolicies(
+  registry: RuntimeToolDefinition[],
+  params: ToolFilterParams,
+): { tools: RuntimeToolDefinition[]; diagnostics: ToolFilterDiagnostics } {
+  const layers = params.layeredPolicies;
+  const groups = params.additionalGroups;
+  const diagnostics: ToolFilterDiagnostics = {
+    counts: {
+      before: registry.length,
+      semanticCandidate: registry.length,
+      afterProfile: registry.length,
+      afterProviderProfile: registry.length,
+      afterGlobal: registry.length,
+      afterGlobalProvider: registry.length,
+      afterAgent: registry.length,
+      afterAgentProvider: registry.length,
+      afterGroup: registry.length,
+      afterSandbox: registry.length,
+      afterSubagent: registry.length,
+      afterRisk: registry.length,
+      afterLimit: registry.length,
+    },
+  };
+
+  let working = semanticCandidateRegistry(registry, params);
+  diagnostics.counts.semanticCandidate = working.length;
+
+  if (!layers) {
+    diagnostics.counts.afterProfile = working.length;
+    diagnostics.counts.afterProviderProfile = working.length;
+    diagnostics.counts.afterGlobal = working.length;
+    diagnostics.counts.afterGlobalProvider = working.length;
+    diagnostics.counts.afterAgent = working.length;
+    diagnostics.counts.afterAgentProvider = working.length;
+    diagnostics.counts.afterGroup = working.length;
+    diagnostics.counts.afterSandbox = working.length;
+    diagnostics.counts.afterSubagent = working.length;
+    return { tools: working, diagnostics };
+  }
+
+  const apply = (policy: typeof layers.profilePolicy, key: keyof ToolFilterDiagnostics["counts"]) => {
+    working = policy ? filterToolsByPolicy(working, policy, groups) : working;
+    diagnostics.counts[key] = working.length;
+  };
+
+  apply(layers.profilePolicy, "afterProfile");
+  apply(layers.providerProfilePolicy, "afterProviderProfile");
+  apply(layers.globalPolicy, "afterGlobal");
+  apply(layers.globalProviderPolicy, "afterGlobalProvider");
+  apply(layers.agentPolicy, "afterAgent");
+  apply(layers.agentProviderPolicy, "afterAgentProvider");
+  apply(layers.groupPolicy, "afterGroup");
+  apply(layers.sandboxPolicy, "afterSandbox");
+  apply(layers.subagentPolicy, "afterSubagent");
+
+  return { tools: working, diagnostics };
+}
+
+function applyRiskAndLimit(
+  registry: RuntimeToolDefinition[],
+  params: ToolFilterParams,
+  diagnostics: ToolFilterDiagnostics,
+): RuntimeToolDefinition[] {
+  let working = [...registry];
+  if (!params.includeDangerous || params.semantic?.riskLevel !== "high") {
+    working = working.filter((definition) => definition.metadata.riskLevel !== "dangerous");
+  }
+  diagnostics.counts.afterRisk = working.length;
 
   const scored = working
     .map((definition, index) => ({
@@ -202,12 +255,25 @@ export function filterToolRegistry(
     })
     .map((entry) => entry.definition);
 
-  const baseLimit =
-    params.maxTools ??
-    (semantic ? PROFILE_LIMITS[semantic.routeProfile] : 24);
-  const limit = Math.max(6, Math.min(baseLimit, 36));
+  const baseLimit = params.maxTools ?? (params.semantic ? PROFILE_LIMITS[params.semantic.routeProfile] : 24);
+  const limit = Math.max(6, Math.min(baseLimit, 48));
   const limited = scored.slice(0, limit);
+  diagnostics.counts.afterLimit = limited.length;
+  return limited;
+}
 
-  if (limited.length > 0 || !semantic) return limited;
-  return fallbackToolSubset(registry, params);
+export function filterToolRegistryDetailed(
+  registry: RuntimeToolDefinition[],
+  params: ToolFilterParams,
+): { tools: RuntimeToolDefinition[]; diagnostics: ToolFilterDiagnostics } {
+  const { tools: deterministic, diagnostics } = applyLayeredDeterministicPolicies(registry, params);
+  const limited = applyRiskAndLimit(deterministic, params, diagnostics);
+  return { tools: limited, diagnostics };
+}
+
+export function filterToolRegistry(
+  registry: RuntimeToolDefinition[],
+  params: ToolFilterParams,
+): RuntimeToolDefinition[] {
+  return filterToolRegistryDetailed(registry, params).tools;
 }

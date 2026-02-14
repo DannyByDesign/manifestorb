@@ -1062,6 +1062,15 @@ model UserAIConfig {
   customInstructions          String?
   conversationCategories      String[] @default([])
   defaultApprovalExpirySeconds Int?
+  toolProfile                 String?
+  toolAllow                   String[] @default([])
+  toolAlsoAllow               String[] @default([])
+  toolDeny                    String[] @default([])
+  toolByProvider              Json?
+  toolByAgent                 Json?
+  toolByGroup                 Json?
+  toolSandboxPolicy           Json?
+  toolSubagentPolicy          Json?
 }
 
 model CalendarActionLog {

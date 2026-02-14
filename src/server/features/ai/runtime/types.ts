@@ -20,7 +20,11 @@ export interface OpenWorldTurnInput {
   messages?: ModelMessage[];
   logger: Logger;
   conversationId?: string;
+  agentId?: string;
   channelId?: string;
+  groupId?: string;
+  groupChannel?: string;
+  groupSpace?: string;
   threadId?: string;
   messageId?: string;
   sourceEmailMessageId?: string;

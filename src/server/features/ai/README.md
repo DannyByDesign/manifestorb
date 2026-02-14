@@ -9,7 +9,18 @@ This folder contains the assistant runtime used by inbox/calendar surfaces.
    - semantic turn contract (embedding-first with lexical fallback)
    - tool capabilities
    - skill prompt snapshot
-   - semantic + policy-filtered runtime tool registry
+   - semantic candidate tool narrowing
+   - OpenClaw-style layered deterministic filtering:
+     - profile
+     - provider-profile
+     - global allow/deny
+     - global provider allow/deny
+     - agent allow/deny
+     - agent provider allow/deny
+     - group policy
+     - sandbox policy
+     - subagent policy
+   - ranked runtime tool registry
 3. `runtime/router.ts` selects a routing lane and per-lane budgets:
    - `direct_response` (no tools)
    - `macro_tool` (deterministic one-tool execution)

@@ -8,6 +8,29 @@ import type { Logger } from "@/server/lib/logger";
 
 const frequencySchema = z.enum(["NEVER", "DAILY", "WEEKLY"]);
 
+const toolPolicySchema = z
+  .object({
+    allow: z.array(z.string().min(1)).optional(),
+    alsoAllow: z.array(z.string().min(1)).optional(),
+    deny: z.array(z.string().min(1)).optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.allow && value.allow.length > 0 && value.alsoAllow && value.alsoAllow.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "tools policy cannot set both allow and alsoAllow in the same scope (merge alsoAllow into allow, or remove allow and use profile + alsoAllow)",
+      });
+    }
+  });
+
+const toolPolicyWithProfileSchema = toolPolicySchema.extend({
+  profile: z.string().min(1).optional(),
+});
+
+const policyMapSchema = z.record(z.string().min(1), toolPolicyWithProfileSchema);
+
 const taskPreferencePatchSchema = z
   .object({
     weekStartDay: z.enum(["SUNDAY", "MONDAY"]).optional(),
@@ -31,6 +54,42 @@ const aiConfigPatchSchema = z
     customInstructions: z.string().min(1).max(8000).optional(),
     conversationCategories: z.array(z.string().min(1).max(100)).max(64).optional(),
     defaultApprovalExpirySeconds: z.number().int().min(60).max(60 * 60 * 24 * 30).optional(),
+    toolProfile: z.string().min(1).optional(),
+    toolAllow: z.array(z.string().min(1)).max(256).optional(),
+    toolAlsoAllow: z.array(z.string().min(1)).max(256).optional(),
+    toolDeny: z.array(z.string().min(1)).max(256).optional(),
+    toolByProvider: policyMapSchema.optional(),
+    toolByAgent: z
+      .record(
+        z.string().min(1),
+        z.union([
+          toolPolicyWithProfileSchema,
+          z
+            .object({
+              tools: toolPolicyWithProfileSchema.optional(),
+              byProvider: policyMapSchema.optional(),
+            })
+            .strict(),
+        ]),
+      )
+      .optional(),
+    toolByGroup: policyMapSchema.optional(),
+    toolSandboxPolicy: toolPolicySchema.optional(),
+    toolSubagentPolicy: toolPolicySchema.optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (
+      value.toolAllow &&
+      value.toolAllow.length > 0 &&
+      value.toolAlsoAllow &&
+      value.toolAlsoAllow.length > 0
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "toolAllow and toolAlsoAllow cannot both be set in the same scope; merge toolAlsoAllow into toolAllow or remove toolAllow and use toolProfile + toolAlsoAllow",
+      });
+    }
   })
   .strict();
 
@@ -345,6 +404,15 @@ export async function getAssistantPreferenceSnapshot(params: {
         customInstructions: true,
         conversationCategories: true,
         defaultApprovalExpirySeconds: true,
+        toolProfile: true,
+        toolAllow: true,
+        toolAlsoAllow: true,
+        toolDeny: true,
+        toolByProvider: true,
+        toolByAgent: true,
+        toolByGroup: true,
+        toolSandboxPolicy: true,
+        toolSubagentPolicy: true,
       },
     }),
     emailAccount

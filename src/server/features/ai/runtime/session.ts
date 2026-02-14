@@ -2,9 +2,15 @@ import { createCapabilities } from "@/server/features/ai/tools/runtime/capabilit
 import { loadRuntimeSkills } from "@/server/features/ai/skills/loader";
 import { buildSkillPromptSnapshot } from "@/server/features/ai/skills/snapshot";
 import { assembleRuntimeTools } from "@/server/features/ai/tools/fabric/assembler";
-import { filterToolRegistry } from "@/server/features/ai/tools/fabric/policy-filter";
-import { buildRuntimeToolRegistry, buildToolNameLookup } from "@/server/features/ai/tools/fabric/registry";
+import { filterToolRegistryDetailed } from "@/server/features/ai/tools/fabric/policy-filter";
+import {
+  buildRuntimeToolRegistryContext,
+  buildToolNameLookup,
+} from "@/server/features/ai/tools/fabric/registry";
 import { classifyRuntimeSemanticContract } from "@/server/features/ai/runtime/semantic-contract";
+import { resolveEffectiveToolPolicy } from "@/server/features/ai/tools/policy/policy-resolver";
+import { expandPolicyWithPluginGroups } from "@/server/features/ai/tools/policy/tool-policy";
+import { getModel } from "@/server/lib/llms/model";
 import prisma from "@/server/db/client";
 import type { RuntimeSession, OpenWorldTurnInput } from "@/server/features/ai/runtime/types";
 import type { ToolExecutionSummary } from "@/server/features/ai/tools/fabric/types";
@@ -29,6 +35,15 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
         approvalInstructions: true,
         customInstructions: true,
         conversationCategories: true,
+        toolProfile: true,
+        toolAllow: true,
+        toolAlsoAllow: true,
+        toolDeny: true,
+        toolByProvider: true,
+        toolByAgent: true,
+        toolByGroup: true,
+        toolSandboxPolicy: true,
+        toolSubagentPolicy: true,
       },
     }),
     classifyRuntimeSemanticContract({
@@ -43,12 +58,80 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
     skills: loadedSkills,
   });
 
-  const fullRegistry = buildRuntimeToolRegistry();
-  const registry = filterToolRegistry(fullRegistry, {
+  const registryContext = buildRuntimeToolRegistryContext();
+  const fullRegistry = registryContext.registry;
+
+  const routingModel = getModel("economy");
+  const resolvedLayers = resolveEffectiveToolPolicy({
+    config: userAiConfig
+      ? {
+          toolProfile: userAiConfig.toolProfile,
+          toolAllow: userAiConfig.toolAllow,
+          toolAlsoAllow: userAiConfig.toolAlsoAllow,
+          toolDeny: userAiConfig.toolDeny,
+          toolByProvider: userAiConfig.toolByProvider,
+          toolByAgent: userAiConfig.toolByAgent,
+          toolByGroup: userAiConfig.toolByGroup,
+          toolSandboxPolicy: userAiConfig.toolSandboxPolicy,
+          toolSubagentPolicy: userAiConfig.toolSubagentPolicy,
+        }
+      : undefined,
+    agentId: input.agentId,
+    modelProvider: routingModel.provider,
+    modelId: routingModel.modelName,
+    groupId: input.groupId,
+    groupChannel: input.groupChannel ?? input.provider,
+    channelId: input.channelId,
+  });
+
+  const layeredPolicies = {
+    ...resolvedLayers,
+    profilePolicy: expandPolicyWithPluginGroups(
+      resolvedLayers.profilePolicy,
+      registryContext.pluginGroups,
+    ),
+    providerProfilePolicy: expandPolicyWithPluginGroups(
+      resolvedLayers.providerProfilePolicy,
+      registryContext.pluginGroups,
+    ),
+    globalPolicy: expandPolicyWithPluginGroups(
+      resolvedLayers.globalPolicy,
+      registryContext.pluginGroups,
+    ),
+    globalProviderPolicy: expandPolicyWithPluginGroups(
+      resolvedLayers.globalProviderPolicy,
+      registryContext.pluginGroups,
+    ),
+    agentPolicy: expandPolicyWithPluginGroups(
+      resolvedLayers.agentPolicy,
+      registryContext.pluginGroups,
+    ),
+    agentProviderPolicy: expandPolicyWithPluginGroups(
+      resolvedLayers.agentProviderPolicy,
+      registryContext.pluginGroups,
+    ),
+    groupPolicy: expandPolicyWithPluginGroups(
+      resolvedLayers.groupPolicy,
+      registryContext.pluginGroups,
+    ),
+    sandboxPolicy: expandPolicyWithPluginGroups(
+      resolvedLayers.sandboxPolicy,
+      registryContext.pluginGroups,
+    ),
+    subagentPolicy: expandPolicyWithPluginGroups(
+      resolvedLayers.subagentPolicy,
+      registryContext.pluginGroups,
+    ),
+  };
+
+  const filtered = filterToolRegistryDetailed(fullRegistry, {
     includeDangerous: semantic.riskLevel === "high" && semantic.requestedOperation !== "read",
     message: input.message,
     semantic,
+    layeredPolicies,
+    additionalGroups: registryContext.additionalGroups,
   });
+  const registry = filtered.tools;
   const toolLookup = buildToolNameLookup(registry);
 
   input.logger.info("Runtime semantic gate applied", {
@@ -60,6 +143,17 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
     semanticRiskLevel: semantic.riskLevel,
     semanticConfidence: semantic.confidence,
     toolCountBefore: fullRegistry.length,
+    toolCountSemanticCandidate: filtered.diagnostics.counts.semanticCandidate,
+    toolCountAfterProfile: filtered.diagnostics.counts.afterProfile,
+    toolCountAfterProviderProfile: filtered.diagnostics.counts.afterProviderProfile,
+    toolCountAfterGlobal: filtered.diagnostics.counts.afterGlobal,
+    toolCountAfterGlobalProvider: filtered.diagnostics.counts.afterGlobalProvider,
+    toolCountAfterAgent: filtered.diagnostics.counts.afterAgent,
+    toolCountAfterAgentProvider: filtered.diagnostics.counts.afterAgentProvider,
+    toolCountAfterGroup: filtered.diagnostics.counts.afterGroup,
+    toolCountAfterSandbox: filtered.diagnostics.counts.afterSandbox,
+    toolCountAfterSubagent: filtered.diagnostics.counts.afterSubagent,
+    toolCountAfterRisk: filtered.diagnostics.counts.afterRisk,
     toolCountAfter: registry.length,
   });
 
