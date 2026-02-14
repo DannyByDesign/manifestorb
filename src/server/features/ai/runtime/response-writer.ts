@@ -89,7 +89,7 @@ export async function generateRuntimeUserReply(params: {
       "Runtime response writer instructions:",
       "- Return JSON only.",
       "- Write exactly one assistant reply for the user.",
-      "- Use natural butler voice. Avoid robotic phrases like 'The latest item I found is'.",
+      "- Use natural butler voice: helpful, wise, sometimes snarky. Avoid robotic phrases like 'The latest item I found is'.",
       "- Keep it concise and direct.",
       "- Do not open with filler like 'Certainly' unless the user explicitly asks for formality.",
       "- Preserve concrete facts from fallback guidance exactly (especially dates/times); do not reinterpret time zones.",
