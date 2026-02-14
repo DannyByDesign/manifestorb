@@ -66,33 +66,42 @@ function firstArrayItem(value: unknown): Record<string, unknown> | null {
   return asRecord(item);
 }
 
-function summarizeTopEmail(result: RuntimeToolResult): string {
-  const top = firstArrayItem(result.data);
-  if (!top) return "Your inbox is clear right now.";
+function summarizeTopEmail(timeZone: string) {
+  return (result: RuntimeToolResult): string => {
+    const top = firstArrayItem(result.data);
+    if (!top) return "You're clear right now. Nothing is waiting in your inbox.";
 
-  const subject = asString(top.title) ?? "No subject";
-  const from = asString(top.from) ?? "unknown sender";
-  const date = asString(top.date);
-  const dateText = date ? ` (${date})` : "";
-  return `First inbox email: "${subject}" from ${from}${dateText}.`;
+    const subject = asString(top.title) ?? "No subject";
+    const from = asString(top.from) ?? "unknown sender";
+    const date = asString(top.date);
+    const receivedAt = date ? formatInTimeZone(date, timeZone) : null;
+    const receivedText = receivedAt ? `, received ${receivedAt}` : "";
+    return `Your newest inbox email is "${subject}" from ${from}${receivedText}.`;
+  };
 }
 
-function summarizeEmailList(result: RuntimeToolResult): string {
+function summarizeEmailList(timeZone: string) {
+  return (result: RuntimeToolResult): string => {
   const items = asArray(result.data).map((item) => asRecord(item)).filter(Boolean) as Record<
     string,
     unknown
   >[];
-  if (items.length === 0) return "No matching emails found right now.";
+  if (items.length === 0) return "I don't see matching emails right now.";
 
   const top = items.slice(0, 3).map((item) => {
     const subject = asString(item.title) ?? "No subject";
     const from = asString(item.from) ?? "unknown sender";
-    return `"${subject}" from ${from}`;
+    const date = asString(item.date);
+    const receivedAt = date ? formatInTimeZone(date, timeZone) : null;
+    return receivedAt
+      ? `"${subject}" from ${from} (${receivedAt})`
+      : `"${subject}" from ${from}`;
   });
 
-  if (items.length === 1) return `I found 1 matching email: ${top[0]}.`;
-  if (items.length <= 3) return `I found ${items.length} matching emails: ${top.join("; ")}.`;
-  return `I found ${items.length} matching emails. Top items: ${top.join("; ")}.`;
+  if (items.length === 1) return `I found one: ${top[0]}.`;
+  if (items.length <= 3) return `Top ${items.length} emails: ${top.join("; ")}.`;
+  return `I found ${items.length} matches. Top items: ${top.join("; ")}.`;
+  };
 }
 
 function pad2(value: number): string {
@@ -250,6 +259,15 @@ async function buildCalendarReadFastPath(params: {
   };
 }
 
+async function resolveFastPathTimeZone(session: RuntimeSession): Promise<string> {
+  const tz = await resolveDefaultCalendarTimeZone({
+    userId: session.input.userId,
+    emailAccountId: session.input.emailAccountId,
+  });
+  if ("error" in tz) return "UTC";
+  return tz.timeZone;
+}
+
 export async function matchRuntimeFastPath(params: {
   session: RuntimeSession;
   mode: RuntimeFastPathMode;
@@ -275,17 +293,19 @@ export async function matchRuntimeFastPath(params: {
   }
 
   if (!isMutatingRequest(normalized) && EMAIL_ENTITY_RE.test(normalized) && FIRST_OR_LATEST_RE.test(normalized)) {
+    const timeZone = await resolveFastPathTimeZone(session);
     return {
       type: "tool_call",
       toolName: "email.searchInbox",
       args: { limit: 1, fetchAll: false },
       reason: "email_first_or_latest",
-      summarize: summarizeTopEmail,
+      summarize: summarizeTopEmail(timeZone),
       onFailureText: "I couldn't load your inbox right now. Please try again in a moment.",
     };
   }
 
   if (!isMutatingRequest(normalized) && EMAIL_ENTITY_RE.test(normalized) && (UNREAD_OR_ATTENTION_RE.test(normalized) || LIST_OR_SHOW_RE.test(normalized))) {
+    const timeZone = await resolveFastPathTimeZone(session);
     return {
       type: "tool_call",
       toolName: "email.searchInbox",
@@ -295,7 +315,7 @@ export async function matchRuntimeFastPath(params: {
         fetchAll: false,
       },
       reason: "email_read_list",
-      summarize: summarizeEmailList,
+      summarize: summarizeEmailList(timeZone),
       onFailureText: "I couldn't load inbox messages right now. Please try again in a moment.",
     };
   }
@@ -326,17 +346,19 @@ export async function matchRuntimeFastPath(params: {
     }
 
     if (semantic?.intent === "inbox_first_or_latest") {
+      const timeZone = await resolveFastPathTimeZone(session);
       return {
         type: "tool_call",
         toolName: "email.searchInbox",
         args: { limit: 1, fetchAll: false },
         reason: "semantic_email_first_or_latest",
-        summarize: summarizeTopEmail,
+        summarize: summarizeTopEmail(timeZone),
         onFailureText: "I couldn't load your inbox right now. Please try again in a moment.",
       };
     }
 
     if (semantic?.intent === "inbox_attention") {
+      const timeZone = await resolveFastPathTimeZone(session);
       return {
         type: "tool_call",
         toolName: "email.searchInbox",
@@ -346,7 +368,7 @@ export async function matchRuntimeFastPath(params: {
           fetchAll: false,
         },
         reason: "semantic_email_attention",
-        summarize: summarizeEmailList,
+        summarize: summarizeEmailList(timeZone),
         onFailureText: "I couldn't load inbox messages right now. Please try again in a moment.",
       };
     }
@@ -372,12 +394,13 @@ export async function matchRuntimeFastPath(params: {
   }
 
   if (EMAIL_ENTITY_RE.test(normalized) && !isMutatingRequest(normalized)) {
+    const timeZone = await resolveFastPathTimeZone(session);
     return {
       type: "tool_call",
       toolName: "email.searchInbox",
       args: { limit: 5, fetchAll: false },
       reason: "recovery_email_read",
-      summarize: summarizeEmailList,
+      summarize: summarizeEmailList(timeZone),
       onFailureText: "I couldn't read your inbox right now. Please try again in a moment.",
     };
   }
