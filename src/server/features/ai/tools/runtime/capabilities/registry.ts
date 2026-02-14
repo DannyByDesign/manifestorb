@@ -31,7 +31,39 @@ export interface CapabilityDefinition {
   effects: CapabilityEffectDescriptor[];
 }
 
-const unknownObject = z.record(z.string(), z.unknown());
+const primitiveValueSchema = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.null(),
+]);
+const primitiveArraySchema = z.array(primitiveValueSchema);
+const objectLevel1Schema = z.record(
+  z.string(),
+  z.union([primitiveValueSchema, primitiveArraySchema]),
+);
+const objectLevel1ArraySchema = z.array(objectLevel1Schema);
+const objectLevel2Schema = z.record(
+  z.string(),
+  z.union([
+    primitiveValueSchema,
+    primitiveArraySchema,
+    objectLevel1Schema,
+    objectLevel1ArraySchema,
+  ]),
+);
+const objectLevel2ArraySchema = z.array(objectLevel2Schema);
+const unknownObject = z.record(
+  z.string(),
+  z.union([
+    primitiveValueSchema,
+    primitiveArraySchema,
+    objectLevel1Schema,
+    objectLevel1ArraySchema,
+    objectLevel2Schema,
+    objectLevel2ArraySchema,
+  ]),
+);
 const idListSchema = z.object({ ids: z.array(z.string().min(1)).min(1) }).strict();
 const threadIdSchema = z.object({ threadId: z.string().min(1) }).strict();
 const draftIdSchema = z.object({ draftId: z.string().min(1) }).strict();
@@ -723,8 +755,8 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       id: "planner.composeDayPlan",
       description: "Compose consolidated day plan summary from prioritized items.",
       inputSchema: z.object({
-        topEmailItems: z.array(z.unknown()),
-        calendarItems: z.array(z.unknown()),
+        topEmailItems: z.array(unknownObject),
+        calendarItems: z.array(unknownObject),
         focusSuggestions: z.array(z.string()).optional(),
       }).strict(),
       outputSchema: z.unknown(),
