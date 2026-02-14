@@ -74,60 +74,6 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
     includeSkillGuidance: routingPlan.includeSkillGuidance,
   });
 
-  const executeFastPathMatch = async (
-    fastPath: NonNullable<Awaited<ReturnType<typeof matchRuntimeFastPath>>>,
-    attempt: number,
-  ): Promise<RuntimeLoopResult | null> => {
-    if (fastPath.type === "respond") {
-      return {
-        text: fastPath.text,
-        stopReason: "completed",
-        attempts: attempt,
-      };
-    }
-
-    const result = await executeToolCall({
-      context,
-      decision: {
-        type: "tool_call",
-        toolName: fastPath.toolName,
-        args: fastPath.args,
-      },
-    });
-    results.push(result);
-
-    if (!result.success) {
-      return {
-        text: result.message ?? fastPath.onFailureText,
-        stopReason: "runtime_error",
-        attempts: attempt,
-      };
-    }
-
-    return {
-      text: fastPath.summarize(result),
-      stopReason: "completed",
-      attempts: attempt,
-    };
-  };
-  const runFastPath = async (
-    mode: "strict" | "recovery",
-    attempt: number,
-  ): Promise<RuntimeLoopResult | null> => {
-    const fastPath = await matchRuntimeFastPath({ session, mode });
-    if (!fastPath) return null;
-
-    session.input.logger.info("Runtime fast path matched", {
-      mode,
-      attempt,
-      reason: fastPath.reason,
-      type: fastPath.type,
-      toolName: fastPath.type === "tool_call" ? fastPath.toolName : null,
-    });
-
-    return executeFastPathMatch(fastPath, attempt);
-  };
-
   const composeAssistantReply = async (params: {
     mode: "final" | "clarification" | "approval_pending" | "error";
     fallbackText: string;
@@ -156,6 +102,68 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
       });
       return params.fallbackText;
     }
+  };
+  const executeFastPathMatch = async (
+    fastPath: NonNullable<Awaited<ReturnType<typeof matchRuntimeFastPath>>>,
+    attempt: number,
+  ): Promise<RuntimeLoopResult | null> => {
+    if (fastPath.type === "respond") {
+      return {
+        text: await composeAssistantReply({
+          mode: "final",
+          fallbackText: fastPath.text,
+        }),
+        stopReason: "completed",
+        attempts: attempt,
+      };
+    }
+
+    const result = await executeToolCall({
+      context,
+      decision: {
+        type: "tool_call",
+        toolName: fastPath.toolName,
+        args: fastPath.args,
+      },
+    });
+    results.push(result);
+
+    if (!result.success) {
+      return {
+        text: await composeAssistantReply({
+          mode: "error",
+          fallbackText: result.message ?? fastPath.onFailureText,
+        }),
+        stopReason: "runtime_error",
+        attempts: attempt,
+      };
+    }
+
+    return {
+      text: await composeAssistantReply({
+        mode: "final",
+        fallbackText: fastPath.summarize(result),
+      }),
+      stopReason: "completed",
+      attempts: attempt,
+    };
+  };
+  const runFastPath = async (
+    mode: "strict" | "recovery",
+    attempt: number,
+  ): Promise<RuntimeLoopResult | null> => {
+    const fastPath = await matchRuntimeFastPath({ session, mode });
+    if (!fastPath) return null;
+
+    session.input.logger.info("Runtime fast path matched", {
+      mode,
+      attempt,
+      reason: fastPath.reason,
+      type: fastPath.type,
+      toolName: fastPath.type === "tool_call" ? fastPath.toolName : null,
+    });
+
+    return executeFastPathMatch(fastPath, attempt);
   };
 
   if (routingPlan.fastPathMatch) {
