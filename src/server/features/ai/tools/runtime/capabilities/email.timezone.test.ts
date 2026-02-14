@@ -99,5 +99,18 @@ describe("runtime email timezone handling", () => {
     expect(filter.after?.toISOString()).toBe("2026-02-16T08:00:00.000Z");
     expect(filter.before?.toISOString()).toBe("2026-02-17T07:59:59.999Z");
   });
-});
 
+  it("does not force receivedByMe for inbox search", async () => {
+    const caps = createEmailCapabilities(buildEnv());
+
+    await caps.searchInbox({
+      query: "in:inbox",
+      limit: 1,
+    });
+
+    const filter = vi.mocked(searchEmailThreads).mock.calls[0]?.[1] as {
+      receivedByMe?: boolean;
+    };
+    expect(filter.receivedByMe).toBeUndefined();
+  });
+});

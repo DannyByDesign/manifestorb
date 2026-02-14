@@ -84,6 +84,8 @@ export async function generateRuntimeUserReply(params: {
       "- Write exactly one assistant reply for the user.",
       "- Use natural butler voice. Avoid robotic phrases like 'The latest item I found is'.",
       "- Keep it concise and direct.",
+      "- Do not open with filler like 'Certainly' unless the user explicitly asks for formality.",
+      "- Preserve concrete facts from fallback guidance exactly (especially dates/times); do not reinterpret time zones.",
       "- If mode is clarification, ask one concrete follow-up question.",
       "- If mode is approval_pending, clearly say approval is needed and what happens next.",
       "- Never claim success unless evidence confirms it.",

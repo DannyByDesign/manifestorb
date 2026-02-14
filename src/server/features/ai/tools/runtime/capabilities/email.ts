@@ -405,7 +405,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
     },
 
     async searchInbox(filter) {
-      return runSearchThreads({ ...filter, receivedByMe: true });
+      return runSearchThreads(filter);
     },
 
     async getThreadMessages(threadId) {
