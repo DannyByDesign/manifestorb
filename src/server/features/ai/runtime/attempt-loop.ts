@@ -78,29 +78,42 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
     mode: "final" | "clarification" | "approval_pending" | "error";
     fallbackText: string;
   }): Promise<string> => {
-    const budget = remainingBudgetMs(startedAt);
-    if (budget <= 1000) return params.fallbackText;
+    const runWriter = () =>
+      generateRuntimeUserReply({
+        session,
+        request: session.input.message,
+        results,
+        approvalsCount: context.session.artifacts.approvals.length,
+        mode: params.mode,
+        fallbackText: params.fallbackText,
+      });
 
     try {
       return await withRuntimeTimeout({
         operation: "response_write",
-        timeoutMs: Math.min(routingPlan.responseWriteTimeoutMs, budget),
-        run: () =>
-          generateRuntimeUserReply({
-            session,
-            request: session.input.message,
-            results,
-            approvalsCount: context.session.artifacts.approvals.length,
-            mode: params.mode,
-            fallbackText: params.fallbackText,
-          }),
+        timeoutMs: routingPlan.responseWriteTimeoutMs,
+        run: runWriter,
       });
     } catch (error) {
       session.input.logger.warn("Runtime response writer failed", {
         error,
         mode: params.mode,
+        phase: "primary",
       });
-      return params.fallbackText;
+
+      try {
+        return await withRuntimeTimeout({
+          operation: "response_write_retry",
+          timeoutMs: Math.max(routingPlan.responseWriteTimeoutMs, 25_000),
+          run: runWriter,
+        });
+      } catch (retryError) {
+        session.input.logger.error("Runtime response writer failed after retry", {
+          error: retryError,
+          mode: params.mode,
+        });
+        return "I ran into a temporary issue on my side. Please try again, and I'll pick it up from there.";
+      }
     }
   };
   const executeFastPathMatch = async (

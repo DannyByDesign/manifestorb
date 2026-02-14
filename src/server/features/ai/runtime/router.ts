@@ -122,7 +122,7 @@ export async function buildRuntimeRoutingPlan(params: {
       maxAttempts: 1,
       decisionTimeoutMs: 0,
       repairTimeoutMs: 0,
-      responseWriteTimeoutMs: 1_800,
+      responseWriteTimeoutMs: 20_000,
       decisionToolCatalogLimit: 0,
       includeSkillGuidance: false,
       fastPathMatch: strictFastPath,
