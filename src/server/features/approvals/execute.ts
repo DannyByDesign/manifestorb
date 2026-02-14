@@ -71,45 +71,6 @@ function parseToolExecutePayload(payload: {
   return payload as unknown as ToolExecutePayload;
 }
 
-function parseLegacyCapabilityExecutePayload(payload: {
-  [key: string]: unknown;
-}): ToolExecutePayload | null {
-  if (payload.actionType !== "capability_execute") return null;
-  if (typeof payload.capabilityId !== "string" || payload.capabilityId.length === 0) {
-    return null;
-  }
-  return {
-    actionType: "tool_execute",
-    toolName:
-      typeof payload.capability === "string" && payload.capability.length > 0
-        ? payload.capability
-        : payload.capabilityId,
-    args:
-      payload.args && typeof payload.args === "object" && !Array.isArray(payload.args)
-        ? (payload.args as Record<string, unknown>)
-        : undefined,
-    description: typeof payload.description === "string" ? payload.description : undefined,
-    emailAccountId:
-      typeof payload.emailAccountId === "string" ? payload.emailAccountId : undefined,
-    conversationId:
-      typeof payload.conversationId === "string" ? payload.conversationId : undefined,
-    threadId: typeof payload.threadId === "string" ? payload.threadId : undefined,
-    messageId: typeof payload.messageId === "string" ? payload.messageId : undefined,
-    sourceEmailMessageId:
-      typeof payload.sourceEmailMessageId === "string"
-        ? payload.sourceEmailMessageId
-        : undefined,
-    sourceEmailThreadId:
-      typeof payload.sourceEmailThreadId === "string"
-        ? payload.sourceEmailThreadId
-        : undefined,
-    sourceCalendarEventId:
-      typeof payload.sourceCalendarEventId === "string"
-        ? payload.sourceCalendarEventId
-        : undefined,
-  };
-}
-
 function parseRuleActionExecutePayload(payload: {
   [key: string]: unknown;
 }): RuleActionExecutePayload | null {
@@ -348,13 +309,8 @@ export async function executeApprovalRequest(params: {
       );
     }
 
-    if (
-      payload.actionType === "tool_execute" ||
-      payload.actionType === "capability_execute"
-    ) {
-      const toolPayload =
-        parseToolExecutePayload(payload as Record<string, unknown>) ??
-        parseLegacyCapabilityExecutePayload(payload as Record<string, unknown>);
+    if (payload.actionType === "tool_execute") {
+      const toolPayload = parseToolExecutePayload(payload as Record<string, unknown>);
       if (!toolPayload) {
         throw new Error("Invalid tool approval payload");
       }
@@ -386,7 +342,7 @@ export async function executeApprovalRequest(params: {
         sourceEmailThreadId: toolPayload.sourceEmailThreadId,
       });
 
-      const capabilityArgs =
+      const toolArgs =
         toolPayload.args &&
         typeof toolPayload.args === "object" &&
         !Array.isArray(toolPayload.args)
@@ -397,13 +353,13 @@ export async function executeApprovalRequest(params: {
         toolName: toolPayload.toolName as Parameters<
           typeof executeRuntimeTool
         >[0]["toolName"],
-        args: capabilityArgs,
+        args: toolArgs,
         capabilities,
       });
 
       if (!executionResult.success) {
         throw new Error(
-          `Approved action execution failed: ${executionResult.error ?? executionResult.message ?? "capability execution failed"}`,
+          `Approved action execution failed: ${executionResult.error ?? executionResult.message ?? "tool execution failed"}`,
         );
       }
 

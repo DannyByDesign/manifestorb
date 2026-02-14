@@ -177,7 +177,7 @@ model EmailAccount {
   account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   labels           Label[]
-  rules            Rule[]
+  actions          Action[]
   executedRules    ExecutedRule[]
   newsletters      Newsletter[]
   coldEmails       ColdEmail[] // @deprecated - kept for backward compatibility during migration
@@ -411,60 +411,15 @@ model Label {
   @@unique([name, emailAccountId])
 }
 
-model Rule {
-  id           String   @id @default(cuid())
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  name         String
-  actions      Action[]
-  enabled      Boolean  @default(true)
-  isTemporary  Boolean  @default(false)
-  expiresAt    DateTime?
-  automate     Boolean  @default(true) // @deprecated - No longer used. All rules are now automated. Kept for historical data only.
-  runOnThreads Boolean  @default(false) // if disabled, only runs on individual emails
-
-  emailAccountId String
-  emailAccount   EmailAccount @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
-
-  executedRules ExecutedRule[]
-
-  // conditions: ai, group, static, category
-  conditionalOperator LogicalOperator @default(AND)
-
-  // ai conditions
-  instructions String?
-
-  // group condition
-  groupId String? @unique
-  group   Group?  @relation(fields: [groupId], references: [id], onDelete: Cascade)
-
-  // static condition
-  // automatically apply this rule if it matches a filter. supports regex
-  from    String?
-  to      String?
-  subject String?
-  body    String?
-
-  // category condition
-  // only apply to (or do not apply to) senders in these categories
-  categoryFilterType CategoryFilterType? // deprecated
-  categoryFilters    Category[] // deprecated
-
-  systemType SystemType?
-
-  promptText String? // natural language for this rule for prompt file. prompt file is combination of these fields
-
-  @@unique([name, emailAccountId])
-  @@unique([emailAccountId, systemType])
-}
-
 model Action {
   id        String     @id @default(cuid())
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
   type      ActionType
   ruleId    String
-  rule      Rule       @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  emailAccountId String
+  emailAccount   EmailAccount @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
 
   label          String? // labelName - labelId is the source of truth, and we use it when set
   labelId        String? // Stable ID: Label ID (Gmail) or Category ID (Outlook)
@@ -480,6 +435,7 @@ model Action {
   payload        Json?
 
   @@index([ruleId])
+  @@index([emailAccountId])
 }
 
 // Rule/Action models represent the rules and actions that the AI can take.
@@ -495,9 +451,8 @@ model ExecutedRule {
   reason        String?
   matchMetadata Json? // Stores structured match information (e.g., learned patterns, match types)
 
-  // may be null if the rule was deleted
+  // Legacy Rule ID kept for history only.
   ruleId String?
-  rule   Rule?   @relation(fields: [ruleId], references: [id])
 
   // storing user here in case rule was deleted
   emailAccountId String
@@ -581,11 +536,8 @@ model ScheduledAction {
 }
 
 // Notes:
-// In the past groups stood on their own. Now they are attached to a rule.
-// A group without a rule does not do anything anymore. I may delete all detached groups in the future, and then make rule required
-// "Prompt" is no longer in use. It was used to generate the group, but now it's based on the rule the group is attached to.
+// "Prompt" is no longer in use.
 // "Name" is no longer in use although still required.
-// If we really wanted we could remove Group and just have a relation between Rule and GroupItem, but leaving as is for now.
 model Group {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
@@ -594,7 +546,6 @@ model Group {
   prompt    String?
 
   items GroupItem[]
-  rule  Rule?
 
   emailAccountId String
   emailAccount   EmailAccount @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
@@ -632,7 +583,6 @@ model Category {
   emailAccount   EmailAccount @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
 
   emailSenders Newsletter[]
-  rules        Rule[]
 
   @@unique([name, emailAccountId])
 }

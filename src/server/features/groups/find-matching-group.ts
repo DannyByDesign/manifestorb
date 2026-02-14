@@ -16,9 +16,9 @@ export async function getGroupsWithRules({
   return prisma.group.findMany({
     where: {
       emailAccountId,
-      rule: enabledOnly ? { enabled: true } : { isNot: null },
+      ...(enabledOnly ? { items: { some: {} } } : {}),
     },
-    include: { items: true, rule: { include: { actions: true } } },
+    include: { items: true },
   });
 }
 

@@ -1,5 +1,5 @@
 import type { gmail_v1 } from "@googleapis/gmail";
-import type { Prisma } from "@/generated/prisma/client";
+import type { SystemType } from "@/generated/prisma/enums";
 import type {
   Recipient,
   NullableOption,
@@ -13,9 +13,15 @@ export function isDefined<T>(value: T | undefined | null): value is T {
   return value !== undefined && value !== null;
 }
 
-export type RuleWithActions = Prisma.RuleGetPayload<{
-  include: { actions: true };
-}>;
+export type RuleWithActions = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  instructions: string | null;
+  systemType: SystemType | null;
+  actions: Array<Record<string, unknown>>;
+  [key: string]: unknown;
+};
 
 export type BatchError = {
   error: {

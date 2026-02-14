@@ -651,9 +651,9 @@ process.env.TZ = "UTC"; // Mutates global process state
 
 ---
 
-### 27. [OPEN] Runtime Migration Follow-Up - Drop Legacy `Rule` Table
+### 27. [RESOLVED] Runtime Migration Follow-Up - Drop Legacy `Rule` Table
 
-**Status:** ⚠️ **Open / In Progress**.
+**Status:** ✅ **Resolved (2026-02-14)**.
 
 **Issue:** OpenClaw runtime/rule-plane migration removed direct `prisma.rule` usage, but the legacy `Rule` model/table remains in schema for compatibility.
 
@@ -663,15 +663,29 @@ process.env.TZ = "UTC"; // Mutates global process state
 
 ---
 
-### 28. [OPEN] Runtime Migration Follow-Up - Remove Legacy Approval Payload Compatibility
+### 28. [RESOLVED] Runtime Migration Follow-Up - Remove Legacy Approval Payload Compatibility
 
-**Status:** ⚠️ **Open / In Progress**.
+**Status:** ✅ **Resolved (2026-02-14)**.
 
 **Issue:** Approval execution still accepts legacy `capability_execute` payloads for backwards compatibility.
 
 **Impact:** Compatibility code keeps legacy naming and branch paths alive longer than needed, increasing maintenance surface.
 
 **Fix:** Migrate remaining callers to `tool_execute`, remove legacy parser branch from approvals execution, and tighten payload validation.
+
+---
+
+### 29. [OPEN] Approval Rules Test Harness Still Mocks Removed `approvalPreference` Model
+
+**Status:** ⚠️ **Open / Follow-up Needed**.
+
+**Issue:** `approvals/rules` and `approvals/policy` tests still mock `prisma.approvalPreference`, but runtime reads canonical approval rules from `prisma.canonicalRule`.
+
+**Location:** `src/server/features/approvals/rules.test.ts`, `src/server/features/approvals/policy.test.ts`
+
+**Impact:** Test suite reports runtime failures (`Cannot read properties of undefined (reading 'findFirst'/'findMany')`) and no longer validates current approval-rule behavior.
+
+**Fix:** Update mocks to expose `prisma.canonicalRule` query/update methods and rewrite fixtures to canonical rule payloads.
 
 ---
 

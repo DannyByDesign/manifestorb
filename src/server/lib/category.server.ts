@@ -1,14 +1,11 @@
 import prisma from "@/server/db/client";
-import type { Prisma } from "@/generated/prisma/client";
 
-export type CategoryWithRules = Prisma.CategoryGetPayload<{
-  select: {
-    id: true;
-    name: true;
-    description: true;
-    rules: { select: { id: true; name: true } };
-  };
-}>;
+export type CategoryWithRules = {
+  id: string;
+  name: string;
+  description: string | null;
+  rules: Array<{ id: string; name: string }>;
+};
 
 export const getUserCategories = async ({
   emailAccountId,
@@ -32,8 +29,10 @@ export const getUserCategoriesWithRules = async ({
       id: true,
       name: true,
       description: true,
-      rules: { select: { id: true, name: true } },
     },
   });
-  return categories;
+  return categories.map((category) => ({
+    ...category,
+    rules: [],
+  }));
 };

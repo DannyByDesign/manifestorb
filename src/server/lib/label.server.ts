@@ -48,7 +48,7 @@ export async function labelMessageAndSync({
       const updateResult = await prisma.action.updateMany({
         where: {
           labelId,
-          rule: { emailAccountId },
+          emailAccountId,
         },
         data: { labelId: result.actualLabelId },
       });

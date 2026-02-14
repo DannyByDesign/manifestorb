@@ -14,19 +14,18 @@ Epics:
 - `[x]` Epic 5: Replace Planner Stack With Tool-First Runtime Decisioning
 - `[x]` Epic 6: Inbox/Calendar Native Tool Packs
 - `[x]` Epic 7: Rule Plane Becomes Only Authority
-- `[-]` Epic 8: Clean Database Redesign + Drift Elimination
+- `[x]` Epic 8: Clean Database Redesign + Drift Elimination
 - `[x]` Epic 9: Surface/API Latency + Response Contract Cleanup
-- `[-]` Epic 10: Legacy Codebase Cleanup
+- `[x]` Epic 10: Legacy Codebase Cleanup
 
 Cutover Checks:
 - `[x]` `rg "CapabilityName|capabilityNameSchema|executeRuntimeCapability|prisma\\.rule" src prisma`
 - `[x]` Rule-plane-only mutation enforcement
-- `[-]` Legacy tables/code paths removed
+- `[x]` Legacy tables/code paths removed
 - `[x]` Runtime is single-path tool-first attempt loop
 
 Remaining Work:
-- `Rule` table/model still exists as a legacy compatibility surface and has not been backfilled/dropped yet.
-- Final legacy runtime naming cleanup (remaining `capability_*` compatibility payload parsing) is still present for backward compatibility.
+- None. Final follow-up items (legacy `Rule` table drop/backfill and `capability_execute` compatibility removal) completed on 2026-02-14.
 
 ## 1. Intent
 This plan replaces the current closed-catalog capability/planner stack with an OpenClaw-style runtime-first architecture, while keeping policy-plane enforcement as the single source of truth for permissions, automations, and preferences.

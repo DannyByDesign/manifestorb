@@ -1236,7 +1236,7 @@ async function lazyUpdateActionLabelId({
       where: {
         label: labelName,
         labelId: null,
-        rule: { emailAccountId },
+        emailAccountId,
       },
       data: { labelId },
     });
@@ -1271,7 +1271,7 @@ async function lazyUpdateActionFolderId({
       where: {
         folderName,
         folderId: null,
-        rule: { emailAccountId },
+        emailAccountId,
       },
       data: { folderId },
     });

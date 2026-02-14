@@ -185,17 +185,3 @@ export async function enforcePolicyForTool(params: {
     approval,
   };
 }
-
-export async function enforcePolicyForCapability(params: {
-  context: PolicyExecutionContext;
-  capabilityId: string;
-  args: Record<string, unknown>;
-  definition: RuntimeToolMetadata;
-}): Promise<PolicyEnforcementResult> {
-  return enforcePolicyForTool({
-    context: params.context,
-    toolName: params.capabilityId,
-    args: params.args,
-    definition: params.definition,
-  });
-}
