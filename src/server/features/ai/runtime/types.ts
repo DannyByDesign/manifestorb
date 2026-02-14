@@ -3,6 +3,7 @@ import type { Logger } from "@/server/lib/logger";
 import type { SkillCapabilities } from "@/server/features/ai/tools/runtime/capabilities";
 import type { RuntimeSkillSnapshot } from "@/server/features/ai/skills/types";
 import type { UserPromptConfig } from "@/server/features/ai/system-prompt";
+import type { RuntimeSemanticContract } from "@/server/features/ai/runtime/semantic-contract";
 import type {
   ToolExecutionArtifacts,
   ToolExecutionSummary,
@@ -29,6 +30,7 @@ export interface OpenWorldTurnInput {
 export interface RuntimeSession {
   input: OpenWorldTurnInput;
   capabilities: SkillCapabilities;
+  semantic: RuntimeSemanticContract;
   skillSnapshot: RuntimeSkillSnapshot;
   userPromptConfig?: UserPromptConfig;
   tools: ToolSet;

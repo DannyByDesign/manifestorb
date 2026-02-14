@@ -1,6 +1,5 @@
 import { toZonedTime } from "date-fns-tz";
 import { resolveDefaultCalendarTimeZone } from "@/server/features/ai/tools/calendar-time";
-import { classifySemanticFastPathIntent } from "@/server/features/ai/runtime/fast-path-semantic";
 import type { RuntimeSession } from "@/server/features/ai/runtime/types";
 import type { RuntimeToolResult } from "@/server/features/ai/tools/contracts/tool-result";
 
@@ -328,12 +327,9 @@ export async function matchRuntimeFastPath(params: {
   if (calendarMatch) return calendarMatch;
 
   if (!isMutatingRequest(normalized)) {
-    const semantic = await classifySemanticFastPathIntent({
-      message: normalized,
-      mode,
-    });
+    const semanticIntent = session.semantic.intent;
 
-    if (semantic?.intent === "greeting") {
+    if (semanticIntent === "greeting") {
       return {
         type: "respond",
         reason: "semantic_greeting",
@@ -341,7 +337,7 @@ export async function matchRuntimeFastPath(params: {
       };
     }
 
-    if (semantic?.intent === "capabilities") {
+    if (semanticIntent === "capabilities") {
       return {
         type: "respond",
         reason: "semantic_capabilities",
@@ -349,35 +345,24 @@ export async function matchRuntimeFastPath(params: {
       };
     }
 
-    if (semantic?.intent === "inbox_first_or_latest") {
+    if (semanticIntent === "inbox_read" || semanticIntent === "inbox_attention") {
       const timeZone = await resolveFastPathTimeZone(session);
-      return {
-        type: "tool_call",
-        toolName: "email.searchInbox",
-        args: { limit: 1, fetchAll: false },
-        reason: "semantic_email_first_or_latest",
-        summarize: summarizeTopEmail(timeZone),
-        onFailureText: "I couldn't load your inbox right now. Please try again in a moment.",
-      };
-    }
-
-    if (semantic?.intent === "inbox_attention") {
-      const timeZone = await resolveFastPathTimeZone(session);
+      const attentionQuery = semanticIntent === "inbox_attention" ? "is:unread" : "";
       return {
         type: "tool_call",
         toolName: "email.searchInbox",
         args: {
-          query: "is:unread",
-          limit: 10,
+          query: attentionQuery,
+          limit: semanticIntent === "inbox_attention" ? 10 : 1,
           fetchAll: false,
         },
-        reason: "semantic_email_attention",
-        summarize: summarizeEmailList(timeZone),
+        reason: semanticIntent === "inbox_attention" ? "semantic_email_attention" : "semantic_email_first_or_latest",
+        summarize: semanticIntent === "inbox_attention" ? summarizeEmailList(timeZone) : summarizeTopEmail(timeZone),
         onFailureText: "I couldn't load inbox messages right now. Please try again in a moment.",
       };
     }
 
-    if (semantic?.intent === "calendar_read") {
+    if (semanticIntent === "calendar_read") {
       const semanticCalendar = await buildCalendarReadFastPath({
         session,
         normalized,

@@ -1,5 +1,6 @@
 import { matchRuntimeFastPath, type RuntimeFastPathMatch } from "@/server/features/ai/runtime/fast-path";
 import type { RuntimeSession } from "@/server/features/ai/runtime/types";
+import type { RuntimeRouteProfile } from "@/server/features/ai/runtime/semantic-contract";
 
 export type RuntimeRoutingLane =
   | "direct_response"
@@ -81,10 +82,29 @@ function isCrossDomainRequest(message: string): boolean {
   return signals.filter(Boolean).length >= 2;
 }
 
-function classifyPlannerLane(message: string): {
+function classifyPlannerLane(message: string, semanticProfile?: RuntimeRouteProfile): {
   lane: "planner_fast" | "planner_standard" | "planner_deep";
   reason: string;
 } {
+  if (semanticProfile === "deep") {
+    return {
+      lane: "planner_deep",
+      reason: "semantic_profile_deep",
+    };
+  }
+  if (semanticProfile === "standard") {
+    return {
+      lane: "planner_standard",
+      reason: "semantic_profile_standard",
+    };
+  }
+  if (semanticProfile === "fast") {
+    return {
+      lane: "planner_fast",
+      reason: "semantic_profile_fast",
+    };
+  }
+
   const count = tokenCount(message);
   const isMutation = MUTATION_VERB_RE.test(message);
   const hasLookupVerb = LOOKUP_VERB_RE.test(message);
@@ -139,7 +159,7 @@ export async function buildRuntimeRoutingPlan(params: {
     };
   }
 
-  const planner = classifyPlannerLane(normalized);
+  const planner = classifyPlannerLane(normalized, session.semantic.routeProfile);
   const preset = ROUTE_PRESETS[planner.lane];
   return {
     lane: planner.lane,

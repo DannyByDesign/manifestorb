@@ -6,9 +6,10 @@ This folder contains the assistant runtime used by inbox/calendar surfaces.
 
 1. `message-processor.ts` receives the user turn.
 2. `runtime/session.ts` builds runtime context:
+   - semantic turn contract (embedding-first with lexical fallback)
    - tool capabilities
    - skill prompt snapshot
-   - policy-filtered runtime tool registry
+   - semantic + policy-filtered runtime tool registry
 3. `runtime/router.ts` selects a routing lane and per-lane budgets:
    - `direct_response` (no tools)
    - `macro_tool` (deterministic one-tool execution)

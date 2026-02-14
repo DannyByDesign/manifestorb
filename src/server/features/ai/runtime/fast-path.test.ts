@@ -19,6 +19,81 @@ function mockLogger() {
   };
 }
 
+function buildSemanticForTest(message: string): RuntimeSession["semantic"] {
+  const normalized = message.toLowerCase();
+  const mutationRe =
+    /\b(create|update|edit|change|delete|remove|archive|trash|send|reply|move|label|reschedule|book|cancel|block|unsubscribe|mark)\b/u;
+
+  if (/^(hi|hello|hey)\b/u.test(normalized)) {
+    return {
+      intent: "greeting",
+      domain: "general",
+      requestedOperation: "meta",
+      complexity: "simple",
+      routeProfile: "fast",
+      riskLevel: "low",
+      confidence: 0.9,
+      toolHints: [],
+      source: "lexical",
+    };
+  }
+
+  if (/\bwhat can you do\b/u.test(normalized)) {
+    return {
+      intent: "capabilities",
+      domain: "general",
+      requestedOperation: "meta",
+      complexity: "simple",
+      routeProfile: "fast",
+      riskLevel: "low",
+      confidence: 0.9,
+      toolHints: [],
+      source: "lexical",
+    };
+  }
+
+  if (/\bcalendar|meeting|event|schedule\b/u.test(normalized) && !mutationRe.test(normalized)) {
+    return {
+      intent: "calendar_read",
+      domain: "calendar",
+      requestedOperation: "read",
+      complexity: "simple",
+      routeProfile: "fast",
+      riskLevel: "low",
+      confidence: 0.85,
+      toolHints: ["group:calendar_read"],
+      source: "lexical",
+    };
+  }
+
+  if (/\binbox|email|thread|message\b/u.test(normalized) && !mutationRe.test(normalized)) {
+    const attention = /\bunread|attention|reply\b/u.test(normalized);
+    return {
+      intent: attention ? "inbox_attention" : "inbox_read",
+      domain: "inbox",
+      requestedOperation: "read",
+      complexity: "simple",
+      routeProfile: "fast",
+      riskLevel: "low",
+      confidence: 0.85,
+      toolHints: ["group:inbox_read"],
+      source: "lexical",
+    };
+  }
+
+  return {
+    intent: "general",
+    domain: "general",
+    requestedOperation: mutationRe.test(normalized) ? "mutate" : "read",
+    complexity: mutationRe.test(normalized) ? "moderate" : "simple",
+    routeProfile: mutationRe.test(normalized) ? "standard" : "fast",
+    riskLevel: mutationRe.test(normalized) ? "medium" : "low",
+    confidence: 0.62,
+    toolHints: [],
+    source: "lexical",
+  };
+}
+
 function buildSession(message: string): RuntimeSession {
   return {
     input: {
@@ -31,6 +106,7 @@ function buildSession(message: string): RuntimeSession {
       logger: mockLogger(),
     },
     capabilities: {} as RuntimeSession["capabilities"],
+    semantic: buildSemanticForTest(message),
     skillSnapshot: {
       selectedSkillIds: [],
       promptSection: "",
@@ -117,7 +193,7 @@ describe("runtime fast path", () => {
     }
   });
 
-  it("uses safe recovery read path when strict matching misses", async () => {
+  it("uses semantic inbox read path even when keyword matching is weak", async () => {
     const strict = await matchRuntimeFastPath({
       session: buildSession("inbox status"),
       mode: "strict",
@@ -127,7 +203,7 @@ describe("runtime fast path", () => {
       mode: "recovery",
     });
 
-    expect(strict).toBeNull();
+    expect(strict?.type).toBe("tool_call");
     expect(recovery?.type).toBe("tool_call");
     if (recovery?.type === "tool_call") {
       expect(recovery.toolName).toBe("email.searchInbox");

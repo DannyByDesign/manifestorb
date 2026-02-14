@@ -1,0 +1,148 @@
+import { describe, expect, it } from "vitest";
+import { z } from "zod";
+import { filterToolRegistry } from "@/server/features/ai/tools/fabric/policy-filter";
+import type { RuntimeToolDefinition } from "@/server/features/ai/tools/fabric/types";
+
+const baseSchema = z.object({}).strict();
+
+function tool(params: {
+  toolName: string;
+  readOnly: boolean;
+  riskLevel: "safe" | "caution" | "dangerous";
+  families: RuntimeToolDefinition["metadata"]["intentFamilies"];
+  tags: string[];
+}): RuntimeToolDefinition {
+  return {
+    toolName: params.toolName,
+    description: params.toolName,
+    parameters: baseSchema,
+    metadata: {
+      id: params.toolName,
+      description: params.toolName,
+      inputSchema: baseSchema,
+      outputSchema: z.unknown(),
+      readOnly: params.readOnly,
+      riskLevel: params.riskLevel,
+      approvalOperation: "query",
+      intentFamilies: params.families,
+      tags: params.tags,
+      effects: [
+        {
+          resource: "email",
+          mutates: !params.readOnly,
+        },
+      ],
+    },
+    execute: async () => ({ success: true, data: [] }),
+  };
+}
+
+const registry: RuntimeToolDefinition[] = [
+  tool({
+    toolName: "email.searchInbox",
+    readOnly: true,
+    riskLevel: "safe",
+    families: ["inbox_read"],
+    tags: ["email", "inbox", "search"],
+  }),
+  tool({
+    toolName: "email.batchTrash",
+    readOnly: false,
+    riskLevel: "dangerous",
+    families: ["inbox_mutate"],
+    tags: ["email", "trash"],
+  }),
+  tool({
+    toolName: "calendar.listEvents",
+    readOnly: true,
+    riskLevel: "safe",
+    families: ["calendar_read"],
+    tags: ["calendar", "events", "list"],
+  }),
+  tool({
+    toolName: "calendar.deleteEvent",
+    readOnly: false,
+    riskLevel: "dangerous",
+    families: ["calendar_mutate"],
+    tags: ["calendar", "delete"],
+  }),
+  tool({
+    toolName: "policy.setApproval",
+    readOnly: false,
+    riskLevel: "caution",
+    families: ["calendar_policy"],
+    tags: ["policy", "approval"],
+  }),
+  tool({
+    toolName: "planner.planDay",
+    readOnly: true,
+    riskLevel: "safe",
+    families: ["cross_surface_planning"],
+    tags: ["planner", "schedule"],
+  }),
+];
+
+describe("filterToolRegistry", () => {
+  it("returns no tools for greeting/capability semantic intents", () => {
+    const filtered = filterToolRegistry(registry, {
+      message: "hello",
+      semantic: {
+        intent: "greeting",
+        domain: "general",
+        requestedOperation: "meta",
+        complexity: "simple",
+        routeProfile: "fast",
+        riskLevel: "low",
+        confidence: 0.99,
+        toolHints: [],
+        source: "lexical",
+      },
+    });
+
+    expect(filtered).toEqual([]);
+  });
+
+  it("keeps inbox read tools and excludes unrelated domain tools", () => {
+    const filtered = filterToolRegistry(registry, {
+      message: "find the first email in my inbox",
+      semantic: {
+        intent: "inbox_read",
+        domain: "inbox",
+        requestedOperation: "read",
+        complexity: "simple",
+        routeProfile: "fast",
+        riskLevel: "low",
+        confidence: 0.9,
+        toolHints: ["group:inbox_read"],
+        source: "lexical",
+      },
+      includeDangerous: false,
+    });
+
+    const names = filtered.map((definition) => definition.toolName);
+    expect(names).toContain("email.searchInbox");
+    expect(names).not.toContain("calendar.listEvents");
+    expect(names).not.toContain("email.batchTrash");
+  });
+
+  it("allows dangerous tools only when semantic risk is high and includeDangerous is true", () => {
+    const filtered = filterToolRegistry(registry, {
+      message: "delete this calendar event",
+      includeDangerous: true,
+      semantic: {
+        intent: "calendar_mutation",
+        domain: "calendar",
+        requestedOperation: "mutate",
+        complexity: "moderate",
+        routeProfile: "standard",
+        riskLevel: "high",
+        confidence: 0.87,
+        toolHints: ["group:calendar_mutate"],
+        source: "lexical",
+      },
+    });
+
+    const names = filtered.map((definition) => definition.toolName);
+    expect(names).toContain("calendar.deleteEvent");
+  });
+});

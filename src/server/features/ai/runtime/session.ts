@@ -4,12 +4,13 @@ import { buildSkillPromptSnapshot } from "@/server/features/ai/skills/snapshot";
 import { assembleRuntimeTools } from "@/server/features/ai/tools/fabric/assembler";
 import { filterToolRegistry } from "@/server/features/ai/tools/fabric/policy-filter";
 import { buildRuntimeToolRegistry, buildToolNameLookup } from "@/server/features/ai/tools/fabric/registry";
+import { classifyRuntimeSemanticContract } from "@/server/features/ai/runtime/semantic-contract";
 import prisma from "@/server/db/client";
 import type { RuntimeSession, OpenWorldTurnInput } from "@/server/features/ai/runtime/types";
 import type { ToolExecutionSummary } from "@/server/features/ai/tools/fabric/types";
 
 export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<RuntimeSession> {
-  const [capabilities, userAiConfig] = await Promise.all([
+  const [capabilities, userAiConfig, semantic] = await Promise.all([
     createCapabilities({
       userId: input.userId,
       emailAccountId: input.emailAccountId,
@@ -30,6 +31,10 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
         conversationCategories: true,
       },
     }),
+    classifyRuntimeSemanticContract({
+      message: input.message,
+      logger: input.logger,
+    }),
   ]);
 
   const loadedSkills = loadRuntimeSkills();
@@ -38,11 +43,25 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
     skills: loadedSkills,
   });
 
-  const registry = filterToolRegistry(buildRuntimeToolRegistry(), {
-    includeDangerous: true,
+  const fullRegistry = buildRuntimeToolRegistry();
+  const registry = filterToolRegistry(fullRegistry, {
+    includeDangerous: semantic.riskLevel === "high" && semantic.requestedOperation !== "read",
     message: input.message,
+    semantic,
   });
   const toolLookup = buildToolNameLookup(registry);
+
+  input.logger.info("Runtime semantic gate applied", {
+    semanticIntent: semantic.intent,
+    semanticDomain: semantic.domain,
+    semanticOperation: semantic.requestedOperation,
+    semanticComplexity: semantic.complexity,
+    semanticRouteProfile: semantic.routeProfile,
+    semanticRiskLevel: semantic.riskLevel,
+    semanticConfidence: semantic.confidence,
+    toolCountBefore: fullRegistry.length,
+    toolCountAfter: registry.length,
+  });
 
   const artifacts = {
     approvals: [] as Array<{ id: string; requestPayload?: unknown }>,
@@ -73,6 +92,7 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
   return {
     input,
     capabilities,
+    semantic,
     skillSnapshot,
     userPromptConfig: userAiConfig
       ? {

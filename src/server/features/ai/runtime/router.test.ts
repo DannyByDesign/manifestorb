@@ -19,6 +19,69 @@ function mockLogger() {
   };
 }
 
+function buildSemanticForTest(message: string): RuntimeSession["semantic"] {
+  const normalized = message.toLowerCase();
+  const mutationRe =
+    /\b(create|update|edit|change|delete|remove|archive|trash|send|reply|move|label|reschedule|book|cancel|approve|deny)\b/u;
+  const deepRe = /\b(if|unless|otherwise|except|only if|and then|followed by|across)\b/u;
+
+  if (/^(hi|hello|hey)\b/u.test(normalized)) {
+    return {
+      intent: "greeting",
+      domain: "general",
+      requestedOperation: "meta",
+      complexity: "simple",
+      routeProfile: "fast",
+      riskLevel: "low",
+      confidence: 0.9,
+      toolHints: [],
+      source: "lexical",
+    };
+  }
+
+  if (deepRe.test(normalized)) {
+    return {
+      intent: "cross_surface_plan",
+      domain: "cross_surface",
+      requestedOperation: "mixed",
+      complexity: "complex",
+      routeProfile: "deep",
+      riskLevel: "medium",
+      confidence: 0.8,
+      toolHints: ["group:cross_surface_planning"],
+      source: "lexical",
+    };
+  }
+
+  if (mutationRe.test(normalized)) {
+    return {
+      intent: normalized.includes("calendar") || normalized.includes("meeting")
+        ? "calendar_mutation"
+        : "inbox_mutation",
+      domain: normalized.includes("calendar") || normalized.includes("meeting") ? "calendar" : "inbox",
+      requestedOperation: "mutate",
+      complexity: "moderate",
+      routeProfile: "standard",
+      riskLevel: "medium",
+      confidence: 0.8,
+      toolHints: [],
+      source: "lexical",
+    };
+  }
+
+  return {
+    intent: "general",
+    domain: "general",
+    requestedOperation: "read",
+    complexity: "simple",
+    routeProfile: "fast",
+    riskLevel: "low",
+    confidence: 0.62,
+    toolHints: [],
+    source: "lexical",
+  };
+}
+
 function buildSession(message: string): RuntimeSession {
   return {
     input: {
@@ -31,6 +94,7 @@ function buildSession(message: string): RuntimeSession {
       logger: mockLogger(),
     },
     capabilities: {} as RuntimeSession["capabilities"],
+    semantic: buildSemanticForTest(message),
     skillSnapshot: {
       selectedSkillIds: [],
       promptSection: "",
