@@ -28,11 +28,18 @@ function compact(value: unknown, depth = 0): unknown {
   return out;
 }
 
-function formatToolCatalog(session: RuntimeSession, attempt: number): string {
-  const maxItems =
+function formatToolCatalog(
+  session: RuntimeSession,
+  attempt: number,
+  routeToolCatalogLimit?: number,
+): string {
+  const baseLimit =
     attempt <= 1
       ? MAX_TOOL_CATALOG_ITEMS_FIRST_ATTEMPT
       : MAX_TOOL_CATALOG_ITEMS_FOLLOWUP;
+  const maxItems = routeToolCatalogLimit
+    ? Math.max(1, Math.min(baseLimit, routeToolCatalogLimit))
+    : baseLimit;
   const selected = session.toolRegistry.slice(0, maxItems);
   const lines = selected
     .map((tool) => {
@@ -91,13 +98,19 @@ export async function generateRuntimeDecision(params: {
   session: RuntimeSession;
   executedResults: RuntimeToolResult[];
   attempt: number;
+  route?: {
+    toolCatalogLimit?: number;
+    includeSkillGuidance?: boolean;
+  };
 }): Promise<RuntimeDecision> {
-  const { session, executedResults, attempt } = params;
+  const { session, executedResults, attempt, route } = params;
   const modelOptions = getModel("economy");
-  const toolCatalog = formatToolCatalog(session, attempt);
-  const skillSection = session.skillSnapshot.promptSection
-    ? session.skillSnapshot.promptSection.slice(0, MAX_SKILL_SECTION_CHARS)
-    : "";
+  const toolCatalog = formatToolCatalog(session, attempt, route?.toolCatalogLimit);
+  const includeSkillGuidance = route?.includeSkillGuidance ?? true;
+  const skillSection =
+    includeSkillGuidance && session.skillSnapshot.promptSection
+      ? session.skillSnapshot.promptSection.slice(0, MAX_SKILL_SECTION_CHARS)
+      : "";
   const generate = createGenerateObject({
     emailAccount: {
       id: session.input.emailAccountId,
@@ -125,6 +138,7 @@ export async function generateRuntimeDecision(params: {
   session.input.logger.info("Runtime decision generation start", {
     attempt,
     toolCount: session.toolRegistry.length,
+    includeSkillGuidance,
     toolCatalogChars: toolCatalog.length,
     skillSectionChars: skillSection.length,
     promptChars: prompt.length,

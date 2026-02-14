@@ -14,6 +14,21 @@ export const runtimePlanTelemetrySchema = baseSchema.extend({
   issueCount: z.number().int().nonnegative(),
 });
 
+export const runtimeRouteSelectedTelemetrySchema = baseSchema.extend({
+  lane: z.enum([
+    "direct_response",
+    "macro_tool",
+    "planner_fast",
+    "planner_standard",
+    "planner_deep",
+  ]),
+  reason: z.string().min(1).max(120),
+  maxAttempts: z.number().int().positive(),
+  decisionTimeoutMs: z.number().int().nonnegative(),
+  toolCatalogLimit: z.number().int().nonnegative(),
+  includeSkillGuidance: z.boolean(),
+});
+
 export const runtimeDirectReadTelemetrySchema = baseSchema.extend({
   toolName: z.string().min(1),
   confidence: z.number().min(0).max(1),
@@ -48,6 +63,7 @@ export const runtimeClarificationRequiredTelemetrySchema = baseSchema.extend({
 
 const runtimeTelemetrySchemas = {
   "openworld.runtime.plan": runtimePlanTelemetrySchema,
+  "openworld.runtime.route_selected": runtimeRouteSelectedTelemetrySchema,
   "openworld.runtime.direct_read": runtimeDirectReadTelemetrySchema,
   "openworld.turn.completed": runtimeTurnCompletedTelemetrySchema,
   "openworld.runtime.precheck_failed": runtimePrecheckFailedTelemetrySchema,

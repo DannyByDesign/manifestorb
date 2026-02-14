@@ -9,11 +9,17 @@ This folder contains the assistant runtime used by inbox/calendar surfaces.
    - tool capabilities
    - skill prompt snapshot
    - policy-filtered runtime tool registry
-3. `runtime/attempt-loop.ts` runs bounded model/tool iterations.
-4. Tool calls execute through:
+3. `runtime/router.ts` selects a routing lane and per-lane budgets:
+   - `direct_response` (no tools)
+   - `macro_tool` (deterministic one-tool execution)
+   - `planner_fast` (tight SLA, reduced planner context)
+   - `planner_standard`
+   - `planner_deep` (complex/cross-domain)
+4. `runtime/attempt-loop.ts` runs bounded model/tool iterations using lane budgets.
+5. Tool calls execute through:
    - `tools/fabric/assembler.ts`
    - `tools/runtime/capabilities/execute.ts`
-5. Policy and approval checks run before mutating tool calls.
+6. Policy and approval checks run before mutating tool calls.
 
 ## Important Directories
 

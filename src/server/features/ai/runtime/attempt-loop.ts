@@ -7,14 +7,12 @@ import { buildRuntimeTurnContext, executeToolCall } from "@/server/features/ai/r
 import { summarizeRuntimeResults } from "@/server/features/ai/runtime/result-summarizer";
 import { generateRuntimeUserReply } from "@/server/features/ai/runtime/response-writer";
 import { matchRuntimeFastPath } from "@/server/features/ai/runtime/fast-path";
+import { buildRuntimeRoutingPlan } from "@/server/features/ai/runtime/router";
+import { emitRuntimeTelemetry } from "@/server/features/ai/runtime/telemetry/schema";
 import type { RuntimeToolResult } from "@/server/features/ai/tools/contracts/tool-result";
 import type { ValidatedToolDecision } from "@/server/features/ai/runtime/decision/schema";
 
-const MAX_RUNTIME_ATTEMPTS = 6;
-const RUNTIME_TURN_BUDGET_MS = 90_000;
-const DECISION_TIMEOUT_MS = 30_000;
-const REPAIR_TIMEOUT_MS = 8_000;
-const RESPONSE_WRITE_TIMEOUT_MS = 10_000;
+const RUNTIME_TURN_BUDGET_MS = 120_000;
 
 class RuntimeOperationTimeoutError extends Error {
   constructor(
@@ -55,21 +53,31 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
   const context = buildRuntimeTurnContext(session);
   const results: RuntimeToolResult[] = [];
   const startedAt = Date.now();
-  const runFastPath = async (
-    mode: "strict" | "recovery",
+  const routingPlan = await buildRuntimeRoutingPlan({ session });
+
+  session.input.logger.info("Runtime route selected", {
+    lane: routingPlan.lane,
+    reason: routingPlan.reason,
+    maxAttempts: routingPlan.maxAttempts,
+    decisionTimeoutMs: routingPlan.decisionTimeoutMs,
+    toolCatalogLimit: routingPlan.decisionToolCatalogLimit,
+    includeSkillGuidance: routingPlan.includeSkillGuidance,
+  });
+  emitRuntimeTelemetry(session.input.logger, "openworld.runtime.route_selected", {
+    userId: session.input.userId,
+    provider: session.input.provider,
+    lane: routingPlan.lane,
+    reason: routingPlan.reason,
+    maxAttempts: routingPlan.maxAttempts,
+    decisionTimeoutMs: routingPlan.decisionTimeoutMs,
+    toolCatalogLimit: routingPlan.decisionToolCatalogLimit,
+    includeSkillGuidance: routingPlan.includeSkillGuidance,
+  });
+
+  const executeFastPathMatch = async (
+    fastPath: NonNullable<Awaited<ReturnType<typeof matchRuntimeFastPath>>>,
     attempt: number,
   ): Promise<RuntimeLoopResult | null> => {
-    const fastPath = await matchRuntimeFastPath({ session, mode });
-    if (!fastPath) return null;
-
-    session.input.logger.info("Runtime fast path matched", {
-      mode,
-      attempt,
-      reason: fastPath.reason,
-      type: fastPath.type,
-      toolName: fastPath.type === "tool_call" ? fastPath.toolName : null,
-    });
-
     if (fastPath.type === "respond") {
       return {
         text: fastPath.text,
@@ -102,6 +110,23 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
       attempts: attempt,
     };
   };
+  const runFastPath = async (
+    mode: "strict" | "recovery",
+    attempt: number,
+  ): Promise<RuntimeLoopResult | null> => {
+    const fastPath = await matchRuntimeFastPath({ session, mode });
+    if (!fastPath) return null;
+
+    session.input.logger.info("Runtime fast path matched", {
+      mode,
+      attempt,
+      reason: fastPath.reason,
+      type: fastPath.type,
+      toolName: fastPath.type === "tool_call" ? fastPath.toolName : null,
+    });
+
+    return executeFastPathMatch(fastPath, attempt);
+  };
 
   const composeAssistantReply = async (params: {
     mode: "final" | "clarification" | "approval_pending" | "error";
@@ -113,7 +138,7 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
     try {
       return await withRuntimeTimeout({
         operation: "response_write",
-        timeoutMs: Math.min(RESPONSE_WRITE_TIMEOUT_MS, budget),
+        timeoutMs: Math.min(routingPlan.responseWriteTimeoutMs, budget),
         run: () =>
           generateRuntimeUserReply({
             session,
@@ -133,10 +158,12 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
     }
   };
 
-  const strictFastPath = await runFastPath("strict", 1);
-  if (strictFastPath) return strictFastPath;
+  if (routingPlan.fastPathMatch) {
+    const strictFastPath = await executeFastPathMatch(routingPlan.fastPathMatch, 1);
+    if (strictFastPath) return strictFastPath;
+  }
 
-  for (let attempt = 1; attempt <= MAX_RUNTIME_ATTEMPTS; attempt += 1) {
+  for (let attempt = 1; attempt <= routingPlan.maxAttempts; attempt += 1) {
     const budgetBeforeDecision = remainingBudgetMs(startedAt);
     if (budgetBeforeDecision <= 0) {
       return {
@@ -150,12 +177,16 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
     try {
       decision = await withRuntimeTimeout({
         operation: "decision_generate",
-        timeoutMs: Math.min(DECISION_TIMEOUT_MS, budgetBeforeDecision),
+        timeoutMs: Math.min(routingPlan.decisionTimeoutMs, budgetBeforeDecision),
         run: () =>
           generateRuntimeDecision({
             session,
             executedResults: results,
             attempt,
+            route: {
+              toolCatalogLimit: routingPlan.decisionToolCatalogLimit,
+              includeSkillGuidance: routingPlan.includeSkillGuidance,
+            },
           }),
       });
     } catch (error) {
@@ -178,7 +209,7 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
       const failedValidation = validated;
       const toolName = failedValidation.toolName;
       if (!toolName) {
-        if (attempt >= MAX_RUNTIME_ATTEMPTS) {
+        if (attempt >= routingPlan.maxAttempts) {
           const fallbackText =
             "I need one more detail before I can continue. Please restate the request in one sentence with the exact outcome you want.";
           return {
@@ -205,7 +236,7 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
       try {
         repairedArgsJson = await withRuntimeTimeout({
           operation: "decision_repair",
-          timeoutMs: Math.min(REPAIR_TIMEOUT_MS, budgetBeforeRepair),
+          timeoutMs: Math.min(routingPlan.repairTimeoutMs, budgetBeforeRepair),
           run: () =>
             repairRuntimeDecisionArgs({
               session,
@@ -237,7 +268,7 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
     }
 
     if (!validated.ok) {
-      if (attempt >= MAX_RUNTIME_ATTEMPTS) {
+      if (attempt >= routingPlan.maxAttempts) {
         const fallbackText =
           "I need one more detail before I can continue. Please restate the request in one sentence with the exact outcome you want.";
         return {
@@ -372,6 +403,6 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
       fallbackText,
     }),
     stopReason: "max_attempts",
-    attempts: MAX_RUNTIME_ATTEMPTS,
+    attempts: routingPlan.maxAttempts,
   };
 }
