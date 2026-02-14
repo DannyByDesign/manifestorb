@@ -6,6 +6,11 @@ import { getInternalApiUrl } from "@/server/lib/internal-api";
 import { getCronSecretHeader } from "@/server/lib/cron";
 import type { ParsedMessage } from "@/server/types";
 import {
+  resolveCalendarTimeZoneForRequest,
+  resolveDefaultCalendarTimeZone,
+} from "@/server/features/ai/tools/calendar-time";
+import { parseDateBoundInTimeZone } from "@/server/features/ai/tools/timezone";
+import {
   capabilityFailureResult,
   classifyCapabilityError,
 } from "@/server/features/ai/tools/runtime/capabilities/errors";
@@ -88,12 +93,6 @@ export interface EmailCapabilities {
     subject?: string;
   }): Promise<ToolResult>;
   scheduleSend(_draftId: string, _sendAt: string): Promise<ToolResult>;
-}
-
-function toDate(value: unknown): Date | undefined {
-  if (typeof value !== "string") return undefined;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }
 
 function normalizeText(value: string | undefined): string {
@@ -194,6 +193,32 @@ async function coerceToThreadIds(
 
 export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCapabilities {
   const provider = capEnv.toolContext.providers.email;
+  let defaultTimeZonePromise:
+    | Promise<{ timeZone: string } | { error: string }>
+    | null = null;
+
+  const getDefaultTimeZone = async () => {
+    if (!defaultTimeZonePromise) {
+      defaultTimeZonePromise = resolveDefaultCalendarTimeZone({
+        userId: capEnv.runtime.userId,
+        emailAccountId: capEnv.runtime.emailAccountId,
+      });
+    }
+    return defaultTimeZonePromise;
+  };
+
+  const resolveEffectiveTimeZone = async (
+    requestedTimeZone?: string,
+  ): Promise<{ timeZone: string } | { error: string }> => {
+    const defaultTimeZone = await getDefaultTimeZone();
+    if ("error" in defaultTimeZone) return defaultTimeZone;
+    const resolved = resolveCalendarTimeZoneForRequest({
+      requestedTimeZone,
+      defaultTimeZone: defaultTimeZone.timeZone,
+    });
+    if ("error" in resolved) return { error: resolved.error };
+    return resolved;
+  };
 
   const runSearchThreads = async (
     filter: Record<string, unknown>,
@@ -203,13 +228,79 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         filter && typeof filter.dateRange === "object"
           ? (filter.dateRange as Record<string, unknown>)
           : undefined;
+      const requestedTimeZone =
+        (typeof filter.timeZone === "string" ? filter.timeZone : undefined) ??
+        (typeof filter.timezone === "string" ? filter.timezone : undefined) ??
+        (typeof dateRange?.timeZone === "string" ? dateRange.timeZone : undefined) ??
+        (typeof dateRange?.timezone === "string" ? dateRange.timezone : undefined);
+
+      let before: Date | undefined;
+      let after: Date | undefined;
+      if (typeof dateRange?.before === "string" || typeof dateRange?.after === "string") {
+        const resolvedTimeZone = await resolveEffectiveTimeZone(requestedTimeZone);
+        if ("error" in resolvedTimeZone) {
+          return {
+            success: false,
+            error: "invalid_time_zone",
+            message: resolvedTimeZone.error,
+            clarification: {
+              kind: "invalid_fields",
+              prompt: "Please provide a valid IANA timezone, like America/Los_Angeles.",
+              missingFields: ["timeZone"],
+            },
+          };
+        }
+
+        if (typeof dateRange?.before === "string") {
+          before = parseDateBoundInTimeZone(
+            dateRange.before,
+            resolvedTimeZone.timeZone,
+            "end",
+          ) ?? undefined;
+          if (!before) {
+            return {
+              success: false,
+              error: "invalid_date_range_before",
+              message:
+                "Invalid dateRange.before. Use ISO-8601 or local date/datetime.",
+              clarification: {
+                kind: "invalid_fields",
+                prompt: "I need a valid end date for that email search.",
+                missingFields: ["dateRange.before"],
+              },
+            };
+          }
+        }
+
+        if (typeof dateRange?.after === "string") {
+          after = parseDateBoundInTimeZone(
+            dateRange.after,
+            resolvedTimeZone.timeZone,
+            "start",
+          ) ?? undefined;
+          if (!after) {
+            return {
+              success: false,
+              error: "invalid_date_range_after",
+              message:
+                "Invalid dateRange.after. Use ISO-8601 or local date/datetime.",
+              clarification: {
+                kind: "invalid_fields",
+                prompt: "I need a valid start date for that email search.",
+                missingFields: ["dateRange.after"],
+              },
+            };
+          }
+        }
+      }
+
       const result = await searchEmailThreads(provider, {
         query: typeof filter.query === "string" ? filter.query : "",
         limit: typeof filter.limit === "number" ? filter.limit : 25,
         fetchAll: Boolean(filter.fetchAll),
         includeNonPrimary: Boolean(filter.subscriptionsOnly),
-        before: toDate(dateRange?.before),
-        after: toDate(dateRange?.after),
+        before,
+        after,
         subjectContains:
           typeof filter.subjectContains === "string"
             ? filter.subjectContains
@@ -1160,13 +1251,30 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           error: "invalid_input:draft_id_missing",
           message: "Draft id is required.",
         };
-
-      const sendAt = new Date(sendAtRaw);
-      if (Number.isNaN(sendAt.getTime())) {
+      const resolvedTimeZone = await getDefaultTimeZone();
+      if ("error" in resolvedTimeZone) {
+        return {
+          success: false,
+          error: "invalid_time_zone",
+          message: resolvedTimeZone.error,
+          clarification: {
+            kind: "invalid_fields",
+            prompt: "Please set a valid integration timezone before scheduling send.",
+            missingFields: ["timeZone"],
+          },
+        };
+      }
+      const sendAt = parseDateBoundInTimeZone(
+        sendAtRaw,
+        resolvedTimeZone.timeZone,
+        "start",
+      );
+      if (!sendAt) {
         return {
           success: false,
           error: "invalid_input:invalid_send_time",
-          message: "Send time must be an ISO-8601 timestamp.",
+          message:
+            "Send time must be an ISO-8601 timestamp or local datetime in your integration timezone.",
         };
       }
       if (sendAt.getTime() < Date.now() + 30_000) {

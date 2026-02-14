@@ -4,6 +4,12 @@ import prisma from "@/server/db/client";
 import type { CalendarEventUpdateInput } from "@/features/calendar/event-types";
 import { capabilityFailureResult } from "@/server/features/ai/tools/runtime/capabilities/errors";
 import {
+  resolveCalendarTimeRange,
+  resolveCalendarTimeZoneForRequest,
+  resolveDefaultCalendarTimeZone,
+} from "@/server/features/ai/tools/calendar-time";
+import { parseDateBoundInTimeZone } from "@/server/features/ai/tools/timezone";
+import {
   createCalendarEvent,
   deleteCalendarEvent,
   findCalendarAvailability,
@@ -48,12 +54,6 @@ export interface CalendarCapabilities {
   createBookingSchedule(data: Record<string, unknown>): Promise<ToolResult>;
 }
 
-function toDate(value: unknown): Date | undefined {
-  if (typeof value !== "string") return undefined;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
-}
-
 function safeString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
@@ -94,6 +94,86 @@ function calendarFailure(error: unknown, message: string): ToolResult {
 
 export function createCalendarCapabilities(env: CapabilityEnvironment): CalendarCapabilities {
   const provider = env.toolContext.providers.calendar;
+  const defaultRangeDurationMs = 7 * 24 * 60 * 60 * 1000;
+  const rescheduleWindowDurationMs = 14 * 24 * 60 * 60 * 1000;
+
+  let defaultTimeZonePromise:
+    | Promise<{ timeZone: string } | { error: string }>
+    | null = null;
+
+  const getDefaultTimeZone = async () => {
+    if (!defaultTimeZonePromise) {
+      defaultTimeZonePromise = resolveDefaultCalendarTimeZone({
+        userId: env.runtime.userId,
+        emailAccountId: env.runtime.emailAccountId,
+      });
+    }
+    return defaultTimeZonePromise;
+  };
+
+  const resolveEffectiveTimeZone = async (
+    requestedTimeZone?: string,
+  ): Promise<{ timeZone: string } | { error: string }> => {
+    const defaultTimeZone = await getDefaultTimeZone();
+    if ("error" in defaultTimeZone) return defaultTimeZone;
+    const resolved = resolveCalendarTimeZoneForRequest({
+      requestedTimeZone,
+      defaultTimeZone: defaultTimeZone.timeZone,
+    });
+    if ("error" in resolved) return { error: resolved.error };
+    return resolved;
+  };
+
+  const parseUserDate = async (
+    rawValue: unknown,
+    kind: "start" | "end",
+    requestedTimeZone?: string,
+  ): Promise<{ value?: Date } | { error: string }> => {
+    const value = safeString(rawValue);
+    if (!value) return {};
+    const resolvedTimeZone = await resolveEffectiveTimeZone(requestedTimeZone);
+    if ("error" in resolvedTimeZone) return resolvedTimeZone;
+    const parsed = parseDateBoundInTimeZone(value, resolvedTimeZone.timeZone, kind);
+    if (!parsed) {
+      return {
+        error: `Invalid ${kind} datetime "${value}". Use ISO-8601 or local datetime.`,
+      };
+    }
+    return { value: parsed };
+  };
+
+  const resolveRequestedTimeZone = (
+    source?: Record<string, unknown>,
+    nested?: Record<string, unknown>,
+  ): string | undefined =>
+    safeString(source?.timeZone) ??
+    safeString(source?.timezone) ??
+    safeString(nested?.timeZone) ??
+    safeString(nested?.timezone);
+
+  const resolveUserDateRange = async (
+    filter: Record<string, unknown>,
+    defaultWindow: "today" | "next_7_days" = "next_7_days",
+    missingBoundDurationMs: number = defaultRangeDurationMs,
+  ): Promise<{ start: Date; end: Date; timeZone: string } | { error: string }> => {
+    const dateRange =
+      filter && typeof filter.dateRange === "object"
+        ? (filter.dateRange as Record<string, unknown>)
+        : undefined;
+    const requestedTimeZone = resolveRequestedTimeZone(filter, dateRange);
+
+    return resolveCalendarTimeRange({
+      userId: env.runtime.userId,
+      emailAccountId: env.runtime.emailAccountId,
+      requestedTimeZone,
+      dateRange: {
+        after: safeString(dateRange?.after),
+        before: safeString(dateRange?.before),
+      },
+      defaultWindow,
+      missingBoundDurationMs,
+    });
+  };
 
   return {
     async findAvailability(filter) {
@@ -105,15 +185,48 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           5,
           Number.isFinite(Number(durationMinutesRaw)) ? Number(durationMinutesRaw) : 30,
         );
-        const startRaw = (filter as Record<string, unknown>).start;
-        const endRaw = (filter as Record<string, unknown>).end;
-        const start = typeof startRaw === "string" ? new Date(startRaw) : undefined;
-        const end = typeof endRaw === "string" ? new Date(endRaw) : undefined;
+        const requestedTimeZone = resolveRequestedTimeZone(filter as Record<string, unknown>);
+        const startResult = await parseUserDate(
+          (filter as Record<string, unknown>).start,
+          "start",
+          requestedTimeZone,
+        );
+        if ("error" in startResult) {
+          return {
+            success: false,
+            error: "invalid_availability_start",
+            message: startResult.error,
+            clarification: {
+              kind: "invalid_fields",
+              prompt: "I need a valid start datetime for availability checks.",
+              missingFields: ["start"],
+            },
+          };
+        }
+        const endResult = await parseUserDate(
+          (filter as Record<string, unknown>).end,
+          "end",
+          requestedTimeZone,
+        );
+        if ("error" in endResult) {
+          return {
+            success: false,
+            error: "invalid_availability_end",
+            message: endResult.error,
+            clarification: {
+              kind: "invalid_fields",
+              prompt: "I need a valid end datetime for availability checks.",
+              missingFields: ["end"],
+            },
+          };
+        }
+        const start = startResult.value;
+        const end = endResult.value;
 
         const slots = await findCalendarAvailability(provider, {
           durationMinutes,
-          ...(start && !Number.isNaN(start.getTime()) ? { start } : {}),
-          ...(end && !Number.isNaN(end.getTime()) ? { end } : {}),
+          ...(start ? { start } : {}),
+          ...(end ? { end } : {}),
         });
 
         return {
@@ -132,13 +245,20 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
 
     async listEvents(filter) {
       try {
-        const dateRange =
-          filter && typeof filter.dateRange === "object"
-            ? (filter.dateRange as Record<string, unknown>)
-            : undefined;
-        const start = toDate(dateRange?.after) ?? new Date();
-        const end =
-          toDate(dateRange?.before) ?? new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
+        const range = await resolveUserDateRange(filter);
+        if ("error" in range) {
+          return {
+            success: false,
+            error: "invalid_date_range",
+            message: range.error,
+            clarification: {
+              kind: "invalid_fields",
+              prompt:
+                "I need a valid date range for calendar search. Use ISO or a local datetime/date.",
+              missingFields: ["dateRange"],
+            },
+          };
+        }
         const query =
           safeString(filter.query) ??
           safeString(filter.text) ??
@@ -148,19 +268,19 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
 
         const events = await listCalendarEvents(provider, {
           query,
-          start,
-          end,
+          start: range.start,
+          end: range.end,
           attendeeEmail,
         });
         const data = toEventListData(events);
         return {
           success: true,
           data,
+          meta: { resource: "calendar", itemCount: data.length },
           message:
             data.length === 0
               ? "No events found in that window."
               : `Found ${data.length} calendar event${data.length === 1 ? "" : "s"}.`,
-          meta: { resource: "calendar", itemCount: data.length },
         };
       } catch (error) {
         return calendarFailure(error, "I couldn't load calendar events right now.");
@@ -169,13 +289,20 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
 
     async searchEventsByAttendee(filter) {
       try {
-        const dateRange =
-          filter && typeof filter.dateRange === "object"
-            ? (filter.dateRange as Record<string, unknown>)
-            : undefined;
-        const start = toDate(dateRange?.after) ?? new Date();
-        const end =
-          toDate(dateRange?.before) ?? new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
+        const range = await resolveUserDateRange(filter);
+        if ("error" in range) {
+          return {
+            success: false,
+            error: "invalid_date_range",
+            message: range.error,
+            clarification: {
+              kind: "invalid_fields",
+              prompt:
+                "I need a valid date range for attendee search. Use ISO or a local datetime/date.",
+              missingFields: ["dateRange"],
+            },
+          };
+        }
         const query =
           safeString(filter.query) ??
           safeString(filter.text) ??
@@ -188,19 +315,19 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
 
         const events = await listCalendarEvents(provider, {
           query,
-          start,
-          end,
+          start: range.start,
+          end: range.end,
           attendeeEmail,
         });
         const data = toEventListData(events);
         return {
           success: true,
           data,
+          meta: { resource: "calendar", itemCount: data.length },
           message:
             data.length === 0
               ? "No attendee-matching events found in that window."
               : `Found ${data.length} attendee-matching event${data.length === 1 ? "" : "s"}.`,
-          meta: { resource: "calendar", itemCount: data.length },
         };
       } catch (error) {
         return calendarFailure(error, "I couldn't load attendee events right now.");
@@ -238,8 +365,30 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
 
     async createEvent(data) {
       const title = safeString(data.title) ?? "New event";
-      const start = toDate(data.start);
-      const end = toDate(data.end);
+      const requestedTimeZone = resolveRequestedTimeZone(data);
+      const resolvedTimeZone = await resolveEffectiveTimeZone(requestedTimeZone);
+      if ("error" in resolvedTimeZone) {
+        return {
+          success: false,
+          error: "invalid_time_zone",
+          message: resolvedTimeZone.error,
+          clarification: {
+            kind: "invalid_fields",
+            prompt: "Please provide a valid IANA timezone, like America/Los_Angeles.",
+            missingFields: ["timeZone"],
+          },
+        };
+      }
+      const start = parseDateBoundInTimeZone(
+        safeString(data.start),
+        resolvedTimeZone.timeZone,
+        "start",
+      );
+      const end = parseDateBoundInTimeZone(
+        safeString(data.end),
+        resolvedTimeZone.timeZone,
+        "end",
+      );
       if (!start || !end || start.getTime() >= end.getTime()) {
         return {
           success: false,
@@ -265,7 +414,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
             ...(attendees.length > 0 ? { attendees } : {}),
             ...(safeString(data.location) ? { location: safeString(data.location) } : {}),
             ...(safeString(data.description) ? { description: safeString(data.description) } : {}),
-            ...(safeString(data.timeZone) ? { timeZone: safeString(data.timeZone) } : {}),
+            timeZone: resolvedTimeZone.timeZone,
           },
         });
 
@@ -304,8 +453,43 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
       const attendees = toStringArray((changes as Record<string, unknown>).attendees);
       const modeRaw = safeString((changes as Record<string, unknown>).mode);
       const mode = modeRaw === "single" || modeRaw === "series" ? modeRaw : undefined;
+      const requestedTimeZone = resolveRequestedTimeZone(changes as Record<string, unknown>);
 
       try {
+        const resolvedTimeZone = await resolveEffectiveTimeZone(requestedTimeZone);
+        if ("error" in resolvedTimeZone) {
+          return {
+            success: false,
+            error: "invalid_time_zone",
+            message: resolvedTimeZone.error,
+            clarification: {
+              kind: "invalid_fields",
+              prompt: "Please provide a valid IANA timezone, like America/Los_Angeles.",
+              missingFields: ["changes.timeZone"],
+            },
+          };
+        }
+        const startRaw = safeString((changes as Record<string, unknown>).start);
+        const endRaw = safeString((changes as Record<string, unknown>).end);
+        const start =
+          startRaw != null
+            ? parseDateBoundInTimeZone(startRaw, resolvedTimeZone.timeZone, "start")
+            : undefined;
+        const end =
+          endRaw != null
+            ? parseDateBoundInTimeZone(endRaw, resolvedTimeZone.timeZone, "end")
+            : undefined;
+        if ((startRaw && !start) || (endRaw && !end)) {
+          return {
+            success: false,
+            error: "invalid_event_time",
+            clarification: {
+              kind: "invalid_fields",
+              prompt: "I need valid start/end date values for that update.",
+              missingFields: ["changes.start", "changes.end"],
+            },
+          };
+        }
         const updated = await updateCalendarEvent(provider, {
           ...(safeString(input.calendarId)
             ? { calendarId: safeString(input.calendarId) }
@@ -321,16 +505,10 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
             ...(safeString((changes as Record<string, unknown>).location)
               ? { location: safeString((changes as Record<string, unknown>).location) }
               : {}),
-            ...(toDate((changes as Record<string, unknown>).start)
-              ? { start: toDate((changes as Record<string, unknown>).start) }
-              : {}),
-            ...(toDate((changes as Record<string, unknown>).end)
-              ? { end: toDate((changes as Record<string, unknown>).end) }
-              : {}),
+            ...(start ? { start } : {}),
+            ...(end ? { end } : {}),
             ...(attendees.length > 0 ? { attendees } : {}),
-            ...(safeString((changes as Record<string, unknown>).timeZone)
-              ? { timeZone: safeString((changes as Record<string, unknown>).timeZone) }
-              : {}),
+            timeZone: resolvedTimeZone.timeZone,
             ...(mode ? { mode } : {}),
           },
         });
@@ -491,11 +669,48 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
       }
 
       try {
+        const requestedTimeZone = resolveRequestedTimeZone(changes as Record<string, unknown>);
+        const resolvedTimeZone = await resolveEffectiveTimeZone(requestedTimeZone);
+        if ("error" in resolvedTimeZone) {
+          return {
+            success: false,
+            error: "invalid_time_zone",
+            message: resolvedTimeZone.error,
+            clarification: {
+              kind: "invalid_fields",
+              prompt: "Please provide a valid IANA timezone, like America/Los_Angeles.",
+              missingFields: ["timeZone"],
+            },
+          };
+        }
+
+        const explicitStartRaw = safeString(changes.start);
+        const explicitEndRaw = safeString(changes.end);
+        const explicitStart =
+          explicitStartRaw != null
+            ? parseDateBoundInTimeZone(
+                explicitStartRaw,
+                resolvedTimeZone.timeZone,
+                "start",
+              )
+            : undefined;
+        const explicitEnd =
+          explicitEndRaw != null
+            ? parseDateBoundInTimeZone(explicitEndRaw, resolvedTimeZone.timeZone, "end")
+            : undefined;
+
+        if ((explicitStartRaw && !explicitStart) || (explicitEndRaw && !explicitEnd)) {
+          return {
+            success: false,
+            error: "invalid_reschedule_window",
+            message:
+              "I need valid start/end values to reschedule. Use ISO-8601 or local datetime.",
+          };
+        }
+
         const current = await getCalendarEvent(provider, { eventId: targetEventId });
         if (!current) return { success: false, error: "event_not_found", message: "I couldn't find that event." };
 
-        const explicitStart = toDate(changes.start);
-        const explicitEnd = toDate(changes.end);
         const durationMs = Math.max(15 * 60 * 1000, current.endTime.getTime() - current.startTime.getTime());
 
         let start = explicitStart;
@@ -504,14 +719,34 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
         if (!start || !end) {
           const strategyRaw = safeString(changes.rescheduleStrategy) ?? safeString(changes.reschedule) ?? "next_available";
           const strategy = strategyRaw.toLowerCase();
-          const windowStart =
-            toDate(changes.after) ??
-            toDate(changes.windowStart) ??
-            new Date(current.endTime.getTime() + 60 * 1000);
+          const windowStartRaw = safeString(changes.after) ?? safeString(changes.windowStart);
+          const windowEndRaw = safeString(changes.before) ?? safeString(changes.windowEnd);
+          const parsedWindowStart =
+            windowStartRaw != null
+              ? parseDateBoundInTimeZone(
+                  windowStartRaw,
+                  resolvedTimeZone.timeZone,
+                  "start",
+                )
+              : undefined;
+          const parsedWindowEnd =
+            windowEndRaw != null
+              ? parseDateBoundInTimeZone(windowEndRaw, resolvedTimeZone.timeZone, "end")
+              : undefined;
+
+          if ((windowStartRaw && !parsedWindowStart) || (windowEndRaw && !parsedWindowEnd)) {
+            return {
+              success: false,
+              error: "invalid_reschedule_window",
+              message:
+                "I couldn't parse the reschedule window. Use ISO-8601 or local datetime values.",
+            };
+          }
+
+          const windowStart = parsedWindowStart ?? new Date(current.endTime.getTime() + 60 * 1000);
           const windowEnd =
-            toDate(changes.before) ??
-            toDate(changes.windowEnd) ??
-            new Date(windowStart.getTime() + 14 * 24 * 60 * 60 * 1000);
+            parsedWindowEnd ??
+            new Date(windowStart.getTime() + rescheduleWindowDurationMs);
           const durationMinutes = Math.max(1, Math.round(durationMs / 60_000));
           const slots = await findCalendarAvailability(provider, {
             durationMinutes,
@@ -539,6 +774,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
         const updateInput: CalendarEventUpdateInput = {
           start,
           end,
+          timeZone: resolvedTimeZone.timeZone,
         };
         const updated = await updateCalendarEvent(provider, {
           eventId: targetEventId,
@@ -629,8 +865,30 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
     },
 
     async setOutOfOffice(data) {
-      const start = toDate(data.start);
-      const end = toDate(data.end);
+      const requestedTimeZone = resolveRequestedTimeZone(data);
+      const resolvedTimeZone = await resolveEffectiveTimeZone(requestedTimeZone);
+      if ("error" in resolvedTimeZone) {
+        return {
+          success: false,
+          error: "invalid_time_zone",
+          message: resolvedTimeZone.error,
+          clarification: {
+            kind: "invalid_fields",
+            prompt: "Please provide a valid IANA timezone, like America/Los_Angeles.",
+            missingFields: ["timeZone"],
+          },
+        };
+      }
+      const start = parseDateBoundInTimeZone(
+        safeString(data.start),
+        resolvedTimeZone.timeZone,
+        "start",
+      );
+      const end = parseDateBoundInTimeZone(
+        safeString(data.end),
+        resolvedTimeZone.timeZone,
+        "end",
+      );
       if (!start || !end || start.getTime() >= end.getTime()) {
         return {
           success: false,
@@ -648,6 +906,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
             title: safeString(data.title) ?? "Out of office",
             start,
             end,
+            timeZone: resolvedTimeZone.timeZone,
             ...(safeString(data.location) ? { location: safeString(data.location) } : {}),
           },
         });
@@ -663,8 +922,30 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
     },
 
     async createFocusBlock(data) {
-      const start = toDate(data.start);
-      const end = toDate(data.end);
+      const requestedTimeZone = resolveRequestedTimeZone(data);
+      const resolvedTimeZone = await resolveEffectiveTimeZone(requestedTimeZone);
+      if ("error" in resolvedTimeZone) {
+        return {
+          success: false,
+          error: "invalid_time_zone",
+          message: resolvedTimeZone.error,
+          clarification: {
+            kind: "invalid_fields",
+            prompt: "Please provide a valid IANA timezone, like America/Los_Angeles.",
+            missingFields: ["timeZone"],
+          },
+        };
+      }
+      const start = parseDateBoundInTimeZone(
+        safeString(data.start),
+        resolvedTimeZone.timeZone,
+        "start",
+      );
+      const end = parseDateBoundInTimeZone(
+        safeString(data.end),
+        resolvedTimeZone.timeZone,
+        "end",
+      );
       if (!start || !end || start.getTime() >= end.getTime()) {
         return {
           success: false,
@@ -682,6 +963,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
             title: safeString(data.title) ?? "Focus time",
             start,
             end,
+            timeZone: resolvedTimeZone.timeZone,
             ...(safeString(data.description) ? { description: safeString(data.description) } : {}),
           },
         });
