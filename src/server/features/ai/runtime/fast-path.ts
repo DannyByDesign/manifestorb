@@ -32,6 +32,8 @@ const GREETING_RE =
   /^(hi|hello|hey|yo|sup|good morning|good afternoon|good evening|howdy)[\s!.?]*$/u;
 const CAPABILITIES_RE =
   /\b(what can you do|capabilit(?:y|ies)|how can you help|what do you do|help me understand)\b/u;
+const EXPLICIT_DATE_RANGE_RE =
+  /\b(today|tonight|tomorrow|this week|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/u;
 
 const WEEKDAY_INDEX: Record<string, number> = {
   sunday: 0,
@@ -87,6 +89,7 @@ function summarizeEmailList(timeZone: string) {
     unknown
   >[];
   if (items.length === 0) return "I don't see matching emails right now.";
+  const isTruncated = result.truncated === true;
 
     const top = items.slice(0, 3).map((item) => {
       const subject = asString(item.title) ?? "No subject";
@@ -100,8 +103,14 @@ function summarizeEmailList(timeZone: string) {
     });
 
   if (items.length === 1) return `I found one: ${top[0]}.`;
-  if (items.length <= 3) return `Top ${items.length} emails: ${top.join("; ")}.`;
-  return `I found ${items.length} matches. Top items: ${top.join("; ")}.`;
+  if (items.length <= 3) {
+    return isTruncated
+      ? `I found at least ${items.length} emails. Top items: ${top.join("; ")}.`
+      : `Top ${items.length} emails: ${top.join("; ")}.`;
+  }
+  return isTruncated
+    ? `I found at least ${items.length} matches. Top items: ${top.join("; ")}.`
+    : `I found ${items.length} matches. Top items: ${top.join("; ")}.`;
   };
 }
 
@@ -178,6 +187,14 @@ function inferCalendarDateRange(message: string, timeZone: string): {
 
   const ymd = formatLocalYmd(today);
   return { after: ymd, before: ymd };
+}
+
+function inferExplicitDateRange(
+  message: string,
+  timeZone: string,
+): { after: string; before: string } | null {
+  if (!EXPLICIT_DATE_RANGE_RE.test(message)) return null;
+  return inferCalendarDateRange(message, timeZone);
 }
 
 function formatInTimeZone(isoOrDate: string, timeZone: string): string {
@@ -309,13 +326,15 @@ export async function matchRuntimeFastPath(params: {
 
   if (!isMutatingRequest(normalized) && EMAIL_ENTITY_RE.test(normalized) && (UNREAD_OR_ATTENTION_RE.test(normalized) || LIST_OR_SHOW_RE.test(normalized))) {
     const timeZone = await resolveFastPathTimeZone(session);
+    const dateRange = inferExplicitDateRange(normalized, timeZone);
     return {
       type: "tool_call",
       toolName: "email.searchInbox",
       args: {
         query: UNREAD_OR_ATTENTION_RE.test(normalized) ? "is:unread" : "",
-        limit: 10,
-        fetchAll: false,
+        limit: dateRange ? 50 : 20,
+        fetchAll: Boolean(dateRange),
+        ...(dateRange ? { dateRange } : {}),
       },
       reason: "email_read_list",
       summarize: summarizeEmailList(timeZone),
@@ -348,13 +367,19 @@ export async function matchRuntimeFastPath(params: {
     if (semanticIntent === "inbox_read" || semanticIntent === "inbox_attention") {
       const timeZone = await resolveFastPathTimeZone(session);
       const attentionQuery = semanticIntent === "inbox_attention" ? "is:unread" : "";
+      const dateRange = inferExplicitDateRange(normalized, timeZone);
       return {
         type: "tool_call",
         toolName: "email.searchInbox",
         args: {
           query: attentionQuery,
-          limit: semanticIntent === "inbox_attention" ? 10 : 1,
-          fetchAll: false,
+          limit: semanticIntent === "inbox_attention"
+            ? dateRange
+              ? 50
+              : 20
+            : 1,
+          fetchAll: semanticIntent === "inbox_attention" && Boolean(dateRange),
+          ...(dateRange ? { dateRange } : {}),
         },
         reason: semanticIntent === "inbox_attention" ? "semantic_email_attention" : "semantic_email_first_or_latest",
         summarize: semanticIntent === "inbox_attention" ? summarizeEmailList(timeZone) : summarizeTopEmail(timeZone),

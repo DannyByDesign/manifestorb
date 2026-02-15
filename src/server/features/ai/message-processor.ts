@@ -704,6 +704,39 @@ function extractLatestUserMessage(messages: ModelMessage[]): string {
   return "";
 }
 
+function mapConversationRoleToModelRole(
+  role: string,
+): "system" | "user" | "assistant" | null {
+  if (role === "system" || role === "user" || role === "assistant") return role;
+  return null;
+}
+
+async function loadConversationHistoryMessages(params: {
+  conversationId: string;
+  maxMessages?: number;
+}): Promise<ModelMessage[]> {
+  const rows = await prisma.conversationMessage.findMany({
+    where: { conversationId: params.conversationId },
+    orderBy: { createdAt: "desc" },
+    take: Math.max(1, Math.min(params.maxMessages ?? 40, 200)),
+    select: {
+      role: true,
+      content: true,
+    },
+  });
+
+  const ordered = [...rows].reverse();
+  const mapped: ModelMessage[] = [];
+  for (const row of ordered) {
+    const role = mapConversationRoleToModelRole(row.role);
+    if (!role) continue;
+    if (typeof row.content === "string") {
+      mapped.push({ role, content: row.content });
+    }
+  }
+  return mapped;
+}
+
 async function persistAssistantMessage(
   userId: string,
   conversationId: string,
@@ -768,6 +801,13 @@ export async function processMessage(
 
   const messageContent =
     input.message ?? extractLatestUserMessage(input.messages ?? []);
+  const runtimeMessages =
+    input.messages && input.messages.length > 0
+      ? input.messages
+      : await loadConversationHistoryMessages({
+          conversationId,
+          maxMessages: 40,
+        });
 
   let sourceEmailContextCache: SourceEmailContext | null = null;
   const getSourceEmailContext = async (): Promise<SourceEmailContext> => {
@@ -827,7 +867,7 @@ export async function processMessage(
     emailAccountId: emailAccount.id,
     email: emailAccount.email,
     message: messageContent,
-    messages: input.messages,
+    messages: runtimeMessages,
     logger,
     conversationId,
     channelId: context.channelId,

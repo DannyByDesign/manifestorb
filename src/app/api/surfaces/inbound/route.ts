@@ -29,10 +29,16 @@ const inboundAttachmentSchema = z.object({
     mimeType: z.string().optional(),
 });
 
+const inboundHistoryMessageSchema = z.object({
+    role: z.enum(["system", "user", "assistant"]),
+    content: z.unknown(),
+});
+
 const inboundMessageSchema = z.object({
     provider: z.enum(["slack", "discord", "telegram", "web"]),
     content: z.string().min(1),
     context: inboundMessageContextSchema,
+    history: z.array(inboundHistoryMessageSchema).max(100).optional(),
     attachments: z.array(inboundAttachmentSchema).optional(),
 });
 
@@ -67,6 +73,7 @@ export async function POST(req: NextRequest) {
             messageId: message.context.messageId,
             isDirectMessage: message.context.isDirectMessage,
             contentLength: message.content.length,
+            historyCount: message.history?.length ?? 0,
             attachmentsCount: message.attachments?.length ?? 0,
         });
 

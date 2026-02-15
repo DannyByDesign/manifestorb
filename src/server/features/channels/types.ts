@@ -16,6 +16,10 @@ export type InboundMessage = {
     provider: ChannelProvider;
     content: string;
     context: InboundMessageContext;
+    history?: {
+        role: "system" | "user" | "assistant";
+        content: unknown;
+    }[];
     attachments?: InboundAttachment[];
 };
 
