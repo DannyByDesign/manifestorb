@@ -107,12 +107,12 @@ function summarizeEmailList(timeZone: string) {
   if (items.length === 1) return `I found one: ${top[0]}.`;
   if (items.length <= 3) {
     return isTruncated
-      ? `I found at least ${items.length} emails. Top items: ${top.join("; ")}.`
+      ? `I can see at least ${items.length} emails. Top ones: ${top.join("; ")}.`
       : `Top ${items.length} emails: ${top.join("; ")}.`;
   }
   return isTruncated
-    ? `I found at least ${items.length} matches. Top items: ${top.join("; ")}.`
-    : `I found ${items.length} matches. Top items: ${top.join("; ")}.`;
+    ? `I can see at least ${items.length} matches. Top ones: ${top.join("; ")}.`
+    : `I found ${items.length} matches. Top ones: ${top.join("; ")}.`;
   };
 }
 
@@ -237,9 +237,9 @@ function summarizeCalendarList(timeZone: string) {
 
 function fastCapabilitiesReply(): string {
   return [
-    "I can handle your inbox and calendar end-to-end.",
-    "I can read and summarize email, find priority items, draft/send replies (with approval where required), and manage labels/rules.",
-    "I can read your schedule, find availability, create/reschedule/cancel events, and manage calendar policies like focus blocks or out-of-office.",
+    "I can handle your inbox and calendar.",
+    "I can read and summarize email, find priority items, draft or send replies (with approval when needed), and manage labels or rules.",
+    "I can review your schedule, find availability, create/reschedule/cancel events, and manage calendar policies like focus blocks or out-of-office.",
   ].join(" ");
 }
 
@@ -302,7 +302,7 @@ export async function matchRuntimeFastPath(params: {
     return {
       type: "respond",
       reason: "greeting",
-      text: "Hello. What would you like me to handle?",
+      text: "Hey. What can I help you with?",
     };
   }
 
@@ -354,7 +354,7 @@ export async function matchRuntimeFastPath(params: {
       return {
         type: "respond",
         reason: "semantic_greeting",
-        text: "Hello. What would you like me to handle?",
+        text: "Hey. What can I help you with?",
       };
     }
 

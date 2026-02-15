@@ -8,8 +8,8 @@ describe("buildAgentSystemPrompt", () => {
       emailSendEnabled: true,
     });
 
-    expect(prompt).toContain("Act like a young butler");
-    expect(prompt).toContain("Use light dry wit only when appropriate");
+    expect(prompt).toContain("Speak like a capable human assistant and teammate");
+    expect(prompt).toContain("Use plain, modern English");
     expect(prompt).toContain("If the user asks what you can do");
   });
 
@@ -26,4 +26,3 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).toContain("Use my preferred signing style.");
   });
 });
-
