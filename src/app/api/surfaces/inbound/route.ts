@@ -79,7 +79,26 @@ export async function POST(req: NextRequest) {
 
         // 2. Route Message
         const router = new ChannelRouter();
-        const responses = await router.handleInbound(message);
+        const routedResponses = await router.handleInbound(message);
+        const responses =
+            routedResponses.length > 0
+                ? routedResponses
+                : [
+                      {
+                          targetChannelId: message.context.channelId,
+                          targetThreadId: message.context.threadId,
+                          content:
+                              "I hit an unexpected issue generating a reply. Please try again in a moment.",
+                      },
+                  ];
+        if (routedResponses.length === 0) {
+            logger.error("Router returned zero surface responses; using fallback response", {
+                provider: message.provider,
+                externalUserId: message.context.userId,
+                channelId: message.context.channelId,
+                messageId: message.context.messageId,
+            });
+        }
         logger.info("Returning surface responses", {
             provider: message.provider,
             externalUserId: message.context.userId,

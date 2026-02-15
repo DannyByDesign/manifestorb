@@ -530,7 +530,6 @@ async function setSlackAssistantThreadStatus(params: {
         if (
             errorCode === "missing_scope" ||
             errorCode === "not_allowed_token_type" ||
-            errorCode === "invalid_arguments" ||
             errorCode === "invalid_auth"
         ) {
             assistantStatusSupported = false;
@@ -902,7 +901,7 @@ export async function startSlack() {
 
             slackThreadContext.set(cacheKey, canonicalThreadTs);
             const replyThreadTs = canonicalThreadTs;
-            const statusThreadTs = canonicalThreadTs;
+            const statusThreadTs = normalizeSlackThreadTs(assistantThreadTs);
 
             console.log("[Surfaces][Slack] Resolved canonical thread", {
                 channel: channelId,
@@ -916,11 +915,13 @@ export async function startSlack() {
                 isDirectMessage,
             });
 
-            await setSlackAssistantThinkingStatus({
-                app,
-                channelId,
-                threadTs: statusThreadTs,
-            });
+            if (statusThreadTs) {
+                await setSlackAssistantThinkingStatus({
+                    app,
+                    channelId,
+                    threadTs: statusThreadTs,
+                });
+            }
 
             try {
                 const brainResponse = await forwardToBrain({
@@ -938,13 +939,34 @@ export async function startSlack() {
 
                 if (!brainResponse || !Array.isArray(brainResponse.responses)) {
                     console.error("[Surfaces][Slack] Brain response missing/invalid", {
-                    channel: channelId,
-                    user: slackUserId,
-                    ts: messageTs,
-                    hasResponse: Boolean(brainResponse),
-                });
-                return;
-            }
+                        channel: channelId,
+                        user: slackUserId,
+                        ts: messageTs,
+                        hasResponse: Boolean(brainResponse),
+                    });
+                    await say({
+                        thread_ts: replyThreadTs,
+                        text: toPlainSidecarText(
+                            "I couldn't reach the AI service just now. Please try again in a moment.",
+                        ),
+                    });
+                    return;
+                }
+
+                if (brainResponse.responses.length === 0) {
+                    console.error("[Surfaces][Slack] Brain returned zero responses", {
+                        channel: channelId,
+                        user: slackUserId,
+                        ts: messageTs,
+                    });
+                    await say({
+                        thread_ts: replyThreadTs,
+                        text: toPlainSidecarText(
+                            "I received that, but couldn't generate a reply. Please resend your request.",
+                        ),
+                    });
+                    return;
+                }
 
                 console.log("[Surfaces][Slack] Brain responses ready", {
                     channel: channelId,
