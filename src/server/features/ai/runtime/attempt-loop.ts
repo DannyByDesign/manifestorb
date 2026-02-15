@@ -254,20 +254,85 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
     }
   };
 
+  const emitFastPathTelemetry = (params: {
+    mode: "strict" | "recovery";
+    reason: string;
+    toolName?: string | null;
+    decision: "selected" | "skipped" | "executed" | "fallback";
+    outcome:
+      | "success"
+      | "incomplete"
+      | "timeout"
+      | "tool_error"
+      | "not_admitted"
+      | "unknown";
+    fallbackCause?:
+      | "incomplete"
+      | "timeout"
+      | "tool_error"
+      | "semantic_gate"
+      | "slot_validation"
+      | "tool_unavailable"
+      | "not_matched";
+    latencyMs?: number;
+    truncated?: boolean;
+    totalEstimate?: number;
+  }) => {
+    emitRuntimeTelemetry(session.input.logger, "openworld.runtime.fast_path", {
+      userId: session.input.userId,
+      provider: session.input.provider,
+      mode: params.mode,
+      reason: params.reason,
+      toolName: params.toolName ?? null,
+      decision: params.decision,
+      outcome: params.outcome,
+      fallbackCause: params.fallbackCause,
+      latencyMs: params.latencyMs,
+      truncated: params.truncated,
+      totalEstimate: params.totalEstimate,
+      semanticConfidence: session.semantic.confidence,
+      semanticMargin: session.semantic.classifier?.margin ?? null,
+    });
+  };
+
   const executeFastPathMatch = async (
     fastPath: NonNullable<Awaited<ReturnType<typeof matchRuntimeFastPath>>>,
     attempt: number,
+    mode: "strict" | "recovery",
   ): Promise<RuntimeLoopResult | null> => {
     if (fastPath.type === "respond") {
+      emitFastPathTelemetry({
+        mode,
+        reason: fastPath.reason,
+        decision: "selected",
+        outcome: "unknown",
+      });
+      const started = Date.now();
+      const text = await composeAssistantReply({
+        mode: "final",
+        fallbackText: fastPath.text,
+      });
+      emitFastPathTelemetry({
+        mode,
+        reason: fastPath.reason,
+        decision: "executed",
+        outcome: "success",
+        latencyMs: Date.now() - started,
+      });
       return {
-        text: await composeAssistantReply({
-          mode: "final",
-          fallbackText: fastPath.text,
-        }),
+        text,
         stopReason: "completed",
         attempts: attempt,
       };
     }
+
+    emitFastPathTelemetry({
+      mode,
+      reason: fastPath.reason,
+      toolName: fastPath.toolName,
+      decision: "selected",
+      outcome: "unknown",
+    });
 
     session.input.logger.info("Fast path selected", {
       reason: fastPath.reason,
@@ -278,6 +343,7 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
       semanticMargin: session.semantic.classifier?.margin ?? null,
     });
 
+    const toolStartedAt = Date.now();
     let result: RuntimeToolResult;
     try {
       result = await withRuntimeTimeout({
@@ -298,6 +364,15 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
         toolName: fastPath.toolName,
         error,
       });
+      emitFastPathTelemetry({
+        mode,
+        reason: fastPath.reason,
+        toolName: fastPath.toolName,
+        decision: "fallback",
+        outcome: "timeout",
+        fallbackCause: "timeout",
+        latencyMs: Date.now() - toolStartedAt,
+      });
       return null;
     }
 
@@ -308,9 +383,19 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
         error: result.error ?? null,
         message: result.message ?? null,
       });
+      emitFastPathTelemetry({
+        mode,
+        reason: fastPath.reason,
+        toolName: fastPath.toolName,
+        decision: "fallback",
+        outcome: "tool_error",
+        fallbackCause: "tool_error",
+        latencyMs: Date.now() - toolStartedAt,
+      });
       return null;
     }
 
+    let totalEstimateForTelemetry: number | undefined;
     if (fastPath.requireCompleteResult && result.truncated === true) {
       const paging = (result.paging && typeof result.paging === "object"
         ? (result.paging as Record<string, unknown>)
@@ -319,6 +404,7 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
         paging && typeof paging.totalEstimate === "number" && Number.isFinite(paging.totalEstimate)
           ? Math.max(0, Math.trunc(paging.totalEstimate))
           : null;
+      totalEstimateForTelemetry = totalEstimate ?? undefined;
       const canUseEstimatedTotal = Boolean(
         fastPath.allowEstimatedTotalWhenTruncated && totalEstimate !== null,
       );
@@ -333,9 +419,31 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
           reason: fastPath.reason,
           toolName: fastPath.toolName,
         });
+        emitFastPathTelemetry({
+          mode,
+          reason: fastPath.reason,
+          toolName: fastPath.toolName,
+          decision: "fallback",
+          outcome: "incomplete",
+          fallbackCause: "incomplete",
+          latencyMs: Date.now() - toolStartedAt,
+          truncated: true,
+          totalEstimate: totalEstimateForTelemetry,
+        });
         return null;
       }
     }
+
+    emitFastPathTelemetry({
+      mode,
+      reason: fastPath.reason,
+      toolName: fastPath.toolName,
+      decision: "executed",
+      outcome: "success",
+      latencyMs: Date.now() - toolStartedAt,
+      truncated: result.truncated,
+      totalEstimate: totalEstimateForTelemetry,
+    });
 
     return {
       text: await composeAssistantReply({
@@ -348,8 +456,20 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
   };
 
   if (routingPlan.fastPathMatch) {
-    const strictFastPath = await executeFastPathMatch(routingPlan.fastPathMatch, 1);
+    const strictFastPath = await executeFastPathMatch(
+      routingPlan.fastPathMatch,
+      1,
+      "strict",
+    );
     if (strictFastPath) return strictFastPath;
+  } else {
+    emitFastPathTelemetry({
+      mode: "strict",
+      reason: "no_fast_path_match",
+      decision: "skipped",
+      outcome: "not_admitted",
+      fallbackCause: "not_matched",
+    });
   }
 
   const modelOptions = getModel("economy");
@@ -424,8 +544,16 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
       mode: "recovery",
     });
     if (recoveryFastPath) {
-      const recovered = await executeFastPathMatch(recoveryFastPath, 1);
+      const recovered = await executeFastPathMatch(recoveryFastPath, 1, "recovery");
       if (recovered) return recovered;
+    } else {
+      emitFastPathTelemetry({
+        mode: "recovery",
+        reason: "no_fast_path_match",
+        decision: "skipped",
+        outcome: "not_admitted",
+        fallbackCause: "not_matched",
+      });
     }
 
     return {

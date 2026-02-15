@@ -829,9 +829,19 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       id: "policy.updateRule",
       description: "Update an existing canonical rule patch.",
       inputSchema: z.object({
-        id: z.string().min(1),
+        id: z.string().min(1).optional(),
+        target: z.string().min(1).optional(),
+        type: z.enum(["guardrail", "automation", "preference"]).optional(),
         patch: unknownObject,
-      }).strict(),
+      }).strict().superRefine((value, context) => {
+        if (!value.id && !value.target) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Either id or target is required.",
+            path: ["id"],
+          });
+        }
+      }),
       outputSchema: z.unknown(),
       readOnly: false,
       riskLevel: "caution",
@@ -844,9 +854,19 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       id: "policy.disableRule",
       description: "Disable a canonical rule immediately or until a timestamp.",
       inputSchema: z.object({
-        id: z.string().min(1),
+        id: z.string().min(1).optional(),
+        target: z.string().min(1).optional(),
+        type: z.enum(["guardrail", "automation", "preference"]).optional(),
         disabledUntil: z.string().optional(),
-      }).strict(),
+      }).strict().superRefine((value, context) => {
+        if (!value.id && !value.target) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Either id or target is required.",
+            path: ["id"],
+          });
+        }
+      }),
       outputSchema: z.unknown(),
       readOnly: false,
       riskLevel: "caution",
@@ -859,8 +879,18 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       id: "policy.deleteRule",
       description: "Delete a canonical rule.",
       inputSchema: z.object({
-        id: z.string().min(1),
-      }).strict(),
+        id: z.string().min(1).optional(),
+        target: z.string().min(1).optional(),
+        type: z.enum(["guardrail", "automation", "preference"]).optional(),
+      }).strict().superRefine((value, context) => {
+        if (!value.id && !value.target) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Either id or target is required.",
+            path: ["id"],
+          });
+        }
+      }),
       outputSchema: z.unknown(),
       readOnly: false,
       riskLevel: "dangerous",

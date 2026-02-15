@@ -44,6 +44,37 @@ export const runtimeDirectReadTelemetrySchema = baseSchema.extend({
   confidence: z.number().min(0).max(1),
 });
 
+export const runtimeFastPathTelemetrySchema = baseSchema.extend({
+  mode: z.enum(["strict", "recovery"]),
+  reason: z.string().min(1).max(120),
+  toolName: z.string().min(1).max(120).nullable().optional(),
+  decision: z.enum(["selected", "skipped", "executed", "fallback"]),
+  outcome: z.enum([
+    "success",
+    "incomplete",
+    "timeout",
+    "tool_error",
+    "not_admitted",
+    "unknown",
+  ]),
+  fallbackCause: z
+    .enum([
+      "incomplete",
+      "timeout",
+      "tool_error",
+      "semantic_gate",
+      "slot_validation",
+      "tool_unavailable",
+      "not_matched",
+    ])
+    .optional(),
+  latencyMs: z.number().int().nonnegative().optional(),
+  truncated: z.boolean().optional(),
+  totalEstimate: z.number().int().nonnegative().optional(),
+  semanticConfidence: z.number().min(0).max(1).optional(),
+  semanticMargin: z.number().min(0).max(1).nullable().optional(),
+});
+
 export const runtimeTurnCompletedTelemetrySchema = baseSchema.extend({
   durationMs: z.number().int().nonnegative(),
   stepCount: z.number().int().nonnegative(),
@@ -75,6 +106,7 @@ const runtimeTelemetrySchemas = {
   "openworld.runtime.plan": runtimePlanTelemetrySchema,
   "openworld.runtime.route_selected": runtimeRouteSelectedTelemetrySchema,
   "openworld.runtime.direct_read": runtimeDirectReadTelemetrySchema,
+  "openworld.runtime.fast_path": runtimeFastPathTelemetrySchema,
   "openworld.runtime.tool_lifecycle": runtimeToolLifecycleTelemetrySchema,
   "openworld.turn.completed": runtimeTurnCompletedTelemetrySchema,
   "openworld.runtime.precheck_failed": runtimePrecheckFailedTelemetrySchema,

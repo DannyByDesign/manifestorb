@@ -21,16 +21,31 @@ export const policyToolExecutors: RuntimeToolExecutorMap = {
     }),
   "policy.updateRule": async ({ args, capabilities }) =>
     capabilities.policy.updateRule({
-      id: asString(args.id) ?? "",
+      id: asString(args.id) ?? undefined,
+      target: asString(args.target) ?? undefined,
+      type:
+        args.type === "guardrail" || args.type === "automation" || args.type === "preference"
+          ? args.type
+          : undefined,
       patch: args.patch ? asObject(args.patch) : {},
     }),
   "policy.disableRule": async ({ args, capabilities }) =>
     capabilities.policy.disableRule({
-      id: asString(args.id) ?? "",
+      id: asString(args.id) ?? undefined,
+      target: asString(args.target) ?? undefined,
+      type:
+        args.type === "guardrail" || args.type === "automation" || args.type === "preference"
+          ? args.type
+          : undefined,
       disabledUntil: asString(args.disabledUntil),
     }),
   "policy.deleteRule": async ({ args, capabilities }) =>
     capabilities.policy.deleteRule({
-      id: asString(args.id) ?? "",
+      id: asString(args.id) ?? undefined,
+      target: asString(args.target) ?? undefined,
+      type:
+        args.type === "guardrail" || args.type === "automation" || args.type === "preference"
+          ? args.type
+          : undefined,
     }),
 };
