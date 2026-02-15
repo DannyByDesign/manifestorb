@@ -39,7 +39,7 @@ const CORE_HTTP_MAX_ATTEMPTS = Math.max(
 );
 const CORE_HTTP_RETRY_BASE_MS = Math.max(100, Number(process.env.SURFACES_BRAIN_RETRY_BASE_MS || 500));
 
-const TRANSPORT_QUEUE_ENABLED = process.env.SURFACES_TRANSPORT_QUEUE_ENABLED !== "false";
+const TRANSPORT_QUEUE_ENABLED = process.env.SURFACES_TRANSPORT_QUEUE_ENABLED === "true";
 const TRANSPORT_STREAM_KEY = process.env.SURFACES_TRANSPORT_STREAM_KEY || "surfaces:brain:inbound";
 const TRANSPORT_DLQ_STREAM_KEY = process.env.SURFACES_TRANSPORT_DLQ_STREAM_KEY || "surfaces:brain:inbound:dlq";
 const TRANSPORT_CONSUMER_GROUP = process.env.SURFACES_TRANSPORT_CONSUMER_GROUP || "surfaces-brain-workers";
