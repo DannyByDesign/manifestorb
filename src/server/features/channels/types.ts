@@ -31,6 +31,7 @@ export type InboundAttachment = {
 };
 
 export type OutboundMessage = {
+    responseId?: string; // Stable id used by sidecar delivery ack/replay suppression
     targetChannelId: string;
     targetThreadId?: string; // Reply in thread if present
     content: string; // Markdown supported

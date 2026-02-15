@@ -7,6 +7,7 @@ import { startScheduler, triggerEmbeddingJob, triggerDecayJob } from "./jobs/sch
 import { getQueueStats } from "./jobs/embedding-worker";
 import { getDecayStats } from "./jobs/decay-worker";
 import { processMemoryRecording } from "./jobs/recording-worker";
+import { startBrainIngressWorker, stopBrainIngressWorker } from "./transport/brain-ingress";
 import { env } from "./env";
 import { prisma } from "./db/prisma";
 import { redis } from "./db/redis";
@@ -401,6 +402,8 @@ export async function startSidecar() {
     console.log("   - POST /jobs/recording - Trigger memory recording");
     console.log("   - GET  /health - Health check");
 
+    startBrainIngressWorker();
+
     // Start platform connectors in the background so health checks don't depend on Slack socket startup.
     void Promise.all([
         startConnectorSafely("slack", startSlack),
@@ -427,6 +430,12 @@ export async function startSidecar() {
             server.stop();
         } catch (error) {
             console.error("[Surfaces] Error stopping HTTP server", error);
+        }
+
+        try {
+            await stopBrainIngressWorker();
+        } catch (error) {
+            console.error("[Surfaces] Error stopping transport worker", error);
         }
 
         try {

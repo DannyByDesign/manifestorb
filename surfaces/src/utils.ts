@@ -1,12 +1,9 @@
 import { config } from "dotenv";
 import { env } from "./env";
+import { forwardToBrainWithTransport } from "./transport/brain-ingress";
 config();
 
-const BRAIN_API_URL = env.BRAIN_API_URL;
 const SHARED_SECRET = env.SURFACES_SHARED_SECRET;
-const BRAIN_REQUEST_TIMEOUT_MS = Number(process.env.SURFACES_BRAIN_TIMEOUT_MS || 20000);
-const BRAIN_MAX_ATTEMPTS = Math.max(1, Number(process.env.SURFACES_BRAIN_MAX_ATTEMPTS || 3));
-const BRAIN_RETRY_BASE_MS = Math.max(100, Number(process.env.SURFACES_BRAIN_RETRY_BASE_MS || 500));
 
 export interface InteractiveAction {
     label: string;
@@ -52,26 +49,20 @@ export interface SurfaceIdentityResult {
     reason?: string;
 }
 
+export type BrainOutboundResponse = {
+    responseId?: string;
+    content?: string;
+    interactive?: InteractivePayload;
+    targetChannelId?: string;
+    targetThreadId?: string;
+    [key: string]: unknown;
+};
+
+export type BrainResponsePayload = {
+    responses: BrainOutboundResponse[];
+};
+
 const CORE_BASE_URL = env.CORE_BASE_URL;
-
-function sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function shouldRetryBrainStatus(status: number): boolean {
-    return status === 408 || status === 425 || status === 429 || status >= 500;
-}
-
-function backoffDelayMs(attempt: number): number {
-    const exponential = BRAIN_RETRY_BASE_MS * Math.pow(2, Math.max(0, attempt - 1));
-    return Math.min(5000, exponential);
-}
-
-function candidateBrainUrls(): string[] {
-    const fallback = `${CORE_BASE_URL}/api/surfaces/inbound`;
-    if (BRAIN_API_URL === fallback) return [BRAIN_API_URL];
-    return [BRAIN_API_URL, fallback];
-}
 
 /** Fetch a one-time link URL for onboarding (Slack/Discord/Telegram). Sidecar-only. */
 export async function fetchOnboardingLinkUrl(
@@ -195,96 +186,15 @@ export async function forwardToBrain(params: {
     content: string;
     context: Record<string, unknown>;
 }) {
-    const urls = candidateBrainUrls();
-    let lastError: unknown = null;
-
-    for (const url of urls) {
-        for (let attempt = 1; attempt <= BRAIN_MAX_ATTEMPTS; attempt++) {
-            const startedAt = Date.now();
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), BRAIN_REQUEST_TIMEOUT_MS);
-
-            try {
-                console.log(`[Surfaces] Forwarding to Brain (${params.provider})`, {
-                    url,
-                    attempt,
-                    maxAttempts: BRAIN_MAX_ATTEMPTS,
-                    channelId: params.context?.channelId,
-                    userId: params.context?.userId,
-                    messageId: params.context?.messageId,
-                    isDirectMessage: params.context?.isDirectMessage,
-                    contentLength: params.content.length,
-                });
-                const response = await fetch(url, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": `Bearer ${SHARED_SECRET}`,
-                    },
-                    body: JSON.stringify(params),
-                    signal: controller.signal,
-                });
-
-                const latencyMs = Date.now() - startedAt;
-                if (!response.ok) {
-                    const bodyText = await response.text().catch(() => "");
-                    console.error("[Surfaces] Brain HTTP error", {
-                        url,
-                        attempt,
-                        maxAttempts: BRAIN_MAX_ATTEMPTS,
-                        status: response.status,
-                        statusText: response.statusText,
-                        latencyMs,
-                        bodyPreview: bodyText.slice(0, 500),
-                    });
-
-                    if (!shouldRetryBrainStatus(response.status) || attempt >= BRAIN_MAX_ATTEMPTS) {
-                        break;
-                    }
-
-                    await sleep(backoffDelayMs(attempt));
-                    continue;
-                }
-
-                const json = await response.json();
-                const responses = Array.isArray(json?.responses) ? json.responses.length : 0;
-                console.log("[Surfaces] Brain response received", {
-                    provider: params.provider,
-                    url,
-                    attempt,
-                    channelId: params.context?.channelId,
-                    userId: params.context?.userId,
-                    responses,
-                    latencyMs,
-                });
-                return json;
-            } catch (error) {
-                const latencyMs = Date.now() - startedAt;
-                const aborted = error instanceof Error && error.name === "AbortError";
-                lastError = error;
-                console.error("[Surfaces] Brain transport error", {
-                    url,
-                    attempt,
-                    maxAttempts: BRAIN_MAX_ATTEMPTS,
-                    latencyMs,
-                    aborted,
-                    error: error instanceof Error ? error.message : String(error),
-                });
-
-                if (attempt >= BRAIN_MAX_ATTEMPTS) break;
-                await sleep(backoffDelayMs(attempt));
-            } finally {
-                clearTimeout(timeout);
-            }
-        }
+    const payload = await forwardToBrainWithTransport(params);
+    if (
+        payload &&
+        typeof payload === "object" &&
+        Array.isArray((payload as { responses?: unknown }).responses)
+    ) {
+        return payload as BrainResponsePayload;
     }
 
-    if (lastError) {
-        console.error("[Surfaces] Exhausted all Brain endpoints", {
-            urls,
-            error: lastError instanceof Error ? lastError.message : String(lastError),
-        });
-    }
     return null;
 }
 
