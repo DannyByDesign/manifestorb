@@ -69,4 +69,47 @@ describe("TimeSlotManager availability", () => {
 
     expect(slots.some((slot) => slot.hasBufferTime)).toBe(true);
   });
+
+  it("checks calendar conflicts even when no calendar ids are selected", async () => {
+    const calendarService: CalendarService = {
+      findConflicts: vi.fn().mockResolvedValue([
+        {
+          type: "calendar_event",
+          title: "Busy",
+          start: new Date("2024-05-06T09:00:00.000Z"),
+          end: new Date("2024-05-06T09:30:00.000Z"),
+          source: { type: "calendar", id: "evt-1" },
+        },
+      ]),
+      findBatchConflicts: vi.fn().mockResolvedValue([]),
+    };
+
+    const manager = new TimeSlotManagerImpl(
+      { ...buildSettings(), selectedCalendarIds: [] },
+      calendarService,
+    );
+
+    const isAvailable = await manager.isSlotAvailable(
+      {
+        start: new Date("2024-05-06T09:00:00.000Z"),
+        end: new Date("2024-05-06T09:30:00.000Z"),
+        score: 0,
+        conflicts: [],
+        energyLevel: null,
+        isWithinWorkHours: true,
+        hasBufferTime: false,
+      },
+      "user-1",
+    );
+
+    expect(isAvailable).toBe(false);
+    expect(calendarService.findConflicts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        start: new Date("2024-05-06T09:00:00.000Z"),
+        end: new Date("2024-05-06T09:30:00.000Z"),
+      }),
+      [],
+      "user-1",
+    );
+  });
 });

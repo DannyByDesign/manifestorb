@@ -278,10 +278,6 @@ export class TimeSlotManagerImpl implements TimeSlotManager {
     slot: TimeSlot,
     userId: string,
   ): Promise<Conflict[]> {
-    if (this.settings.selectedCalendarIds.length === 0) {
-      return [];
-    }
-
     return this.calendarService.findConflicts(
       slot,
       this.settings.selectedCalendarIds,

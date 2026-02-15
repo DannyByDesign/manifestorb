@@ -130,10 +130,6 @@ export class CalendarServiceImpl implements CalendarService {
     end: Date,
     selectedCalendarIds: string[],
   ): Promise<CalendarEvent[]> {
-    if (selectedCalendarIds.length === 0) {
-      return [];
-    }
-
     if (this.isCacheValid(start, end, selectedCalendarIds)) {
       return this.cache!.events.filter(
         (event) => event.startTime <= end && event.endTime >= start,

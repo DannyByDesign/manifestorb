@@ -173,4 +173,45 @@ describe("createCalendarProvider", () => {
     expect(slots).toHaveLength(1);
     expect(slots[0]?.score).toBe(0.91);
   });
+
+  it("falls back gracefully when no enabled calendars are configured for availability lookup", async () => {
+    const prisma = (await import("@/server/db/client")).default as unknown as {
+      taskPreference: { findUnique: ReturnType<typeof vi.fn> };
+      calendar: { findMany: ReturnType<typeof vi.fn> };
+    };
+    prisma.taskPreference.findUnique.mockResolvedValueOnce({
+      selectedCalendarIds: [],
+      workHourStart: 9,
+      workHourEnd: 17,
+      workDays: [1, 2, 3, 4, 5],
+      bufferMinutes: 15,
+      groupByProject: false,
+    });
+    prisma.calendar.findMany.mockResolvedValueOnce([]);
+
+    const logger = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+      trace: vi.fn(),
+      with: vi.fn().mockReturnThis(),
+    } as unknown as Logger;
+
+    const provider = await createCalendarProvider(
+      { id: "email-account-1" },
+      "user-1",
+      logger,
+    );
+
+    const slots = await provider.findAvailableSlots({
+      durationMinutes: 30,
+      start: new Date("2026-02-13T00:00:00.000Z"),
+      end: new Date("2026-02-14T00:00:00.000Z"),
+    });
+
+    expect(prisma.calendar.findMany).toHaveBeenCalled();
+    expect(slots).toHaveLength(1);
+    expect(slots[0]?.score).toBe(0.91);
+  });
 });

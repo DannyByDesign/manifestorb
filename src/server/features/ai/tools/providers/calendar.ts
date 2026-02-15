@@ -380,7 +380,10 @@ export async function createCalendarProvider(
           : fallbackCalendarIds;
 
       if (selectedCalendarIds.length === 0) {
-        throw new Error("No enabled calendars available for availability checks.");
+        scopedLogger.warn("No enabled calendars configured; falling back to provider-wide availability lookup", {
+          userId,
+          emailAccountId: account.id,
+        });
       }
       const defaultCalendarTimeZone = await resolveDefaultCalendarTimeZone({
         userId,
