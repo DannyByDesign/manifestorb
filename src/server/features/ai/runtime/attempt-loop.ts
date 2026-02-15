@@ -275,6 +275,14 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
       };
     }
 
+    if (fastPath.requireCompleteResult && result.truncated === true) {
+      session.input.logger.info("Fast path result incomplete; falling back to planner lane", {
+        reason: fastPath.reason,
+        toolName: fastPath.toolName,
+      });
+      return null;
+    }
+
     return {
       text: await composeAssistantReply({
         mode: "final",

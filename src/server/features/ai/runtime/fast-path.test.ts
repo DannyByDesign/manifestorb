@@ -197,7 +197,7 @@ describe("runtime fast path", () => {
     }
   });
 
-  it("uses semantic inbox read path even when keyword matching is weak", async () => {
+  it("does not force broad inbox fallback for vague requests", async () => {
     const strict = await matchRuntimeFastPath({
       session: buildSession("inbox status"),
       mode: "strict",
@@ -207,10 +207,63 @@ describe("runtime fast path", () => {
       mode: "recovery",
     });
 
-    expect(strict?.type).toBe("tool_call");
-    expect(recovery?.type).toBe("tool_call");
-    if (recovery?.type === "tool_call") {
-      expect(recovery.toolName).toBe("email.searchInbox");
+    expect(strict).toBeNull();
+    expect(recovery).toBeNull();
+  });
+
+  it("routes explicit email count requests to completeness-guarded fast path", async () => {
+    const match = await matchRuntimeFastPath({
+      session: buildSession("how many emails do i have in my inbox today?"),
+      mode: "strict",
+    });
+
+    expect(match?.type).toBe("tool_call");
+    if (match?.type === "tool_call") {
+      expect(match.toolName).toBe("email.searchInbox");
+      expect(match.args).toEqual({
+        query: "",
+        limit: 2000,
+        fetchAll: true,
+        dateRange: {
+          after: "2026-02-14",
+          before: "2026-02-14",
+        },
+      });
+      expect(match.requireCompleteResult).toBe(true);
+    }
+  });
+
+  it("does not fast-path heuristic attention requests", async () => {
+    const match = await matchRuntimeFastPath({
+      session: buildSession("check my inbox, what needs attention"),
+      mode: "strict",
+    });
+
+    expect(match).toBeNull();
+  });
+
+  it("routes simple rule list requests to policy.listRules", async () => {
+    const match = await matchRuntimeFastPath({
+      session: buildSession("show me my rules"),
+      mode: "strict",
+    });
+
+    expect(match?.type).toBe("tool_call");
+    if (match?.type === "tool_call") {
+      expect(match.toolName).toBe("policy.listRules");
+      expect(match.args).toEqual({});
+    }
+  });
+
+  it("asks for rule id when disabling/deleting without id", async () => {
+    const match = await matchRuntimeFastPath({
+      session: buildSession("disable that rule"),
+      mode: "strict",
+    });
+
+    expect(match?.type).toBe("respond");
+    if (match?.type === "respond") {
+      expect(match.reason).toBe("policy_missing_rule_id");
     }
   });
 

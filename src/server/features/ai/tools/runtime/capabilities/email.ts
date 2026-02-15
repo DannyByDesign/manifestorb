@@ -189,7 +189,8 @@ function computeEmailSearchLimit(params: {
     return clampInt(params.requestedLimit ?? defaultLimit, 1, 200);
   }
 
-  return clampInt(params.requestedLimit ?? 20, 1, 100);
+  const defaultLimit = isAttentionQuery ? 60 : 20;
+  return clampInt(params.requestedLimit ?? defaultLimit, 1, 100);
 }
 
 async function coerceToMessageIds(

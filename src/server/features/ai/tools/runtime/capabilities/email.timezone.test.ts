@@ -151,4 +151,17 @@ describe("runtime email timezone handling", () => {
     expect(typeof item?.dateLocal).toBe("string");
     expect(String(item?.dateLocal)).not.toContain("+0000");
   });
+
+  it("uses a wider default limit for unread-attention inbox searches", async () => {
+    const caps = createEmailCapabilities(buildEnv());
+
+    await caps.searchInbox({
+      query: "is:unread",
+    });
+
+    const filter = vi.mocked(searchEmailThreads).mock.calls[0]?.[1] as {
+      limit?: number;
+    };
+    expect(filter.limit).toBe(60);
+  });
 });
