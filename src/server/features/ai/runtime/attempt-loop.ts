@@ -18,6 +18,19 @@ import type { RuntimeToolResult } from "@/server/features/ai/tools/contracts/too
 
 const RUNTIME_TURN_BUDGET_MS = 180_000;
 const MAX_SKILL_PROMPT_CHARS = 2_200;
+const FAST_PATH_TOOL_TIMEOUT_MIN_MS = 2_000;
+const FAST_PATH_TOOL_TIMEOUT_MAX_MS = 8_000;
+
+function resolveFastPathToolTimeoutMs(): number {
+  const raw = process.env.RUNTIME_FAST_PATH_TOOL_TIMEOUT_MS;
+  if (typeof raw === "string" && raw.trim().length > 0) {
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isFinite(parsed)) {
+      return Math.min(Math.max(parsed, FAST_PATH_TOOL_TIMEOUT_MIN_MS), FAST_PATH_TOOL_TIMEOUT_MAX_MS);
+    }
+  }
+  return 3_000;
+}
 
 class RuntimeOperationTimeoutError extends Error {
   constructor(
@@ -256,31 +269,72 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
       };
     }
 
-    const result = await executeToolCall({
-      context,
-      decision: {
-        toolName: fastPath.toolName,
-        args: fastPath.args,
-      },
+    session.input.logger.info("Fast path selected", {
+      reason: fastPath.reason,
+      toolName: fastPath.toolName,
+      semanticIntent: session.semantic.intent,
+      semanticConfidence: session.semantic.confidence,
+      semanticSource: session.semantic.source,
+      semanticMargin: session.semantic.classifier?.margin ?? null,
     });
 
+    let result: RuntimeToolResult;
+    try {
+      result = await withRuntimeTimeout({
+        operation: "fast_path_tool",
+        timeoutMs: resolveFastPathToolTimeoutMs(),
+        run: () =>
+          executeToolCall({
+            context,
+            decision: {
+              toolName: fastPath.toolName,
+              args: fastPath.args,
+            },
+          }),
+      });
+    } catch (error) {
+      session.input.logger.warn("Fast path tool execution timed out; falling back to planner lane", {
+        reason: fastPath.reason,
+        toolName: fastPath.toolName,
+        error,
+      });
+      return null;
+    }
+
     if (!result.success) {
-      return {
-        text: await composeAssistantReply({
-          mode: "error",
-          fallbackText: result.message ?? fastPath.onFailureText,
-        }),
-        stopReason: "runtime_error",
-        attempts: attempt,
-      };
+      session.input.logger.warn("Fast path tool returned failure; falling back to planner lane", {
+        reason: fastPath.reason,
+        toolName: fastPath.toolName,
+        error: result.error ?? null,
+        message: result.message ?? null,
+      });
+      return null;
     }
 
     if (fastPath.requireCompleteResult && result.truncated === true) {
-      session.input.logger.info("Fast path result incomplete; falling back to planner lane", {
-        reason: fastPath.reason,
-        toolName: fastPath.toolName,
-      });
-      return null;
+      const paging = (result.paging && typeof result.paging === "object"
+        ? (result.paging as Record<string, unknown>)
+        : null);
+      const totalEstimate =
+        paging && typeof paging.totalEstimate === "number" && Number.isFinite(paging.totalEstimate)
+          ? Math.max(0, Math.trunc(paging.totalEstimate))
+          : null;
+      const canUseEstimatedTotal = Boolean(
+        fastPath.allowEstimatedTotalWhenTruncated && totalEstimate !== null,
+      );
+      if (canUseEstimatedTotal) {
+        session.input.logger.info("Fast path accepted provider estimated total for truncated result", {
+          reason: fastPath.reason,
+          toolName: fastPath.toolName,
+          totalEstimate,
+        });
+      } else {
+        session.input.logger.info("Fast path result incomplete; falling back to planner lane", {
+          reason: fastPath.reason,
+          toolName: fastPath.toolName,
+        });
+        return null;
+      }
     }
 
     return {

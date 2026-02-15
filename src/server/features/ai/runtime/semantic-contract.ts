@@ -35,6 +35,13 @@ export interface RuntimeSemanticContract {
   confidence: number;
   toolHints: string[];
   source: "embedding" | "lexical";
+  classifier?: {
+    topIntent: RuntimeSemanticIntent;
+    topScore: number;
+    secondIntent: RuntimeSemanticIntent;
+    secondScore: number;
+    margin: number;
+  };
 }
 
 const logger = createScopedLogger("RuntimeSemantic");
@@ -290,6 +297,7 @@ function buildContractFromIntent(params: {
   intent: RuntimeSemanticIntent;
   confidence: number;
   source: "embedding" | "lexical";
+  classifier?: RuntimeSemanticContract["classifier"];
 }): RuntimeSemanticContract {
   const { message, intent, confidence, source } = params;
   const normalized = message.toLowerCase();
@@ -308,6 +316,30 @@ function buildContractFromIntent(params: {
     confidence: Number(confidence.toFixed(4)),
     toolHints: buildToolHints(seed.domain, seed.requestedOperation),
     source,
+    ...(params.classifier ? { classifier: params.classifier } : {}),
+  };
+}
+
+interface IntentScoreEntry {
+  intent: RuntimeSemanticIntent;
+  score: number;
+}
+
+export function rankSemanticIntentScores(
+  entries: IntentScoreEntry[],
+): {
+  top: IntentScoreEntry;
+  second: IntentScoreEntry;
+  margin: number;
+} | null {
+  if (!Array.isArray(entries) || entries.length === 0) return null;
+  const sorted = [...entries].sort((a, b) => b.score - a.score);
+  const top = sorted[0];
+  const second = sorted[1] ?? sorted[0];
+  return {
+    top,
+    second,
+    margin: top.score - second.score,
   };
 }
 
@@ -351,24 +383,29 @@ async function buildEmbeddingContract(message: string): Promise<RuntimeSemanticC
     getIntentCentroids(),
   ]);
 
-  let bestIntent: RuntimeSemanticIntent | null = null;
-  let bestScore = Number.NEGATIVE_INFINITY;
+  const scoreEntries: IntentScoreEntry[] = [];
   const intents = Object.keys(centroids) as RuntimeSemanticIntent[];
 
   for (const intent of intents) {
     const score = EmbeddingService.cosineSimilarity(messageEmbedding, centroids[intent]);
-    if (score > bestScore) {
-      bestScore = score;
-      bestIntent = intent;
-    }
+    scoreEntries.push({ intent, score });
   }
 
-  if (!bestIntent || bestScore < MIN_SEMANTIC_SCORE) return null;
+  const ranked = rankSemanticIntentScores(scoreEntries);
+  if (!ranked || ranked.top.score < MIN_SEMANTIC_SCORE) return null;
+
   return buildContractFromIntent({
     message,
-    intent: bestIntent,
-    confidence: bestScore,
+    intent: ranked.top.intent,
+    confidence: ranked.top.score,
     source: "embedding",
+    classifier: {
+      topIntent: ranked.top.intent,
+      topScore: Number(ranked.top.score.toFixed(4)),
+      secondIntent: ranked.second.intent,
+      secondScore: Number(ranked.second.score.toFixed(4)),
+      margin: Number(ranked.margin.toFixed(4)),
+    },
   });
 }
 
@@ -399,6 +436,7 @@ export async function classifyRuntimeSemanticContract(params: {
         routeProfile: contract.routeProfile,
         riskLevel: contract.riskLevel,
         confidence: contract.confidence,
+        classifierMargin: contract.classifier?.margin ?? null,
         timeoutMs: semanticTimeoutMs,
       });
       return contract;
@@ -417,6 +455,7 @@ export async function classifyRuntimeSemanticContract(params: {
     routeProfile: fallback.routeProfile,
     riskLevel: fallback.riskLevel,
     confidence: fallback.confidence,
+    classifierMargin: fallback.classifier?.margin ?? null,
   });
   return fallback;
 }

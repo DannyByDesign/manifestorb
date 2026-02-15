@@ -178,6 +178,7 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
     semanticRouteProfile: semantic.routeProfile,
     semanticRiskLevel: semantic.riskLevel,
     semanticConfidence: semantic.confidence,
+    semanticClassifierMargin: semantic.classifier?.margin ?? null,
     toolCountBefore: fullRegistry.length,
     toolCountSemanticCandidate: filtered.diagnostics.counts.semanticCandidate,
     toolCountAfterProfile: filtered.diagnostics.counts.afterProfile,

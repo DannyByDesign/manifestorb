@@ -31,6 +31,7 @@ const CHAINING_RE = /\b(and then|then|also|plus|follow(?:ed)? by|after that|befo
 const EMAIL_RE = /\b(email|inbox|message|thread|draft)\b/u;
 const CALENDAR_RE = /\b(calendar|meeting|event|schedule)\b/u;
 const TASK_RE = /\b(task|todo|to-do)\b/u;
+const FAST_PATH_RESPONSE_WRITE_TIMEOUT_MS = 6_000;
 
 const ROUTE_PRESETS: Record<
   Exclude<RuntimeRoutingLane, "direct_response" | "macro_tool">,
@@ -152,7 +153,7 @@ export async function buildRuntimeRoutingPlan(params: {
       maxAttempts: 1,
       decisionTimeoutMs: 0,
       repairTimeoutMs: 0,
-      responseWriteTimeoutMs: 20_000,
+      responseWriteTimeoutMs: FAST_PATH_RESPONSE_WRITE_TIMEOUT_MS,
       decisionToolCatalogLimit: 0,
       includeSkillGuidance: false,
       fastPathMatch: strictFastPath,

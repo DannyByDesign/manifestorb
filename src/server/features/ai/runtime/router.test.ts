@@ -53,6 +53,34 @@ function buildSemanticForTest(message: string): RuntimeSession["semantic"] {
     };
   }
 
+  if (/\binbox|email|thread|message\b/u.test(normalized) && !mutationRe.test(normalized)) {
+    return {
+      intent: "inbox_read",
+      domain: "inbox",
+      requestedOperation: "read",
+      complexity: "simple",
+      routeProfile: "fast",
+      riskLevel: "low",
+      confidence: 0.84,
+      toolHints: ["group:inbox_read"],
+      source: "lexical",
+    };
+  }
+
+  if (/\bcalendar|meeting|event|schedule\b/u.test(normalized) && !mutationRe.test(normalized)) {
+    return {
+      intent: "calendar_read",
+      domain: "calendar",
+      requestedOperation: "read",
+      complexity: "simple",
+      routeProfile: "fast",
+      riskLevel: "low",
+      confidence: 0.84,
+      toolHints: ["group:calendar_read"],
+      source: "lexical",
+    };
+  }
+
   if (mutationRe.test(normalized)) {
     return {
       intent: normalized.includes("calendar") || normalized.includes("meeting")
@@ -83,6 +111,16 @@ function buildSemanticForTest(message: string): RuntimeSession["semantic"] {
 }
 
 function buildSession(message: string): RuntimeSession {
+  const toolLookup = new Map<string, RuntimeSession["toolRegistry"][number]>();
+  for (const name of [
+    "email.searchInbox",
+    "calendar.listEvents",
+    "policy.listRules",
+    "policy.createRule",
+  ]) {
+    toolLookup.set(name, { toolName: name } as RuntimeSession["toolRegistry"][number]);
+  }
+
   return {
     input: {
       provider: "slack",
@@ -105,7 +143,7 @@ function buildSession(message: string): RuntimeSession {
       toolLookup: new Map(),
     },
     toolRegistry: [],
-    toolLookup: new Map(),
+    toolLookup,
     artifacts: {
       approvals: [],
       interactivePayloads: [],

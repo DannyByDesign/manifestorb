@@ -164,4 +164,25 @@ describe("runtime email timezone handling", () => {
     };
     expect(filter.limit).toBe(60);
   });
+
+  it("uses count-purpose limits for count-grade requests", async () => {
+    const caps = createEmailCapabilities(buildEnv());
+
+    await caps.searchInbox({
+      query: "",
+      purpose: "count",
+      dateRange: {
+        after: "2026-02-16",
+        before: "2026-02-16",
+      },
+      fetchAll: true,
+    });
+
+    const filter = vi.mocked(searchEmailThreads).mock.calls[0]?.[1] as {
+      limit?: number;
+      fetchAll?: boolean;
+    };
+    expect(filter.limit).toBe(5000);
+    expect(filter.fetchAll).toBe(true);
+  });
 });

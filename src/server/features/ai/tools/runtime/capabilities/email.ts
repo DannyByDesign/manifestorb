@@ -175,8 +175,24 @@ function computeEmailSearchLimit(params: {
   fetchAll: boolean;
   hasDateRange: boolean;
   query: string;
+  purpose?: "lookup" | "list" | "count";
 }): number {
   const isAttentionQuery = /\bis:unread\b/i.test(params.query);
+  const purpose = params.purpose ?? "list";
+
+  if (purpose === "lookup") {
+    return clampInt(params.requestedLimit ?? 1, 1, 20);
+  }
+
+  if (purpose === "count") {
+    if (params.fetchAll) {
+      const defaultLimit = params.hasDateRange ? 5000 : 3000;
+      const maxLimit = params.hasDateRange ? 10000 : 5000;
+      return clampInt(params.requestedLimit ?? defaultLimit, 1, maxLimit);
+    }
+    // Count with provider-estimate mode: keep small sample while relying on provider totals.
+    return clampInt(params.requestedLimit ?? 100, 1, 500);
+  }
 
   if (params.fetchAll) {
     const defaultLimit = params.hasDateRange ? 1000 : 400;
@@ -354,6 +370,11 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           ? Math.floor(filter.limit)
           : undefined;
       const fetchAll = Boolean(filter.fetchAll);
+      const purposeRaw = typeof filter.purpose === "string" ? filter.purpose : undefined;
+      const purpose: "lookup" | "list" | "count" | undefined =
+        purposeRaw === "lookup" || purposeRaw === "list" || purposeRaw === "count"
+          ? purposeRaw
+          : undefined;
       const hasDateRange = Boolean(before || after);
       const query = typeof filter.query === "string" ? filter.query : "";
       const normalizedLimit = computeEmailSearchLimit({
@@ -361,6 +382,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         fetchAll,
         hasDateRange,
         query,
+        purpose,
       });
 
       const result = await searchEmailThreads(provider, {

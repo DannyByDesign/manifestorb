@@ -1,5 +1,6 @@
 import { toZonedTime } from "date-fns-tz";
 import { resolveDefaultCalendarTimeZone } from "@/server/features/ai/tools/calendar-time";
+import type { RuntimeSemanticIntent } from "@/server/features/ai/runtime/semantic-contract";
 import type { RuntimeSession } from "@/server/features/ai/runtime/types";
 import type { RuntimeToolResult } from "@/server/features/ai/tools/contracts/tool-result";
 
@@ -19,32 +20,39 @@ export type RuntimeFastPathMatch =
       summarize: (result: RuntimeToolResult) => string;
       onFailureText: string;
       requireCompleteResult?: boolean;
+      allowEstimatedTotalWhenTruncated?: boolean;
     };
+
+const FAST_PATH_MIN_CONFIDENCE = 0.78;
+const FAST_PATH_MIN_MARGIN = 0.025;
 
 const MUTATION_VERB_RE =
   /\b(create|update|edit|change|delete|remove|archive|trash|send|reply|move|label|reschedule|book|cancel|block|unsubscribe|mark)\b/u;
+const CONDITIONAL_OR_CHAINING_RE =
+  /\b(if|unless|otherwise|except|only if|when|and then|follow(?:ed)? by|after that|before that|next step)\b/u;
 const EMAIL_ENTITY_RE = /\b(email|emails|inbox|message|messages|thread|threads)\b/u;
 const CALENDAR_ENTITY_RE = /\b(calendar|meeting|meetings|event|events|schedule)\b/u;
 const FIRST_OR_LATEST_RE = /\b(first|top|latest|most recent|newest|recent)\b/u;
-const UNREAD_OR_ATTENTION_RE =
-  /\b(unread|need attention|needs attention|respond to|reply to|priority)\b/u;
 const LIST_OR_SHOW_RE = /\b(show|list|check|find|what|which|tell me)\b/u;
 const GREETING_RE =
   /^(hi|hello|hey|yo|sup|good morning|good afternoon|good evening|howdy)[\s!.?]*$/u;
 const CAPABILITIES_RE =
   /\b(what can you do|capabilit(?:y|ies)|how can you help|what do you do|help me understand)\b/u;
 const COUNT_RE = /\b(how many|count|number of)\b/u;
+const UNREAD_RE = /\bunread\b/u;
+const ATTENTION_HEURISTIC_RE =
+  /\b(need attention|needs attention|respond to|reply to|priority|important)\b/u;
 const EXPLICIT_DATE_RANGE_RE =
   /\b(today|tonight|tomorrow|this week|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/u;
-const LIST_LIKE_EMAIL_RE = /\b(emails|messages|threads|alerts|updates)\b/u;
-const ATTENTION_HEURISTIC_RE =
-  /\b(need attention|needs attention|respond to|reply to|priority)\b/u;
 const RULE_ENTITY_RE = /\b(rule|rules|automation|automations|policy|policies)\b/u;
 const RULE_LIST_RE = /\b(list|show|what are|what's|which)\b/u;
 const RULE_CREATE_RE = /\b(create|add|set up|setup|make)\b/u;
-const RULE_DISABLE_RE = /\b(disable|pause|turn off|deactivate)\b/u;
-const RULE_DELETE_RE = /\b(delete|remove)\b/u;
-const RULE_ID_RE = /\b(?:rule|id)\s*(?:is\s*)?([a-z0-9][a-z0-9_-]{5,})\b/iu;
+const NEXT_MEETING_RE = /\b(next\s+(meeting|event)|what'?s\s+next\s+on\s+my\s+calendar)\b/u;
+const MEETING_NOW_RE = /\b(am i in (a )?meeting right now|do i have (a )?meeting right now|meeting right now)\b/u;
+const EMAIL_SENDER_SCOPE_RE =
+  /\b(?:from|by)\s+([^,.!?]+?)(?=\s+(?:today|tonight|tomorrow|this week|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|$)/iu;
+const EMAIL_TOPIC_SCOPE_RE =
+  /\b(?:about|regarding|re:)\s+([^,.!?]+?)(?=\s+(?:today|tonight|tomorrow|this week|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|$)/iu;
 
 const WEEKDAY_INDEX: Record<string, number> = {
   sunday: 0,
@@ -73,9 +81,48 @@ function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+function asNumber(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return Math.trunc(value);
+}
+
 function firstArrayItem(value: unknown): Record<string, unknown> | null {
   const item = asArray(value)[0];
   return asRecord(item);
+}
+
+function parseSenderScope(message: string): string | undefined {
+  const match = message.match(EMAIL_SENDER_SCOPE_RE);
+  if (!match?.[1]) return undefined;
+  const value = match[1].trim().replace(/\s+/g, " ");
+  if (!value || value.length < 2) return undefined;
+  return value;
+}
+
+function parseTopicScope(message: string): string | undefined {
+  const match = message.match(EMAIL_TOPIC_SCOPE_RE);
+  if (!match?.[1]) return undefined;
+  const value = match[1].trim().replace(/\s+/g, " ");
+  if (!value || value.length < 2) return undefined;
+  return value;
+}
+
+function semanticAdmitsIntents(
+  session: RuntimeSession,
+  intents: RuntimeSemanticIntent[],
+): boolean {
+  const semantic = session.semantic;
+  if (!intents.includes(semantic.intent)) return false;
+
+  if (semantic.source === "embedding") {
+    if (semantic.confidence < FAST_PATH_MIN_CONFIDENCE) return false;
+    const margin = semantic.classifier?.margin;
+    if (typeof margin === "number" && Number.isFinite(margin) && margin < FAST_PATH_MIN_MARGIN) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function summarizeTopEmail(timeZone: string) {
@@ -95,18 +142,15 @@ function summarizeTopEmail(timeZone: string) {
 
 function summarizeEmailList(timeZone: string) {
   return (result: RuntimeToolResult): string => {
-  const items = asArray(result.data).map((item) => asRecord(item)).filter(Boolean) as Record<
-    string,
-    unknown
-  >[];
-  if (items.length === 0) return "I don't see matching emails right now.";
-  const isTruncated = result.truncated === true;
-  const paging = asRecord(result.paging);
-  const totalEstimateRaw = paging?.totalEstimate;
-  const totalEstimate =
-    typeof totalEstimateRaw === "number" && Number.isFinite(totalEstimateRaw)
-      ? Math.max(0, Math.trunc(totalEstimateRaw))
-      : null;
+    const items = asArray(result.data).map((item) => asRecord(item)).filter(Boolean) as Record<
+      string,
+      unknown
+    >[];
+    if (items.length === 0) return "I don't see matching emails right now.";
+
+    const isTruncated = result.truncated === true;
+    const paging = asRecord(result.paging);
+    const totalEstimate = asNumber(paging?.totalEstimate);
 
     const top = items.slice(0, 3).map((item) => {
       const subject = asString(item.title) ?? "No subject";
@@ -119,34 +163,45 @@ function summarizeEmailList(timeZone: string) {
         : `"${subject}" from ${from}`;
     });
 
-  if (items.length === 1) return `I found one: ${top[0]}.`;
-  if (items.length <= 3) {
-    if (!isTruncated) return `Top ${items.length} emails: ${top.join("; ")}.`;
-    if (totalEstimate !== null && totalEstimate > items.length) {
-      return `I can see about ${totalEstimate} matching emails. Top ones: ${top.join("; ")}.`;
+    if (items.length === 1) return `I found one: ${top[0]}.`;
+    if (items.length <= 3 && !isTruncated) return `Top ${items.length} emails: ${top.join("; ")}.`;
+
+    if (isTruncated && totalEstimate !== null && totalEstimate > items.length) {
+      return `I found roughly ${totalEstimate} matching emails. Top ones: ${top.join("; ")}.`;
     }
-    return `I can see at least ${items.length} emails. Top ones: ${top.join("; ")}.`;
-  }
-  if (!isTruncated) return `I found ${items.length} matches. Top ones: ${top.join("; ")}.`;
-  if (totalEstimate !== null && totalEstimate > items.length) {
-    return `I can see about ${totalEstimate} matches. Top ones: ${top.join("; ")}.`;
-  }
-  return `I can see at least ${items.length} matches. Top ones: ${top.join("; ")}.`;
+
+    if (isTruncated) {
+      return `I found at least ${items.length} matching emails. Top ones: ${top.join("; ")}.`;
+    }
+
+    return `I found ${items.length} matching emails. Top ones: ${top.join("; ")}.`;
   };
 }
 
 function summarizeEmailCount(params: {
   unreadOnly: boolean;
   hasDateRange: boolean;
+  allowEstimatedTotalWhenTruncated: boolean;
 }) {
   return (result: RuntimeToolResult): string => {
     const items = asArray(result.data);
-    const count = items.length;
+    const paging = asRecord(result.paging);
+    const totalEstimate = asNumber(paging?.totalEstimate);
+    const isTruncated = result.truncated === true;
+
     const qualifier = params.unreadOnly ? "unread emails" : "emails";
-    if (params.hasDateRange) {
-      return `You have ${count} ${qualifier} in that date window.`;
+    const windowText = params.hasDateRange ? " in that date window" : "";
+
+    if (
+      isTruncated &&
+      params.allowEstimatedTotalWhenTruncated &&
+      totalEstimate !== null &&
+      totalEstimate >= 0
+    ) {
+      return `You have about ${totalEstimate} ${qualifier}${windowText}.`;
     }
-    return `You have ${count} ${qualifier}.`;
+
+    return `You have ${items.length} ${qualifier}${windowText}.`;
   };
 }
 
@@ -225,6 +280,19 @@ function inferCalendarDateRange(message: string, timeZone: string): {
   return { after: ymd, before: ymd };
 }
 
+function inferFutureCalendarDateRange(timeZone: string): {
+  after: string;
+  before: string;
+} {
+  const nowLocal = toZonedTime(new Date(), timeZone);
+  const today = startOfLocalDay(nowLocal);
+  const end = addLocalDays(today, 7);
+  return {
+    after: formatLocalYmd(today),
+    before: formatLocalYmd(end),
+  };
+}
+
 function inferExplicitDateRange(
   message: string,
   timeZone: string,
@@ -276,6 +344,61 @@ function summarizeCalendarCount(): (result: RuntimeToolResult) => string {
   };
 }
 
+function summarizeNextMeeting(timeZone: string): (result: RuntimeToolResult) => string {
+  return (result: RuntimeToolResult): string => {
+    const items = asArray(result.data).map((item) => asRecord(item)).filter(Boolean) as Record<
+      string,
+      unknown
+    >[];
+    if (items.length === 0) return "You have no upcoming meetings in the next week.";
+
+    const nowMs = Date.now();
+    const sorted = [...items]
+      .map((item) => ({
+        item,
+        startMs: Date.parse(asString(item.start) ?? ""),
+      }))
+      .filter((entry) => Number.isFinite(entry.startMs))
+      .sort((a, b) => a.startMs - b.startMs);
+
+    const next = sorted.find((entry) => entry.startMs >= nowMs) ?? sorted[0];
+    if (!next) return "You have no upcoming meetings in the next week.";
+
+    const title = asString(next.item.title) ?? "Untitled event";
+    const startLocal = asString(next.item.startLocal);
+    const start = asString(next.item.start);
+    const when = startLocal ?? (start ? formatInTimeZone(start, timeZone) : "soon");
+    return `Your next meeting is "${title}" at ${when}.`;
+  };
+}
+
+function summarizeMeetingNow(timeZone: string): (result: RuntimeToolResult) => string {
+  return (result: RuntimeToolResult): string => {
+    const items = asArray(result.data).map((item) => asRecord(item)).filter(Boolean) as Record<
+      string,
+      unknown
+    >[];
+    if (items.length === 0) return "You're not in a meeting right now.";
+
+    const nowMs = Date.now();
+    const current = items.find((item) => {
+      const startMs = Date.parse(asString(item.start) ?? "");
+      const endMs = Date.parse(asString(item.end) ?? "");
+      if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return false;
+      return startMs <= nowMs && nowMs < endMs;
+    });
+
+    if (!current) return "You're not in a meeting right now.";
+
+    const title = asString(current.title) ?? "Untitled event";
+    const endLocal = asString(current.endLocal);
+    const end = asString(current.end);
+    const until = endLocal ?? (end ? formatInTimeZone(end, timeZone) : null);
+    if (until) return `Yes. You're currently in "${title}" until ${until}.`;
+    return `Yes. You're currently in "${title}".`;
+  };
+}
+
 function summarizeRuleList(): (result: RuntimeToolResult) => string {
   return (result: RuntimeToolResult): string => {
     const items = asArray(result.data).map((item) => asRecord(item)).filter(Boolean);
@@ -295,72 +418,9 @@ function summarizeRuleList(): (result: RuntimeToolResult) => string {
 function fastCapabilitiesReply(): string {
   return [
     "I can handle your inbox and calendar.",
-    "I can read and summarize email, find priority items, draft or send replies (with approval when needed), and manage labels or rules.",
-    "I can review your schedule, find availability, create/reschedule/cancel events, and manage calendar policies like focus blocks or out-of-office.",
+    "I can read and summarize email, find important items, draft or send replies (with approval when needed), and manage labels or rules.",
+    "I can review your schedule, find availability, create/reschedule/cancel events, and manage calendar guardrails like focus blocks or out-of-office.",
   ].join(" ");
-}
-
-async function inferCalendarFastPath(
-  session: RuntimeSession,
-  normalized: string,
-): Promise<RuntimeFastPathMatch | null> {
-  if (!CALENDAR_ENTITY_RE.test(normalized)) return null;
-  if (!LIST_OR_SHOW_RE.test(normalized)) return null;
-  if (isMutatingRequest(normalized)) return null;
-
-  return buildCalendarReadFastPath({
-    session,
-    normalized,
-    reason: "calendar_read_window",
-  });
-}
-
-async function buildCalendarReadFastPath(params: {
-  session: RuntimeSession;
-  normalized: string;
-  reason: string;
-}): Promise<RuntimeFastPathMatch | null> {
-  const { session, normalized, reason } = params;
-  const tz = await resolveDefaultCalendarTimeZone({
-    userId: session.input.userId,
-    emailAccountId: session.input.emailAccountId,
-  });
-  if ("error" in tz) return null;
-
-  const dateRange = inferCalendarDateRange(normalized, tz.timeZone);
-  return {
-    type: "tool_call",
-    toolName: "calendar.listEvents",
-    args: { dateRange, limit: 20 },
-    reason,
-    summarize: summarizeCalendarList(tz.timeZone),
-    onFailureText: "I couldn't read your calendar right now. Please try again in a moment.",
-  };
-}
-
-async function buildCalendarCountFastPath(params: {
-  session: RuntimeSession;
-  normalized: string;
-  reason: string;
-}): Promise<RuntimeFastPathMatch | null> {
-  const { session, normalized, reason } = params;
-  const tz = await resolveDefaultCalendarTimeZone({
-    userId: session.input.userId,
-    emailAccountId: session.input.emailAccountId,
-  });
-  if ("error" in tz) return null;
-
-  const dateRange = inferExplicitDateRange(normalized, tz.timeZone);
-  if (!dateRange) return null;
-
-  return {
-    type: "tool_call",
-    toolName: "calendar.listEvents",
-    args: { dateRange },
-    reason,
-    summarize: summarizeCalendarCount(),
-    onFailureText: "I couldn't read your calendar right now. Please try again in a moment.",
-  };
 }
 
 async function resolveFastPathTimeZone(session: RuntimeSession): Promise<string> {
@@ -370,6 +430,196 @@ async function resolveFastPathTimeZone(session: RuntimeSession): Promise<string>
   });
   if ("error" in tz) return "UTC";
   return tz.timeZone;
+}
+
+function hasTool(session: RuntimeSession, toolName: string): boolean {
+  return session.toolLookup.has(toolName);
+}
+
+function buildEmailFirstFastPath(params: {
+  session: RuntimeSession;
+  normalized: string;
+  timeZone: string;
+}): RuntimeFastPathMatch | null {
+  const { session, normalized, timeZone } = params;
+  if (!semanticAdmitsIntents(session, ["inbox_read"])) return null;
+  if (!EMAIL_ENTITY_RE.test(normalized)) return null;
+  if (!FIRST_OR_LATEST_RE.test(normalized)) return null;
+  if (!hasTool(session, "email.searchInbox")) return null;
+
+  return {
+    type: "tool_call",
+    toolName: "email.searchInbox",
+    args: { limit: 1, fetchAll: false, purpose: "lookup" },
+    reason: "email_first_or_latest",
+    summarize: summarizeTopEmail(timeZone),
+    onFailureText: "I couldn't load your inbox right now. Please try again in a moment.",
+  };
+}
+
+function buildEmailCountFastPath(params: {
+  session: RuntimeSession;
+  normalized: string;
+  timeZone: string;
+}): RuntimeFastPathMatch | null {
+  const { session, normalized, timeZone } = params;
+  if (!semanticAdmitsIntents(session, ["inbox_read"])) return null;
+  if (!EMAIL_ENTITY_RE.test(normalized)) return null;
+  if (!COUNT_RE.test(normalized)) return null;
+  if (!hasTool(session, "email.searchInbox")) return null;
+
+  const dateRange = inferExplicitDateRange(normalized, timeZone);
+  const unreadOnly = UNREAD_RE.test(normalized);
+  if (!unreadOnly && !dateRange) return null;
+
+  const allowEstimatedTotalWhenTruncated = unreadOnly && !dateRange;
+  return {
+    type: "tool_call",
+    toolName: "email.searchInbox",
+    args: {
+      query: unreadOnly ? "is:unread" : "",
+      purpose: "count",
+      limit: allowEstimatedTotalWhenTruncated ? 100 : 5000,
+      fetchAll: !allowEstimatedTotalWhenTruncated,
+      ...(dateRange ? { dateRange } : {}),
+    },
+    reason: "email_count",
+    summarize: summarizeEmailCount({
+      unreadOnly,
+      hasDateRange: Boolean(dateRange),
+      allowEstimatedTotalWhenTruncated,
+    }),
+    onFailureText: "I couldn't load inbox messages right now. Please try again in a moment.",
+    requireCompleteResult: true,
+    allowEstimatedTotalWhenTruncated,
+  };
+}
+
+function buildEmailListFastPath(params: {
+  session: RuntimeSession;
+  normalized: string;
+  timeZone: string;
+}): RuntimeFastPathMatch | null {
+  const { session, normalized, timeZone } = params;
+  if (!semanticAdmitsIntents(session, ["inbox_read"])) return null;
+  if (!EMAIL_ENTITY_RE.test(normalized)) return null;
+  if (!LIST_OR_SHOW_RE.test(normalized)) return null;
+  if (COUNT_RE.test(normalized)) return null;
+  if (ATTENTION_HEURISTIC_RE.test(normalized)) return null;
+  if (!hasTool(session, "email.searchInbox")) return null;
+
+  const dateRange = inferExplicitDateRange(normalized, timeZone);
+  const unreadOnly = UNREAD_RE.test(normalized);
+  const sender = parseSenderScope(session.input.message);
+  const topic = parseTopicScope(session.input.message);
+
+  if ((sender || topic) && !dateRange) return null;
+
+  const args: Record<string, unknown> = {
+    query: unreadOnly ? "is:unread" : "",
+    purpose: "list",
+    limit: dateRange ? 100 : unreadOnly ? 50 : 25,
+    fetchAll: false,
+    ...(dateRange ? { dateRange } : {}),
+    ...(sender ? { from: sender } : {}),
+    ...(topic ? { text: topic } : {}),
+  };
+
+  return {
+    type: "tool_call",
+    toolName: "email.searchInbox",
+    args,
+    reason: "email_read_list",
+    summarize: summarizeEmailList(timeZone),
+    onFailureText: "I couldn't load inbox messages right now. Please try again in a moment.",
+  };
+}
+
+function buildCalendarCountFastPath(params: {
+  session: RuntimeSession;
+  normalized: string;
+  timeZone: string;
+}): RuntimeFastPathMatch | null {
+  const { session, normalized, timeZone } = params;
+  if (!semanticAdmitsIntents(session, ["calendar_read"])) return null;
+  if (!CALENDAR_ENTITY_RE.test(normalized)) return null;
+  if (!COUNT_RE.test(normalized)) return null;
+  if (!hasTool(session, "calendar.listEvents")) return null;
+
+  const dateRange = inferExplicitDateRange(normalized, timeZone);
+  if (!dateRange) return null;
+
+  return {
+    type: "tool_call",
+    toolName: "calendar.listEvents",
+    args: { dateRange },
+    reason: "calendar_count_window",
+    summarize: summarizeCalendarCount(),
+    onFailureText: "I couldn't read your calendar right now. Please try again in a moment.",
+  };
+}
+
+function buildCalendarReadFastPath(params: {
+  session: RuntimeSession;
+  normalized: string;
+  timeZone: string;
+}): RuntimeFastPathMatch | null {
+  const { session, normalized, timeZone } = params;
+  if (!semanticAdmitsIntents(session, ["calendar_read"])) return null;
+  if (!CALENDAR_ENTITY_RE.test(normalized)) return null;
+  if (!LIST_OR_SHOW_RE.test(normalized)) return null;
+  if (!hasTool(session, "calendar.listEvents")) return null;
+
+  return {
+    type: "tool_call",
+    toolName: "calendar.listEvents",
+    args: { dateRange: inferCalendarDateRange(normalized, timeZone), limit: 20 },
+    reason: "calendar_read_window",
+    summarize: summarizeCalendarList(timeZone),
+    onFailureText: "I couldn't read your calendar right now. Please try again in a moment.",
+  };
+}
+
+function buildNextMeetingFastPath(params: {
+  session: RuntimeSession;
+  normalized: string;
+  timeZone: string;
+}): RuntimeFastPathMatch | null {
+  const { session, normalized, timeZone } = params;
+  if (!semanticAdmitsIntents(session, ["calendar_read"])) return null;
+  if (!CALENDAR_ENTITY_RE.test(normalized)) return null;
+  if (!NEXT_MEETING_RE.test(normalized)) return null;
+  if (!hasTool(session, "calendar.listEvents")) return null;
+
+  return {
+    type: "tool_call",
+    toolName: "calendar.listEvents",
+    args: { dateRange: inferFutureCalendarDateRange(timeZone), limit: 20 },
+    reason: "calendar_next_meeting",
+    summarize: summarizeNextMeeting(timeZone),
+    onFailureText: "I couldn't read your calendar right now. Please try again in a moment.",
+  };
+}
+
+function buildMeetingNowFastPath(params: {
+  session: RuntimeSession;
+  normalized: string;
+  timeZone: string;
+}): RuntimeFastPathMatch | null {
+  const { session, normalized, timeZone } = params;
+  if (!semanticAdmitsIntents(session, ["calendar_read"])) return null;
+  if (!CALENDAR_ENTITY_RE.test(normalized)) return null;
+  if (!MEETING_NOW_RE.test(normalized)) return null;
+  if (!hasTool(session, "calendar.listEvents")) return null;
+
+  return {
+    type: "tool_call",
+    toolName: "calendar.listEvents",
+    args: { dateRange: inferCalendarDateRange("today", timeZone), limit: 50 },
+    reason: "calendar_meeting_now",
+    summarize: summarizeMeetingNow(timeZone),
+    onFailureText: "I couldn't read your calendar right now. Please try again in a moment.",
+  };
 }
 
 export async function matchRuntimeFastPath(params: {
@@ -396,7 +646,14 @@ export async function matchRuntimeFastPath(params: {
     };
   }
 
+  if (CONDITIONAL_OR_CHAINING_RE.test(normalized)) {
+    return null;
+  }
+
   if (RULE_ENTITY_RE.test(normalized) && RULE_LIST_RE.test(normalized) && !isMutatingRequest(normalized)) {
+    if (!semanticAdmitsIntents(session, ["policy_controls", "cross_surface_plan"])) return null;
+    if (!hasTool(session, "policy.listRules")) return null;
+
     const type =
       /\bguardrail/.test(normalized)
         ? "guardrail"
@@ -416,6 +673,9 @@ export async function matchRuntimeFastPath(params: {
   }
 
   if (RULE_ENTITY_RE.test(normalized) && RULE_CREATE_RE.test(normalized)) {
+    if (!semanticAdmitsIntents(session, ["policy_controls", "cross_surface_plan"])) return null;
+    if (!hasTool(session, "policy.createRule")) return null;
+
     return {
       type: "tool_call",
       toolName: "policy.createRule",
@@ -424,109 +684,30 @@ export async function matchRuntimeFastPath(params: {
         activate: true,
       },
       reason: "policy_create_rule",
-      summarize: (result) =>
-        asString(result.message) ??
-        "I submitted that rule request.",
+      summarize: (result) => asString(result.message) ?? "I submitted that rule request.",
       onFailureText: "I couldn't create that rule right now. Please try again.",
     };
   }
 
-  if (RULE_ENTITY_RE.test(normalized) && (RULE_DISABLE_RE.test(normalized) || RULE_DELETE_RE.test(normalized))) {
-    const match = normalized.match(RULE_ID_RE);
-    const ruleId = match?.[1];
-    if (!ruleId) {
-      return {
-        type: "respond",
-        reason: "policy_missing_rule_id",
-        text: "I can do that, but I need the rule id. Say: disable rule <id> or delete rule <id>.",
-      };
-    }
-
-    const isDelete = RULE_DELETE_RE.test(normalized);
-    return {
-      type: "tool_call",
-      toolName: isDelete ? "policy.deleteRule" : "policy.disableRule",
-      args: { id: ruleId },
-      reason: isDelete ? "policy_delete_rule" : "policy_disable_rule",
-      summarize: (result) =>
-        asString(result.message) ?? (isDelete ? "Rule deleted." : "Rule disabled."),
-      onFailureText: isDelete
-        ? "I couldn't delete that rule right now. Please try again."
-        : "I couldn't disable that rule right now. Please try again.",
-    };
+  if (ATTENTION_HEURISTIC_RE.test(normalized) && EMAIL_ENTITY_RE.test(normalized)) {
+    return null;
   }
 
-  if (!isMutatingRequest(normalized) && EMAIL_ENTITY_RE.test(normalized) && FIRST_OR_LATEST_RE.test(normalized)) {
-    const timeZone = await resolveFastPathTimeZone(session);
-    return {
-      type: "tool_call",
-      toolName: "email.searchInbox",
-      args: { limit: 1, fetchAll: false },
-      reason: "email_first_or_latest",
-      summarize: summarizeTopEmail(timeZone),
-      onFailureText: "I couldn't load your inbox right now. Please try again in a moment.",
-    };
-  }
+  const timeZone = await resolveFastPathTimeZone(session);
 
-  if (!isMutatingRequest(normalized) && EMAIL_ENTITY_RE.test(normalized) && COUNT_RE.test(normalized)) {
-    const timeZone = await resolveFastPathTimeZone(session);
-    const dateRange = inferExplicitDateRange(normalized, timeZone);
-    const unreadOnly = /\bunread\b/u.test(normalized);
-    if (!unreadOnly && !dateRange) return null;
-    return {
-      type: "tool_call",
-      toolName: "email.searchInbox",
-      args: {
-        query: unreadOnly ? "is:unread" : "",
-        limit: 2000,
-        fetchAll: true,
-        ...(dateRange ? { dateRange } : {}),
-      },
-      reason: "email_count",
-      summarize: summarizeEmailCount({
-        unreadOnly,
-        hasDateRange: Boolean(dateRange),
-      }),
-      onFailureText: "I couldn't load inbox messages right now. Please try again in a moment.",
-      requireCompleteResult: true,
-    };
-  }
+  const operations = [
+    buildEmailFirstFastPath({ session, normalized, timeZone }),
+    buildEmailCountFastPath({ session, normalized, timeZone }),
+    buildEmailListFastPath({ session, normalized, timeZone }),
+    buildMeetingNowFastPath({ session, normalized, timeZone }),
+    buildNextMeetingFastPath({ session, normalized, timeZone }),
+    buildCalendarCountFastPath({ session, normalized, timeZone }),
+    buildCalendarReadFastPath({ session, normalized, timeZone }),
+  ];
 
-  if (
-    !isMutatingRequest(normalized) &&
-    EMAIL_ENTITY_RE.test(normalized) &&
-    LIST_OR_SHOW_RE.test(normalized) &&
-    !COUNT_RE.test(normalized) &&
-    !ATTENTION_HEURISTIC_RE.test(normalized)
-  ) {
-    const timeZone = await resolveFastPathTimeZone(session);
-    const dateRange = inferExplicitDateRange(normalized, timeZone);
-    const query = /\bunread\b/u.test(normalized) ? "is:unread" : "";
-    return {
-      type: "tool_call",
-      toolName: "email.searchInbox",
-      args: {
-        query,
-        fetchAll: Boolean(dateRange),
-        ...(dateRange ? { dateRange } : {}),
-      },
-      reason: "email_read_list",
-      summarize: summarizeEmailList(timeZone),
-      onFailureText: "I couldn't load inbox messages right now. Please try again in a moment.",
-    };
+  for (const operation of operations) {
+    if (operation) return operation;
   }
-
-  if (!isMutatingRequest(normalized) && CALENDAR_ENTITY_RE.test(normalized) && COUNT_RE.test(normalized)) {
-    const calendarCount = await buildCalendarCountFastPath({
-      session,
-      normalized,
-      reason: "calendar_count_window",
-    });
-    if (calendarCount) return calendarCount;
-  }
-
-  const calendarMatch = await inferCalendarFastPath(session, normalized);
-  if (calendarMatch) return calendarMatch;
 
   if (mode === "strict") return null;
 

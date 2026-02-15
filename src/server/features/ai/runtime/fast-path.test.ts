@@ -52,6 +52,20 @@ function buildSemanticForTest(message: string): RuntimeSession["semantic"] {
     };
   }
 
+  if (/\brule|rules|automation|policy\b/u.test(normalized)) {
+    return {
+      intent: "policy_controls",
+      domain: "policy",
+      requestedOperation: mutationRe.test(normalized) ? "mixed" : "read",
+      complexity: "simple",
+      routeProfile: "fast",
+      riskLevel: "low",
+      confidence: 0.84,
+      toolHints: ["group:calendar_policy"],
+      source: "lexical",
+    };
+  }
+
   if (/\bcalendar|meeting|event|schedule\b/u.test(normalized) && !mutationRe.test(normalized)) {
     return {
       intent: "calendar_read",
@@ -95,6 +109,16 @@ function buildSemanticForTest(message: string): RuntimeSession["semantic"] {
 }
 
 function buildSession(message: string): RuntimeSession {
+  const toolLookup = new Map<string, RuntimeSession["toolRegistry"][number]>();
+  for (const name of [
+    "email.searchInbox",
+    "calendar.listEvents",
+    "policy.listRules",
+    "policy.createRule",
+  ]) {
+    toolLookup.set(name, { toolName: name } as RuntimeSession["toolRegistry"][number]);
+  }
+
   return {
     input: {
       provider: "slack",
@@ -117,7 +141,7 @@ function buildSession(message: string): RuntimeSession {
       toolLookup: new Map(),
     },
     toolRegistry: [],
-    toolLookup: new Map(),
+    toolLookup,
     artifacts: {
       approvals: [],
       interactivePayloads: [],
@@ -174,7 +198,7 @@ describe("runtime fast path", () => {
     expect(match?.type).toBe("tool_call");
     if (match?.type === "tool_call") {
       expect(match.toolName).toBe("email.searchInbox");
-      expect(match.args).toEqual({ limit: 1, fetchAll: false });
+      expect(match.args).toEqual({ limit: 1, fetchAll: false, purpose: "lookup" });
     }
   });
 
@@ -222,7 +246,8 @@ describe("runtime fast path", () => {
       expect(match.toolName).toBe("email.searchInbox");
       expect(match.args).toEqual({
         query: "",
-        limit: 2000,
+        purpose: "count",
+        limit: 5000,
         fetchAll: true,
         dateRange: {
           after: "2026-02-14",
@@ -255,16 +280,110 @@ describe("runtime fast path", () => {
     }
   });
 
-  it("asks for rule id when disabling/deleting without id", async () => {
+  it("routes rule creation requests to policy.createRule", async () => {
     const match = await matchRuntimeFastPath({
-      session: buildSession("disable that rule"),
+      session: buildSession("create a rule to archive newsletters"),
       mode: "strict",
     });
 
-    expect(match?.type).toBe("respond");
-    if (match?.type === "respond") {
-      expect(match.reason).toBe("policy_missing_rule_id");
+    expect(match?.type).toBe("tool_call");
+    if (match?.type === "tool_call") {
+      expect(match.toolName).toBe("policy.createRule");
+      expect(match.args).toEqual({
+        input: "create a rule to archive newsletters",
+        activate: true,
+      });
     }
+  });
+
+  it("does not fast-path rule disable requests that rely on plain-English targeting", async () => {
+    const match = await matchRuntimeFastPath({
+      session: buildSession("disable the rule for marketing emails"),
+      mode: "strict",
+    });
+
+    expect(match).toBeNull();
+  });
+
+  it("routes sender-scoped email reads with explicit date windows", async () => {
+    const match = await matchRuntimeFastPath({
+      session: buildSession("show me emails from Alex today"),
+      mode: "strict",
+    });
+
+    expect(match?.type).toBe("tool_call");
+    if (match?.type === "tool_call") {
+      expect(match.toolName).toBe("email.searchInbox");
+      expect(match.args).toEqual({
+        query: "",
+        purpose: "list",
+        limit: 100,
+        fetchAll: false,
+        dateRange: {
+          after: "2026-02-14",
+          before: "2026-02-14",
+        },
+        from: "Alex",
+      });
+    }
+  });
+
+  it("does not fast-path sender-scoped email reads without explicit date windows", async () => {
+    const match = await matchRuntimeFastPath({
+      session: buildSession("show me emails from Alex"),
+      mode: "strict",
+    });
+
+    expect(match).toBeNull();
+  });
+
+  it("routes next-meeting checks to calendar.listEvents", async () => {
+    const match = await matchRuntimeFastPath({
+      session: buildSession("what's my next meeting?"),
+      mode: "strict",
+    });
+
+    expect(match?.type).toBe("tool_call");
+    if (match?.type === "tool_call") {
+      expect(match.toolName).toBe("calendar.listEvents");
+      expect(match.reason).toBe("calendar_next_meeting");
+      expect(match.args).toEqual({
+        dateRange: {
+          after: "2026-02-14",
+          before: "2026-02-21",
+        },
+        limit: 20,
+      });
+    }
+  });
+
+  it("routes current meeting checks to calendar.listEvents for today", async () => {
+    const match = await matchRuntimeFastPath({
+      session: buildSession("am i in a meeting right now?"),
+      mode: "strict",
+    });
+
+    expect(match?.type).toBe("tool_call");
+    if (match?.type === "tool_call") {
+      expect(match.toolName).toBe("calendar.listEvents");
+      expect(match.reason).toBe("calendar_meeting_now");
+      expect(match.args).toEqual({
+        dateRange: {
+          after: "2026-02-14",
+          before: "2026-02-14",
+        },
+        limit: 50,
+      });
+    }
+  });
+
+  it("skips fast path for conditional chained requests", async () => {
+    const match = await matchRuntimeFastPath({
+      session: buildSession("if i have meetings tomorrow then move them"),
+      mode: "strict",
+    });
+
+    expect(match).toBeNull();
   });
 
   it("asks for concrete target on ambiguous mutation during recovery", async () => {
