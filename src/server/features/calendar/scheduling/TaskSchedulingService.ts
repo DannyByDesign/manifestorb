@@ -9,6 +9,7 @@ import { resolveTimeZoneOrUtc } from "./date-utils";
 import { env } from "@/env";
 import { resolveDefaultCalendarTimeZone } from "@/features/ai/tools/calendar-time";
 import { applyTaskPreferencePatchForUser } from "@/features/preferences/service";
+import { ensureCalendarSelectionInvariant } from "@/features/calendar/selection-invariant";
 
 const LOG_SOURCE = "TaskSchedulingService";
 
@@ -77,6 +78,13 @@ export async function scheduleTasksForUser({
       logger,
     });
 
+    const invariant = await ensureCalendarSelectionInvariant({
+      userId,
+      emailAccountId: resolvedEmailAccountId,
+      logger,
+      source: "task_scheduling",
+    });
+
     const defaultCalendarTimeZone = await resolveDefaultCalendarTimeZone({
       userId,
       emailAccountId: resolvedEmailAccountId,
@@ -84,36 +92,14 @@ export async function scheduleTasksForUser({
     if ("error" in defaultCalendarTimeZone) {
       throw new Error(defaultCalendarTimeZone.error);
     }
-    let effectiveSelectedCalendarIds = (userSettings.selectedCalendarIds ?? []).filter(Boolean);
+
+    const effectiveSelectedCalendarIds = (invariant.selectedCalendarIds ?? []).filter(Boolean);
     if (effectiveSelectedCalendarIds.length === 0) {
-      const connectedCalendars = await prisma.calendar.findMany({
-        where: {
-          isEnabled: true,
-          connection: {
-            emailAccountId: resolvedEmailAccountId,
-            isConnected: true,
-          },
-        },
-        select: { calendarId: true },
-        orderBy: { createdAt: "asc" },
+      logger.warn("No enabled calendars available for scheduling", {
+        userId,
+        emailAccountId: resolvedEmailAccountId,
       });
-      effectiveSelectedCalendarIds = connectedCalendars
-        .map((calendar) => calendar.calendarId)
-        .filter((id) => id.length > 0);
-      if (effectiveSelectedCalendarIds.length > 0) {
-        await applyTaskPreferencePatchForUser({
-          userId,
-          patch: {
-            selectedCalendarIds: effectiveSelectedCalendarIds,
-          },
-        });
-      } else {
-        logger.warn("No enabled calendars available for scheduling", {
-          userId,
-          emailAccountId: resolvedEmailAccountId,
-        });
-        return [];
-      }
+      return [];
     }
     let effectiveTimeZone = defaultCalendarTimeZone.timeZone;
     if (userSettings.timeZone) {

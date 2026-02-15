@@ -32,6 +32,9 @@ vi.mock("@/server/features/calendar/sync/google", () => ({
 vi.mock("@/server/features/calendar/timezone-helpers", () => ({
   autoPopulateTimezone: vi.fn(),
 }));
+vi.mock("@/features/calendar/selection-invariant", () => ({
+  ensureCalendarSelectionInvariant: vi.fn(),
+}));
 vi.mock("@/server/integrations/google/calendar", () => ({
   createGoogleEvent: vi.fn(),
   updateGoogleEvent: vi.fn(),

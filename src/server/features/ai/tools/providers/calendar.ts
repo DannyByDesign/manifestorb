@@ -19,6 +19,7 @@ import {
   withRetries,
 } from "@/server/features/ai/tools/common/retry";
 import { withToolThrottle } from "@/server/features/ai/tools/common/throttle";
+import { ensureCalendarSelectionInvariant } from "@/features/calendar/selection-invariant";
 
 export interface CalendarProvider {
   searchEvents(
@@ -59,6 +60,25 @@ export async function createCalendarProvider(
   const scopedLogger = createScopedLogger("tools/calendar");
   const providers = await createCalendarEventProviders(account.id, logger);
   const providerByType = new Map(providers.map((provider) => [provider.provider, provider]));
+  const enforceSelectionInvariant = async (source: string) => {
+    try {
+      await ensureCalendarSelectionInvariant({
+        userId,
+        emailAccountId: account.id,
+        logger: scopedLogger,
+        source,
+      });
+    } catch (error) {
+      scopedLogger.warn("Failed to enforce calendar selection invariant", {
+        userId,
+        emailAccountId: account.id,
+        source,
+        error,
+      });
+    }
+  };
+
+  await enforceSelectionInvariant("tool_provider_init");
 
   const withProviderRetry = async <T>(
     operation: string,
@@ -120,6 +140,8 @@ export async function createCalendarProvider(
       };
     }
 
+    await enforceSelectionInvariant("tool_target_resolution");
+
     const preferences = await prisma.taskPreference.findUnique({
       where: { userId },
       select: { selectedCalendarIds: true },
@@ -131,7 +153,9 @@ export async function createCalendarProvider(
           calendarId: preferredId,
           connection: {
             emailAccountId: account.id,
+            isConnected: true,
           },
+          isEnabled: true,
         },
         select: {
           calendarId: true,
@@ -150,7 +174,7 @@ export async function createCalendarProvider(
 
     const fallback = await prisma.calendar.findFirst({
       where: {
-        connection: { emailAccountId: account.id },
+        connection: { emailAccountId: account.id, isConnected: true },
         isEnabled: true,
       },
       orderBy: { createdAt: "asc" },
@@ -194,6 +218,7 @@ export async function createCalendarProvider(
   return {
     searchEvents: async (query, range, attendeeEmail) =>
       runThrottled("searchEvents", async () => {
+      await enforceSelectionInvariant("search_events");
       const preferences = await prisma.taskPreference.findUnique({
         where: { userId },
         select: { selectedCalendarIds: true },
@@ -354,6 +379,7 @@ export async function createCalendarProvider(
     }),
     findAvailableSlots: async ({ durationMinutes, start, end }) =>
       runThrottled("findAvailableSlots", async () => {
+      await enforceSelectionInvariant("find_available_slots");
       if (!env.NEXT_PUBLIC_CALENDAR_SCHEDULING_ENABLED) {
         return [];
       }

@@ -9,6 +9,7 @@ import { ensureGoogleCalendarWatch } from "@/features/calendar/sync/google";
 import { ensureMicrosoftCalendarSubscription } from "@/features/calendar/sync/microsoft";
 import { scheduleTasksForUser } from "@/features/calendar/scheduling/TaskSchedulingService";
 import { runAdaptiveCalendarReplan } from "@/features/calendar/adaptive-replanner";
+import { ensureCalendarSelectionInvariant } from "@/features/calendar/selection-invariant";
 
 export const maxDuration = 300;
 
@@ -17,6 +18,32 @@ export const POST = withError("calendar/sync/reconcile", async (request) => {
 
   if (!isValidInternalApiKey(request.headers, logger)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+  }
+
+  const connectedAccounts = await prisma.calendarConnection.findMany({
+    where: { isConnected: true },
+    select: {
+      emailAccountId: true,
+      emailAccount: { select: { userId: true } },
+    },
+    distinct: ["emailAccountId"],
+  });
+
+  for (const connectedAccount of connectedAccounts) {
+    try {
+      await ensureCalendarSelectionInvariant({
+        userId: connectedAccount.emailAccount.userId,
+        emailAccountId: connectedAccount.emailAccountId,
+        logger,
+        source: "reconcile_preflight",
+      });
+    } catch (error) {
+      logger.warn("Failed to enforce calendar selection invariant during reconcile", {
+        error,
+        emailAccountId: connectedAccount.emailAccountId,
+        userId: connectedAccount.emailAccount.userId,
+      });
+    }
   }
 
   const calendars = await prisma.calendar.findMany({

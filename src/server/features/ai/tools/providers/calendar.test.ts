@@ -40,6 +40,16 @@ vi.mock("@/features/ai/tools/calendar-time", () => ({
   }),
 }));
 
+vi.mock("@/features/calendar/selection-invariant", () => ({
+  ensureCalendarSelectionInvariant: vi.fn().mockResolvedValue({
+    userId: "user-1",
+    emailAccountId: "email-account-1",
+    enabledCalendarIds: ["primary"],
+    selectedCalendarIds: ["primary"],
+    changed: false,
+  }),
+}));
+
 vi.mock("@/server/db/client", () => ({
   default: {
     calendar: {

@@ -44,6 +44,16 @@ vi.mock("./SchedulingService", () => ({
   },
 }));
 
+vi.mock("@/features/calendar/selection-invariant", () => ({
+  ensureCalendarSelectionInvariant: vi.fn().mockResolvedValue({
+    userId: "user-1",
+    emailAccountId: "email-1",
+    enabledCalendarIds: ["cal-1"],
+    selectedCalendarIds: ["cal-1"],
+    changed: false,
+  }),
+}));
+
 describe("resolveSchedulingEmailAccountId", () => {
   beforeEach(() => {
     vi.clearAllMocks();

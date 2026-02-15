@@ -11,6 +11,7 @@ import {
   ensureMicrosoftCalendarSubscription,
   syncMicrosoftCalendarChanges,
 } from "@/features/calendar/sync/microsoft";
+import { ensureCalendarSelectionInvariant } from "@/features/calendar/selection-invariant";
 
 export function createMicrosoftCalendarProvider(
   logger: Logger,
@@ -94,6 +95,12 @@ export function createMicrosoftCalendarProvider(
       expiresAt: Date | null,
     ): Promise<void> {
       try {
+        const emailAccount = await prisma.emailAccount.findUnique({
+          where: { id: emailAccountId },
+          select: { userId: true },
+        });
+        const userId = emailAccount?.userId;
+
         const calendarClient = await getCalendarClientWithRefresh({
           accessToken,
           refreshToken,
@@ -121,6 +128,7 @@ export function createMicrosoftCalendarProvider(
               name: microsoftCalendar.name || "Untitled Calendar",
               description: microsoftCalendar.description,
               timezone: null,
+              primary: Boolean(microsoftCalendar.isDefaultCalendar),
             },
             create: {
               connectionId,
@@ -128,6 +136,7 @@ export function createMicrosoftCalendarProvider(
               name: microsoftCalendar.name || "Untitled Calendar",
               description: microsoftCalendar.description,
               timezone: null,
+              primary: Boolean(microsoftCalendar.isDefaultCalendar),
               isEnabled: true,
             },
           });
@@ -169,6 +178,15 @@ export function createMicrosoftCalendarProvider(
               logger,
             });
           }
+        }
+
+        if (userId) {
+          await ensureCalendarSelectionInvariant({
+            userId,
+            emailAccountId,
+            logger,
+            source: "microsoft_sync",
+          });
         }
 
         await autoPopulateTimezone(emailAccountId, microsoftCalendars, logger);

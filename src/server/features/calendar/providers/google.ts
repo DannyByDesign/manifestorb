@@ -12,6 +12,7 @@ import {
   ensureGoogleCalendarWatch,
   syncGoogleCalendarChanges,
 } from "@/features/calendar/sync/google";
+import { ensureCalendarSelectionInvariant } from "@/features/calendar/selection-invariant";
 
 export function createGoogleCalendarProvider(
   logger: Logger,
@@ -102,6 +103,7 @@ export function createGoogleCalendarProvider(
               name: googleCalendar.summary || "Untitled Calendar",
               description: googleCalendar.description,
               timezone: googleCalendar.timeZone,
+              primary: Boolean(googleCalendar.primary),
             },
             create: {
               connectionId,
@@ -109,6 +111,7 @@ export function createGoogleCalendarProvider(
               name: googleCalendar.summary || "Untitled Calendar",
               description: googleCalendar.description,
               timezone: googleCalendar.timeZone,
+              primary: Boolean(googleCalendar.primary),
               isEnabled: true,
             },
           });
@@ -153,6 +156,15 @@ export function createGoogleCalendarProvider(
               userId,
             });
           }
+        }
+
+        if (userId) {
+          await ensureCalendarSelectionInvariant({
+            userId,
+            emailAccountId,
+            logger,
+            source: "google_sync",
+          });
         }
 
         await autoPopulateTimezone(emailAccountId, googleCalendars, logger);
