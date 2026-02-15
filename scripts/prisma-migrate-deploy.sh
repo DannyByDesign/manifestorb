@@ -12,7 +12,7 @@ else
 fi
 
 echo "[deploy] verifying required database columns"
-bunx prisma db execute --schema "$SCHEMA_PATH" --stdin <<'SQL'
+bunx prisma db execute --config prisma.config.ts --stdin <<'SQL'
 DO $$
 BEGIN
   IF NOT EXISTS (
