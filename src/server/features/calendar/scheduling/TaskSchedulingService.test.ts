@@ -127,6 +127,7 @@ describe("resolveSchedulingEmailAccountId", () => {
       where: { userId: "user-1" },
       update: { selectedCalendarIds: [] },
       create: { userId: "user-1", selectedCalendarIds: [] },
+      select: { userId: true },
     });
     expect(result).toBe("email-fallback");
   });

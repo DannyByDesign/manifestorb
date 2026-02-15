@@ -17,3 +17,10 @@ export function isNotFoundError(error: unknown) {
     error.code === "P2025"
   );
 }
+
+export function isMissingColumnError(error: unknown) {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2022"
+  );
+}

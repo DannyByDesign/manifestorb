@@ -71,7 +71,8 @@ const DANGEROUS_MUTATION_RE =
 const CONDITIONAL_RE = /\b(if|unless|otherwise|except|only if|when)\b/u;
 const CHAINING_RE = /\b(and then|then|also|plus|follow(?:ed)? by|after that|before that|next)\b/u;
 const EMAIL_RE = /\b(email|emails|inbox|message|messages|thread|threads|draft|drafts)\b/u;
-const CALENDAR_RE = /\b(calendar|meeting|meetings|event|events|schedule|availability)\b/u;
+const CALENDAR_RE =
+  /\b(calendar|meeting|meetings|event|events|schedule|availability|task|tasks|todo|to-do)\b/u;
 const POLICY_RE = /\b(rule|rules|approval|policy|permission|automation|automations|preference|preferences)\b/u;
 const GREETING_RE =
   /^(hi|hello|hey|yo|sup|good morning|good afternoon|good evening|howdy)[\s!.?]*$/u;
@@ -113,6 +114,7 @@ const INTENT_EXAMPLES: Record<RuntimeSemanticIntent, string[]> = {
   ],
   calendar_mutation: [
     "reschedule my meeting to tomorrow",
+    "reschedule my task to next tuesday",
     "cancel today's meetings",
     "create a calendar event tomorrow at 3pm",
     "move all afternoon meetings",

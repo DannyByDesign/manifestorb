@@ -17,7 +17,8 @@ export interface ToolRankingParams {
 const MUTATION_RE =
   /\b(create|update|edit|change|delete|remove|archive|trash|send|reply|move|label|reschedule|book|cancel|block|unsubscribe|mark|snooze)\b/u;
 const INBOX_RE = /\b(inbox|email|thread|message|draft|reply|sender)\b/u;
-const CALENDAR_RE = /\b(calendar|meeting|event|schedule|availability)\b/u;
+const CALENDAR_RE =
+  /\b(calendar|meeting|event|schedule|availability|task|tasks|todo|to-do)\b/u;
 const POLICY_RE = /\b(rule|policy|approval|permission|automation|preference)\b/u;
 
 const PROFILE_LIMITS: Record<NonNullable<RuntimeSemanticContract["routeProfile"]>, number> = {

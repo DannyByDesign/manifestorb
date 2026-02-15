@@ -32,11 +32,29 @@ export async function scheduleTasksForUser({
 
     let userSettings = await prisma.taskPreference.findUnique({
       where: { userId },
+      select: {
+        workHourStart: true,
+        workHourEnd: true,
+        workDays: true,
+        bufferMinutes: true,
+        selectedCalendarIds: true,
+        timeZone: true,
+        groupByProject: true,
+      },
     });
 
     if (!userSettings) {
       userSettings = await prisma.taskPreference.create({
         data: { userId },
+        select: {
+          workHourStart: true,
+          workHourEnd: true,
+          workDays: true,
+          bufferMinutes: true,
+          selectedCalendarIds: true,
+          timeZone: true,
+          groupByProject: true,
+        },
       });
     }
 

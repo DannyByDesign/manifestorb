@@ -1,5 +1,6 @@
 import prisma from "@/server/db/client";
 import type { Logger } from "@/server/lib/logger";
+import { isMissingColumnError } from "@/server/lib/prisma-helpers";
 
 type CalendarRow = {
   id: string;
@@ -289,11 +290,25 @@ export async function ensureCalendarSelectionInvariant({
     nextSelectedCalendarIds,
   );
   if (selectedChanged) {
-    await prisma.taskPreference.upsert({
-      where: { userId },
-      update: { selectedCalendarIds: nextSelectedCalendarIds },
-      create: { userId, selectedCalendarIds: nextSelectedCalendarIds },
-    });
+    try {
+      await prisma.taskPreference.upsert({
+        where: { userId },
+        update: { selectedCalendarIds: nextSelectedCalendarIds },
+        create: { userId, selectedCalendarIds: nextSelectedCalendarIds },
+        select: { userId: true },
+      });
+    } catch (error) {
+      if (isMissingColumnError(error)) {
+        logger?.warn("Skipping selected-calendar persistence due schema mismatch", {
+          source,
+          userId,
+          emailAccountId,
+          error,
+        });
+      } else {
+        throw error;
+      }
+    }
   }
 
   const changed =

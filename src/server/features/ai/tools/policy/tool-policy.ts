@@ -53,6 +53,7 @@ const TOOL_GROUPS: Record<string, string[]> = {
     "calendar.deleteEvent",
     "calendar.moveEvent",
     "calendar.rescheduleEvent",
+    "task.reschedule",
     "calendar.bulkReschedule",
   ],
   "group:calendar_policy": [

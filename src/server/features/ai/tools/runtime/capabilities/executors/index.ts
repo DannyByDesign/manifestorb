@@ -3,6 +3,7 @@ import { calendarToolExecutors } from "@/server/features/ai/tools/runtime/capabi
 import { emailToolExecutors } from "@/server/features/ai/tools/runtime/capabilities/executors/email";
 import { plannerToolExecutors } from "@/server/features/ai/tools/runtime/capabilities/executors/planner";
 import { policyToolExecutors } from "@/server/features/ai/tools/runtime/capabilities/executors/policy";
+import { taskToolExecutors } from "@/server/features/ai/tools/runtime/capabilities/executors/task";
 import type {
   RuntimeToolExecutor,
   RuntimeToolExecutorMap,
@@ -11,6 +12,7 @@ import type {
 const runtimeToolExecutors: RuntimeToolExecutorMap = {
   ...emailToolExecutors,
   ...calendarToolExecutors,
+  ...taskToolExecutors,
   ...plannerToolExecutors,
   ...policyToolExecutors,
 };

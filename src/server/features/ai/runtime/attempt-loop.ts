@@ -145,6 +145,8 @@ function buildNativeRuntimeSystemPrompt(params: {
     "- Prefer the minimum necessary tool calls for simple requests.",
     "- For greetings/capability questions, answer directly without tools.",
     "- For inbox/calendar facts, call tools rather than guessing.",
+    "- Treat scheduled tasks as valid calendar rescheduling targets when the user asks to move/reschedule a task.",
+    "- Do not claim missing capability for task/calendar rescheduling when runtime tools are available; ask a clarifying question if identifiers are missing.",
     "- If a tool indicates missing fields, ask one precise follow-up question.",
     "- Keep output concise and natural in assistant voice; avoid rigid templated phrasing.",
     ...(skillSection

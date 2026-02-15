@@ -14,7 +14,7 @@ export type CapabilityIntentFamily =
   | "cross_surface_planning";
 
 export interface CapabilityEffectDescriptor {
-  resource: "email" | "calendar" | "planner" | "preferences" | "rule";
+  resource: "email" | "calendar" | "planner" | "preferences" | "rule" | "task";
   mutates: boolean;
 }
 
@@ -669,6 +669,34 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       intentFamilies: ["calendar_mutate", "cross_surface_planning"],
       tags: ["calendar", "reschedule", "move"],
       effects: [{ resource: "calendar", mutates: true }],
+    },
+    {
+      id: "task.reschedule",
+      description:
+        "Reschedule a task block and, when linked, update its calendar event too.",
+      inputSchema: z
+        .object({
+          taskId: z.string().min(1).optional(),
+          taskTitle: z.string().min(1).optional(),
+          changes: unknownObject.optional(),
+        })
+        .strict()
+        .superRefine((value, ctx) => {
+          if (!value.taskId && !value.taskTitle) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Either taskId or taskTitle is required.",
+              path: ["taskId"],
+            });
+          }
+        }),
+      outputSchema: z.unknown(),
+      readOnly: false,
+      riskLevel: "caution",
+      approvalOperation: "update_task",
+      intentFamilies: ["calendar_mutate", "cross_surface_planning"],
+      tags: ["task", "calendar", "reschedule", "move", "schedule"],
+      effects: [{ resource: "task", mutates: true }],
     },
     {
       id: "calendar.setWorkingHours",

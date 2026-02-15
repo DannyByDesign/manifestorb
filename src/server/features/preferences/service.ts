@@ -182,6 +182,7 @@ export async function applyTaskPreferencePatchForUser(params: {
     where: { userId: params.userId },
     update: data,
     create: { userId: params.userId, ...data },
+    select: { userId: true },
   });
 }
 

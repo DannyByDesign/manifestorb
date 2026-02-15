@@ -11,4 +11,61 @@ else
   bunx prisma migrate deploy --schema "$SCHEMA_PATH"
 fi
 
+echo "[deploy] verifying required database columns"
+bunx prisma db execute --schema "$SCHEMA_PATH" --stdin <<'SQL'
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'TaskPreference'
+      AND column_name = 'selectedCalendarIds'
+  ) THEN
+    RAISE EXCEPTION 'missing required column: TaskPreference.selectedCalendarIds';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'TaskPreference'
+      AND column_name = 'defaultMeetingDurationMin'
+  ) THEN
+    RAISE EXCEPTION 'missing required column: TaskPreference.defaultMeetingDurationMin';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'TaskPreference'
+      AND column_name = 'meetingSlotCount'
+  ) THEN
+    RAISE EXCEPTION 'missing required column: TaskPreference.meetingSlotCount';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'TaskPreference'
+      AND column_name = 'meetingExpirySeconds'
+  ) THEN
+    RAISE EXCEPTION 'missing required column: TaskPreference.meetingExpirySeconds';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'TaskSchedule'
+      AND column_name = 'calendarEventId'
+  ) THEN
+    RAISE EXCEPTION 'missing required column: TaskSchedule.calendarEventId';
+  END IF;
+END
+$$;
+SQL
+
 echo "[deploy] prisma migrate deploy finished"

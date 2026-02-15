@@ -56,6 +56,7 @@ describe("selection-invariant", () => {
       where: { userId: "user-1" },
       update: { selectedCalendarIds: ["user@example.com"] },
       create: { userId: "user-1", selectedCalendarIds: ["user@example.com"] },
+      select: { userId: true },
     });
     expect(result.selectedCalendarIds).toEqual(["user@example.com"]);
     expect(result.changed).toBe(true);

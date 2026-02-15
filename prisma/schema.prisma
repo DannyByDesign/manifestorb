@@ -1009,9 +1009,12 @@ model TaskSchedule {
   scheduledStart DateTime
   scheduledEnd   DateTime
   calendarId     String?
+  calendarEventId String?
 
   taskId String @unique
   task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([calendarEventId])
 }
 
 model TaskPreference {
