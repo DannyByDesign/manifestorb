@@ -1106,7 +1106,9 @@ export class GmailProvider implements EmailProvider {
 
     query += ` -label:${GmailLabel.DRAFT}`;
 
-    const targetCount = options.fetchAll ? 500 : (options.maxResults || 20);
+    const targetCount = options.fetchAll
+      ? Math.min(Math.max(options.maxResults || 1000, 1), 5000)
+      : (options.maxResults || 20);
     const allMessages: ParsedMessage[] = [];
     let pageToken: string | undefined = options.pageToken;
     let totalEstimate: number | undefined;
@@ -1116,8 +1118,8 @@ export class GmailProvider implements EmailProvider {
         query: query.trim() || undefined,
         maxResults: Math.min(targetCount - allMessages.length, 100),
         pageToken,
-        // Keep interactive inbox reads responsive instead of waiting on long Gmail backoff chains.
-        maxRetries: 1,
+        // Keep interactive inbox reads responsive while still allowing limited recovery for broader scans.
+        maxRetries: options.fetchAll ? 2 : 1,
       });
 
       if (totalEstimate === undefined && response.resultSizeEstimate !== undefined) {

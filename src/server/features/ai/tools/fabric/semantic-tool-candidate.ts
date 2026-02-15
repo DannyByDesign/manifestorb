@@ -21,10 +21,29 @@ const CALENDAR_RE = /\b(calendar|meeting|event|schedule|availability)\b/u;
 const POLICY_RE = /\b(rule|policy|approval|permission|automation|preference)\b/u;
 
 const PROFILE_LIMITS: Record<NonNullable<RuntimeSemanticContract["routeProfile"]>, number> = {
-  fast: 12,
-  standard: 24,
-  deep: 40,
+  fast: 20,
+  standard: 48,
+  deep: 72,
 };
+
+function resolveAdaptiveToolLimit(params: ToolRankingParams): number {
+  const semantic = params.semantic;
+  const baseLimit = params.maxTools ?? (semantic ? PROFILE_LIMITS[semantic.routeProfile] : 32);
+  let adjusted = baseLimit;
+
+  if (semantic) {
+    if (semantic.domain === "cross_surface" || semantic.requestedOperation === "mixed") {
+      adjusted += 16;
+    }
+    if (semantic.complexity === "complex") {
+      adjusted += 12;
+    } else if (semantic.complexity === "moderate") {
+      adjusted += 6;
+    }
+  }
+
+  return Math.min(Math.max(adjusted, 8), 96);
+}
 
 function intersectsIntentFamily(
   definition: RuntimeToolDefinition,
@@ -185,8 +204,7 @@ export function rankAndLimitTools(
     })
     .map((entry) => entry.definition);
 
-  const baseLimit = params.maxTools ?? (params.semantic ? PROFILE_LIMITS[params.semantic.routeProfile] : 24);
-  const limit = Math.max(6, Math.min(baseLimit, 48));
+  const limit = resolveAdaptiveToolLimit(params);
   const limited = scored.slice(0, limit);
 
   return {

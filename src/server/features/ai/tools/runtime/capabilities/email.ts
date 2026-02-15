@@ -166,6 +166,32 @@ function asMetaItemCount(count: number): ToolResult["meta"] {
   return { resource: "email", itemCount: count };
 }
 
+function clampInt(value: number, min: number, max: number): number {
+  return Math.min(Math.max(Math.trunc(value), min), max);
+}
+
+function computeEmailSearchLimit(params: {
+  requestedLimit?: number;
+  fetchAll: boolean;
+  hasDateRange: boolean;
+  query: string;
+}): number {
+  const isAttentionQuery = /\bis:unread\b/i.test(params.query);
+
+  if (params.fetchAll) {
+    const defaultLimit = params.hasDateRange ? 1000 : 400;
+    const maxLimit = params.hasDateRange ? 2000 : 1000;
+    return clampInt(params.requestedLimit ?? defaultLimit, 1, maxLimit);
+  }
+
+  if (params.hasDateRange) {
+    const defaultLimit = isAttentionQuery ? 100 : 60;
+    return clampInt(params.requestedLimit ?? defaultLimit, 1, 200);
+  }
+
+  return clampInt(params.requestedLimit ?? 20, 1, 100);
+}
+
 async function coerceToMessageIds(
   env: CapabilityEnvironment,
   ids: string[],
@@ -327,12 +353,17 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           ? Math.floor(filter.limit)
           : undefined;
       const fetchAll = Boolean(filter.fetchAll);
-      const normalizedLimit = fetchAll
-        ? Math.min(Math.max(requestedLimit ?? 100, 1), 200)
-        : Math.min(Math.max(requestedLimit ?? 10, 1), 20);
+      const hasDateRange = Boolean(before || after);
+      const query = typeof filter.query === "string" ? filter.query : "";
+      const normalizedLimit = computeEmailSearchLimit({
+        requestedLimit,
+        fetchAll,
+        hasDateRange,
+        query,
+      });
 
       const result = await searchEmailThreads(provider, {
-        query: typeof filter.query === "string" ? filter.query : "",
+        query,
         limit: normalizedLimit,
         fetchAll,
         includeNonPrimary: Boolean(filter.subscriptionsOnly),
@@ -372,7 +403,9 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         message:
           data.length === 0
             ? "No matching emails found."
-            : `Found ${data.length} matching email${data.length === 1 ? "" : "s"}.`,
+            : result.nextPageToken
+              ? `Found at least ${data.length} matching email${data.length === 1 ? "" : "s"}.`
+              : `Found ${data.length} matching email${data.length === 1 ? "" : "s"}.`,
         truncated: Boolean(result.nextPageToken),
         paging: {
           nextPageToken: result.nextPageToken ?? null,
@@ -393,7 +426,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
     const search = await runSearchThreads({
       ...filter,
       subscriptionsOnly: Boolean(filter.subscriptionsOnly),
-      limit: typeof filter.limit === "number" ? filter.limit : 200,
+      limit: typeof filter.limit === "number" ? filter.limit : 1000,
       fetchAll: true,
     });
 

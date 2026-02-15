@@ -357,13 +357,13 @@ export async function queryBatchMessages(
 ) {
   const { query, pageToken } = options;
 
-  const MAX_RESULTS = 20;
+  const MAX_RESULTS = 500;
 
   const maxResults = Math.min(options.maxResults || MAX_RESULTS, MAX_RESULTS);
 
   if (options.maxResults && options.maxResults > MAX_RESULTS) {
     logger.warn(
-      "Max results is greater than 20, which will cause rate limiting",
+      "Max results is greater than Gmail API page max (500); clamping to 500",
       {
         maxResults,
       },

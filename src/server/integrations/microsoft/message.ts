@@ -29,6 +29,23 @@ export const WELL_KNOWN_FOLDERS = {
   junkemail: "junkemail",
 } as const;
 
+/**
+ * Microsoft Graph list messages:
+ * - default page size is 10
+ * - $top supports 1..1000 for /messages
+ * Docs: https://learn.microsoft.com/en-us/graph/api/user-list-messages
+ */
+const GRAPH_MESSAGES_DEFAULT_PAGE_SIZE = 50;
+const GRAPH_MESSAGES_MAX_PAGE_SIZE = 1000;
+
+function normalizeGraphPageSize(maxResults?: number): number {
+  const requested =
+    typeof maxResults === "number" && Number.isFinite(maxResults)
+      ? Math.floor(maxResults)
+      : GRAPH_MESSAGES_DEFAULT_PAGE_SIZE;
+  return Math.min(Math.max(requested, 1), GRAPH_MESSAGES_MAX_PAGE_SIZE);
+}
+
 export async function getFolderIds(client: OutlookClient, logger: Logger) {
   const cachedFolderIds = client.getFolderIdCache();
   if (cachedFolderIds) return cachedFolderIds;
@@ -256,19 +273,7 @@ export async function queryBatchMessages(
 ) {
   const { searchQuery, dateFilters, pageToken, folderId } = options;
 
-  const MAX_RESULTS = 20;
-
-  const maxResults = Math.min(options.maxResults || MAX_RESULTS, MAX_RESULTS);
-
-  // Is this true for Microsoft Graph API or was it copy pasted from Gmail?
-  if (options.maxResults && options.maxResults > MAX_RESULTS) {
-    logger.warn(
-      "Max results is greater than 20, which will cause rate limiting",
-      {
-        maxResults,
-      },
-    );
-  }
+  const maxResults = normalizeGraphPageSize(options.maxResults);
 
   const [folderIds, categoryMap] = await Promise.all([
     getFolderIds(client, logger),
@@ -422,16 +427,7 @@ export async function queryMessagesWithFilters(
 ) {
   const { filters = [], dateFilters = [], pageToken, folderId } = options;
 
-  const MAX_RESULTS = 20;
-  const maxResults = Math.min(options.maxResults || MAX_RESULTS, MAX_RESULTS);
-  if (options.maxResults && options.maxResults > MAX_RESULTS) {
-    logger.warn(
-      "Max results is greater than 20, which will cause rate limiting",
-      {
-        maxResults: options.maxResults,
-      },
-    );
-  }
+  const maxResults = normalizeGraphPageSize(options.maxResults);
 
   const [folderIds, categoryMap] = await Promise.all([
     getFolderIds(client, logger),
@@ -529,8 +525,7 @@ export async function queryMessagesWithAttachments(
   messages: ParsedMessage[];
   nextPageToken?: string;
 }> {
-  const MAX_RESULTS = 20;
-  const maxResults = Math.min(options.maxResults || MAX_RESULTS, MAX_RESULTS);
+  const maxResults = normalizeGraphPageSize(options.maxResults);
 
   const categoryMap = await getCategoryMap(client, logger);
 
@@ -596,7 +591,7 @@ export async function getMessages(
   },
   logger: Logger,
 ) {
-  const top = options.maxResults || 20;
+  const top = normalizeGraphPageSize(options.maxResults);
   let request = createMessagesRequest(client).top(top);
 
   if (options.query) {

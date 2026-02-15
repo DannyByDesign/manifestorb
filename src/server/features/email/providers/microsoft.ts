@@ -226,7 +226,7 @@ export class OutlookProvider implements EmailProvider {
   }): Promise<ParsedMessage[]> {
     const allMessages: ParsedMessage[] = [];
     let pageToken: string | undefined;
-    const pageSize = 20; // Outlook API limit
+    const pageSize = 100;
 
     while (allMessages.length < maxResults) {
       const response = await queryBatchMessages(

@@ -15,5 +15,8 @@ export function resolveEmailAccount(
         if (match) return match;
     }
 
-    return user.emailAccounts[0] ?? null;
+    const sortedByRecentActivity = [...user.emailAccounts].sort(
+        (left, right) => right.updatedAt.getTime() - left.updatedAt.getTime(),
+    );
+    return sortedByRecentActivity[0] ?? null;
 }

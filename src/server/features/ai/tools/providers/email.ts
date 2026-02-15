@@ -25,7 +25,26 @@ import {
 const GMAIL_RECONNECT_MESSAGE =
     "Your Gmail connection is not active. Please reconnect your email in the Amodel web app (Settings -> Accounts) to use email features from Slack.";
 const SEARCH_TOTAL_TIMEOUT_MS = 25_000;
+const SEARCH_TOTAL_TIMEOUT_MAX_MS = 90_000;
 const SEARCH_PAGE_TIMEOUT_MS = 15_000;
+const SEARCH_PAGE_TIMEOUT_FETCH_ALL_MS = 20_000;
+const SEARCH_PAGE_SIZE_MIN = 10;
+const SEARCH_PAGE_SIZE_MAX = 100;
+
+function computeSearchTimeoutBudgetMs(options: {
+    fetchAll?: boolean;
+    limit?: number;
+}): number {
+    const base = SEARCH_TOTAL_TIMEOUT_MS;
+    const fetchAllBonus = options.fetchAll ? 35_000 : 0;
+    const largeLimitBonus =
+        typeof options.limit === "number" && options.limit > 200 ? 20_000 : 0;
+    return Math.min(base + fetchAllBonus + largeLimitBonus, SEARCH_TOTAL_TIMEOUT_MAX_MS);
+}
+
+function computeSearchPageTimeoutMs(fetchAll: boolean): number {
+    return fetchAll ? SEARCH_PAGE_TIMEOUT_FETCH_ALL_MS : SEARCH_PAGE_TIMEOUT_MS;
+}
 
 class EmailOperationTimeoutError extends Error {
     constructor(operation: string, timeoutMs: number) {
@@ -294,7 +313,12 @@ export async function createEmailProvider(
             receivedByMe,
         }) => runThrottled("search", async () => {
             try {
-                const deadlineMs = Date.now() + SEARCH_TOTAL_TIMEOUT_MS;
+                const searchTimeoutBudgetMs = computeSearchTimeoutBudgetMs({
+                    fetchAll,
+                    limit,
+                });
+                const deadlineMs = Date.now() + searchTimeoutBudgetMs;
+                const pageTimeoutMs = computeSearchPageTimeoutMs(Boolean(fetchAll));
                 const runPagedSearch = async (params: {
                     query?: string;
                     maxResults?: number;
@@ -306,11 +330,11 @@ export async function createEmailProvider(
                 }) => {
                     const remaining = remainingSearchBudget(deadlineMs);
                     if (remaining <= 0) {
-                        throw new EmailOperationTimeoutError("search_total", SEARCH_TOTAL_TIMEOUT_MS);
+                        throw new EmailOperationTimeoutError("search_total", searchTimeoutBudgetMs);
                     }
                     return withEmailOperationTimeout(
                         "search_page",
-                        Math.min(SEARCH_PAGE_TIMEOUT_MS, remaining),
+                        Math.min(pageTimeoutMs, remaining),
                         () => service.getMessagesWithPagination(params),
                     );
                 };
@@ -338,8 +362,11 @@ export async function createEmailProvider(
                     });
                 }
 
-                const targetCount = fetchAll ? (limit ?? 500) : (limit ?? 100);
-                const pageSize = Math.min(Math.max(targetCount, 10), 20);
+                const targetCount = fetchAll ? (limit ?? 1000) : (limit ?? 100);
+                const pageSize = Math.min(
+                    Math.max(targetCount, SEARCH_PAGE_SIZE_MIN),
+                    SEARCH_PAGE_SIZE_MAX,
+                );
                 const filtered: ParsedMessage[] = [];
                 let nextPageToken: string | undefined = pageToken;
                 let totalEstimate: number | undefined;

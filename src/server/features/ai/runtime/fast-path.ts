@@ -34,6 +34,8 @@ const CAPABILITIES_RE =
   /\b(what can you do|capabilit(?:y|ies)|how can you help|what do you do|help me understand)\b/u;
 const EXPLICIT_DATE_RANGE_RE =
   /\b(today|tonight|tomorrow|this week|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/u;
+const LIST_LIKE_EMAIL_RE = /\b(emails|messages|threads|alerts|updates)\b/u;
+const ANAPHORA_RE = /\b(those|them|these|all)\b/u;
 
 const WEEKDAY_INDEX: Record<string, number> = {
   sunday: 0,
@@ -368,21 +370,27 @@ export async function matchRuntimeFastPath(params: {
       const timeZone = await resolveFastPathTimeZone(session);
       const attentionQuery = semanticIntent === "inbox_attention" ? "is:unread" : "";
       const dateRange = inferExplicitDateRange(normalized, timeZone);
+      const wantsListLikeResult =
+        LIST_LIKE_EMAIL_RE.test(normalized) ||
+        ANAPHORA_RE.test(normalized) ||
+        LIST_OR_SHOW_RE.test(normalized);
+      const useWideRead = semanticIntent === "inbox_attention" || Boolean(dateRange) || wantsListLikeResult;
+      const limit = useWideRead
+        ? dateRange
+          ? 50
+          : 20
+        : 1;
       return {
         type: "tool_call",
         toolName: "email.searchInbox",
         args: {
           query: attentionQuery,
-          limit: semanticIntent === "inbox_attention"
-            ? dateRange
-              ? 50
-              : 20
-            : 1,
-          fetchAll: semanticIntent === "inbox_attention" && Boolean(dateRange),
+          limit,
+          fetchAll: useWideRead && Boolean(dateRange),
           ...(dateRange ? { dateRange } : {}),
         },
         reason: semanticIntent === "inbox_attention" ? "semantic_email_attention" : "semantic_email_first_or_latest",
-        summarize: semanticIntent === "inbox_attention" ? summarizeEmailList(timeZone) : summarizeTopEmail(timeZone),
+        summarize: useWideRead ? summarizeEmailList(timeZone) : summarizeTopEmail(timeZone),
         onFailureText: "I couldn't load inbox messages right now. Please try again in a moment.",
       };
     }

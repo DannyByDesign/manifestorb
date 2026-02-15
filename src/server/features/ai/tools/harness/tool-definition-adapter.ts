@@ -49,17 +49,11 @@ function timeoutResult(toolName: string): ToolResult {
   };
 }
 
-function truncateArray(value: unknown[], maxItems = 20): unknown[] {
-  if (value.length <= maxItems) return value;
-  return [...value.slice(0, maxItems), { truncated: true, omitted: value.length - maxItems }];
-}
-
 function sanitizeResult(result: ToolResult): ToolResult {
   if (!result || typeof result !== "object") return result;
   if (!Array.isArray(result.data)) return result;
   return {
     ...result,
-    data: truncateArray(result.data, 20),
     meta: {
       ...result.meta,
       itemCount: Array.isArray(result.data) ? result.data.length : result.meta?.itemCount,

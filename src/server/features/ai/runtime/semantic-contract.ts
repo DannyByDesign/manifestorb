@@ -40,8 +40,22 @@ export interface RuntimeSemanticContract {
 const logger = createScopedLogger("RuntimeSemantic");
 const ENABLED_SEMANTIC_ROUTING =
   process.env.VITEST !== "true" && process.env.NODE_ENV !== "test";
-const SEMANTIC_TIMEOUT_MS = 1_600;
+const SEMANTIC_TIMEOUT_MIN_MS = 1_200;
+const SEMANTIC_TIMEOUT_MAX_MS = 4_000;
 const MIN_SEMANTIC_SCORE = 0.76;
+
+function resolveSemanticTimeoutMs(message: string): number {
+  const envTimeoutRaw = process.env.RUNTIME_SEMANTIC_TIMEOUT_MS;
+  if (typeof envTimeoutRaw === "string" && envTimeoutRaw.trim().length > 0) {
+    const envTimeout = Number.parseInt(envTimeoutRaw, 10);
+    if (Number.isFinite(envTimeout)) {
+      return Math.min(Math.max(envTimeout, SEMANTIC_TIMEOUT_MIN_MS), SEMANTIC_TIMEOUT_MAX_MS);
+    }
+  }
+  // Scale timeout with message length to avoid premature fallbacks on long inputs.
+  const scaled = SEMANTIC_TIMEOUT_MIN_MS + Math.min(message.length, 2_800);
+  return Math.min(Math.max(scaled, SEMANTIC_TIMEOUT_MIN_MS), SEMANTIC_TIMEOUT_MAX_MS);
+}
 
 const MUTATION_RE =
   /\b(create|update|edit|change|delete|remove|archive|trash|send|reply|move|label|reschedule|book|cancel|block|unsubscribe|mark|snooze)\b/u;
@@ -373,7 +387,8 @@ export async function classifyRuntimeSemanticContract(params: {
   }
 
   try {
-    const contract = await withTimeout(buildEmbeddingContract(message), SEMANTIC_TIMEOUT_MS);
+    const semanticTimeoutMs = resolveSemanticTimeoutMs(message);
+    const contract = await withTimeout(buildEmbeddingContract(message), semanticTimeoutMs);
     if (contract) {
       params.logger?.trace("Runtime semantic contract resolved", {
         source: contract.source,
@@ -384,6 +399,7 @@ export async function classifyRuntimeSemanticContract(params: {
         routeProfile: contract.routeProfile,
         riskLevel: contract.riskLevel,
         confidence: contract.confidence,
+        timeoutMs: semanticTimeoutMs,
       });
       return contract;
     }

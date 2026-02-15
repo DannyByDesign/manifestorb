@@ -213,7 +213,9 @@ export class ChannelRouter {
                 user: {
                     include: {
                         emailAccounts: {
-                            take: 1, // Naive context: grab first email account
+                            orderBy: {
+                                updatedAt: "desc",
+                            },
                             include: {
                                 account: true
                             }
