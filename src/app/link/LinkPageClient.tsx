@@ -2,6 +2,11 @@
 
 import { useEffect, useState } from "react";
 
+export function buildLinkLoginRedirect(token: string): string {
+  const returnPath = `/link?token=${encodeURIComponent(token)}`;
+  return `/login?returnTo=${encodeURIComponent(returnPath)}`;
+}
+
 export function LinkPageClient({ token }: { token: string | null }) {
   const [status, setStatus] = useState<
     "IDLE" | "LINKING" | "SUCCESS" | "ERROR"
@@ -22,6 +27,10 @@ export function LinkPageClient({ token }: { token: string | null }) {
       const data = (await res.json()) as { error?: string };
 
       if (!res.ok) {
+        if (res.status === 401) {
+          window.location.href = buildLinkLoginRedirect(token);
+          return;
+        }
         throw new Error(data.error ?? "Failed to link account");
       }
 

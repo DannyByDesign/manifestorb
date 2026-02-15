@@ -37,6 +37,45 @@ function normalizeSlackAccountId(input: {
   return { primary: raw, fallbacks };
 }
 
+async function resolveSlackBySuffix(rawProviderAccountId: string) {
+  const normalized = rawProviderAccountId.trim();
+  if (!normalized || normalized.includes(":")) return null;
+
+  const matchesRaw = await prisma.account.findMany({
+    where: {
+      provider: "slack",
+      providerAccountId: {
+        endsWith: `:${normalized}`,
+      },
+    },
+    select: {
+      userId: true,
+      providerAccountId: true,
+    },
+    take: 2,
+  });
+  const matches = Array.isArray(matchesRaw) ? matchesRaw : [];
+
+  if (matches.length === 1) {
+    return {
+      linked: true as const,
+      userId: matches[0].userId,
+      matchedProviderAccountId: matches[0].providerAccountId,
+      status: "linked" as const,
+    };
+  }
+
+  if (matches.length > 1) {
+    return {
+      linked: false as const,
+      status: "unknown" as const,
+      reason: "ambiguous_slack_account_suffix",
+    };
+  }
+
+  return null;
+}
+
 export async function POST(req: NextRequest) {
   const authHeader = req.headers.get("x-surfaces-secret");
   const authBearer = req.headers.get("authorization")?.replace("Bearer ", "");
@@ -80,13 +119,22 @@ export async function POST(req: NextRequest) {
 
       if (account?.userId) {
         return NextResponse.json({
+          status: "linked",
           linked: true,
           userId: account.userId,
+          matchedProviderAccountId: providerAccountId,
         });
       }
     }
 
-    return NextResponse.json({ linked: false });
+    if (provider === "slack") {
+      const suffix = await resolveSlackBySuffix(providerAccountIdRaw);
+      if (suffix) {
+        return NextResponse.json(suffix);
+      }
+    }
+
+    return NextResponse.json({ status: "unlinked", linked: false });
   } catch (error) {
     logger.error("Failed to resolve surface identity", {
       error: error instanceof Error ? error.message : String(error),
@@ -94,4 +142,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
-

@@ -11,11 +11,33 @@ const SHARED_SECRET = env.SURFACES_SHARED_SECRET;
 const bodySchema = z.object({
     provider: z.enum(["slack", "discord", "telegram", "web"]),
     providerAccountId: z.string().min(1),
+    providerTeamId: z.string().optional(),
     channelId: z.string().min(1),
     isDirectMessage: z.boolean().optional(),
     incomingThreadId: z.string().optional(),
     messageId: z.string().optional(),
 });
+
+function normalizeSlackAccountCandidates(input: {
+    providerAccountId: string;
+    providerTeamId?: string;
+}): string[] {
+    const raw = input.providerAccountId.trim();
+    const team = input.providerTeamId?.trim();
+    const candidates: string[] = [];
+
+    if (team && !raw.includes(":")) {
+        candidates.push(`${team}:${raw}`, raw);
+        return candidates;
+    }
+
+    candidates.push(raw);
+    if (raw.includes(":")) {
+        const legacy = raw.split(":").pop();
+        if (legacy) candidates.push(legacy);
+    }
+    return candidates;
+}
 
 export async function POST(req: NextRequest) {
     const authHeader = req.headers.get("x-surfaces-secret");
@@ -38,6 +60,7 @@ export async function POST(req: NextRequest) {
         const {
             provider,
             providerAccountId,
+            providerTeamId,
             channelId,
             isDirectMessage,
             incomingThreadId,
@@ -50,28 +73,70 @@ export async function POST(req: NextRequest) {
             messageId,
         });
 
-        const account = await prisma.account.findUnique({
-            where: {
-                provider_providerAccountId: {
-                    provider,
+        const accountIdCandidates =
+            provider === "slack"
+                ? normalizeSlackAccountCandidates({
                     providerAccountId,
-                },
-            },
-            select: {
-                userId: true,
-            },
-        });
+                    providerTeamId,
+                })
+                : [providerAccountId.trim()];
 
-        if (!account?.userId) {
+        let accountUserId: string | null = null;
+        for (const candidate of accountIdCandidates) {
+            const account = await prisma.account.findUnique({
+                where: {
+                    provider_providerAccountId: {
+                        provider,
+                        providerAccountId: candidate,
+                    },
+                },
+                select: {
+                    userId: true,
+                },
+            });
+            if (account?.userId) {
+                accountUserId = account.userId;
+                break;
+            }
+        }
+
+        if (!accountUserId && provider === "slack" && !providerAccountId.includes(":")) {
+            const suffixMatchesRaw = await prisma.account.findMany({
+                where: {
+                    provider: "slack",
+                    providerAccountId: {
+                        endsWith: `:${providerAccountId.trim()}`,
+                    },
+                },
+                select: {
+                    userId: true,
+                },
+                take: 2,
+            });
+            const suffixMatches = Array.isArray(suffixMatchesRaw) ? suffixMatchesRaw : [];
+            if (suffixMatches.length === 1) {
+                accountUserId = suffixMatches[0].userId;
+            } else if (suffixMatches.length > 1) {
+                return NextResponse.json({
+                    linked: false,
+                    canonicalThreadId,
+                    resolutionStatus: "unknown",
+                    reason: "ambiguous_slack_account_suffix",
+                });
+            }
+        }
+
+        if (!accountUserId) {
             return NextResponse.json({
                 linked: false,
                 canonicalThreadId,
+                resolutionStatus: "unlinked",
             });
         }
 
         let conversation = await prisma.conversation.findFirst({
             where: {
-                userId: account.userId,
+                userId: accountUserId,
                 provider,
                 channelId,
                 threadId: canonicalThreadId,
@@ -89,7 +154,7 @@ export async function POST(req: NextRequest) {
         if (!conversation && !incomingThreadId) {
             const latestConversation = await prisma.conversation.findFirst({
                 where: {
-                    userId: account.userId,
+                    userId: accountUserId,
                     provider,
                     channelId,
                     threadId: { not: null },

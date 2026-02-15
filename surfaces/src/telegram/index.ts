@@ -196,7 +196,12 @@ export function startTelegram() {
                 provider: "telegram",
                 providerAccountId: userId,
             });
-            if (!identity?.linked) {
+            if (identity.status === "unknown") {
+                console.warn("[Surfaces][Telegram] Identity check unavailable; skipping onboarding", {
+                    providerAccountId: userId,
+                    reason: identity.reason ?? "unknown",
+                });
+            } else if (!identity.linked) {
                 if (isDM) {
                     const linkUrl = await fetchOnboardingLinkUrl(
                         "telegram",

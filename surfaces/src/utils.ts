@@ -40,6 +40,15 @@ export interface InteractivePayload {
     context?: ActionRequestContext; // For action_request - calendar/task context
 }
 
+export type SurfaceIdentityStatus = "linked" | "unlinked" | "unknown";
+
+export interface SurfaceIdentityResult {
+    status: SurfaceIdentityStatus;
+    linked: boolean;
+    userId?: string;
+    reason?: string;
+}
+
 const CORE_BASE_URL = env.CORE_BASE_URL;
 
 /** Fetch a one-time link URL for onboarding (Slack/Discord/Telegram). Sidecar-only. */
@@ -79,7 +88,7 @@ export async function fetchSurfaceIdentity(params: {
     provider: "slack" | "discord" | "telegram";
     providerAccountId: string;
     providerTeamId?: string;
-}): Promise<{ linked: boolean; userId?: string } | null> {
+}): Promise<SurfaceIdentityResult> {
     try {
         const response = await fetch(`${CORE_BASE_URL}/api/surfaces/identity`, {
             method: "POST",
@@ -90,22 +99,42 @@ export async function fetchSurfaceIdentity(params: {
             body: JSON.stringify(params),
         });
         if (!response.ok) {
-            return null;
+            return {
+                status: "unknown",
+                linked: false,
+                reason: `identity_http_${response.status}`,
+            };
         }
-        const data = (await response.json()) as { linked?: boolean; userId?: string };
-        return { linked: Boolean(data.linked), ...(data.userId ? { userId: data.userId } : {}) };
+        const data = (await response.json()) as {
+            linked?: boolean;
+            userId?: string;
+            status?: SurfaceIdentityStatus;
+            reason?: string;
+        };
+        const status = data.status ?? (data.linked ? "linked" : "unlinked");
+        return {
+            status,
+            linked: status === "linked",
+            ...(data.userId ? { userId: data.userId } : {}),
+            ...(typeof data.reason === "string" ? { reason: data.reason } : {}),
+        };
     } catch (error) {
         console.error("[Surfaces] Failed to resolve surface identity", {
             provider: params.provider,
             error: error instanceof Error ? error.message : String(error),
         });
-        return null;
+        return {
+            status: "unknown",
+            linked: false,
+            reason: "identity_transport_error",
+        };
     }
 }
 
 export async function fetchCanonicalSidecarThread(params: {
     provider: "slack" | "discord" | "telegram";
     providerAccountId: string;
+    providerTeamId?: string;
     channelId: string;
     isDirectMessage?: boolean;
     incomingThreadId?: string;

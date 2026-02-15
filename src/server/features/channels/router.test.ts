@@ -23,6 +23,15 @@ vi.mock("@/features/channels/executor", () => ({
     interactivePayloads: [],
   }),
 }));
+vi.mock("@/server/lib/linking", () => ({
+  createLinkToken: vi.fn().mockResolvedValue("token-1"),
+}));
+vi.mock("@/env", () => ({
+  env: {
+    NEXT_PUBLIC_BASE_URL: "https://example.test",
+    NODE_ENV: "test",
+  },
+}));
 
 function createLinkedAccount() {
   return {
@@ -158,5 +167,66 @@ describe("ChannelRouter", () => {
         }),
       }),
     );
+  });
+
+  it("resolves Slack account by workspace-qualified providerAccountId before raw fallback", async () => {
+    prisma.account.findUnique.mockResolvedValueOnce(createLinkedAccount());
+
+    const { ChannelRouter } = await import("./router");
+    const router = new ChannelRouter();
+
+    await router.handleInbound({
+      provider: "slack",
+      content: "hello",
+      context: {
+        channelId: "C123",
+        userId: "U123",
+        workspaceId: "T123",
+        messageId: "222.333",
+        isDirectMessage: true,
+      },
+    });
+
+    expect(prisma.account.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          provider_providerAccountId: {
+            provider: "slack",
+            providerAccountId: "T123:U123",
+          },
+        },
+      }),
+    );
+  });
+
+  it("keeps unlinked Slack prompt in-thread and uses workspace-qualified link token id", async () => {
+    prisma.account.findUnique.mockResolvedValue(null);
+    prisma.account.findMany.mockResolvedValue([]);
+
+    const { createLinkToken } = await import("@/server/lib/linking");
+    const { ChannelRouter } = await import("./router");
+    const router = new ChannelRouter();
+
+    const response = await router.handleInbound({
+      provider: "slack",
+      content: "hello",
+      context: {
+        channelId: "C123",
+        userId: "U123",
+        workspaceId: "T123",
+        messageId: "111.222",
+        isDirectMessage: true,
+      },
+    });
+
+    expect(createLinkToken).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "slack",
+        providerAccountId: "T123:U123",
+        providerTeamId: "T123",
+      }),
+    );
+    expect(response[0]?.targetThreadId).toBe("111.222");
+    expect(response[0]?.content).toContain("Link Your Account");
   });
 });

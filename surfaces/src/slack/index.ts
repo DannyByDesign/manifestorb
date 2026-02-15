@@ -8,7 +8,8 @@ import {
     fetchOnboardingLinkUrl,
     toPlainSidecarText,
     type InteractiveAction,
-    type InteractivePayload
+    type InteractivePayload,
+    type SurfaceIdentityResult,
 } from "../utils";
 import {
     setPlatformEnabled,
@@ -25,6 +26,9 @@ const SLACK_LEADER_LOCK_KEY = process.env.SLACK_LEADER_LOCK_KEY || "surfaces:sla
 const SLACK_LEADER_LOCK_TTL_MS = Number(process.env.SLACK_LEADER_LOCK_TTL_MS || 30000);
 const SLACK_RECONNECT_WINDOW_MS = 60_000;
 const SLACK_RECONNECT_THRESHOLD = 8;
+const SLACK_IDENTITY_CACHE_TTL_MS = 30_000;
+const SLACK_UNLINKED_CONFIRMATION_THRESHOLD = 2;
+const SLACK_UNLINKED_STREAK_TTL_MS = 5 * 60_000;
 type SlackBlock = Record<string, unknown>;
 type SlackButtonElement = Record<string, unknown>;
 
@@ -40,9 +44,16 @@ type MessageMeta = {
     appId?: string;
 };
 
+type SlackIdentityCacheEntry = {
+    status: SurfaceIdentityResult["status"];
+    checkedAt: number;
+    reason?: string;
+    userId?: string;
+};
+
 const slackThreadContext = new Map<string, string>();
-const slackIdentityCache = new Map<string, { linked: boolean; checkedAt: number }>();
-const SLACK_IDENTITY_CACHE_TTL_MS = 30_000;
+const slackIdentityCache = new Map<string, SlackIdentityCacheEntry>();
+const slackUnlinkedStreak = new Map<string, { count: number; updatedAt: number }>();
 
 function threadContextKey(channelId: string, userId: string): string {
     return `${channelId}:${userId}`;
@@ -82,25 +93,74 @@ function toSlackProviderAccountId(params: { teamId?: string; userId: string }): 
     return { providerAccountId: params.userId };
 }
 
-async function isSlackAccountLinked(params: { providerAccountId: string; providerTeamId?: string }): Promise<boolean> {
+function applySlackUnlinkedDebounce(
+    cacheKey: string,
+    identity: SurfaceIdentityResult,
+): SurfaceIdentityResult {
     const now = Date.now();
-    const cached = slackIdentityCache.get(params.providerAccountId);
-    if (cached && now - cached.checkedAt < SLACK_IDENTITY_CACHE_TTL_MS) {
-        return cached.linked;
+    const streak = slackUnlinkedStreak.get(cacheKey);
+    if (identity.status === "linked") {
+        if (streak) {
+            slackUnlinkedStreak.delete(cacheKey);
+        }
+        return identity;
     }
+
+    if (identity.status === "unknown") {
+        return identity;
+    }
+
+    const nextCount =
+        streak && now - streak.updatedAt < SLACK_UNLINKED_STREAK_TTL_MS
+            ? streak.count + 1
+            : 1;
+    slackUnlinkedStreak.set(cacheKey, { count: nextCount, updatedAt: now });
+
+    if (nextCount < SLACK_UNLINKED_CONFIRMATION_THRESHOLD) {
+        return {
+            status: "unknown",
+            linked: false,
+            reason: "debounced_unlinked_signal",
+        };
+    }
+
+    return identity;
+}
+
+async function resolveSlackIdentity(params: {
+    providerAccountId: string;
+    providerTeamId?: string;
+}): Promise<SurfaceIdentityResult> {
+    const now = Date.now();
+    const cacheKey = params.providerAccountId;
+    const cached = slackIdentityCache.get(cacheKey);
+    if (cached && now - cached.checkedAt < SLACK_IDENTITY_CACHE_TTL_MS) {
+        return applySlackUnlinkedDebounce(cacheKey, {
+            status: cached.status,
+            linked: cached.status === "linked",
+            ...(cached.reason ? { reason: cached.reason } : {}),
+            ...(cached.userId ? { userId: cached.userId } : {}),
+        });
+    }
+
     const identity = await fetchSurfaceIdentity({
         provider: "slack",
         providerAccountId: params.providerAccountId,
         providerTeamId: params.providerTeamId,
     });
-    const linked = Boolean(identity?.linked);
-    slackIdentityCache.set(params.providerAccountId, { linked, checkedAt: now });
-    return linked;
+    slackIdentityCache.set(cacheKey, {
+        status: identity.status,
+        checkedAt: now,
+        ...(identity.reason ? { reason: identity.reason } : {}),
+        ...(identity.userId ? { userId: identity.userId } : {}),
+    });
+    return applySlackUnlinkedDebounce(cacheKey, identity);
 }
 
 async function sendSlackOnboardingWelcome(params: {
     client: App["client"];
     channelId?: string;
+    threadTs?: string;
     slackUserId: string;
     providerAccountId: string;
     providerTeamId?: string;
@@ -128,6 +188,7 @@ async function sendSlackOnboardingWelcome(params: {
     if (!linkUrl) {
         await params.client.chat.postMessage({
             channel: channelId,
+            thread_ts: normalizeSlackThreadTs(params.threadTs),
             text: toPlainSidecarText(
                 `${WELCOME_MESSAGE} Something went wrong generating your link — please try messaging me again in a moment.`,
             ),
@@ -141,6 +202,7 @@ async function sendSlackOnboardingWelcome(params: {
 
     await params.client.chat.postMessage({
         channel: channelId,
+        thread_ts: normalizeSlackThreadTs(params.threadTs),
         text: onboardingText,
         blocks: [
             { type: "section", text: { type: "plain_text", text: WELCOME_MESSAGE } },
@@ -711,8 +773,16 @@ export async function startSlack() {
         const slackUserId = event.user;
         const teamId = extractSlackTeamId(context) ?? extractSlackTeamId(event);
         const { providerAccountId, providerTeamId } = toSlackProviderAccountId({ teamId, userId: slackUserId });
-        const linked = await isSlackAccountLinked({ providerAccountId, providerTeamId });
-        if (linked) return;
+        const identity = await resolveSlackIdentity({ providerAccountId, providerTeamId });
+        if (identity.status === "unknown") {
+            console.warn("[Surfaces][Slack] App Home identity check unavailable; deferring onboarding", {
+                providerAccountId,
+                providerTeamId: providerTeamId ?? null,
+                reason: identity.reason ?? "unknown",
+            });
+            return;
+        }
+        if (identity.linked) return;
         await sendSlackOnboardingWelcome({
             client,
             slackUserId,
@@ -785,12 +855,19 @@ export async function startSlack() {
             const { providerAccountId, providerTeamId } = toSlackProviderAccountId({ teamId, userId: slackUserId });
             const cacheKey = threadContextKey(channelId, providerAccountId);
             const cachedThreadTs = slackThreadContext.get(cacheKey);
-            const linked = await isSlackAccountLinked({ providerAccountId, providerTeamId });
-            if (!linked) {
+            const identity = await resolveSlackIdentity({ providerAccountId, providerTeamId });
+            if (identity.status === "unknown") {
+                console.warn("[Surfaces][Slack] Identity check unavailable; continuing without onboarding", {
+                    providerAccountId,
+                    providerTeamId: providerTeamId ?? null,
+                    reason: identity.reason ?? "unknown",
+                });
+            } else if (!identity.linked) {
                 if (isDirectMessage) {
                     await sendSlackOnboardingWelcome({
                         client: app.client,
                         channelId,
+                        threadTs: meta.threadTs ?? messageTs,
                         slackUserId,
                         providerAccountId,
                         providerTeamId,
@@ -810,6 +887,7 @@ export async function startSlack() {
             const backendCanonicalThreadTs = await fetchCanonicalSidecarThread({
                 provider: "slack",
                 providerAccountId: providerAccountId,
+                providerTeamId,
                 channelId,
                 isDirectMessage,
                 incomingThreadId: meta.threadTs,
@@ -1143,7 +1221,11 @@ export async function sendLinkedToSlackUser(providerAccountId: string): Promise<
         });
 
         // Ensure subsequent inbound messages don't get stuck behind a stale "unlinked" cache entry.
-        slackIdentityCache.set(providerAccountId, { linked: true, checkedAt: Date.now() });
+        slackIdentityCache.set(providerAccountId, {
+            status: "linked",
+            checkedAt: Date.now(),
+        });
+        slackUnlinkedStreak.delete(providerAccountId);
         return { ok: true, channelId: channel };
     } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
@@ -1170,6 +1252,9 @@ export async function stopSlack() {
         slackStarted = false;
         slackStartPromise = null;
         reconnectTimestamps = [];
+        slackIdentityCache.clear();
+        slackUnlinkedStreak.clear();
+        slackThreadContext.clear();
         await releaseSlackLeaderLock();
     }
 }

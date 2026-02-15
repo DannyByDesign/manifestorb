@@ -26,6 +26,7 @@ describe("POST /api/surfaces/context", () => {
 
     it("returns linked false when account is not found", async () => {
         prisma.account.findUnique.mockResolvedValue(null);
+        prisma.account.findMany.mockResolvedValue([]);
 
         const { POST } = await import("./route");
         const req = new NextRequest("http://localhost/api/surfaces/context", {
@@ -46,6 +47,38 @@ describe("POST /api/surfaces/context", () => {
         expect(json).toEqual({
             linked: false,
             canonicalThreadId: "111.222",
+            resolutionStatus: "unlinked",
+        });
+    });
+
+    it("returns unknown when Slack suffix lookup is ambiguous", async () => {
+        prisma.account.findUnique.mockResolvedValue(null);
+        prisma.account.findMany.mockResolvedValue([
+            { userId: "user-1" },
+            { userId: "user-2" },
+        ] as never);
+
+        const { POST } = await import("./route");
+        const req = new NextRequest("http://localhost/api/surfaces/context", {
+            method: "POST",
+            headers: { "x-surfaces-secret": "secret" },
+            body: JSON.stringify({
+                provider: "slack",
+                providerAccountId: "U123",
+                channelId: "C123",
+                messageId: "111.222",
+            }),
+        });
+
+        const res = await POST(req);
+        const json = await res.json();
+
+        expect(res.status).toBe(200);
+        expect(json).toEqual({
+            linked: false,
+            canonicalThreadId: "111.222",
+            resolutionStatus: "unknown",
+            reason: "ambiguous_slack_account_suffix",
         });
     });
 

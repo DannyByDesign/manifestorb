@@ -219,7 +219,12 @@ export function startDiscord() {
                 provider: "discord",
                 providerAccountId,
             });
-            if (!identity?.linked) {
+            if (identity.status === "unknown") {
+                console.warn("[Surfaces][Discord] Identity check unavailable; skipping onboarding", {
+                    providerAccountId,
+                    reason: identity.reason ?? "unknown",
+                });
+            } else if (!identity.linked) {
                 if (isDM) {
                     const linkUrl = await fetchOnboardingLinkUrl(
                         "discord",

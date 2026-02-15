@@ -190,6 +190,126 @@ function buildApprovalInteractivePayload(params: {
     };
 }
 
+function buildProviderAccountCandidates(params: {
+    provider: ChannelProvider;
+    providerAccountId: string;
+    workspaceId?: string;
+}): string[] {
+    const raw = params.providerAccountId.trim();
+    const candidates = new Set<string>();
+
+    if (params.provider === "slack") {
+        const workspaceId = params.workspaceId?.trim();
+        if (workspaceId && !raw.includes(":")) {
+            candidates.add(`${workspaceId}:${raw}`);
+            candidates.add(raw);
+        } else {
+            candidates.add(raw);
+            if (raw.includes(":")) {
+                const legacy = raw.split(":").pop();
+                if (legacy) candidates.add(legacy);
+            }
+        }
+    } else {
+        candidates.add(raw);
+    }
+
+    return [...candidates].filter((candidate) => candidate.length > 0);
+}
+
+function preferredProviderAccountId(params: {
+    provider: ChannelProvider;
+    providerAccountId: string;
+    workspaceId?: string;
+}): string {
+    const raw = params.providerAccountId.trim();
+    if (params.provider === "slack") {
+        const workspaceId = params.workspaceId?.trim();
+        if (workspaceId && !raw.includes(":")) {
+            return `${workspaceId}:${raw}`;
+        }
+    }
+    return raw;
+}
+
+async function findLinkedSurfaceAccount(params: {
+    provider: ChannelProvider;
+    providerAccountId: string;
+    workspaceId?: string;
+}) {
+    const include = {
+        user: {
+            include: {
+                emailAccounts: {
+                    orderBy: {
+                        updatedAt: "desc" as const,
+                    },
+                    include: {
+                        account: true,
+                    },
+                },
+            },
+        },
+    };
+
+    const candidates = buildProviderAccountCandidates(params);
+    for (const candidate of candidates) {
+        const account = await prisma.account.findUnique({
+            where: {
+                provider_providerAccountId: {
+                    provider: params.provider,
+                    providerAccountId: candidate,
+                },
+            },
+            include,
+        });
+        if (account?.user) {
+            return { account, matchedProviderAccountId: candidate, resolutionStatus: "linked" as const };
+        }
+    }
+
+    if (
+        params.provider === "slack" &&
+        !params.providerAccountId.includes(":")
+    ) {
+        const raw = params.providerAccountId.trim();
+        const suffixMatchesRaw = await prisma.account.findMany({
+            where: {
+                provider: "slack",
+                providerAccountId: {
+                    endsWith: `:${raw}`,
+                },
+            },
+            select: {
+                id: true,
+                providerAccountId: true,
+            },
+            take: 2,
+        });
+        const suffixMatches = Array.isArray(suffixMatchesRaw) ? suffixMatchesRaw : [];
+
+        if (suffixMatches.length === 1) {
+            const matchedProviderAccountId = suffixMatches[0].providerAccountId;
+            const account = await prisma.account.findUnique({
+                where: { id: suffixMatches[0].id },
+                include,
+            });
+            if (account?.user) {
+                return { account, matchedProviderAccountId, resolutionStatus: "linked" as const };
+            }
+        } else if (suffixMatches.length > 1) {
+            logger.warn("Ambiguous Slack account lookup by suffix", {
+                providerAccountId: params.providerAccountId,
+                workspaceId: params.workspaceId ?? null,
+                matches: suffixMatches.map((match) => match.providerAccountId),
+            });
+            return { account: null, matchedProviderAccountId: null, resolutionStatus: "unknown" as const };
+        }
+    }
+
+    return { account: null, matchedProviderAccountId: null, resolutionStatus: "unlinked" as const };
+}
+
 export class ChannelRouter {
 
     async handleInbound(message: InboundMessage): Promise<OutboundMessage[]> {
@@ -198,37 +318,44 @@ export class ChannelRouter {
             userId: message.context.userId
         });
 
+        const channelId = message.context.channelId;
+        const incomingThreadId =
+            (message.context as { threadId?: string }).threadId ?? null;
+        const isDirectMessage = message.context.isDirectMessage === true;
+        const providerMessageId =
+            (message.context as { messageId?: string }).messageId;
+        const canonicalThreadId = deriveCanonicalThreadId({
+            provider: message.provider,
+            isDirectMessage,
+            incomingThreadId,
+            messageId: providerMessageId,
+        });
+
         // 1. Fetch User via Account Link
         // We must look up the user by their external provider ID (Account table)
         // rather than assuming message.context.userId is already a UUID.
-
-        const account = await prisma.account.findUnique({
-            where: {
-                provider_providerAccountId: {
-                    provider: message.provider,
-                    providerAccountId: message.context.userId
-                }
-            },
-            include: {
-                user: {
-                    include: {
-                        emailAccounts: {
-                            orderBy: {
-                                updatedAt: "desc",
-                            },
-                            include: {
-                                account: true
-                            }
-                        }
-                    }
-                }
-            }
+        const linkedAccount = await findLinkedSurfaceAccount({
+            provider: message.provider,
+            providerAccountId: message.context.userId,
+            workspaceId:
+                typeof message.context.workspaceId === "string"
+                    ? message.context.workspaceId
+                    : undefined,
         });
 
-        if (!account || !account.user) {
+        if (!linkedAccount.account || !linkedAccount.account.user) {
             logger.warn("No linked surface account found", {
                 provider: message.provider,
                 providerAccountId: message.context.userId,
+                preferredProviderAccountId: preferredProviderAccountId({
+                    provider: message.provider,
+                    providerAccountId: message.context.userId,
+                    workspaceId:
+                        typeof message.context.workspaceId === "string"
+                            ? message.context.workspaceId
+                            : undefined,
+                }),
+                resolutionStatus: linkedAccount.resolutionStatus,
                 channelId: message.context.channelId,
                 workspaceId: message.context.workspaceId ?? null,
                 threadId: message.context.threadId ?? null,
@@ -236,9 +363,17 @@ export class ChannelRouter {
             const { createLinkToken } = await import("@/server/lib/linking");
             const { env } = await import("@/env");
 
-            const token = await createLinkToken({
+            const resolvedProviderAccountId = preferredProviderAccountId({
                 provider: message.provider,
                 providerAccountId: message.context.userId,
+                workspaceId:
+                    typeof message.context.workspaceId === "string"
+                        ? message.context.workspaceId
+                        : undefined,
+            });
+            const token = await createLinkToken({
+                provider: message.provider,
+                providerAccountId: resolvedProviderAccountId,
                 providerTeamId:
                     typeof message.context.workspaceId === "string" && message.context.workspaceId.length > 0
                         ? message.context.workspaceId
@@ -252,6 +387,11 @@ export class ChannelRouter {
 
             return [{
                 targetChannelId: message.context.channelId,
+                targetThreadId: outboundThreadIdForProvider({
+                    provider: message.provider,
+                    isDirectMessage,
+                    canonicalThreadId,
+                }),
                 content: `Welcome! I don't recognize this ${message.provider} account yet.\n\nPlease [Link Your Account](${linkUrl}) to enable AI features.`,
                 interactive: {
                     type: "approval_request", // Reusing this type for now to show a button if possible, but the link is primary
@@ -264,10 +404,10 @@ export class ChannelRouter {
             }];
         }
 
-        const user = account.user;
+        const user = linkedAccount.account.user;
         logger.info("Resolved linked surface account", {
             provider: message.provider,
-            providerAccountId: message.context.userId,
+            providerAccountId: linkedAccount.matchedProviderAccountId ?? message.context.userId,
             resolvedUserId: user.id,
             emailAccountsCount: user.emailAccounts.length,
             channelId: message.context.channelId,
@@ -284,6 +424,11 @@ export class ChannelRouter {
             });
             return [{
                 targetChannelId: message.context.channelId,
+                targetThreadId: outboundThreadIdForProvider({
+                    provider: message.provider,
+                    isDirectMessage,
+                    canonicalThreadId,
+                }),
                 content: "Your account is linked, but you haven't connected a Gmail/Outlook account yet.\n\nPlease go to the Amodel Web App to connect your email."
             }];
         }
@@ -301,22 +446,15 @@ export class ChannelRouter {
             });
             return [{
                 targetChannelId: message.context.channelId,
+                targetThreadId: outboundThreadIdForProvider({
+                    provider: message.provider,
+                    isDirectMessage,
+                    canonicalThreadId,
+                }),
                 content: `Your email account (${emailAccount.email}) has been disconnected (e.g. due to a password change or revoked access).\n\nPlease reconnect it in the Amodel web app: ${env.NEXT_PUBLIC_BASE_URL}/connect`,
             }];
         }
 
-        const incomingThreadId =
-            (message.context as { threadId?: string }).threadId ?? null;
-        const channelId = message.context.channelId;
-        const isDirectMessage = message.context.isDirectMessage === true;
-        const providerMessageId =
-            (message.context as { messageId?: string }).messageId;
-        const canonicalThreadId = deriveCanonicalThreadId({
-            provider: message.provider,
-            isDirectMessage,
-            incomingThreadId,
-            messageId: providerMessageId,
-        });
         const queueKey = buildConversationIdentityKey({
             userId: user.id,
             provider: message.provider,
