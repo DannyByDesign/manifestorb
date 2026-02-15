@@ -60,3 +60,8 @@ ai/
 - Mutating tools are policy-gated (`ai/policy/enforcement.ts`).
 - Approvals are persisted and replayed via `features/approvals`.
 - Runtime tool metadata is source-of-truth in `tools/runtime/capabilities/registry.ts`.
+
+## Fast-Path Coverage Source of Truth
+
+- Coverage scope and implementation plan live in:
+  - `docs/plans/2026-02-15-fast-path-coverage-source-of-truth.md`
