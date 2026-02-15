@@ -39,7 +39,7 @@ const CORE_HTTP_MAX_ATTEMPTS = Math.max(
 );
 const CORE_HTTP_RETRY_BASE_MS = Math.max(100, Number(process.env.SURFACES_BRAIN_RETRY_BASE_MS || 500));
 
-const TRANSPORT_QUEUE_ENABLED = process.env.SURFACES_TRANSPORT_QUEUE_ENABLED === "true";
+const TRANSPORT_QUEUE_ENABLED = process.env.SURFACES_TRANSPORT_QUEUE_ENABLED !== "false";
 const TRANSPORT_STREAM_KEY = process.env.SURFACES_TRANSPORT_STREAM_KEY || "surfaces:brain:inbound";
 const TRANSPORT_DLQ_STREAM_KEY = process.env.SURFACES_TRANSPORT_DLQ_STREAM_KEY || "surfaces:brain:inbound:dlq";
 const TRANSPORT_CONSUMER_GROUP = process.env.SURFACES_TRANSPORT_CONSUMER_GROUP || "surfaces-brain-workers";
@@ -518,12 +518,13 @@ export async function stopBrainIngressWorker(): Promise<void> {
 }
 
 export async function forwardToBrainWithTransport(params: ForwardParams): Promise<unknown | null> {
-    if (canUseDurableQueue()) {
-        const queuedResult = await forwardToBrainViaQueue(params);
-        if (queuedResult) return queuedResult;
-        // Fall back to direct mode if queue path failed to avoid dropping responses.
-        return await forwardToBrainDirect(params);
+    const directResult = await forwardToBrainDirect(params);
+    if (directResult) return directResult;
+
+    if (!canUseDurableQueue()) {
+        return null;
     }
 
-    return await forwardToBrainDirect(params);
+    // Reliability fallback: queue only after direct delivery fails.
+    return await forwardToBrainViaQueue(params);
 }
