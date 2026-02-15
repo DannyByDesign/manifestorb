@@ -401,7 +401,9 @@ function summarizeMeetingNow(timeZone: string): (result: RuntimeToolResult) => s
 
 function summarizeRuleList(): (result: RuntimeToolResult) => string {
   return (result: RuntimeToolResult): string => {
-    const items = asArray(result.data).map((item) => asRecord(item)).filter(Boolean);
+    const items = asArray(result.data)
+      .map((item) => asRecord(item))
+      .filter((item): item is Record<string, unknown> => Boolean(item));
     if (items.length === 0) return "You don't have any rules set up right now.";
     const preview = items.slice(0, 3).map((item) => {
       const name = asString(item.name) ?? asString(item.id) ?? "unnamed rule";
