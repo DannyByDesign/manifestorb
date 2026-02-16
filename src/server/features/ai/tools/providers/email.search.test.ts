@@ -300,6 +300,125 @@ describe("tool email provider search", () => {
     expect(result.messages[0]?.id).toBe("m-1");
   });
 
+  it("treats attachment-intent term as subject-or-attachment match, not body-only", async () => {
+    const service = {
+      getMessagesWithPagination: vi.fn().mockResolvedValue({
+        messages: [
+          {
+            id: "m-1",
+            threadId: "t-1",
+            snippet: "Invoice attached",
+            historyId: "h-1",
+            inline: [],
+            attachments: [
+              {
+                filename: "invoice-feb.pdf",
+                mimeType: "application/pdf",
+                size: 42,
+                attachmentId: "a-1",
+                headers: {
+                  "content-type": "application/pdf",
+                  "content-description": "",
+                  "content-transfer-encoding": "base64",
+                  "content-id": "",
+                },
+              },
+            ],
+            headers: {
+              subject: "Invoice",
+              from: "me@example.com",
+              to: "client@example.com",
+              date: "2026-02-08T00:00:00.000Z",
+            },
+            subject: "Invoice",
+            textPlain: "Please see attached invoice.",
+            date: "2026-02-08T00:00:00.000Z",
+          },
+          {
+            id: "m-2",
+            threadId: "t-2",
+            snippet: "Body mentions invoice only",
+            historyId: "h-2",
+            inline: [],
+            attachments: [
+              {
+                filename: "paper.pdf",
+                mimeType: "application/pdf",
+                size: 128,
+                attachmentId: "a-2",
+                headers: {
+                  "content-type": "application/pdf",
+                  "content-description": "",
+                  "content-transfer-encoding": "base64",
+                  "content-id": "",
+                },
+              },
+            ],
+            headers: {
+              subject: "Fwd: Conference update",
+              from: "me@example.com",
+              to: "client@example.com",
+              date: "2026-02-08T01:00:00.000Z",
+            },
+            subject: "Fwd: Conference update",
+            textPlain: "Invoice discussed in the body.",
+            date: "2026-02-08T01:00:00.000Z",
+          },
+        ],
+        nextPageToken: undefined,
+        totalEstimate: 2,
+      }),
+      getMessagesBatch: vi.fn(),
+      getThread: vi.fn(),
+      searchContacts: vi.fn(),
+      createContact: vi.fn(),
+      createDraft: vi.fn(),
+      sendDraft: vi.fn(),
+      getDrafts: vi.fn(),
+      getDraft: vi.fn(),
+      updateDraft: vi.fn(),
+      deleteDraft: vi.fn(),
+      archiveThread: vi.fn(),
+      trashThread: vi.fn(),
+      markReadThread: vi.fn(),
+      labelMessage: vi.fn(),
+      removeThreadLabels: vi.fn(),
+    } as unknown as Awaited<ReturnType<typeof import("@/features/email/provider")["createEmailProvider"]>>;
+
+    const providerFactory = (await import("@/features/email/provider")).createEmailProvider as unknown as {
+      mockResolvedValue: (value: unknown) => void;
+    };
+    providerFactory.mockResolvedValue(service);
+
+    const provider = await createEmailProvider(
+      {
+        id: "email-1",
+        provider: "google",
+        access_token: null,
+        refresh_token: null,
+        expires_at: null,
+        email: "me@example.com",
+      },
+      {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+        trace: vi.fn(),
+        with: vi.fn().mockReturnThis(),
+      } as unknown as Parameters<typeof createEmailProvider>[1],
+    );
+
+    const result = await provider.search({
+      query: "",
+      limit: 10,
+      hasAttachment: true,
+      attachmentIntentTerm: "invoice",
+    });
+
+    expect(result.messages.map((message) => message.id)).toEqual(["m-1"]);
+  });
+
   it("supports sentByMe and receivedByMe local filters", async () => {
     const service = {
       getMessagesWithPagination: vi.fn().mockResolvedValue({

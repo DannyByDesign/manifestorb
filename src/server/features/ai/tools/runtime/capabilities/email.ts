@@ -149,6 +149,11 @@ function toSearchItems(
       dateLocal,
       from: message.headers?.from ?? "",
       to: message.headers?.to ?? "",
+      hasAttachment: Array.isArray(message.attachments) && message.attachments.length > 0,
+      attachmentNames: (message.attachments ?? [])
+        .map((attachment) => attachment.filename)
+        .filter((name) => typeof name === "string" && name.trim().length > 0)
+        .slice(0, 5),
     };
   });
 }
@@ -167,6 +172,49 @@ function messageTimestampMs(message: ParsedMessage): number {
 
 function normalizeSearchText(value: string | undefined): string {
   return value?.trim().toLowerCase() ?? "";
+}
+
+const ATTACHMENT_WORD_RE = /\battach(?:ment|ments)\b|\battatch(?:ment|ments)\b/iu;
+const ATTACHMENT_TERM_CAPTURE_RE =
+  /\b(?:containing|with|including|include|contains)\s+["'“”]?([^"'“”,.!?]{2,80}?)["'“”]?\s+att(?:ach|atch)\w*\b/iu;
+const ATTACHMENT_DIRECT_CAPTURE_RE =
+  /\b["'“”]?([^"'“”,.!?]{2,80}?)["'“”]?\s+att(?:ach|atch)\w*\b/iu;
+
+function normalizeAttachmentIntentTerm(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const normalized = raw
+    .trim()
+    .toLowerCase()
+    .replace(/\b(?:any|all|my|your|the|an?|emails?|messages?|inbox|sent|mail|from|for)\b/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized || normalized.length < 2) return undefined;
+  return normalized;
+}
+
+function inferAttachmentIntentTerm(params: {
+  currentMessage?: string;
+  query?: string;
+  text?: string;
+}): string | undefined {
+  const currentMessage = params.currentMessage?.trim() ?? "";
+  const query = params.query?.trim() ?? "";
+  const text = params.text?.trim() ?? "";
+
+  const candidates = [currentMessage, query].filter((value) => value.length > 0);
+  for (const candidate of candidates) {
+    if (!ATTACHMENT_WORD_RE.test(candidate)) continue;
+    const explicit = candidate.match(ATTACHMENT_TERM_CAPTURE_RE)?.[1];
+    const direct = explicit ? undefined : candidate.match(ATTACHMENT_DIRECT_CAPTURE_RE)?.[1];
+    const normalized = normalizeAttachmentIntentTerm(explicit ?? direct);
+    if (normalized) return normalized;
+  }
+
+  if (text.length > 0) {
+    return normalizeAttachmentIntentTerm(text);
+  }
+
+  return undefined;
 }
 
 function hasMailboxScopeInQuery(query: string): boolean {
@@ -445,6 +493,14 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         query,
         purpose,
       });
+      const attachmentIntentTerm =
+        typeof filter.hasAttachment === "boolean" && filter.hasAttachment
+          ? inferAttachmentIntentTerm({
+              currentMessage: capEnv.toolContext.currentMessage,
+              query,
+              text: typeof filter.text === "string" ? filter.text : undefined,
+            })
+          : undefined;
 
       const baseSearch = {
         query,
@@ -466,6 +522,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           typeof filter.hasAttachment === "boolean"
             ? filter.hasAttachment
             : undefined,
+        attachmentIntentTerm,
         sentByMe:
           typeof filter.sentByMe === "boolean" ? filter.sentByMe : undefined,
         receivedByMe:

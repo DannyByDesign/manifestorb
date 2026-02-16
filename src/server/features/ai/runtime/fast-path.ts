@@ -34,6 +34,9 @@ const EMAIL_ENTITY_RE = /\b(email|emails|inbox|message|messages|thread|threads)\
 const CALENDAR_ENTITY_RE = /\b(calendar|meeting|meetings|event|events|schedule)\b/u;
 const FIRST_OR_LATEST_RE = /\b(first|top|latest|most recent|newest|recent)\b/u;
 const LIST_OR_SHOW_RE = /\b(show|list|check|find|search|what|which|tell me)\b/u;
+const EXPLICIT_SEARCH_VERB_RE = /\b(show|list|check|find|search|look up|scan|fetch)\b/u;
+const FOLLOW_UP_GROUNDING_RE =
+  /\b(?:that one|this one|the second|the first|the third|other\s+\d+|you (?:said|gave|listed|found|included|returned)|why did|what made|making you think|are you sure|doesn'?t have|didn'?t have)\b/u;
 const SENT_MAILBOX_RE =
   /\b(?:my\s+)?sent\s+(?:emails?|messages?|mail|threads?)\b|\bsent\s+mailbox\b|\boutbox\b/u;
 const GREETING_RE =
@@ -722,6 +725,10 @@ export async function matchRuntimeFastPath(params: {
   }
 
   if (CONDITIONAL_OR_CHAINING_RE.test(normalized)) {
+    return null;
+  }
+
+  if (FOLLOW_UP_GROUNDING_RE.test(normalized) && !EXPLICIT_SEARCH_VERB_RE.test(normalized)) {
     return null;
   }
 

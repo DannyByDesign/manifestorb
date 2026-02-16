@@ -109,6 +109,7 @@ export interface EmailProvider {
         from?: string;
         to?: string;
         hasAttachment?: boolean;
+        attachmentIntentTerm?: string;
         sentByMe?: boolean;
         receivedByMe?: boolean;
     }): Promise<{
@@ -242,11 +243,13 @@ export async function createEmailProvider(
             from?: string;
             to?: string;
             hasAttachment?: boolean;
+            attachmentIntentTerm?: string;
             sentByMe?: boolean;
             receivedByMe?: boolean;
         },
     ): ParsedMessage[] => {
         const shouldCheckText = normalizeText(options.text).length > 0;
+        const attachmentIntentTerm = normalizeText(options.attachmentIntentTerm);
         const normalizedOwnerEmail = normalizeText(account.email);
         const containsOwnerEmail = (value: string | undefined): boolean => {
             const normalized = normalizeText(value);
@@ -277,6 +280,16 @@ export async function createEmailProvider(
                 if (!includesLooseTerm(combined, options.text)) return false;
             }
 
+            if (attachmentIntentTerm.length > 0) {
+                const attachmentBlob = (message.attachments ?? [])
+                    .map((attachment) => `${attachment.filename} ${attachment.mimeType}`)
+                    .join(" ");
+                const subjectMatches = includesLooseTerm(subject, attachmentIntentTerm);
+                const attachmentMatches = includesLooseTerm(attachmentBlob, attachmentIntentTerm);
+                // For "<term> attachment" requests, avoid body-only matches that create false positives.
+                if (!subjectMatches && !attachmentMatches) return false;
+            }
+
             if (options.sentByMe !== undefined) {
                 const sentByMe = containsOwnerEmail(from);
                 if (sentByMe !== options.sentByMe) return false;
@@ -301,6 +314,7 @@ export async function createEmailProvider(
         from?: string;
         to?: string;
         hasAttachment?: boolean;
+        attachmentIntentTerm?: string;
         sentByMe?: boolean;
         receivedByMe?: boolean;
     }): boolean =>
@@ -310,6 +324,7 @@ export async function createEmailProvider(
             normalizeText(options.text) ||
             normalizeText(options.from) ||
             normalizeText(options.to) ||
+            normalizeText(options.attachmentIntentTerm) ||
             options.hasAttachment !== undefined ||
             options.sentByMe !== undefined ||
             options.receivedByMe !== undefined,
@@ -350,6 +365,7 @@ export async function createEmailProvider(
             from,
             to,
             hasAttachment,
+            attachmentIntentTerm,
             sentByMe,
             receivedByMe,
         }) => runThrottled("search", async () => {
@@ -387,6 +403,7 @@ export async function createEmailProvider(
                     from,
                     to,
                     hasAttachment,
+                    attachmentIntentTerm,
                     sentByMe,
                     receivedByMe,
                 };

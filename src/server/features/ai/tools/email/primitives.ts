@@ -17,6 +17,7 @@ export async function searchEmailThreads(
     from?: string;
     to?: string;
     hasAttachment?: boolean;
+    attachmentIntentTerm?: string;
     sentByMe?: boolean;
     receivedByMe?: boolean;
   },

@@ -286,6 +286,15 @@ describe("runtime fast path", () => {
     expect(match).toBeNull();
   });
 
+  it("does not fast-path follow-up grounding questions as a new inbox search", async () => {
+    const match = await matchRuntimeFastPath({
+      session: buildSession("what is making you think the second one had an invoice attachment?"),
+      mode: "strict",
+    });
+
+    expect(match).toBeNull();
+  });
+
   it("routes simple rule list requests to policy.listRules", async () => {
     const match = await matchRuntimeFastPath({
       session: buildSession("show me my rules"),
