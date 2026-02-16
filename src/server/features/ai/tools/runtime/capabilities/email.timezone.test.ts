@@ -132,6 +132,20 @@ describe("runtime email timezone handling", () => {
     expect(filter.query).toBe("in:sent portfolio review");
   });
 
+  it("rejects suspicious sender filters that look like conversation metadata", async () => {
+    const caps = createEmailCapabilities(buildEnv());
+    const result = await caps.searchInbox({
+      from: "our conversation memory",
+      query: "",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("invalid_sender_scope");
+    expect(result.clarification?.kind).toBe("invalid_fields");
+    expect(result.clarification?.missingFields).toEqual(["from"]);
+    expect(searchEmailThreads).not.toHaveBeenCalled();
+  });
+
   it("returns localized display time fields for inbox items", async () => {
     vi.mocked(searchEmailThreads).mockResolvedValueOnce({
       messages: [

@@ -41,16 +41,21 @@ describe("policy filter parity", () => {
   it("applies deterministic policies in layered intersection order", () => {
     const result = filterToolRegistryDetailed(registry, {
       message: "check inbox",
-      semantic: {
+      turn: {
         intent: "inbox_read",
         domain: "inbox",
         requestedOperation: "read",
         complexity: "simple",
         routeProfile: "fast",
+        routeHint: "single_tool",
         riskLevel: "low",
         confidence: 0.9,
         toolHints: ["group:inbox_read"],
-        source: "lexical",
+        source: "compiler_fallback",
+        conversationClauses: [],
+        taskClauses: [],
+        metaConstraints: [],
+        needsClarification: false,
       },
       layeredPolicies: {
         profilePolicy: { allow: ["email.*"] },

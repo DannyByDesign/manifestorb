@@ -4,6 +4,7 @@ import { buildFinalUserResponse } from "@/server/features/ai/runtime/finalize";
 import type { OpenWorldTurnInput, OpenWorldTurnResult } from "@/server/features/ai/runtime/types";
 import { runRuntimePrecheck } from "@/server/features/ai/runtime/context/precheck";
 import { hydrateRuntimeContext } from "@/server/features/ai/runtime/context/hydrator";
+import { classifyRuntimeTurnContract } from "@/server/features/ai/runtime/turn-contract";
 import { withUserRuntimeConcurrencyLimit } from "@/server/features/ai/runtime/concurrency";
 import { emitRuntimeTelemetry } from "@/server/features/ai/runtime/telemetry/schema";
 
@@ -30,11 +31,23 @@ export async function runOpenWorldRuntimeTurn(
       };
     }
 
-    const hydrated = await hydrateRuntimeContext(input);
+    const runtimeTurnContract = await classifyRuntimeTurnContract({
+      message: input.message,
+      userId: input.userId,
+      email: input.email,
+      emailAccountId: input.emailAccountId,
+      logger: input.logger,
+    });
+
+    const hydrated = await hydrateRuntimeContext({
+      ...input,
+      runtimeTurnContract,
+    });
     emitRuntimeTelemetry(input.logger, "openworld.runtime.context_hydrated", {
       userId: input.userId,
       provider: input.provider,
       status: hydrated.contextStatus,
+      tier: hydrated.hydrationTier,
       issues: hydrated.contextIssues,
       facts: hydrated.contextStats.facts,
       knowledge: hydrated.contextStats.knowledge,
@@ -49,6 +62,7 @@ export async function runOpenWorldRuntimeTurn(
       runtimeContextPack: hydrated.contextPack,
       runtimeContextStatus: hydrated.contextStatus,
       runtimeContextIssues: hydrated.contextIssues,
+      runtimeTurnContract,
     });
     const execution = await runAttemptLoop(session);
     const result = buildFinalUserResponse({

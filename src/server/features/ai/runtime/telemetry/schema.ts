@@ -15,13 +15,8 @@ export const runtimePlanTelemetrySchema = baseSchema.extend({
 });
 
 export const runtimeRouteSelectedTelemetrySchema = baseSchema.extend({
-  lane: z.enum([
-    "direct_response",
-    "macro_tool",
-    "planner_fast",
-    "planner_standard",
-    "planner_deep",
-  ]),
+  lane: z.enum(["conversation_only", "single_tool", "planner"]),
+  profile: z.enum(["fast", "standard", "deep"]),
   reason: z.string().min(1).max(120),
   nativeMaxSteps: z.number().int().nonnegative(),
   nativeTurnTimeoutMs: z.number().int().nonnegative(),
@@ -42,37 +37,6 @@ export const runtimeToolLifecycleTelemetrySchema = baseSchema.extend({
 export const runtimeDirectReadTelemetrySchema = baseSchema.extend({
   toolName: z.string().min(1),
   confidence: z.number().min(0).max(1),
-});
-
-export const runtimeFastPathTelemetrySchema = baseSchema.extend({
-  mode: z.enum(["strict", "recovery"]),
-  reason: z.string().min(1).max(120),
-  toolName: z.string().min(1).max(120).nullable().optional(),
-  decision: z.enum(["selected", "skipped", "executed", "fallback"]),
-  outcome: z.enum([
-    "success",
-    "incomplete",
-    "timeout",
-    "tool_error",
-    "not_admitted",
-    "unknown",
-  ]),
-  fallbackCause: z
-    .enum([
-      "incomplete",
-      "timeout",
-      "tool_error",
-      "semantic_gate",
-      "slot_validation",
-      "tool_unavailable",
-      "not_matched",
-    ])
-    .optional(),
-  latencyMs: z.number().int().nonnegative().optional(),
-  truncated: z.boolean().optional(),
-  totalEstimate: z.number().int().nonnegative().optional(),
-  semanticConfidence: z.number().min(0).max(1).optional(),
-  semanticMargin: z.number().min(0).max(1).nullable().optional(),
 });
 
 export const runtimeTurnCompletedTelemetrySchema = baseSchema.extend({
@@ -104,6 +68,7 @@ export const runtimeClarificationRequiredTelemetrySchema = baseSchema.extend({
 
 export const runtimeContextHydratedTelemetrySchema = baseSchema.extend({
   status: z.enum(["ready", "degraded", "missing"]),
+  tier: z.enum(["bootstrap", "targeted", "expanded"]).optional(),
   issues: z.array(z.string().min(1)).max(16).default([]),
   facts: z.number().int().nonnegative(),
   knowledge: z.number().int().nonnegative(),
@@ -114,13 +79,7 @@ export const runtimeContextHydratedTelemetrySchema = baseSchema.extend({
 });
 
 export const runtimeContextPrunedTelemetrySchema = baseSchema.extend({
-  lane: z.enum([
-    "direct_response",
-    "macro_tool",
-    "planner_fast",
-    "planner_standard",
-    "planner_deep",
-  ]),
+  lane: z.enum(["conversation_only", "single_tool", "planner"]),
   mode: z.enum(["soft", "hard"]),
   beforeChars: z.number().int().nonnegative(),
   afterChars: z.number().int().nonnegative(),
@@ -129,13 +88,7 @@ export const runtimeContextPrunedTelemetrySchema = baseSchema.extend({
 });
 
 export const runtimeCompactionRetryTelemetrySchema = baseSchema.extend({
-  lane: z.enum([
-    "direct_response",
-    "macro_tool",
-    "planner_fast",
-    "planner_standard",
-    "planner_deep",
-  ]),
+  lane: z.enum(["conversation_only", "single_tool", "planner"]),
   overflowDetected: z.boolean(),
   retryAttempted: z.boolean(),
   retrySucceeded: z.boolean(),
@@ -145,13 +98,7 @@ export const runtimeCompactionRetryTelemetrySchema = baseSchema.extend({
 });
 
 export const runtimeContextSlotsTelemetrySchema = baseSchema.extend({
-  lane: z.enum([
-    "direct_response",
-    "macro_tool",
-    "planner_fast",
-    "planner_standard",
-    "planner_deep",
-  ]),
+  lane: z.enum(["conversation_only", "single_tool", "planner"]),
   maxChars: z.number().int().positive(),
   maxFacts: z.number().int().positive(),
   maxKnowledge: z.number().int().positive(),
@@ -162,7 +109,6 @@ const runtimeTelemetrySchemas = {
   "openworld.runtime.plan": runtimePlanTelemetrySchema,
   "openworld.runtime.route_selected": runtimeRouteSelectedTelemetrySchema,
   "openworld.runtime.direct_read": runtimeDirectReadTelemetrySchema,
-  "openworld.runtime.fast_path": runtimeFastPathTelemetrySchema,
   "openworld.runtime.tool_lifecycle": runtimeToolLifecycleTelemetrySchema,
   "openworld.runtime.context_hydrated": runtimeContextHydratedTelemetrySchema,
   "openworld.runtime.context_pruned": runtimeContextPrunedTelemetrySchema,

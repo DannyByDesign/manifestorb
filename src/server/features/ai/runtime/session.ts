@@ -8,7 +8,7 @@ import {
 } from "@/server/features/ai/tools/fabric/registry";
 import { toToolDefinitions } from "@/server/features/ai/tools/harness/tool-definition-adapter";
 import { splitSdkTools } from "@/server/features/ai/tools/harness/tool-split";
-import { classifyRuntimeSemanticContract } from "@/server/features/ai/runtime/semantic-contract";
+import { classifyRuntimeTurnContract } from "@/server/features/ai/runtime/turn-contract";
 import { resolveEffectiveToolPolicy } from "@/server/features/ai/tools/policy/policy-resolver";
 import {
   expandPolicyWithPluginGroups,
@@ -25,7 +25,7 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
     input.agentId && input.agentId.toLowerCase().includes("subagent"),
   );
 
-  const [capabilities, userAiConfig, semantic] = await Promise.all([
+  const [capabilities, userAiConfig, turn] = await Promise.all([
     createCapabilities({
       userId: input.userId,
       emailAccountId: input.emailAccountId,
@@ -55,10 +55,15 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
         toolSubagentPolicy: true,
       },
     }),
-    classifyRuntimeSemanticContract({
-      message: input.message,
-      logger: input.logger,
-    }),
+    input.runtimeTurnContract
+      ? Promise.resolve(input.runtimeTurnContract)
+      : classifyRuntimeTurnContract({
+          message: input.message,
+          userId: input.userId,
+          email: input.email,
+          emailAccountId: input.emailAccountId,
+          logger: input.logger,
+        }),
   ]);
 
   const loadedSkills = loadRuntimeSkills();
@@ -161,24 +166,25 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
   };
 
   const filtered = filterToolRegistryDetailed(fullRegistry, {
-    includeDangerous: semantic.riskLevel === "high" && semantic.requestedOperation !== "read",
+    includeDangerous: turn.riskLevel === "high" && turn.requestedOperation !== "read",
     message: input.message,
-    semantic,
+    turn,
     layeredPolicies,
     additionalGroups: registryContext.additionalGroups,
   });
   const registry = filtered.tools;
   const toolLookup = buildToolNameLookup(registry);
 
-  input.logger.info("Runtime semantic gate applied", {
-    semanticIntent: semantic.intent,
-    semanticDomain: semantic.domain,
-    semanticOperation: semantic.requestedOperation,
-    semanticComplexity: semantic.complexity,
-    semanticRouteProfile: semantic.routeProfile,
-    semanticRiskLevel: semantic.riskLevel,
-    semanticConfidence: semantic.confidence,
-    semanticClassifierMargin: semantic.classifier?.margin ?? null,
+  input.logger.info("Runtime turn gate applied", {
+    turnIntent: turn.intent,
+    turnDomain: turn.domain,
+    turnOperation: turn.requestedOperation,
+    turnComplexity: turn.complexity,
+    turnRouteProfile: turn.routeProfile,
+    turnRouteHint: turn.routeHint,
+    turnRiskLevel: turn.riskLevel,
+    turnConfidence: turn.confidence,
+    turnSource: turn.source,
     toolCountBefore: fullRegistry.length,
     toolCountSemanticCandidate: filtered.diagnostics.counts.semanticCandidate,
     toolCountAfterProfile: filtered.diagnostics.counts.afterProfile,
@@ -227,7 +233,7 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
   return {
     input,
     capabilities,
-    semantic,
+    turn,
     skillSnapshot,
     userPromptConfig: userAiConfig
       ? {

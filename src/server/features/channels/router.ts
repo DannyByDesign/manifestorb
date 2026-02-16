@@ -19,7 +19,6 @@ import {
 } from "./conversation-key";
 import { runSerializedConversationTurn } from "./runtime";
 import { enqueueConversationMessageEmbedding } from "@/features/memory/embeddings/conversation-ingestion";
-import { renderSurfaceResponseText } from "@/server/features/ai/runtime/response-writer";
 import {
     preferredProviderAccountId,
     resolveSurfaceAccount,
@@ -277,47 +276,8 @@ export class ChannelRouter {
             incomingThreadId,
             messageId: providerMessageId,
         });
-        const renderResponses = async (responses: OutboundMessage[]): Promise<OutboundMessage[]> => {
-            return await Promise.all(
-                responses.map(async (response) => {
-                    const content = typeof response.content === "string" ? response.content : "";
-                    const interactiveSummary =
-                        typeof response.interactive?.summary === "string"
-                            ? response.interactive.summary
-                            : "";
-
-                    const rewrittenContent = content.trim().length > 0
-                        ? await renderSurfaceResponseText({
-                            provider: message.provider,
-                            request: message.content,
-                            draftText: content,
-                            logger,
-                        })
-                        : content;
-                    const rewrittenSummary = interactiveSummary.trim().length > 0
-                        ? await renderSurfaceResponseText({
-                            provider: message.provider,
-                            request: message.content,
-                            draftText: interactiveSummary,
-                            logger,
-                        })
-                        : interactiveSummary;
-
-                    return {
-                        ...response,
-                        content: rewrittenContent,
-                        ...(response.interactive
-                            ? {
-                                interactive: {
-                                    ...response.interactive,
-                                    summary: rewrittenSummary,
-                                },
-                            }
-                            : {}),
-                    };
-                }),
-            );
-        };
+        const renderResponses = async (responses: OutboundMessage[]): Promise<OutboundMessage[]> =>
+            responses;
 
         // 1. Fetch User via Account Link
         // We must look up the user by their external provider ID (Account table)
@@ -703,19 +663,13 @@ export class ChannelRouter {
                 return false;
             }
 
-            const rewrittenContent = await renderSurfaceResponseText({
-                provider: conversation.provider,
-                request: content,
-                draftText: content,
-                logger,
-            });
             const responseId = createDeterministicIdempotencyKey(
                 "surfaces-notify",
                 userId,
                 conversation.provider,
                 conversation.channelId,
                 conversation.threadId ?? "",
-                rewrittenContent,
+                content,
             );
 
             const response = await fetch(`${surfaceUrl}/notify`, {
@@ -728,7 +682,7 @@ export class ChannelRouter {
                     platform: conversation.provider,
                     channelId: conversation.channelId,
                     threadId: conversation.threadId,
-                    content: rewrittenContent,
+                    content,
                     responseId,
                 })
             });

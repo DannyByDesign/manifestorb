@@ -1,17 +1,17 @@
-import type { RuntimeSemanticContract } from "@/server/features/ai/runtime/semantic-contract";
+import type { RuntimeTurnContract } from "@/server/features/ai/runtime/turn-contract";
 import type { RuntimeToolDefinition } from "@/server/features/ai/tools/fabric/types";
 import type { CapabilityIntentFamily } from "@/server/features/ai/tools/runtime/capabilities/registry";
 
 export interface SemanticToolCandidateParams {
   strictReadOnly?: boolean;
-  semantic?: RuntimeSemanticContract;
+  turn?: RuntimeTurnContract;
 }
 
 export interface ToolRankingParams {
   includeDangerous?: boolean;
   maxTools?: number;
   message?: string;
-  semantic?: RuntimeSemanticContract;
+  turn?: RuntimeTurnContract;
 }
 
 const MUTATION_RE =
@@ -23,24 +23,24 @@ const POLICY_RE = /\b(rule|policy|approval|permission|automation|preference)\b/u
 const MEMORY_RE =
   /\b(remember|memory|recall|forgot|forget|last time|history|relationship|contact context)\b/u;
 
-const PROFILE_LIMITS: Record<NonNullable<RuntimeSemanticContract["routeProfile"]>, number> = {
+const PROFILE_LIMITS: Record<NonNullable<RuntimeTurnContract["routeProfile"]>, number> = {
   fast: 20,
   standard: 48,
   deep: 72,
 };
 
 function resolveAdaptiveToolLimit(params: ToolRankingParams): number {
-  const semantic = params.semantic;
-  const baseLimit = params.maxTools ?? (semantic ? PROFILE_LIMITS[semantic.routeProfile] : 32);
+  const turn = params.turn;
+  const baseLimit = params.maxTools ?? (turn ? PROFILE_LIMITS[turn.routeProfile] : 32);
   let adjusted = baseLimit;
 
-  if (semantic) {
-    if (semantic.domain === "cross_surface" || semantic.requestedOperation === "mixed") {
+  if (turn) {
+    if (turn.domain === "cross_surface" || turn.requestedOperation === "mixed") {
       adjusted += 16;
     }
-    if (semantic.complexity === "complex") {
+    if (turn.complexity === "complex") {
       adjusted += 12;
-    } else if (semantic.complexity === "moderate") {
+    } else if (turn.complexity === "moderate") {
       adjusted += 6;
     }
   }
@@ -56,10 +56,10 @@ function intersectsIntentFamily(
 }
 
 function familiesForSemanticContract(
-  semantic: RuntimeSemanticContract,
+  turn: RuntimeTurnContract,
 ): CapabilityIntentFamily[] {
-  const op = semantic.requestedOperation;
-  switch (semantic.domain) {
+  const op = turn.requestedOperation;
+  switch (turn.domain) {
     case "inbox":
       return op === "read"
         ? ["inbox_read", "cross_surface_planning", "memory_read"]
@@ -104,17 +104,17 @@ function scoreToolRelevance(
   params: ToolRankingParams,
 ): number {
   const message = (params.message ?? "").toLowerCase();
-  const semantic = params.semantic;
+  const turn = params.turn;
   const tags = definition.metadata.tags;
   let score = 0;
 
-  if (semantic) {
-    const families = familiesForSemanticContract(semantic);
+  if (turn) {
+    const families = familiesForSemanticContract(turn);
     if (families.length > 0 && intersectsIntentFamily(definition, families)) score += 8;
-    if (semantic.requestedOperation === "read" && definition.metadata.readOnly) score += 5;
+    if (turn.requestedOperation === "read" && definition.metadata.readOnly) score += 5;
     if (
-      semantic.requestedOperation !== "read" &&
-      semantic.requestedOperation !== "meta" &&
+      turn.requestedOperation !== "read" &&
+      turn.requestedOperation !== "meta" &&
       !definition.metadata.readOnly
     ) {
       score += 4;
@@ -170,13 +170,13 @@ export function selectSemanticToolCandidates(
   registry: RuntimeToolDefinition[],
   params: SemanticToolCandidateParams,
 ): RuntimeToolDefinition[] {
-  const semantic = params.semantic;
-  if (!semantic) return registry;
-  if (semantic.intent === "greeting" || semantic.intent === "capabilities") return [];
-  if (semantic.requestedOperation === "meta") return [];
+  const turn = params.turn;
+  if (!turn) return registry;
+  if (turn.intent === "greeting" || turn.intent === "capabilities") return [];
+  if (turn.requestedOperation === "meta") return [];
 
   let working = [...registry];
-  const semanticFamilies = familiesForSemanticContract(semantic);
+  const semanticFamilies = familiesForSemanticContract(turn);
   if (semanticFamilies.length > 0) {
     const familyFiltered = working.filter((definition) =>
       intersectsIntentFamily(definition, semanticFamilies),
@@ -186,7 +186,7 @@ export function selectSemanticToolCandidates(
     }
   }
 
-  if (semantic.requestedOperation === "read" || params.strictReadOnly) {
+  if (turn.requestedOperation === "read" || params.strictReadOnly) {
     const readOnly = working.filter((definition) => definition.metadata.readOnly);
     if (readOnly.length > 0) {
       working = readOnly;
@@ -202,7 +202,7 @@ export function rankAndLimitTools(
 ): { tools: RuntimeToolDefinition[]; afterRisk: number; afterLimit: number } {
   let working = [...registry];
 
-  if (!params.includeDangerous || params.semantic?.riskLevel !== "high") {
+  if (!params.includeDangerous || params.turn?.riskLevel !== "high") {
     working = working.filter((definition) => definition.metadata.riskLevel !== "dangerous");
   }
   const afterRisk = working.length;

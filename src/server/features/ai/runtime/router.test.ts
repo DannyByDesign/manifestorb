@@ -1,11 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { RuntimeSession } from "@/server/features/ai/runtime/types";
 import { buildRuntimeRoutingPlan } from "@/server/features/ai/runtime/router";
-import { resolveDefaultCalendarTimeZone } from "@/server/features/ai/tools/calendar-time";
-
-vi.mock("@/server/features/ai/tools/calendar-time", () => ({
-  resolveDefaultCalendarTimeZone: vi.fn(),
-}));
 
 function mockLogger() {
   const noop = () => {};
@@ -19,109 +14,15 @@ function mockLogger() {
   };
 }
 
-function buildSemanticForTest(message: string): RuntimeSession["semantic"] {
-  const normalized = message.toLowerCase();
-  const mutationRe =
-    /\b(create|update|edit|change|delete|remove|archive|trash|send|reply|move|label|reschedule|book|cancel|approve|deny)\b/u;
-  const deepRe = /\b(if|unless|otherwise|except|only if|and then|followed by|across)\b/u;
-
-  if (/^(hi|hello|hey)\b/u.test(normalized)) {
-    return {
-      intent: "greeting",
-      domain: "general",
-      requestedOperation: "meta",
-      complexity: "simple",
-      routeProfile: "fast",
-      riskLevel: "low",
-      confidence: 0.9,
-      toolHints: [],
-      source: "lexical",
-    };
-  }
-
-  if (deepRe.test(normalized)) {
-    return {
-      intent: "cross_surface_plan",
-      domain: "cross_surface",
-      requestedOperation: "mixed",
-      complexity: "complex",
-      routeProfile: "deep",
-      riskLevel: "medium",
-      confidence: 0.8,
-      toolHints: ["group:cross_surface_planning"],
-      source: "lexical",
-    };
-  }
-
-  if (/\binbox|email|thread|message\b/u.test(normalized) && !mutationRe.test(normalized)) {
-    return {
-      intent: "inbox_read",
-      domain: "inbox",
-      requestedOperation: "read",
-      complexity: "simple",
-      routeProfile: "fast",
-      riskLevel: "low",
-      confidence: 0.84,
-      toolHints: ["group:inbox_read"],
-      source: "lexical",
-    };
-  }
-
-  if (/\bcalendar|meeting|event|schedule\b/u.test(normalized) && !mutationRe.test(normalized)) {
-    return {
-      intent: "calendar_read",
-      domain: "calendar",
-      requestedOperation: "read",
-      complexity: "simple",
-      routeProfile: "fast",
-      riskLevel: "low",
-      confidence: 0.84,
-      toolHints: ["group:calendar_read"],
-      source: "lexical",
-    };
-  }
-
-  if (mutationRe.test(normalized)) {
-    return {
-      intent: normalized.includes("calendar") || normalized.includes("meeting")
-        ? "calendar_mutation"
-        : "inbox_mutation",
-      domain: normalized.includes("calendar") || normalized.includes("meeting") ? "calendar" : "inbox",
-      requestedOperation: "mutate",
-      complexity: "moderate",
-      routeProfile: "standard",
-      riskLevel: "medium",
-      confidence: 0.8,
-      toolHints: [],
-      source: "lexical",
-    };
-  }
-
-  return {
-    intent: "general",
-    domain: "general",
-    requestedOperation: "read",
-    complexity: "simple",
-    routeProfile: "fast",
-    riskLevel: "low",
-    confidence: 0.62,
-    toolHints: [],
-    source: "lexical",
-  };
-}
-
-function buildSession(
-  message: string,
-  semanticOverride?: RuntimeSession["semantic"],
-): RuntimeSession {
+function buildSession(params: {
+  message: string;
+  routeHint: RuntimeSession["turn"]["routeHint"];
+  singleToolCall?: RuntimeSession["turn"]["singleToolCall"];
+  complexity?: RuntimeSession["turn"]["complexity"];
+  requestedOperation?: RuntimeSession["turn"]["requestedOperation"];
+}) {
   const toolLookup = new Map<string, RuntimeSession["toolRegistry"][number]>();
-  for (const name of [
-    "email.searchSent",
-    "email.searchInbox",
-    "calendar.listEvents",
-    "policy.listRules",
-    "policy.createRule",
-  ]) {
+  for (const name of ["email.searchInbox", "email.searchSent", "calendar.listEvents"]) {
     toolLookup.set(name, { toolName: name } as RuntimeSession["toolRegistry"][number]);
   }
 
@@ -132,11 +33,27 @@ function buildSession(
       userId: "user-1",
       emailAccountId: "acct-1",
       email: "user@example.com",
-      message,
+      message: params.message,
       logger: mockLogger(),
     },
     capabilities: {} as RuntimeSession["capabilities"],
-    semantic: semanticOverride ?? buildSemanticForTest(message),
+    turn: {
+      intent: "inbox_read",
+      domain: "inbox",
+      requestedOperation: params.requestedOperation ?? "read",
+      complexity: params.complexity ?? "simple",
+      routeProfile: params.complexity === "complex" ? "deep" : params.complexity === "moderate" ? "standard" : "fast",
+      routeHint: params.routeHint,
+      riskLevel: "low",
+      confidence: 0.88,
+      toolHints: [],
+      source: "compiler_fallback",
+      conversationClauses: [],
+      taskClauses: [],
+      metaConstraints: [],
+      needsClarification: false,
+      ...(params.singleToolCall ? { singleToolCall: params.singleToolCall } : {}),
+    },
     skillSnapshot: {
       selectedSkillIds: [],
       promptSection: "",
@@ -153,114 +70,69 @@ function buildSession(
       interactivePayloads: [],
     },
     summaries: [],
-  };
+  } as RuntimeSession;
 }
 
 describe("runtime router", () => {
-  beforeEach(() => {
-    vi.mocked(resolveDefaultCalendarTimeZone).mockResolvedValue({
-      timeZone: "America/Los_Angeles",
-      source: "integration",
-    });
-  });
-
-  it("routes greetings to direct response lane", async () => {
+  it("routes conversational turns to conversation_only", async () => {
     const plan = await buildRuntimeRoutingPlan({
-      session: buildSession("hello"),
+      session: buildSession({
+        message: "hello",
+        routeHint: "conversation_only",
+      }),
     });
 
-    expect(plan.lane).toBe("direct_response");
+    expect(plan.lane).toBe("conversation_only");
     expect(plan.nativeMaxSteps).toBe(0);
-    expect(plan.fastPathMatch?.type).toBe("respond");
   });
 
-  it("routes first inbox read to macro lane", async () => {
+  it("routes eligible single tool turns to single_tool lane", async () => {
     const plan = await buildRuntimeRoutingPlan({
-      session: buildSession("find the first email in my inbox"),
+      session: buildSession({
+        message: "find sent emails with invoice attachments this month",
+        routeHint: "single_tool",
+        singleToolCall: {
+          toolName: "email.searchSent",
+          args: { hasAttachment: true },
+          reason: "email_sent_list",
+        },
+      }),
     });
 
-    expect(plan.lane).toBe("macro_tool");
-    expect(plan.fastPathMatch?.type).toBe("tool_call");
-    if (plan.fastPathMatch?.type === "tool_call") {
-      expect(plan.fastPathMatch.toolName).toBe("email.searchInbox");
-    }
+    expect(plan.lane).toBe("single_tool");
+    expect(plan.singleToolCall?.toolName).toBe("email.searchSent");
   });
 
-  it("routes short lookups to planner_fast", async () => {
-    const plan = await buildRuntimeRoutingPlan({
-      session: buildSession("what should i focus on today"),
+  it("falls back to planner when single tool candidate is unavailable", async () => {
+    const session = buildSession({
+      message: "search sent",
+      routeHint: "single_tool",
+      singleToolCall: {
+        toolName: "email.unknownTool",
+        args: {},
+        reason: "unknown",
+      },
     });
+    session.toolLookup.delete("email.searchSent");
 
-    expect(plan.lane).toBe("planner_fast");
-    expect(plan.nativeMaxSteps).toBe(4);
-    expect(plan.nativeTurnTimeoutMs).toBe(25_000);
-    expect(plan.decisionTimeoutMs).toBe(8_000);
-    expect(plan.maxAttempts).toBe(2);
+    const plan = await buildRuntimeRoutingPlan({ session });
+
+    expect(plan.lane).toBe("planner");
+    expect(plan.reason).toContain("tool_unavailable");
   });
 
-  it("routes sent email search requests to fast-path macro lane", async () => {
+  it("uses deep planner profile for complex turns", async () => {
     const plan = await buildRuntimeRoutingPlan({
-      session: buildSession("search my sent emails for 'portfolio review'"),
+      session: buildSession({
+        message: "if i have meetings then reschedule and email everyone",
+        routeHint: "planner",
+        complexity: "complex",
+        requestedOperation: "mixed",
+      }),
     });
 
-    expect(plan.lane).toBe("macro_tool");
-    expect(plan.fastPathMatch?.type).toBe("tool_call");
-    if (plan.fastPathMatch?.type === "tool_call") {
-      expect(plan.fastPathMatch.toolName).toBe("email.searchSent");
-      expect(plan.fastPathMatch.args).toEqual({
-        query: "portfolio review",
-        purpose: "list",
-        limit: 25,
-        fetchAll: false,
-      });
-    }
-  });
-
-  it("routes explicit sent search to macro lane even when semantic profile is general", async () => {
-    const semanticGeneral = buildSemanticForTest("what should i focus on today");
-    const plan = await buildRuntimeRoutingPlan({
-      session: buildSession(
-        "try again. search my sent emails for \"portfolio review\"",
-        semanticGeneral,
-      ),
-    });
-
-    expect(plan.lane).toBe("macro_tool");
-    expect(plan.fastPathMatch?.type).toBe("tool_call");
-    if (plan.fastPathMatch?.type === "tool_call") {
-      expect(plan.fastPathMatch.toolName).toBe("email.searchSent");
-      expect(plan.fastPathMatch.args).toEqual({
-        query: "portfolio review",
-        purpose: "list",
-        limit: 25,
-        fetchAll: false,
-      });
-    }
-  });
-
-  it("routes simple mutations to planner_standard", async () => {
-    const plan = await buildRuntimeRoutingPlan({
-      session: buildSession("reschedule my 3pm meeting to tomorrow"),
-    });
-
-    expect(plan.lane).toBe("planner_standard");
-    expect(plan.nativeMaxSteps).toBe(8);
-    expect(plan.nativeTurnTimeoutMs).toBe(75_000);
-    expect(plan.decisionTimeoutMs).toBe(20_000);
-    expect(plan.maxAttempts).toBe(4);
-  });
-
-  it("routes complex chained requests to planner_deep", async () => {
-    const plan = await buildRuntimeRoutingPlan({
-      session: buildSession(
-        "if i have meetings tomorrow, move them, email everyone, and then update every related task",
-      ),
-    });
-
-    expect(plan.lane).toBe("planner_deep");
+    expect(plan.lane).toBe("planner");
+    expect(plan.profile).toBe("deep");
     expect(plan.nativeMaxSteps).toBe(16);
-    expect(plan.nativeTurnTimeoutMs).toBe(165_000);
-    expect(plan.decisionTimeoutMs).toBe(45_000);
-    expect(plan.maxAttempts).toBe(6);
   });
 });

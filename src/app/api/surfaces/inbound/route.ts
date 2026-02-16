@@ -7,7 +7,6 @@ import { createScopedLogger } from "@/server/lib/logger";
 import { env } from "@/env";
 import { createDeterministicIdempotencyKey } from "@/server/lib/idempotency";
 import { redis } from "@/server/lib/redis";
-import { renderSurfaceResponseText } from "@/server/features/ai/runtime/response-writer";
 
 const logger = createScopedLogger("api/surfaces/inbound");
 
@@ -205,13 +204,8 @@ export async function POST(req: NextRequest) {
                       {
                           targetChannelId: message.context.channelId,
                           targetThreadId: message.context.threadId,
-                          content: await renderSurfaceResponseText({
-                              provider: message.provider,
-                              request: message.content,
-                              draftText:
-                                  "I hit an unexpected issue generating a reply. Please try again in a moment.",
-                              logger,
-                          }),
+                          content:
+                              "I hit an unexpected issue generating a reply. Please try again in a moment.",
                       },
                   ];
         const responses = withStableResponseIds(responsesWithoutIds, idempotencyKey);

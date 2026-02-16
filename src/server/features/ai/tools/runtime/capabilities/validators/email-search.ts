@@ -1,0 +1,108 @@
+const SUSPICIOUS_FROM_PATTERNS: RegExp[] = [
+  /\bconversation\s+memory\b/iu,
+  /\bchat\s+history\b/iu,
+  /\bour\s+conversation\b/iu,
+  /\bthis\s+chat\b/iu,
+  /\bprevious\s+messages?\b/iu,
+];
+
+function normalizeStringValue(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().replace(/\s+/g, " ");
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function isSuspiciousFromValue(value: string): boolean {
+  if (value.length > 120) return true;
+  return SUSPICIOUS_FROM_PATTERNS.some((pattern) => pattern.test(value));
+}
+
+function sanitizeDateRange(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const raw = value as Record<string, unknown>;
+  const next: Record<string, unknown> = {};
+
+  const before = normalizeStringValue(raw.before);
+  if (before) next.before = before;
+
+  const after = normalizeStringValue(raw.after);
+  if (after) next.after = after;
+
+  const timeZone = normalizeStringValue(raw.timeZone);
+  if (timeZone) next.timeZone = timeZone;
+
+  const timezone = normalizeStringValue(raw.timezone);
+  if (timezone && !timeZone) next.timezone = timezone;
+
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
+export type EmailSearchFilterValidationResult =
+  | {
+      ok: true;
+      filter: Record<string, unknown>;
+    }
+  | {
+      ok: false;
+      error: string;
+      message: string;
+      prompt: string;
+      fields: string[];
+    };
+
+export function validateEmailSearchFilter(
+  filter: Record<string, unknown>,
+): EmailSearchFilterValidationResult {
+  const sanitized: Record<string, unknown> = { ...filter };
+
+  const query = normalizeStringValue(filter.query);
+  if (query) {
+    sanitized.query = query;
+  } else {
+    delete sanitized.query;
+  }
+
+  const text = normalizeStringValue(filter.text);
+  if (text) {
+    sanitized.text = text;
+  } else {
+    delete sanitized.text;
+  }
+
+  const from = normalizeStringValue(filter.from);
+  if (from) {
+    if (isSuspiciousFromValue(from)) {
+      return {
+        ok: false,
+        error: "invalid_sender_scope",
+        message:
+          "The sender filter doesn't look like a real sender. It looks like conversation metadata instead.",
+        prompt:
+          "Who should I filter by? Give me a sender name or email address, or say 'any sender'.",
+        fields: ["from"],
+      };
+    }
+    sanitized.from = from;
+  } else {
+    delete sanitized.from;
+  }
+
+  const to = normalizeStringValue(filter.to);
+  if (to) {
+    sanitized.to = to;
+  } else {
+    delete sanitized.to;
+  }
+
+  const dateRange = sanitizeDateRange(filter.dateRange);
+  if (dateRange) {
+    sanitized.dateRange = dateRange;
+  } else {
+    delete sanitized.dateRange;
+  }
+
+  return {
+    ok: true,
+    filter: sanitized,
+  };
+}

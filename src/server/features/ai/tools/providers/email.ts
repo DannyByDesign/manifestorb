@@ -30,6 +30,10 @@ const SEARCH_PAGE_TIMEOUT_MS = 15_000;
 const SEARCH_PAGE_TIMEOUT_FETCH_ALL_MS = 20_000;
 const SEARCH_PAGE_SIZE_MIN = 10;
 const SEARCH_PAGE_SIZE_MAX = 100;
+const LOCAL_FILTER_MAX_PAGES_DEFAULT = 8;
+const LOCAL_FILTER_MAX_PAGES_FETCH_ALL_DEFAULT = 16;
+const LOCAL_FILTER_MAX_SCANNED_MESSAGES_DEFAULT = 800;
+const LOCAL_FILTER_MAX_SCANNED_MESSAGES_FETCH_ALL_DEFAULT = 2_400;
 
 function computeSearchTimeoutBudgetMs(options: {
     fetchAll?: boolean;
@@ -44,6 +48,19 @@ function computeSearchTimeoutBudgetMs(options: {
 
 function computeSearchPageTimeoutMs(fetchAll: boolean): number {
     return fetchAll ? SEARCH_PAGE_TIMEOUT_FETCH_ALL_MS : SEARCH_PAGE_TIMEOUT_MS;
+}
+
+function resolveGuardrailInt(params: {
+    envName: string;
+    fallback: number;
+    min: number;
+    max: number;
+}): number {
+    const raw = process.env[params.envName];
+    if (typeof raw !== "string" || raw.trim().length === 0) return params.fallback;
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isFinite(parsed)) return params.fallback;
+    return Math.min(Math.max(parsed, params.min), params.max);
 }
 
 class EmailOperationTimeoutError extends Error {
@@ -428,8 +445,32 @@ export async function createEmailProvider(
                 const filtered: ParsedMessage[] = [];
                 let nextPageToken: string | undefined = pageToken;
                 let totalEstimate: number | undefined;
+                let pagesScanned = 0;
+                let scannedMessages = 0;
+
+                const maxPages = resolveGuardrailInt({
+                    envName: fetchAll
+                        ? "EMAIL_SEARCH_LOCAL_FILTER_MAX_PAGES_FETCH_ALL"
+                        : "EMAIL_SEARCH_LOCAL_FILTER_MAX_PAGES",
+                    fallback: fetchAll
+                        ? LOCAL_FILTER_MAX_PAGES_FETCH_ALL_DEFAULT
+                        : LOCAL_FILTER_MAX_PAGES_DEFAULT,
+                    min: 1,
+                    max: 100,
+                });
+                const maxScannedMessages = resolveGuardrailInt({
+                    envName: fetchAll
+                        ? "EMAIL_SEARCH_LOCAL_FILTER_MAX_SCANNED_MESSAGES_FETCH_ALL"
+                        : "EMAIL_SEARCH_LOCAL_FILTER_MAX_SCANNED_MESSAGES",
+                    fallback: fetchAll
+                        ? LOCAL_FILTER_MAX_SCANNED_MESSAGES_FETCH_ALL_DEFAULT
+                        : LOCAL_FILTER_MAX_SCANNED_MESSAGES_DEFAULT,
+                    min: 20,
+                    max: 10_000,
+                });
 
                 do {
+                    pagesScanned += 1;
                     const res = await runPagedSearch({
                         query,
                         maxResults: pageSize,
@@ -444,9 +485,25 @@ export async function createEmailProvider(
                         totalEstimate = res.totalEstimate;
                     }
 
+                    scannedMessages += res.messages.length;
                     const batch = applyLocalSearchFilters(res.messages, localFilterOptions);
                     filtered.push(...batch);
                     nextPageToken = res.nextPageToken;
+
+                    if (pagesScanned >= maxPages || scannedMessages >= maxScannedMessages) {
+                        logger.warn("Email local-filter guardrail reached", {
+                            accountId: account.id,
+                            query,
+                            fetchAll: Boolean(fetchAll),
+                            pagesScanned,
+                            maxPages,
+                            scannedMessages,
+                            maxScannedMessages,
+                            matchedCount: filtered.length,
+                            hasNextPage: Boolean(nextPageToken),
+                        });
+                        break;
+                    }
                 } while (nextPageToken && filtered.length < targetCount);
 
                 return {

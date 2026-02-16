@@ -1,4 +1,4 @@
-import type { RuntimeSemanticContract } from "@/server/features/ai/runtime/semantic-contract";
+import type { RuntimeTurnContract } from "@/server/features/ai/runtime/turn-contract";
 import type { RuntimeToolDefinition } from "@/server/features/ai/tools/fabric/types";
 import { applyDeterministicPolicyLayers } from "@/server/features/ai/tools/fabric/deterministic-policy-filter";
 import {
@@ -11,7 +11,7 @@ export interface ToolFilterParams {
   includeDangerous?: boolean;
   message?: string;
   strictReadOnly?: boolean;
-  semantic?: RuntimeSemanticContract;
+  turn?: RuntimeTurnContract;
   maxTools?: number;
   layeredPolicies?: ResolvedLayeredToolPolicies;
   additionalGroups?: Record<string, string[]>;
@@ -40,7 +40,7 @@ export function filterToolRegistryDetailed(
   params: ToolFilterParams,
 ): { tools: RuntimeToolDefinition[]; diagnostics: ToolFilterDiagnostics } {
   const semanticCandidates = selectSemanticToolCandidates(registry, {
-    semantic: params.semantic,
+    turn: params.turn,
     strictReadOnly: params.strictReadOnly,
   });
 
@@ -54,7 +54,7 @@ export function filterToolRegistryDetailed(
     includeDangerous: params.includeDangerous,
     maxTools: params.maxTools,
     message: params.message,
-    semantic: params.semantic,
+    turn: params.turn,
   });
 
   return {

@@ -26,16 +26,21 @@ function buildSession(): RuntimeSession {
       } as never,
     },
     capabilities: {} as RuntimeSession["capabilities"],
-    semantic: {
+    turn: {
       intent: "inbox_read",
       domain: "inbox",
       requestedOperation: "read",
       complexity: "simple",
+      routeHint: "single_tool",
       routeProfile: "fast",
       riskLevel: "low",
       confidence: 0.9,
       toolHints: [],
-      source: "lexical",
+      source: "compiler_fallback",
+      conversationClauses: [],
+      taskClauses: [],
+      metaConstraints: [],
+      needsClarification: false,
     },
     skillSnapshot: {
       selectedSkillIds: [],

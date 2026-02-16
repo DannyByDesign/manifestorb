@@ -2,10 +2,15 @@ import type { OpenWorldTurnInput } from "@/server/features/ai/runtime/types";
 import prisma from "@/server/db/client";
 import type { ContextPack } from "@/server/features/memory/context-manager";
 import { ContextManager } from "@/server/features/memory/context-manager";
+import {
+  buildProgressiveRuntimeContext,
+  type RuntimeHydrationTier,
+} from "@/server/features/ai/runtime/context/retrieval-broker";
 
 export interface RuntimeHydratedContext {
   message: string;
   contextPack?: ContextPack;
+  hydrationTier?: RuntimeHydrationTier;
   contextStatus: "ready" | "degraded" | "missing";
   contextIssues: string[];
   contextStats: {
@@ -48,6 +53,17 @@ function emptyStats() {
   };
 }
 
+function contextStatsFromPack(contextPack: ContextPack) {
+  return {
+    facts: contextPack.facts.length,
+    knowledge: contextPack.knowledge.length,
+    history: contextPack.history.length,
+    attentionItems: contextPack.attentionItems?.length ?? 0,
+    hasSummary: Boolean(contextPack.system.summary),
+    hasPendingState: Boolean(contextPack.pendingState),
+  };
+}
+
 export async function hydrateRuntimeContext(
   input: OpenWorldTurnInput,
 ): Promise<RuntimeHydratedContext> {
@@ -80,6 +96,37 @@ export async function hydrateRuntimeContext(
   }
 
   try {
+    if (input.runtimeTurnContract) {
+      const progressive = await buildProgressiveRuntimeContext({
+        userId: input.userId,
+        emailAccount,
+        message,
+        turn: input.runtimeTurnContract,
+        logger: input.logger,
+      });
+      if (!progressive.contextPack) {
+        return {
+          message,
+          hydrationTier: progressive.tier,
+          contextStatus: "degraded",
+          contextIssues:
+            progressive.issues.length > 0
+              ? progressive.issues
+              : ["context_hydration_failed"],
+          contextStats: emptyStats(),
+        };
+      }
+
+      return {
+        message,
+        contextPack: progressive.contextPack,
+        hydrationTier: progressive.tier,
+        contextStatus: "ready",
+        contextIssues: progressive.issues,
+        contextStats: contextStatsFromPack(progressive.contextPack),
+      };
+    }
+
     const contextPack = await withTimeout({
       timeoutMs: CONTEXT_HYDRATION_TIMEOUT_MS,
       run: async () =>
@@ -101,14 +148,7 @@ export async function hydrateRuntimeContext(
       contextPack,
       contextStatus: "ready",
       contextIssues: issues,
-      contextStats: {
-        facts: contextPack.facts.length,
-        knowledge: contextPack.knowledge.length,
-        history: contextPack.history.length,
-        attentionItems: contextPack.attentionItems?.length ?? 0,
-        hasSummary: Boolean(contextPack.system.summary),
-        hasPendingState: Boolean(contextPack.pendingState),
-      },
+      contextStats: contextStatsFromPack(contextPack),
     };
   } catch (error) {
     input.logger.warn("Runtime context hydration degraded", {

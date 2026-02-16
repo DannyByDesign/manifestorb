@@ -14,6 +14,7 @@ import {
   capabilityFailureResult,
   classifyCapabilityError,
 } from "@/server/features/ai/tools/runtime/capabilities/errors";
+import { validateEmailSearchFilter } from "@/server/features/ai/tools/runtime/capabilities/validators/email-search";
 import { createCapabilityIdempotencyKey } from "@/server/features/ai/tools/runtime/capabilities/idempotency";
 import {
   getEmailMessages,
@@ -396,13 +397,28 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
     filter: Record<string, unknown>,
   ): Promise<ToolResult> => {
     try {
+      const validatedFilter = validateEmailSearchFilter(filter);
+      if (!validatedFilter.ok) {
+        return {
+          success: false,
+          error: validatedFilter.error,
+          message: validatedFilter.message,
+          clarification: {
+            kind: "invalid_fields",
+            prompt: validatedFilter.prompt,
+            missingFields: validatedFilter.fields,
+          },
+        };
+      }
+      const requestFilter = validatedFilter.filter;
+
       const dateRange =
-        filter && typeof filter.dateRange === "object"
-          ? (filter.dateRange as Record<string, unknown>)
+        requestFilter && typeof requestFilter.dateRange === "object"
+          ? (requestFilter.dateRange as Record<string, unknown>)
           : undefined;
       const requestedTimeZone =
-        (typeof filter.timeZone === "string" ? filter.timeZone : undefined) ??
-        (typeof filter.timezone === "string" ? filter.timezone : undefined) ??
+        (typeof requestFilter.timeZone === "string" ? requestFilter.timeZone : undefined) ??
+        (typeof requestFilter.timezone === "string" ? requestFilter.timezone : undefined) ??
         (typeof dateRange?.timeZone === "string" ? dateRange.timeZone : undefined) ??
         (typeof dateRange?.timezone === "string" ? dateRange.timezone : undefined);
 
@@ -466,26 +482,27 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       }
 
       const requestedLimit =
-        typeof filter.limit === "number" && Number.isFinite(filter.limit)
-          ? Math.floor(filter.limit)
+        typeof requestFilter.limit === "number" && Number.isFinite(requestFilter.limit)
+          ? Math.floor(requestFilter.limit)
           : undefined;
-      const fetchAll = Boolean(filter.fetchAll);
-      const purposeRaw = typeof filter.purpose === "string" ? filter.purpose : undefined;
+      const fetchAll = Boolean(requestFilter.fetchAll);
+      const purposeRaw =
+        typeof requestFilter.purpose === "string" ? requestFilter.purpose : undefined;
       const purpose: "lookup" | "list" | "count" | undefined =
         purposeRaw === "lookup" || purposeRaw === "list" || purposeRaw === "count"
           ? purposeRaw
           : undefined;
       const hasDateRange = Boolean(before || after);
-      const rawQuery = typeof filter.query === "string" ? filter.query : "";
+      const rawQuery = typeof requestFilter.query === "string" ? requestFilter.query : "";
       const query =
-        filter.sentByMe === true && !hasMailboxScopeInQuery(rawQuery)
+        requestFilter.sentByMe === true && !hasMailboxScopeInQuery(rawQuery)
           ? `in:sent ${rawQuery}`.trim()
           : rawQuery;
       const fromFilter =
-        typeof filter.from === "string" && filter.from.trim().length > 0
-          ? filter.from.trim()
+        typeof requestFilter.from === "string" && requestFilter.from.trim().length > 0
+          ? requestFilter.from.trim()
           : undefined;
-      const strictSenderOnly = filter.strictSenderOnly === true;
+      const strictSenderOnly = requestFilter.strictSenderOnly === true;
       const normalizedLimit = computeEmailSearchLimit({
         requestedLimit,
         fetchAll,
@@ -494,11 +511,11 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         purpose,
       });
       const attachmentIntentTerm =
-        typeof filter.hasAttachment === "boolean" && filter.hasAttachment
+        typeof requestFilter.hasAttachment === "boolean" && requestFilter.hasAttachment
           ? inferAttachmentIntentTerm({
               currentMessage: capEnv.toolContext.currentMessage,
               query,
-              text: typeof filter.text === "string" ? filter.text : undefined,
+              text: typeof requestFilter.text === "string" ? requestFilter.text : undefined,
             })
           : undefined;
 
@@ -506,43 +523,48 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         query,
         limit: normalizedLimit,
         fetchAll,
-        includeNonPrimary: Boolean(filter.subscriptionsOnly),
+        includeNonPrimary: Boolean(requestFilter.subscriptionsOnly),
         before,
         after,
         subjectContains:
-          typeof filter.subjectContains === "string"
-            ? filter.subjectContains
+          typeof requestFilter.subjectContains === "string"
+            ? requestFilter.subjectContains
             : undefined,
         bodyContains:
-          typeof filter.bodyContains === "string" ? filter.bodyContains : undefined,
-        text: typeof filter.text === "string" ? filter.text : undefined,
+          typeof requestFilter.bodyContains === "string"
+            ? requestFilter.bodyContains
+            : undefined,
+        text: typeof requestFilter.text === "string" ? requestFilter.text : undefined,
         from: fromFilter,
-        to: typeof filter.to === "string" ? filter.to : undefined,
+        to: typeof requestFilter.to === "string" ? requestFilter.to : undefined,
         hasAttachment:
-          typeof filter.hasAttachment === "boolean"
-            ? filter.hasAttachment
+          typeof requestFilter.hasAttachment === "boolean"
+            ? requestFilter.hasAttachment
             : undefined,
         attachmentIntentTerm,
         sentByMe:
-          typeof filter.sentByMe === "boolean" ? filter.sentByMe : undefined,
+          typeof requestFilter.sentByMe === "boolean"
+            ? requestFilter.sentByMe
+            : undefined,
         receivedByMe:
-          typeof filter.receivedByMe === "boolean"
-            ? filter.receivedByMe
+          typeof requestFilter.receivedByMe === "boolean"
+            ? requestFilter.receivedByMe
             : undefined,
       };
 
       const result = await searchEmailThreads(provider, baseSearch);
 
       let effectiveResult = result;
-      let messages = Boolean(filter.subscriptionsOnly)
+      let messages = Boolean(requestFilter.subscriptionsOnly)
         ? result.messages.filter(isLikelySubscription)
         : result.messages;
       let usedMentionFallback = false;
 
       if (fromFilter && !strictSenderOnly && messages.length === 0) {
         const fallbackSubjectContains =
-          typeof filter.subjectContains === "string" && filter.subjectContains.trim().length > 0
-            ? filter.subjectContains
+          typeof requestFilter.subjectContains === "string" &&
+          requestFilter.subjectContains.trim().length > 0
+            ? requestFilter.subjectContains
             : fromFilter;
         const fallbackResult = await searchEmailThreads(provider, {
           ...baseSearch,
@@ -551,7 +573,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           subjectContains: fallbackSubjectContains,
         });
         effectiveResult = fallbackResult;
-        messages = Boolean(filter.subscriptionsOnly)
+        messages = Boolean(requestFilter.subscriptionsOnly)
           ? fallbackResult.messages.filter(isLikelySubscription)
           : fallbackResult.messages;
         usedMentionFallback = messages.length > 0;

@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { generateObject } from "ai";
 import { createGenerateObject } from "@/server/lib/llms";
 import { getModel } from "@/server/lib/llms/model";
 import { buildAgentSystemPrompt, type Platform } from "@/server/features/ai/system-prompt";
@@ -8,7 +7,6 @@ import type { RuntimeToolResult } from "@/server/features/ai/tools/contracts/too
 import { resolveDefaultCalendarTimeZone } from "@/server/features/ai/tools/calendar-time";
 import { env } from "@/env";
 import { renderRuntimeContextForPrompt } from "@/server/features/ai/runtime/context/render";
-import type { Logger } from "@/server/lib/logger";
 
 const runtimeResponseSchema = z
   .object({
@@ -45,53 +43,6 @@ function toPlatform(provider: string): Platform {
     return provider;
   }
   return "web";
-}
-
-export async function renderSurfaceResponseText(params: {
-  provider: string;
-  request: string;
-  draftText: string;
-  logger: Logger;
-}): Promise<string> {
-  const draft = params.draftText.trim();
-  if (!draft) return params.draftText;
-
-  const modelOptions = getModel("economy");
-
-  try {
-    const result = await generateObject({
-      model: modelOptions.model,
-      schema: runtimeResponseSchema,
-      system: [
-        buildAgentSystemPrompt({
-          platform: toPlatform(params.provider),
-          emailSendEnabled: env.NEXT_PUBLIC_EMAIL_SEND_ENABLED,
-        }),
-        "Surface response writer instructions:",
-        "- Rewrite the draft response to match assistant voice and tone.",
-        "- Keep response concise and clear.",
-        "- Preserve all concrete facts exactly (counts, names, dates, times, links, IDs).",
-        "- Do not drop numbered list items when there are 10 or fewer entries.",
-        "- Preserve intent and actionability; do not remove instructions or next steps.",
-        "- Keep markdown links and list formatting if present.",
-        "- Do not invent new facts.",
-        '- Return JSON only with {"responseText":"..."}',
-      ].join("\n"),
-      prompt: [
-        `User request: ${params.request}`,
-        `Draft response to rewrite: ${draft}`,
-      ].join("\n\n"),
-    });
-
-    const rewritten = result.object.responseText.trim();
-    return rewritten.length > 0 ? rewritten : draft;
-  } catch (error) {
-    params.logger.warn("Surface response writer failed; using draft text", {
-      provider: params.provider,
-      error,
-    });
-    return draft;
-  }
 }
 
 function formatEvidence(results: RuntimeToolResult[]): string {

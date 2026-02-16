@@ -86,16 +86,21 @@ describe("filterToolRegistry", () => {
   it("returns no tools for greeting/capability semantic intents", () => {
     const filtered = filterToolRegistry(registry, {
       message: "hello",
-      semantic: {
+      turn: {
         intent: "greeting",
         domain: "general",
         requestedOperation: "meta",
         complexity: "simple",
         routeProfile: "fast",
+        routeHint: "conversation_only",
         riskLevel: "low",
         confidence: 0.99,
         toolHints: [],
-        source: "lexical",
+        source: "compiler_fallback",
+        conversationClauses: [],
+        taskClauses: [],
+        metaConstraints: [],
+        needsClarification: false,
       },
     });
 
@@ -105,16 +110,21 @@ describe("filterToolRegistry", () => {
   it("keeps inbox read tools and excludes unrelated domain tools", () => {
     const filtered = filterToolRegistry(registry, {
       message: "find the first email in my inbox",
-      semantic: {
+      turn: {
         intent: "inbox_read",
         domain: "inbox",
         requestedOperation: "read",
         complexity: "simple",
         routeProfile: "fast",
+        routeHint: "single_tool",
         riskLevel: "low",
         confidence: 0.9,
         toolHints: ["group:inbox_read"],
-        source: "lexical",
+        source: "compiler_fallback",
+        conversationClauses: [],
+        taskClauses: [],
+        metaConstraints: [],
+        needsClarification: false,
       },
       includeDangerous: false,
     });
@@ -129,16 +139,21 @@ describe("filterToolRegistry", () => {
     const filtered = filterToolRegistry(registry, {
       message: "delete this calendar event",
       includeDangerous: true,
-      semantic: {
+      turn: {
         intent: "calendar_mutation",
         domain: "calendar",
         requestedOperation: "mutate",
         complexity: "moderate",
         routeProfile: "standard",
+        routeHint: "planner",
         riskLevel: "high",
         confidence: 0.87,
         toolHints: ["group:calendar_mutate"],
-        source: "lexical",
+        source: "compiler_fallback",
+        conversationClauses: [],
+        taskClauses: [],
+        metaConstraints: [],
+        needsClarification: false,
       },
     });
 

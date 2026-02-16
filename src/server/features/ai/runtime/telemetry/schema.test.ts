@@ -9,36 +9,42 @@ function createLogger() {
 }
 
 describe("runtime telemetry schema", () => {
-  it("accepts valid fast-path telemetry payloads", () => {
+  it("accepts valid route-selected telemetry payloads", () => {
     const logger = createLogger();
 
-    emitRuntimeTelemetry(logger, "openworld.runtime.fast_path", {
+    emitRuntimeTelemetry(logger, "openworld.runtime.route_selected", {
       userId: "user-1",
       provider: "slack",
-      mode: "strict",
-      reason: "first_inbox_email",
-      toolName: "email.searchInbox",
-      decision: "executed",
-      outcome: "success",
-      latencyMs: 124,
-      semanticConfidence: 0.88,
-      semanticMargin: 0.16,
+      lane: "single_tool",
+      profile: "fast",
+      reason: "turn_compiler:single_tool:email_inbox_list",
+      nativeMaxSteps: 0,
+      nativeTurnTimeoutMs: 0,
+      maxAttempts: 1,
+      decisionTimeoutMs: 0,
+      toolCatalogLimit: 0,
+      includeSkillGuidance: false,
     });
 
     expect(logger.info).toHaveBeenCalledTimes(1);
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
-  it("rejects invalid fast-path telemetry payloads", () => {
+  it("rejects invalid route-selected telemetry payloads", () => {
     const logger = createLogger();
 
-    emitRuntimeTelemetry(logger, "openworld.runtime.fast_path", {
+    emitRuntimeTelemetry(logger, "openworld.runtime.route_selected", {
       userId: "user-1",
       provider: "slack",
-      mode: "strict",
+      lane: "single_tool",
+      profile: "fast",
       reason: "",
-      decision: "executed",
-      outcome: "success",
+      nativeMaxSteps: 0,
+      nativeTurnTimeoutMs: 0,
+      maxAttempts: 1,
+      decisionTimeoutMs: 0,
+      toolCatalogLimit: 0,
+      includeSkillGuidance: false,
     } as never);
 
     expect(logger.info).not.toHaveBeenCalled();

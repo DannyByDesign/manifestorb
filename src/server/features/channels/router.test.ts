@@ -23,11 +23,6 @@ vi.mock("@/features/channels/executor", () => ({
     interactivePayloads: [],
   }),
 }));
-vi.mock("@/server/features/ai/runtime/response-writer", () => ({
-  renderSurfaceResponseText: vi.fn(
-    async (params: { draftText: string }) => params.draftText,
-  ),
-}));
 vi.mock("@/server/lib/linking", () => ({
   createLinkToken: vi.fn().mockResolvedValue("token-1"),
 }));

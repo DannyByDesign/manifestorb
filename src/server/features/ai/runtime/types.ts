@@ -3,7 +3,7 @@ import type { Logger } from "@/server/lib/logger";
 import type { SkillCapabilities } from "@/server/features/ai/tools/runtime/capabilities";
 import type { RuntimeSkillSnapshot } from "@/server/features/ai/skills/types";
 import type { UserPromptConfig } from "@/server/features/ai/system-prompt";
-import type { RuntimeSemanticContract } from "@/server/features/ai/runtime/semantic-contract";
+import type { RuntimeTurnContract } from "@/server/features/ai/runtime/turn-contract";
 import type { RuntimeToolHarness } from "@/server/features/ai/tools/harness/types";
 import type {
   ToolExecutionArtifacts,
@@ -34,12 +34,13 @@ export interface OpenWorldTurnInput {
   runtimeContextPack?: ContextPack;
   runtimeContextStatus?: "ready" | "degraded" | "missing";
   runtimeContextIssues?: string[];
+  runtimeTurnContract?: RuntimeTurnContract;
 }
 
 export interface RuntimeSession {
   input: OpenWorldTurnInput;
   capabilities: SkillCapabilities;
-  semantic: RuntimeSemanticContract;
+  turn: RuntimeTurnContract;
   skillSnapshot: RuntimeSkillSnapshot;
   userPromptConfig?: UserPromptConfig;
   toolHarness: RuntimeToolHarness;

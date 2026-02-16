@@ -1,9 +1,7 @@
 export type RuntimeLane =
-  | "direct_response"
-  | "macro_tool"
-  | "planner_fast"
-  | "planner_standard"
-  | "planner_deep";
+  | "conversation_only"
+  | "single_tool"
+  | "planner";
 
 export interface RuntimeContextSlotBudget {
   maxChars: number;
@@ -13,31 +11,19 @@ export interface RuntimeContextSlotBudget {
 }
 
 const DEFAULT_BUDGETS: Record<RuntimeLane, RuntimeContextSlotBudget> = {
-  direct_response: {
-    maxChars: 1_200,
-    maxFacts: 3,
-    maxKnowledge: 2,
-    maxHistory: 2,
-  },
-  macro_tool: {
-    maxChars: 1_800,
+  conversation_only: {
+    maxChars: 1_600,
     maxFacts: 4,
     maxKnowledge: 3,
     maxHistory: 3,
   },
-  planner_fast: {
-    maxChars: 2_400,
+  single_tool: {
+    maxChars: 2_200,
     maxFacts: 6,
     maxKnowledge: 3,
     maxHistory: 4,
   },
-  planner_standard: {
-    maxChars: 3_200,
-    maxFacts: 8,
-    maxKnowledge: 4,
-    maxHistory: 6,
-  },
-  planner_deep: {
+  planner: {
     maxChars: 4_200,
     maxFacts: 10,
     maxKnowledge: 5,
@@ -46,5 +32,5 @@ const DEFAULT_BUDGETS: Record<RuntimeLane, RuntimeContextSlotBudget> = {
 };
 
 export function resolveRuntimeContextSlotBudget(lane: RuntimeLane): RuntimeContextSlotBudget {
-  return DEFAULT_BUDGETS[lane] ?? DEFAULT_BUDGETS.planner_standard;
+  return DEFAULT_BUDGETS[lane] ?? DEFAULT_BUDGETS.planner;
 }

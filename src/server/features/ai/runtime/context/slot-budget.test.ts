@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import { resolveRuntimeContextSlotBudget } from "@/server/features/ai/runtime/context/slot-budget";
 
 describe("runtime context slot budgets", () => {
-  it("allocates larger budgets for deeper lanes", () => {
-    const fast = resolveRuntimeContextSlotBudget("planner_fast");
-    const deep = resolveRuntimeContextSlotBudget("planner_deep");
+  it("allocates larger budgets for planner than lightweight lanes", () => {
+    const conversation = resolveRuntimeContextSlotBudget("conversation_only");
+    const planner = resolveRuntimeContextSlotBudget("planner");
 
-    expect(deep.maxChars).toBeGreaterThan(fast.maxChars);
-    expect(deep.maxFacts).toBeGreaterThan(fast.maxFacts);
-    expect(deep.maxHistory).toBeGreaterThan(fast.maxHistory);
+    expect(planner.maxChars).toBeGreaterThan(conversation.maxChars);
+    expect(planner.maxFacts).toBeGreaterThan(conversation.maxFacts);
+    expect(planner.maxHistory).toBeGreaterThan(conversation.maxHistory);
   });
 });

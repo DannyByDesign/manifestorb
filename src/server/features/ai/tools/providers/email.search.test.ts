@@ -514,4 +514,100 @@ describe("tool email provider search", () => {
     });
     expect(received.messages.map((message) => message.id)).toEqual(["m-received"]);
   });
+
+  it("stops local-filter paging when page guardrails are reached", async () => {
+    const previousMaxPages = process.env.EMAIL_SEARCH_LOCAL_FILTER_MAX_PAGES;
+    process.env.EMAIL_SEARCH_LOCAL_FILTER_MAX_PAGES = "2";
+
+    try {
+      const service = {
+        getMessagesWithPagination: vi.fn().mockResolvedValue({
+          messages: [
+            {
+              id: "m-1",
+              threadId: "t-1",
+              snippet: "No sender match",
+              historyId: "h-1",
+              inline: [],
+              headers: {
+                subject: "Hello",
+                from: "sender@example.com",
+                to: "me@example.com",
+                date: "2026-02-08T00:00:00.000Z",
+              },
+              subject: "Hello",
+              textPlain: "Body",
+              date: "2026-02-08T00:00:00.000Z",
+            },
+          ],
+          nextPageToken: "next-page",
+          totalEstimate: 500,
+        }),
+        getMessagesBatch: vi.fn(),
+        getThread: vi.fn(),
+        searchContacts: vi.fn(),
+        createContact: vi.fn(),
+        createDraft: vi.fn(),
+        sendDraft: vi.fn(),
+        getDrafts: vi.fn(),
+        getDraft: vi.fn(),
+        updateDraft: vi.fn(),
+        deleteDraft: vi.fn(),
+        archiveThread: vi.fn(),
+        trashThread: vi.fn(),
+        markReadThread: vi.fn(),
+        labelMessage: vi.fn(),
+        removeThreadLabels: vi.fn(),
+      } as unknown as Awaited<ReturnType<typeof import("@/features/email/provider")["createEmailProvider"]>>;
+
+      const providerFactory = (await import("@/features/email/provider")).createEmailProvider as unknown as {
+        mockResolvedValue: (value: unknown) => void;
+      };
+      providerFactory.mockResolvedValue(service);
+
+      const logger = {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+        trace: vi.fn(),
+        with: vi.fn().mockReturnThis(),
+      } as unknown as Parameters<typeof createEmailProvider>[1];
+
+      const provider = await createEmailProvider(
+        {
+          id: "email-1",
+          provider: "google",
+          access_token: null,
+          refresh_token: null,
+          expires_at: null,
+          email: "me@example.com",
+        },
+        logger,
+      );
+
+      const result = await provider.search({
+        query: "",
+        limit: 100,
+        from: "no-match@example.com",
+      });
+
+      expect(service.getMessagesWithPagination).toHaveBeenCalledTimes(2);
+      expect(result.messages).toHaveLength(0);
+      expect(result.nextPageToken).toBe("next-page");
+      expect(logger.warn).toHaveBeenCalledWith(
+        "Email local-filter guardrail reached",
+        expect.objectContaining({
+          pagesScanned: 2,
+          hasNextPage: true,
+        }),
+      );
+    } finally {
+      if (previousMaxPages === undefined) {
+        delete process.env.EMAIL_SEARCH_LOCAL_FILTER_MAX_PAGES;
+      } else {
+        process.env.EMAIL_SEARCH_LOCAL_FILTER_MAX_PAGES = previousMaxPages;
+      }
+    }
+  });
 });
