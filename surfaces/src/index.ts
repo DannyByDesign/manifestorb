@@ -1,5 +1,6 @@
 import { config } from "dotenv";
 import { timingSafeEqual } from "node:crypto";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { startSlack, stopSlack } from "./slack";
 import { startDiscord } from "./discord";
 import { startTelegram } from "./telegram";
@@ -19,6 +20,131 @@ import {
 } from "./delivery";
 
 config();
+
+function hasRequestBody(method: string): boolean {
+    const upper = method.toUpperCase();
+    return upper !== "GET" && upper !== "HEAD";
+}
+
+async function toWebRequest(req: IncomingMessage, fallbackPort: number): Promise<Request> {
+    const forwardedProto = typeof req.headers["x-forwarded-proto"] === "string"
+        ? req.headers["x-forwarded-proto"].split(",")[0]?.trim()
+        : undefined;
+    const protocol = forwardedProto || "http";
+    const host = req.headers.host || `127.0.0.1:${fallbackPort}`;
+    const url = new URL(req.url || "/", `${protocol}://${host}`);
+
+    const headers = new Headers();
+    for (const [key, value] of Object.entries(req.headers)) {
+        if (typeof value === "undefined") continue;
+        if (Array.isArray(value)) {
+            for (const item of value) headers.append(key, item);
+        } else {
+            headers.set(key, value);
+        }
+    }
+
+    const method = req.method || "GET";
+    if (!hasRequestBody(method)) {
+        return new Request(url.toString(), { method, headers });
+    }
+
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) {
+        chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+    }
+    const body = chunks.length > 0 ? Buffer.concat(chunks) : undefined;
+
+    return new Request(url.toString(), {
+        method,
+        headers,
+        body,
+    });
+}
+
+async function writeNodeResponse(res: ServerResponse, response: Response): Promise<void> {
+    res.statusCode = response.status;
+    for (const [key, value] of response.headers.entries()) {
+        const normalized = key.toLowerCase();
+        if (normalized === "set-cookie") {
+            const existing = res.getHeader(key);
+            if (typeof existing === "undefined") {
+                res.setHeader(key, [value]);
+            } else if (Array.isArray(existing)) {
+                res.setHeader(key, [...existing.map(String), value]);
+            } else {
+                res.setHeader(key, [String(existing), value]);
+            }
+            continue;
+        }
+        res.setHeader(key, value);
+    }
+
+    if (!response.body) {
+        res.end();
+        return;
+    }
+
+    const payload = Buffer.from(await response.arrayBuffer());
+    res.end(payload);
+}
+
+type SidecarServer = {
+    stop: () => Promise<void>;
+};
+
+function startHttpServer(port: number): SidecarServer {
+    const bunRuntime = (globalThis as {
+        Bun?: {
+            serve: (options: {
+                hostname?: string;
+                port: number;
+                fetch: typeof handleRequest;
+            }) => { stop: () => void };
+        };
+    }).Bun;
+
+    if (bunRuntime) {
+        const bunServer = bunRuntime.serve({
+            hostname: "0.0.0.0",
+            port,
+            fetch: handleRequest,
+        });
+        return {
+            stop: async () => {
+                bunServer.stop();
+            },
+        };
+    }
+
+    const nodeServer = createServer(async (req, res) => {
+        try {
+            const request = await toWebRequest(req, port);
+            const response = await handleRequest(request);
+            await writeNodeResponse(res, response);
+        } catch (error) {
+            console.error("[Surfaces] Node HTTP request handling failed", { error });
+            if (!res.headersSent) {
+                res.statusCode = 500;
+                res.setHeader("Content-Type", "text/plain; charset=utf-8");
+            }
+            res.end("Internal Server Error");
+        }
+    });
+
+    nodeServer.listen(port, "0.0.0.0");
+    return {
+        stop: () => new Promise((resolve, reject) => {
+            nodeServer.close((error) => {
+                if (error) {
+                    reject(error);
+                    return;
+                }
+                resolve();
+            });
+        }),
+    };
+}
 
 export async function handleRequest(req: Request) {
     const url = new URL(req.url);
@@ -412,19 +538,6 @@ export async function startSidecar() {
         console.error("[Surfaces] Uncaught exception", { error });
     });
 
-    const bunRuntime = (globalThis as {
-        Bun?: {
-            serve: (options: {
-                hostname?: string;
-                port: number;
-                fetch: typeof handleRequest;
-            }) => { stop: () => void };
-        };
-    }).Bun;
-    if (!bunRuntime) {
-        throw new Error("Bun runtime not available");
-    }
-
     const resolvedPort = Number.parseInt(process.env.PORT ?? "3000", 10);
     const port = Number.isFinite(resolvedPort) ? resolvedPort : 3000;
     console.log("[Surfaces] Boot config", {
@@ -432,11 +545,7 @@ export async function startSidecar() {
         portFromEnv: process.env.PORT ?? null,
         resolvedPort: port,
     });
-    const server = bunRuntime.serve({
-        hostname: "0.0.0.0",
-        port,
-        fetch: handleRequest,
-    });
+    const server = startHttpServer(port);
 
     console.log(`🔔 HTTP Server listening on port ${port}`);
     console.log("   - POST /notify - Send notifications to platforms");
@@ -472,7 +581,7 @@ export async function startSidecar() {
     const shutdown = async (signal: string) => {
         console.log(`[Surfaces] Received ${signal}. Shutting down...`);
         try {
-            server.stop();
+            await server.stop();
         } catch (error) {
             console.error("[Surfaces] Error stopping HTTP server", error);
         }
