@@ -10,6 +10,7 @@ import type {
   ToolExecutionSummary,
   RuntimeToolDefinition,
 } from "@/server/features/ai/tools/fabric/types";
+import type { ContextPack } from "@/server/features/memory/context-manager";
 
 export interface OpenWorldTurnInput {
   provider: string;
@@ -30,6 +31,9 @@ export interface OpenWorldTurnInput {
   messageId?: string;
   sourceEmailMessageId?: string;
   sourceEmailThreadId?: string;
+  runtimeContextPack?: ContextPack;
+  runtimeContextStatus?: "ready" | "degraded" | "missing";
+  runtimeContextIssues?: string[];
 }
 
 export interface RuntimeSession {

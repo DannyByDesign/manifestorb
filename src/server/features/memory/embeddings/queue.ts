@@ -32,7 +32,7 @@ const PROCESSING_TIMEOUT_MS = 60000; // 1 minute
 
 export interface EmbeddingJob {
   id: string;
-  table: "MemoryFact" | "Knowledge";
+  table: "MemoryFact" | "Knowledge" | "ConversationMessage";
   recordId: string;
   text: string;
   email?: string;
@@ -53,6 +53,9 @@ export class EmbeddingQueue {
    * @returns Job ID
    */
   static async enqueue(job: Omit<EmbeddingJob, "id" | "retries" | "createdAt">): Promise<string> {
+    if (!job.text || job.text.trim().length === 0) {
+      throw new Error("embedding_job_text_required");
+    }
     const id = `emb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     
     const fullJob: EmbeddingJob = {
@@ -135,7 +138,7 @@ export class EmbeddingQueue {
    * Store embedding in the appropriate database table
    */
   private static async storeEmbedding(
-    table: "MemoryFact" | "Knowledge",
+    table: "MemoryFact" | "Knowledge" | "ConversationMessage",
     recordId: string,
     embedding: number[]
   ): Promise<void> {
@@ -148,6 +151,12 @@ export class EmbeddingQueue {
     } else if (table === "Knowledge") {
       await prisma.$executeRaw`
         UPDATE "Knowledge"
+        SET embedding = ${embedding}::vector
+        WHERE id = ${recordId}
+      `;
+    } else if (table === "ConversationMessage") {
+      await prisma.$executeRaw`
+        UPDATE "ConversationMessage"
         SET embedding = ${embedding}::vector
         WHERE id = ${recordId}
       `;

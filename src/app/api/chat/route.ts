@@ -6,6 +6,7 @@ import { PrivacyService } from "@/features/privacy/service";
 import { runOneShotAgent } from "@/features/channels/executor";
 import { z } from "zod";
 import { createScopedLogger } from "@/server/lib/logger";
+import { enqueueConversationMessageEmbedding } from "@/features/memory/embeddings/conversation-ingestion";
 
 const logger = createScopedLogger("api/chat");
 
@@ -54,9 +55,10 @@ export async function POST(req: Request) {
         });
 
         // 4. Persist User Message (if allowed)
+        let persistedUserMessageId: string | null = null;
         if (shouldRecord) {
             try {
-                await prisma.conversationMessage.upsert({
+                const persisted = await prisma.conversationMessage.upsert({
                     where: { dedupeKey },
                     update: {}, // Idempotent
                     create: {
@@ -72,6 +74,7 @@ export async function POST(req: Request) {
                         providerMessageId: clientMessageId || null
                     }
                 });
+                persistedUserMessageId = persisted.id;
             } catch (e) {
                 logger.error("Failed to persist user message", { error: e });
             }
@@ -90,6 +93,18 @@ export async function POST(req: Request) {
         const { resolveEmailAccount } = await import("@/server/lib/user-utils");
         const emailAccount = resolveEmailAccount(user, null);
         if (!emailAccount) return new NextResponse("No email account linked", { status: 400 });
+
+        if (persistedUserMessageId) {
+            enqueueConversationMessageEmbedding({
+                recordId: persistedUserMessageId,
+                content: message,
+                role: "user",
+                email: emailAccount.email,
+                logger,
+            }).catch((error) => {
+                logger.warn("Failed to enqueue user conversation embedding", { error });
+            });
+        }
 
         const result = await runOneShotAgent({
             user,

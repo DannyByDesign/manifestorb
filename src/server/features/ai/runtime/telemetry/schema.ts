@@ -102,12 +102,72 @@ export const runtimeClarificationRequiredTelemetrySchema = baseSchema.extend({
   confidence: z.number().min(0).max(1),
 });
 
+export const runtimeContextHydratedTelemetrySchema = baseSchema.extend({
+  status: z.enum(["ready", "degraded", "missing"]),
+  issues: z.array(z.string().min(1)).max(16).default([]),
+  facts: z.number().int().nonnegative(),
+  knowledge: z.number().int().nonnegative(),
+  history: z.number().int().nonnegative(),
+  attentionItems: z.number().int().nonnegative(),
+  hasSummary: z.boolean(),
+  hasPendingState: z.boolean(),
+});
+
+export const runtimeContextPrunedTelemetrySchema = baseSchema.extend({
+  lane: z.enum([
+    "direct_response",
+    "macro_tool",
+    "planner_fast",
+    "planner_standard",
+    "planner_deep",
+  ]),
+  mode: z.enum(["soft", "hard"]),
+  beforeChars: z.number().int().nonnegative(),
+  afterChars: z.number().int().nonnegative(),
+  removedCount: z.number().int().nonnegative(),
+  truncatedCount: z.number().int().nonnegative(),
+});
+
+export const runtimeCompactionRetryTelemetrySchema = baseSchema.extend({
+  lane: z.enum([
+    "direct_response",
+    "macro_tool",
+    "planner_fast",
+    "planner_standard",
+    "planner_deep",
+  ]),
+  overflowDetected: z.boolean(),
+  retryAttempted: z.boolean(),
+  retrySucceeded: z.boolean(),
+  beforeChars: z.number().int().nonnegative(),
+  afterChars: z.number().int().nonnegative().optional(),
+  memoryFlushQueued: z.boolean().optional(),
+});
+
+export const runtimeContextSlotsTelemetrySchema = baseSchema.extend({
+  lane: z.enum([
+    "direct_response",
+    "macro_tool",
+    "planner_fast",
+    "planner_standard",
+    "planner_deep",
+  ]),
+  maxChars: z.number().int().positive(),
+  maxFacts: z.number().int().positive(),
+  maxKnowledge: z.number().int().positive(),
+  maxHistory: z.number().int().positive(),
+});
+
 const runtimeTelemetrySchemas = {
   "openworld.runtime.plan": runtimePlanTelemetrySchema,
   "openworld.runtime.route_selected": runtimeRouteSelectedTelemetrySchema,
   "openworld.runtime.direct_read": runtimeDirectReadTelemetrySchema,
   "openworld.runtime.fast_path": runtimeFastPathTelemetrySchema,
   "openworld.runtime.tool_lifecycle": runtimeToolLifecycleTelemetrySchema,
+  "openworld.runtime.context_hydrated": runtimeContextHydratedTelemetrySchema,
+  "openworld.runtime.context_pruned": runtimeContextPrunedTelemetrySchema,
+  "openworld.runtime.compaction_retry": runtimeCompactionRetryTelemetrySchema,
+  "openworld.runtime.context_slots": runtimeContextSlotsTelemetrySchema,
   "openworld.turn.completed": runtimeTurnCompletedTelemetrySchema,
   "openworld.runtime.precheck_failed": runtimePrecheckFailedTelemetrySchema,
   "openworld.runtime.clarification_required":

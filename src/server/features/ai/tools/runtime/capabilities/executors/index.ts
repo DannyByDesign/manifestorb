@@ -4,6 +4,7 @@ import { emailToolExecutors } from "@/server/features/ai/tools/runtime/capabilit
 import { plannerToolExecutors } from "@/server/features/ai/tools/runtime/capabilities/executors/planner";
 import { policyToolExecutors } from "@/server/features/ai/tools/runtime/capabilities/executors/policy";
 import { taskToolExecutors } from "@/server/features/ai/tools/runtime/capabilities/executors/task";
+import { memoryToolExecutors } from "@/server/features/ai/tools/runtime/capabilities/executors/memory";
 import type {
   RuntimeToolExecutor,
   RuntimeToolExecutorMap,
@@ -15,6 +16,7 @@ const runtimeToolExecutors: RuntimeToolExecutorMap = {
   ...taskToolExecutors,
   ...plannerToolExecutors,
   ...policyToolExecutors,
+  ...memoryToolExecutors,
 };
 
 export function resolveRuntimeToolExecutor(toolName: ToolName): RuntimeToolExecutor {

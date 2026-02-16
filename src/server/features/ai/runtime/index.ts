@@ -31,9 +31,24 @@ export async function runOpenWorldRuntimeTurn(
     }
 
     const hydrated = await hydrateRuntimeContext(input);
+    emitRuntimeTelemetry(input.logger, "openworld.runtime.context_hydrated", {
+      userId: input.userId,
+      provider: input.provider,
+      status: hydrated.contextStatus,
+      issues: hydrated.contextIssues,
+      facts: hydrated.contextStats.facts,
+      knowledge: hydrated.contextStats.knowledge,
+      history: hydrated.contextStats.history,
+      attentionItems: hydrated.contextStats.attentionItems,
+      hasSummary: hydrated.contextStats.hasSummary,
+      hasPendingState: hydrated.contextStats.hasPendingState,
+    });
     const session = await createRuntimeSession({
       ...input,
       message: hydrated.message,
+      runtimeContextPack: hydrated.contextPack,
+      runtimeContextStatus: hydrated.contextStatus,
+      runtimeContextIssues: hydrated.contextIssues,
     });
     const execution = await runAttemptLoop(session);
     const result = buildFinalUserResponse({

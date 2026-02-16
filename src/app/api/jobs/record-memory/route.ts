@@ -25,6 +25,13 @@ import { EmbeddingQueue } from "@/features/memory/embeddings/queue";
 import { checkForDuplicate } from "@/features/memory/embeddings/search";
 import { posthogCaptureEvent } from "@/server/lib/posthog";
 import type { ConversationMessage } from "@/generated/prisma/client";
+import {
+    createInteractionEpisode,
+    recordCommitment,
+    recordMemoryEvidence,
+    recordRelationshipAssertion,
+    safeIsoNow,
+} from "@/server/features/memory/structured/service";
 
 const logger = createScopedLogger("api/jobs/record-memory");
 
@@ -34,10 +41,10 @@ const logger = createScopedLogger("api/jobs/record-memory");
 
 const MAX_FACTS_PER_RECORDING = 20; // Increased from 5 - more context = more facts
 const MIN_FACT_CONFIDENCE = 0.6;    // Slightly lower threshold since we have evidence
-const SEMANTIC_DEDUPE_THRESHOLD = 0.92; // High similarity = duplicate
 
 // Schema for the structured response from the LLM
 const memoryRecordingResponseSchema = z.object({
+    schemaVersion: z.literal("v2").default("v2"),
     summary: z.object({
         compressed: z.string(),
         openLoops: z.string().optional(),
@@ -49,6 +56,22 @@ const memoryRecordingResponseSchema = z.object({
         value: z.string(),
         confidence: z.number().min(0).max(1),
         evidence: z.string().optional(), // Quote from user that supports this
+    })).optional().default([]),
+    relationshipAssertions: z.array(z.object({
+        personName: z.string().min(1),
+        relatedPersonName: z.string().optional(),
+        relationType: z.enum(["manager", "peer", "direct_report", "client", "vendor", "partner", "personal", "other"]),
+        assertion: z.string().min(1),
+        confidence: z.number().min(0).max(1),
+        evidence: z.string().optional(),
+    })).optional().default([]),
+    commitmentAssertions: z.array(z.object({
+        description: z.string().min(1),
+        owner: z.enum(["user", "other"]).default("user"),
+        counterpartName: z.string().optional(),
+        dueAt: z.string().optional(),
+        confidence: z.number().min(0).max(1),
+        evidence: z.string().optional(),
     })).optional().default([]),
 });
 
@@ -68,6 +91,139 @@ interface ExtractedFact {
     value: string;
     confidence: number;
     evidence?: string;
+}
+
+interface RelationshipAssertion {
+    personName: string;
+    relatedPersonName?: string;
+    relationType: "manager" | "peer" | "direct_report" | "client" | "vendor" | "partner" | "personal" | "other";
+    assertion: string;
+    confidence: number;
+    evidence?: string;
+}
+
+interface CommitmentAssertion {
+    description: string;
+    owner: "user" | "other";
+    counterpartName?: string;
+    dueAt?: string;
+    confidence: number;
+    evidence?: string;
+}
+
+function validateEvidenceGrounding(
+    evidence: string | undefined,
+    messages: ConversationMessage[]
+): { valid: boolean; reason?: string } {
+    if (!evidence || evidence.length <= 5) return { valid: true };
+
+    const userMessages = messages
+        .filter((message) => message.role === "user")
+        .map((message) => message.content.toLowerCase());
+
+    const evidenceWords = evidence.toLowerCase().split(/\s+/).filter((word) => word.length > 3);
+    const foundWords = evidenceWords.filter((word) =>
+        userMessages.some((message) => message.includes(word))
+    );
+
+    if (evidenceWords.length > 0 && foundWords.length < evidenceWords.length * 0.5) {
+        return { valid: false, reason: "Evidence not found in user messages" };
+    }
+
+    return { valid: true };
+}
+
+function validateRelationshipAssertion(
+    assertion: RelationshipAssertion,
+    messages: ConversationMessage[]
+): { valid: boolean; reason?: string } {
+    if (assertion.confidence < MIN_FACT_CONFIDENCE) {
+        return { valid: false, reason: `Low confidence: ${assertion.confidence}` };
+    }
+    if (!assertion.personName.trim()) {
+        return { valid: false, reason: "Missing person name" };
+    }
+    if (!assertion.assertion.trim()) {
+        return { valid: false, reason: "Missing assertion text" };
+    }
+    return validateEvidenceGrounding(assertion.evidence, messages);
+}
+
+function validateCommitmentAssertion(
+    commitment: CommitmentAssertion,
+    messages: ConversationMessage[]
+): { valid: boolean; reason?: string } {
+    if (commitment.confidence < MIN_FACT_CONFIDENCE) {
+        return { valid: false, reason: `Low confidence: ${commitment.confidence}` };
+    }
+    if (!commitment.description.trim()) {
+        return { valid: false, reason: "Missing commitment description" };
+    }
+    return validateEvidenceGrounding(commitment.evidence, messages);
+}
+
+function normalizeDueAt(value: string | undefined): string | undefined {
+    if (!value) return undefined;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return undefined;
+    return parsed.toISOString();
+}
+
+function relationshipExtractionEnabled(): boolean {
+    const raw = process.env.MEMORY_RECORDING_RELATIONSHIPS_ENABLED;
+    if (!raw) return true;
+    return ["1", "true", "yes", "on"].includes(raw.toLowerCase());
+}
+
+function commitmentExtractionEnabled(): boolean {
+    const raw = process.env.MEMORY_RECORDING_COMMITMENTS_ENABLED;
+    if (!raw) return true;
+    return ["1", "true", "yes", "on"].includes(raw.toLowerCase());
+}
+
+function buildSyntheticRelationshipFromFact(fact: ExtractedFact): RelationshipAssertion | null {
+    if (fact.category !== "relationship") return null;
+    const keyTokens = fact.key.split("_").filter(Boolean);
+    const personName = keyTokens.length > 0 ? keyTokens[0] : "Unknown";
+    return {
+        personName,
+        relationType: "other",
+        assertion: fact.value,
+        confidence: fact.confidence,
+        evidence: fact.evidence,
+    };
+}
+
+function buildSyntheticCommitmentFromFact(fact: ExtractedFact): CommitmentAssertion | null {
+    if (fact.category !== "deadline") return null;
+    return {
+        description: `${fact.key}: ${fact.value}`,
+        owner: "user",
+        dueAt: undefined,
+        confidence: fact.confidence,
+        evidence: fact.evidence,
+    };
+}
+
+function coerceStructuredAssertions(parsedResult: z.infer<typeof memoryRecordingResponseSchema>) {
+    const relationshipAssertions: RelationshipAssertion[] = parsedResult.relationshipAssertions ?? [];
+    const commitmentAssertions: CommitmentAssertion[] = parsedResult.commitmentAssertions ?? [];
+
+    if (relationshipAssertions.length === 0) {
+        for (const fact of parsedResult.extractedFacts ?? []) {
+            const synthetic = buildSyntheticRelationshipFromFact(fact as ExtractedFact);
+            if (synthetic) relationshipAssertions.push(synthetic);
+        }
+    }
+
+    if (commitmentAssertions.length === 0) {
+        for (const fact of parsedResult.extractedFacts ?? []) {
+            const synthetic = buildSyntheticCommitmentFromFact(fact as ExtractedFact);
+            if (synthetic) commitmentAssertions.push(synthetic);
+        }
+    }
+
+    return { relationshipAssertions, commitmentAssertions };
 }
 
 /**
@@ -98,23 +254,7 @@ function validateFact(
         }
     }
 
-    // If evidence is provided, verify it appears in user messages
-    if (fact.evidence && fact.evidence.length > 5) {
-        const userMessages = messages
-            .filter(m => m.role === "user")
-            .map(m => m.content.toLowerCase());
-        
-        const evidenceWords = fact.evidence.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-        const foundWords = evidenceWords.filter(word =>
-            userMessages.some(msg => msg.includes(word))
-        );
-        
-        if (foundWords.length < evidenceWords.length * 0.5) {
-            return { valid: false, reason: "Evidence not found in messages" };
-        }
-    }
-
-    return { valid: true };
+    return validateEvidenceGrounding(fact.evidence, messages);
 }
 
 /**
@@ -171,6 +311,7 @@ ${existingSummary || "No prior summary."}
 ## OUTPUT FORMAT (JSON)
 
 {
+  "schemaVersion": "v2",
   "summary": {
     "compressed": "2-3 sentence summary of what happened in this chunk",
     "openLoops": "Any pending questions, tasks, or unresolved topics",
@@ -183,6 +324,26 @@ ${existingSummary || "No prior summary."}
       "value": "the fact to remember",
       "confidence": 0.8,
       "evidence": "exact quote from user that supports this"
+    }
+  ],
+  "relationshipAssertions": [
+    {
+      "personName": "Sarah Johnson",
+      "relatedPersonName": "User",
+      "relationType": "manager",
+      "assertion": "Sarah is the user's manager and asks for frequent status updates",
+      "confidence": 0.86,
+      "evidence": "My manager Sarah asked me for updates again."
+    }
+  ],
+  "commitmentAssertions": [
+    {
+      "description": "Send revised board deck",
+      "owner": "user",
+      "counterpartName": "Sarah Johnson",
+      "dueAt": "2026-03-15T17:00:00Z",
+      "confidence": 0.82,
+      "evidence": "I'll send Sarah the updated deck before Friday."
     }
   ]
 }
@@ -232,6 +393,8 @@ Extract facts in these categories:
 6. Use specific, descriptive keys that won't conflict with other facts
 7. Use lowercase, underscore keys only (no spaces or special characters)
 8. NEVER include absolute dates like "today is Feb 5" or "as of January 2026" in the compressed summary. Summaries must be date-agnostic because they are cached and reused across sessions. Use relative time only if necessary (e.g., "user has an upcoming deadline" not "user has a deadline on Feb 10").
+9. relationshipAssertions and commitmentAssertions must include grounded evidence from user messages.
+10. If a new relationship assertion contradicts an older one, prefer the newer one with higher confidence.
 
 Respond ONLY with valid JSON. No markdown code fences, no explanation.`;
 }
@@ -304,7 +467,7 @@ export async function POST(req: Request) {
         const modelOptions = getModel("economy");
 
         const generate = createGenerateText({
-            emailAccount: { userId: user.id } as any,
+            emailAccount: { id: user.id, email, userId: user.id },
             label: "memory-recording",
             modelOptions
         });
@@ -317,7 +480,7 @@ export async function POST(req: Request) {
         const result = await generate({
             model: modelOptions.model,
             messages: [{ role: "user", content: prompt }]
-        } as any);
+        });
 
         // Parse response
         let parsedResult: z.infer<typeof memoryRecordingResponseSchema>;
@@ -328,17 +491,35 @@ export async function POST(req: Request) {
         } catch (e) {
             logger.warn("Failed to parse memory recording response", { error: e });
             parsedResult = {
+                schemaVersion: "v2",
                 summary: {
                     compressed: result.text.slice(0, 500),
                 },
-                extractedFacts: []
+                extractedFacts: [],
+                relationshipAssertions: [],
+                commitmentAssertions: [],
             };
         }
+
+        const latestMessage = newMessages[newMessages.length - 1];
+        const episodeId = await createInteractionEpisode(userId, {
+            title: "Memory recording chunk",
+            summary: parsedResult.summary.compressed,
+            sourceConversationId: latestMessage?.conversationId,
+            sourceEmailThreadId: latestMessage?.threadId ?? undefined,
+            startedAt: newMessages[0]?.createdAt,
+            endedAt: latestMessage?.createdAt,
+        });
+        const { relationshipAssertions, commitmentAssertions } = coerceStructuredAssertions(parsedResult);
 
         // Store facts with validation and deduplication
         let validFactCount = 0;
         let rejectedFactCount = 0;
         let duplicateCount = 0;
+        let relationshipStoredCount = 0;
+        let relationshipRejectedCount = 0;
+        let commitmentStoredCount = 0;
+        let commitmentRejectedCount = 0;
 
         if (parsedResult.extractedFacts && parsedResult.extractedFacts.length > 0) {
             const factsToProcess = parsedResult.extractedFacts.slice(0, MAX_FACTS_PER_RECORDING);
@@ -423,6 +604,88 @@ export async function POST(req: Request) {
             }
         }
 
+        if (relationshipExtractionEnabled() && relationshipAssertions.length > 0) {
+            for (const assertion of relationshipAssertions) {
+                const validation = validateRelationshipAssertion(assertion, newMessages);
+                if (!validation.valid) {
+                    relationshipRejectedCount++;
+                    logger.trace("Rejected relationship assertion", {
+                        personName: assertion.personName,
+                        reason: validation.reason,
+                    });
+                    continue;
+                }
+
+                const saved = await recordRelationshipAssertion({
+                    userId,
+                    input: {
+                        personName: assertion.personName,
+                        relatedPersonName: assertion.relatedPersonName,
+                        relationType: assertion.relationType,
+                        assertion: assertion.assertion,
+                        confidence: assertion.confidence,
+                        evidenceSnippet: assertion.evidence,
+                        sourceMessageId: latestMessage?.id,
+                        episodeId: episodeId ?? undefined,
+                    },
+                });
+
+                if (saved) {
+                    relationshipStoredCount++;
+                    if (assertion.evidence) {
+                        await recordMemoryEvidence({
+                            userId,
+                            sourceMessageId: latestMessage?.id,
+                            excerpt: assertion.evidence,
+                        });
+                    }
+                } else {
+                    relationshipRejectedCount++;
+                }
+            }
+        }
+
+        if (commitmentExtractionEnabled() && commitmentAssertions.length > 0) {
+            for (const commitment of commitmentAssertions) {
+                const validation = validateCommitmentAssertion(commitment, newMessages);
+                if (!validation.valid) {
+                    commitmentRejectedCount++;
+                    logger.trace("Rejected commitment assertion", {
+                        description: commitment.description,
+                        reason: validation.reason,
+                    });
+                    continue;
+                }
+
+                const saved = await recordCommitment({
+                    userId,
+                    input: {
+                        description: commitment.description,
+                        owner: commitment.owner,
+                        counterpartName: commitment.counterpartName,
+                        dueAt: normalizeDueAt(commitment.dueAt),
+                        confidence: commitment.confidence,
+                        evidenceSnippet: commitment.evidence,
+                        sourceMessageId: latestMessage?.id,
+                        episodeId: episodeId ?? undefined,
+                    },
+                });
+
+                if (saved) {
+                    commitmentStoredCount++;
+                    if (commitment.evidence) {
+                        await recordMemoryEvidence({
+                            userId,
+                            sourceMessageId: latestMessage?.id,
+                            excerpt: commitment.evidence,
+                        });
+                    }
+                } else {
+                    commitmentRejectedCount++;
+                }
+            }
+        }
+
         // Format and store USER-LEVEL summary (UNIFIED across all platforms)
         const formattedSummary = `## Summary
 ${parsedResult.summary.compressed}
@@ -431,7 +694,12 @@ ${parsedResult.summary.compressed}
 ${parsedResult.summary.openLoops || "None"}
 
 ## Context
-${parsedResult.summary.emotionalContext || "Neutral"}`;
+${parsedResult.summary.emotionalContext || "Neutral"}
+
+## Recording Metadata
+- schemaVersion: ${parsedResult.schemaVersion}
+- recordedAt: ${safeIsoNow()}
+- episodeId: ${episodeId ?? "none"}`;
 
         const newestDate = newMessages[newMessages.length - 1].createdAt;
 
@@ -457,6 +725,12 @@ ${parsedResult.summary.emotionalContext || "Neutral"}`;
             factsExtracted: validFactCount,
             factsRejected: rejectedFactCount,
             factsDuplicate: duplicateCount,
+            relationshipStored: relationshipStoredCount,
+            relationshipRejected: relationshipRejectedCount,
+            commitmentStored: commitmentStoredCount,
+            commitmentRejected: commitmentRejectedCount,
+            schemaVersion: parsedResult.schemaVersion,
+            episodeId: episodeId ?? null,
         }).catch(() => {});
 
         logger.info("Memory recording completed", {
@@ -464,7 +738,13 @@ ${parsedResult.summary.emotionalContext || "Neutral"}`;
             messageCount: newMessages.length,
             factsExtracted: validFactCount,
             factsRejected: rejectedFactCount,
-            factsDuplicate: duplicateCount
+            factsDuplicate: duplicateCount,
+            relationshipStored: relationshipStoredCount,
+            relationshipRejected: relationshipRejectedCount,
+            commitmentStored: commitmentStoredCount,
+            commitmentRejected: commitmentRejectedCount,
+            schemaVersion: parsedResult.schemaVersion,
+            episodeId: episodeId ?? null,
         });
 
         return NextResponse.json({
@@ -474,7 +754,13 @@ ${parsedResult.summary.emotionalContext || "Neutral"}`;
                 estimatedTokens,
                 factsExtracted: validFactCount,
                 factsRejected: rejectedFactCount,
-                factsDuplicate: duplicateCount
+                factsDuplicate: duplicateCount,
+                relationshipStored: relationshipStoredCount,
+                relationshipRejected: relationshipRejectedCount,
+                commitmentStored: commitmentStoredCount,
+                commitmentRejected: commitmentRejectedCount,
+                schemaVersion: parsedResult.schemaVersion,
+                episodeId: episodeId ?? null,
             }
         });
 

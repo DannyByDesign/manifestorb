@@ -20,6 +20,8 @@ const INBOX_RE = /\b(inbox|email|thread|message|draft|reply|sender)\b/u;
 const CALENDAR_RE =
   /\b(calendar|meeting|event|schedule|availability|task|tasks|todo|to-do)\b/u;
 const POLICY_RE = /\b(rule|policy|approval|permission|automation|preference)\b/u;
+const MEMORY_RE =
+  /\b(remember|memory|recall|forgot|forget|last time|history|relationship|contact context)\b/u;
 
 const PROFILE_LIMITS: Record<NonNullable<RuntimeSemanticContract["routeProfile"]>, number> = {
   fast: 20,
@@ -60,12 +62,12 @@ function familiesForSemanticContract(
   switch (semantic.domain) {
     case "inbox":
       return op === "read"
-        ? ["inbox_read", "cross_surface_planning"]
-        : ["inbox_read", "inbox_mutate", "inbox_compose", "inbox_controls", "cross_surface_planning"];
+        ? ["inbox_read", "cross_surface_planning", "memory_read"]
+        : ["inbox_read", "inbox_mutate", "inbox_compose", "inbox_controls", "cross_surface_planning", "memory_read", "memory_mutate"];
     case "calendar":
       return op === "read"
-        ? ["calendar_read", "cross_surface_planning"]
-        : ["calendar_read", "calendar_mutate", "calendar_policy", "cross_surface_planning"];
+        ? ["calendar_read", "cross_surface_planning", "memory_read"]
+        : ["calendar_read", "calendar_mutate", "calendar_policy", "cross_surface_planning", "memory_read", "memory_mutate"];
     case "policy":
       return ["calendar_policy", "cross_surface_planning"];
     case "cross_surface":
@@ -78,6 +80,8 @@ function familiesForSemanticContract(
         "calendar_mutate",
         "calendar_policy",
         "cross_surface_planning",
+        "memory_read",
+        "memory_mutate",
       ];
     case "general":
       return [];
@@ -86,11 +90,12 @@ function familiesForSemanticContract(
   }
 }
 
-function lexicalDomainHints(message: string): Array<"inbox" | "calendar" | "policy"> {
-  const hints: Array<"inbox" | "calendar" | "policy"> = [];
+function lexicalDomainHints(message: string): Array<"inbox" | "calendar" | "policy" | "memory"> {
+  const hints: Array<"inbox" | "calendar" | "policy" | "memory"> = [];
   if (INBOX_RE.test(message)) hints.push("inbox");
   if (CALENDAR_RE.test(message)) hints.push("calendar");
   if (POLICY_RE.test(message)) hints.push("policy");
+  if (MEMORY_RE.test(message)) hints.push("memory");
   return hints;
 }
 
@@ -142,6 +147,15 @@ function scoreToolRelevance(
         definition.metadata.intentFamilies.includes("cross_surface_planning"))
     ) {
       score += 2;
+    }
+
+    if (
+      hints.includes("memory") &&
+      definition.metadata.intentFamilies.some(
+        (family) => family === "memory_read" || family === "memory_mutate",
+      )
+    ) {
+      score += 4;
     }
 
     const mutating = MUTATION_RE.test(message);

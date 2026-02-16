@@ -22,6 +22,7 @@ import { posthogCaptureEvent } from "@/server/lib/posthog";
 import { getPendingScheduleProposal } from "@/features/calendar/schedule-proposal";
 import { scanForAttentionItems } from "@/features/ai/proactive/scanner";
 import { createCalendarEventProviders } from "@/features/calendar/event-provider";
+import { logMemoryAccessAudit } from "@/server/features/memory/structured/service";
 
 const logger = createScopedLogger("ContextManager");
 
@@ -263,6 +264,18 @@ export class ContextManager {
                 queryLength: normalizedMessage.length,
                 contextTier,
             });
+
+            logMemoryAccessAudit({
+                userId: user.id,
+                accessType: "context_pack_retrieval",
+                query: normalizedMessage,
+                resultCount: facts.length + knowledge.length,
+                metadata: {
+                    contextTier,
+                    facts: facts.length,
+                    knowledge: knowledge.length,
+                },
+            }).catch(() => {});
         }
 
         // 2. Fetch UNIFIED History (hybrid: recent + relevance), Summary, and domain objects in parallel

@@ -11,7 +11,9 @@ export type CapabilityIntentFamily =
   | "calendar_read"
   | "calendar_mutate"
   | "calendar_policy"
-  | "cross_surface_planning";
+  | "cross_surface_planning"
+  | "memory_read"
+  | "memory_mutate";
 
 export interface CapabilityEffectDescriptor {
   resource: "email" | "calendar" | "planner" | "preferences" | "rule" | "task";
@@ -794,6 +796,66 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       intentFamilies: ["calendar_policy"],
       tags: ["calendar", "booking", "appointments"],
       effects: [{ resource: "preferences", mutates: true }],
+    },
+    {
+      id: "memory.remember",
+      description: "Persist a durable user memory fact for future recall.",
+      inputSchema: z.object({
+        key: z.string().min(3).max(100),
+        value: z.string().min(1).max(1000),
+        confidence: z.number().min(0).max(1).optional(),
+      }).strict(),
+      outputSchema: z.unknown(),
+      readOnly: false,
+      riskLevel: "safe",
+      approvalOperation: "update_preferences",
+      intentFamilies: ["memory_mutate", "cross_surface_planning"],
+      tags: ["memory", "remember", "facts", "preferences"],
+      effects: [{ resource: "preferences", mutates: true }],
+    },
+    {
+      id: "memory.recall",
+      description: "Recall relevant memory facts using hybrid semantic and lexical search.",
+      inputSchema: z.object({
+        query: z.string().min(1).max(250),
+        limit: z.number().int().min(1).max(25).optional(),
+        minScore: z.number().min(0).max(1).optional(),
+      }).strict(),
+      outputSchema: z.unknown(),
+      readOnly: true,
+      riskLevel: "safe",
+      approvalOperation: "query",
+      intentFamilies: ["memory_read", "cross_surface_planning", "inbox_read", "calendar_read"],
+      tags: ["memory", "recall", "search", "history", "contacts"],
+      effects: [{ resource: "preferences", mutates: false }],
+    },
+    {
+      id: "memory.forget",
+      description: "Deactivate a stored memory fact when the user asks to forget it.",
+      inputSchema: z.object({
+        key: z.string().min(1),
+      }).strict(),
+      outputSchema: z.unknown(),
+      readOnly: false,
+      riskLevel: "caution",
+      approvalOperation: "update_preferences",
+      intentFamilies: ["memory_mutate", "cross_surface_planning"],
+      tags: ["memory", "forget", "delete"],
+      effects: [{ resource: "preferences", mutates: true }],
+    },
+    {
+      id: "memory.list",
+      description: "List currently active memory facts for the user.",
+      inputSchema: z.object({
+        limit: z.number().int().min(1).max(50).optional(),
+      }).strict(),
+      outputSchema: z.unknown(),
+      readOnly: true,
+      riskLevel: "safe",
+      approvalOperation: "query",
+      intentFamilies: ["memory_read", "cross_surface_planning"],
+      tags: ["memory", "list", "facts"],
+      effects: [{ resource: "preferences", mutates: false }],
     },
     {
       id: "planner.composeDayPlan",

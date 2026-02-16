@@ -18,6 +18,7 @@ import {
     outboundThreadIdForProvider,
 } from "./conversation-key";
 import { runSerializedConversationTurn } from "./runtime";
+import { enqueueConversationMessageEmbedding } from "@/features/memory/embeddings/conversation-ingestion";
 
 const logger = createScopedLogger("ChannelRouter");
 
@@ -497,7 +498,7 @@ export class ChannelRouter {
                         const shouldRecord = await PrivacyService.shouldRecord(user.id);
 
                         if (shouldRecord) {
-                            await prisma.conversationMessage.upsert({
+                            const persisted = await prisma.conversationMessage.upsert({
                                 where: {
                                     dedupeKey: dedupeKey,
                                 },
@@ -515,6 +516,16 @@ export class ChannelRouter {
                                     threadId: conversationThreadId,
                                     emailAccountId: emailAccount.id,
                                 },
+                            });
+
+                            enqueueConversationMessageEmbedding({
+                                recordId: persisted.id,
+                                content: message.content,
+                                role: "user",
+                                email: emailAccount.email,
+                                logger,
+                            }).catch((error) => {
+                                logger.warn("Failed to enqueue inbound conversation embedding", { error });
                             });
                         }
                     } catch (err) {
