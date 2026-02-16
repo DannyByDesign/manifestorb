@@ -108,10 +108,11 @@ function buildSemanticForTest(message: string): RuntimeSession["semantic"] {
   };
 }
 
-function buildSession(message: string): RuntimeSession {
+function buildSession(message: string, toolNames?: string[]): RuntimeSession {
   const toolLookup = new Map<string, RuntimeSession["toolRegistry"][number]>();
-  for (const name of [
+  for (const name of toolNames ?? [
     "email.getUnreadCount",
+    "email.searchSent",
     "email.searchInbox",
     "calendar.listEvents",
     "policy.listRules",
@@ -338,6 +339,49 @@ describe("runtime fast path", () => {
           before: "2026-02-14",
         },
         from: "Alex",
+      });
+    }
+  });
+
+  it("routes sent mailbox searches to email.searchSent", async () => {
+    const match = await matchRuntimeFastPath({
+      session: buildSession("search my sent emails for 'portfolio review'"),
+      mode: "strict",
+    });
+
+    expect(match?.type).toBe("tool_call");
+    if (match?.type === "tool_call") {
+      expect(match.toolName).toBe("email.searchSent");
+      expect(match.args).toEqual({
+        query: "portfolio review",
+        purpose: "list",
+        limit: 25,
+        fetchAll: false,
+      });
+    }
+  });
+
+  it("falls back to email.searchInbox with sentByMe when email.searchSent is unavailable", async () => {
+    const match = await matchRuntimeFastPath({
+      session: buildSession("search my sent emails for 'portfolio review'", [
+        "email.getUnreadCount",
+        "email.searchInbox",
+        "calendar.listEvents",
+        "policy.listRules",
+        "policy.createRule",
+      ]),
+      mode: "strict",
+    });
+
+    expect(match?.type).toBe("tool_call");
+    if (match?.type === "tool_call") {
+      expect(match.toolName).toBe("email.searchInbox");
+      expect(match.args).toEqual({
+        query: "portfolio review",
+        purpose: "list",
+        limit: 25,
+        fetchAll: false,
+        sentByMe: true,
       });
     }
   });

@@ -113,6 +113,7 @@ function buildSemanticForTest(message: string): RuntimeSession["semantic"] {
 function buildSession(message: string): RuntimeSession {
   const toolLookup = new Map<string, RuntimeSession["toolRegistry"][number]>();
   for (const name of [
+    "email.searchSent",
     "email.searchInbox",
     "calendar.listEvents",
     "policy.listRules",
@@ -192,6 +193,24 @@ describe("runtime router", () => {
     expect(plan.nativeTurnTimeoutMs).toBe(25_000);
     expect(plan.decisionTimeoutMs).toBe(8_000);
     expect(plan.maxAttempts).toBe(2);
+  });
+
+  it("routes sent email search requests to fast-path macro lane", async () => {
+    const plan = await buildRuntimeRoutingPlan({
+      session: buildSession("search my sent emails for 'portfolio review'"),
+    });
+
+    expect(plan.lane).toBe("macro_tool");
+    expect(plan.fastPathMatch?.type).toBe("tool_call");
+    if (plan.fastPathMatch?.type === "tool_call") {
+      expect(plan.fastPathMatch.toolName).toBe("email.searchSent");
+      expect(plan.fastPathMatch.args).toEqual({
+        query: "portfolio review",
+        purpose: "list",
+        limit: 25,
+        fetchAll: false,
+      });
+    }
   });
 
   it("routes simple mutations to planner_standard", async () => {

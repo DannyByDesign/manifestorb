@@ -33,7 +33,9 @@ const CONDITIONAL_OR_CHAINING_RE =
 const EMAIL_ENTITY_RE = /\b(email|emails|inbox|message|messages|thread|threads)\b/u;
 const CALENDAR_ENTITY_RE = /\b(calendar|meeting|meetings|event|events|schedule)\b/u;
 const FIRST_OR_LATEST_RE = /\b(first|top|latest|most recent|newest|recent)\b/u;
-const LIST_OR_SHOW_RE = /\b(show|list|check|find|what|which|tell me)\b/u;
+const LIST_OR_SHOW_RE = /\b(show|list|check|find|search|what|which|tell me)\b/u;
+const SENT_MAILBOX_RE =
+  /\b(?:my\s+)?sent\s+(?:emails?|messages?|mail|threads?)\b|\bsent\s+mailbox\b|\boutbox\b/u;
 const GREETING_RE =
   /^(hi|hello|hey|yo|sup|good morning|good afternoon|good evening|howdy)[\s!.?]*$/u;
 const CAPABILITIES_RE =
@@ -53,6 +55,9 @@ const EMAIL_SENDER_SCOPE_RE =
   /\b(?:from|by)\s+([^,.!?]+?)(?=\s+(?:today|tonight|tomorrow|this week|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|$)/iu;
 const EMAIL_TOPIC_SCOPE_RE =
   /\b(?:about|regarding|re:)\s+([^,.!?]+?)(?=\s+(?:today|tonight|tomorrow|this week|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|$)/iu;
+const EMAIL_TEXT_SCOPE_RE =
+  /\bfor\s+([^,.!?]+?)(?=\s+(?:today|tonight|tomorrow|this week|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|$)/iu;
+const EMAIL_QUOTED_TEXT_SCOPE_RE = /(?:^|\s)["'“”]([^"'“”]{2,})["'“”](?:$|\s|[,.!?])/u;
 
 const WEEKDAY_INDEX: Record<string, number> = {
   sunday: 0,
@@ -91,20 +96,31 @@ function firstArrayItem(value: unknown): Record<string, unknown> | null {
   return asRecord(item);
 }
 
-function parseSenderScope(message: string): string | undefined {
-  const match = message.match(EMAIL_SENDER_SCOPE_RE);
-  if (!match?.[1]) return undefined;
-  const value = match[1].trim().replace(/\s+/g, " ");
+function normalizeScopeValue(raw: string | undefined): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const value = raw.trim().replace(/\s+/g, " ");
   if (!value || value.length < 2) return undefined;
   return value;
 }
 
+function parseSenderScope(message: string): string | undefined {
+  const match = message.match(EMAIL_SENDER_SCOPE_RE);
+  return normalizeScopeValue(match?.[1]);
+}
+
 function parseTopicScope(message: string): string | undefined {
   const match = message.match(EMAIL_TOPIC_SCOPE_RE);
-  if (!match?.[1]) return undefined;
-  const value = match[1].trim().replace(/\s+/g, " ");
-  if (!value || value.length < 2) return undefined;
-  return value;
+  return normalizeScopeValue(match?.[1]);
+}
+
+function parseTextScope(message: string): string | undefined {
+  const quoted = normalizeScopeValue(message.match(EMAIL_QUOTED_TEXT_SCOPE_RE)?.[1]);
+  if (quoted) return quoted;
+
+  const scoped = normalizeScopeValue(message.match(EMAIL_TEXT_SCOPE_RE)?.[1]);
+  if (!scoped) return undefined;
+  if (/^(?:me|myself|us|ourselves)$/iu.test(scoped)) return undefined;
+  return scoped;
 }
 
 function semanticAdmitsIntents(
@@ -529,32 +545,47 @@ function buildEmailListFastPath(params: {
   if (!LIST_OR_SHOW_RE.test(normalized)) return null;
   if (COUNT_RE.test(normalized)) return null;
   if (ATTENTION_HEURISTIC_RE.test(normalized)) return null;
-  if (!hasTool(session, "email.searchInbox")) return null;
+
+  const sentMailboxRequested = SENT_MAILBOX_RE.test(normalized);
+  const hasSentTool = hasTool(session, "email.searchSent");
+  const hasInboxTool = hasTool(session, "email.searchInbox");
+  if (!hasSentTool && !hasInboxTool) return null;
+  if (!sentMailboxRequested && !hasInboxTool) return null;
+
+  const toolName: "email.searchSent" | "email.searchInbox" =
+    sentMailboxRequested && hasSentTool ? "email.searchSent" : "email.searchInbox";
 
   const dateRange = inferExplicitDateRange(normalized, timeZone);
   const unreadOnly = UNREAD_RE.test(normalized);
   const sender = parseSenderScope(session.input.message);
   const topic = parseTopicScope(session.input.message);
+  const textScope = parseTextScope(session.input.message);
 
   if ((sender || topic) && !dateRange) return null;
 
+  const queryParts: string[] = [];
+  if (unreadOnly) queryParts.push("is:unread");
+  if (textScope) queryParts.push(textScope);
+  const query = queryParts.join(" ").trim();
+
   const args: Record<string, unknown> = {
-    query: unreadOnly ? "is:unread" : "",
+    query,
     purpose: "list",
     limit: dateRange ? 100 : unreadOnly ? 50 : 25,
     fetchAll: false,
     ...(dateRange ? { dateRange } : {}),
+    ...(sentMailboxRequested && toolName === "email.searchInbox" ? { sentByMe: true } : {}),
     ...(sender ? { from: sender } : {}),
     ...(topic ? { text: topic } : {}),
   };
 
   return {
     type: "tool_call",
-    toolName: "email.searchInbox",
+    toolName,
     args,
-    reason: "email_read_list",
+    reason: sentMailboxRequested ? "email_read_list_sent" : "email_read_list",
     summarize: summarizeEmailList(timeZone),
-    onFailureText: "I couldn't load inbox messages right now. Please try again in a moment.",
+    onFailureText: "I couldn't load email messages right now. Please try again in a moment.",
   };
 }
 
