@@ -110,7 +110,10 @@ function buildSemanticForTest(message: string): RuntimeSession["semantic"] {
   };
 }
 
-function buildSession(message: string): RuntimeSession {
+function buildSession(
+  message: string,
+  semanticOverride?: RuntimeSession["semantic"],
+): RuntimeSession {
   const toolLookup = new Map<string, RuntimeSession["toolRegistry"][number]>();
   for (const name of [
     "email.searchSent",
@@ -133,7 +136,7 @@ function buildSession(message: string): RuntimeSession {
       logger: mockLogger(),
     },
     capabilities: {} as RuntimeSession["capabilities"],
-    semantic: buildSemanticForTest(message),
+    semantic: semanticOverride ?? buildSemanticForTest(message),
     skillSnapshot: {
       selectedSkillIds: [],
       promptSection: "",
@@ -198,6 +201,28 @@ describe("runtime router", () => {
   it("routes sent email search requests to fast-path macro lane", async () => {
     const plan = await buildRuntimeRoutingPlan({
       session: buildSession("search my sent emails for 'portfolio review'"),
+    });
+
+    expect(plan.lane).toBe("macro_tool");
+    expect(plan.fastPathMatch?.type).toBe("tool_call");
+    if (plan.fastPathMatch?.type === "tool_call") {
+      expect(plan.fastPathMatch.toolName).toBe("email.searchSent");
+      expect(plan.fastPathMatch.args).toEqual({
+        query: "portfolio review",
+        purpose: "list",
+        limit: 25,
+        fetchAll: false,
+      });
+    }
+  });
+
+  it("routes explicit sent search to macro lane even when semantic profile is general", async () => {
+    const semanticGeneral = buildSemanticForTest("what should i focus on today");
+    const plan = await buildRuntimeRoutingPlan({
+      session: buildSession(
+        "try again. search my sent emails for \"portfolio review\"",
+        semanticGeneral,
+      ),
     });
 
     expect(plan.lane).toBe("macro_tool");

@@ -108,7 +108,11 @@ function buildSemanticForTest(message: string): RuntimeSession["semantic"] {
   };
 }
 
-function buildSession(message: string, toolNames?: string[]): RuntimeSession {
+function buildSession(
+  message: string,
+  toolNames?: string[],
+  semanticOverride?: RuntimeSession["semantic"],
+): RuntimeSession {
   const toolLookup = new Map<string, RuntimeSession["toolRegistry"][number]>();
   for (const name of toolNames ?? [
     "email.getUnreadCount",
@@ -132,7 +136,7 @@ function buildSession(message: string, toolNames?: string[]): RuntimeSession {
       logger: mockLogger(),
     },
     capabilities: {} as RuntimeSession["capabilities"],
-    semantic: buildSemanticForTest(message),
+    semantic: semanticOverride ?? buildSemanticForTest(message),
     skillSnapshot: {
       selectedSkillIds: [],
       promptSection: "",
@@ -382,6 +386,29 @@ describe("runtime fast path", () => {
         limit: 25,
         fetchAll: false,
         sentByMe: true,
+      });
+    }
+  });
+
+  it("routes sent mailbox searches even when semantic classifier misses inbox_read", async () => {
+    const semanticGeneral = buildSemanticForTest("what should i focus on today");
+    const match = await matchRuntimeFastPath({
+      session: buildSession(
+        "try again. search my sent emails for \"portfolio review\"",
+        undefined,
+        semanticGeneral,
+      ),
+      mode: "strict",
+    });
+
+    expect(match?.type).toBe("tool_call");
+    if (match?.type === "tool_call") {
+      expect(match.toolName).toBe("email.searchSent");
+      expect(match.args).toEqual({
+        query: "portfolio review",
+        purpose: "list",
+        limit: 25,
+        fetchAll: false,
       });
     }
   });

@@ -540,13 +540,14 @@ function buildEmailListFastPath(params: {
   timeZone: string;
 }): RuntimeFastPathMatch | null {
   const { session, normalized, timeZone } = params;
-  if (!semanticAdmitsIntents(session, ["inbox_read"])) return null;
+  const sentMailboxRequested = SENT_MAILBOX_RE.test(normalized);
+  const semanticAdmitted = semanticAdmitsIntents(session, ["inbox_read"]);
+  if (!semanticAdmitted && !sentMailboxRequested) return null;
   if (!EMAIL_ENTITY_RE.test(normalized)) return null;
   if (!LIST_OR_SHOW_RE.test(normalized)) return null;
   if (COUNT_RE.test(normalized)) return null;
   if (ATTENTION_HEURISTIC_RE.test(normalized)) return null;
 
-  const sentMailboxRequested = SENT_MAILBOX_RE.test(normalized);
   const hasSentTool = hasTool(session, "email.searchSent");
   const hasInboxTool = hasTool(session, "email.searchInbox");
   if (!hasSentTool && !hasInboxTool) return null;

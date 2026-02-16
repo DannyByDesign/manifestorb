@@ -67,6 +67,32 @@ const unknownObject = z.record(
     objectLevel2ArraySchema,
   ]),
 );
+const emailSearchInputSchema = z.object({
+  query: z.string().optional(),
+  limit: z.number().int().positive().max(5000).optional(),
+  fetchAll: z.boolean().optional(),
+  subscriptionsOnly: z.boolean().optional(),
+  purpose: z.enum(["lookup", "list", "count"]).optional(),
+  dateRange: z
+    .object({
+      before: z.string().optional(),
+      after: z.string().optional(),
+      timeZone: z.string().optional(),
+      timezone: z.string().optional(),
+    })
+    .optional(),
+  timeZone: z.string().optional(),
+  timezone: z.string().optional(),
+  subjectContains: z.string().optional(),
+  bodyContains: z.string().optional(),
+  text: z.string().optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+  hasAttachment: z.boolean().optional(),
+  sentByMe: z.boolean().optional(),
+  receivedByMe: z.boolean().optional(),
+  strictSenderOnly: z.boolean().optional(),
+});
 const idListSchema = z.object({ ids: z.array(z.string().min(1)).min(1) }).strict();
 const threadIdSchema = z.object({ threadId: z.string().min(1) }).strict();
 const draftIdSchema = z.object({ draftId: z.string().min(1) }).strict();
@@ -96,7 +122,7 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
     {
       id: "email.searchThreads",
       description: "Search inbox threads using query/filter constraints.",
-      inputSchema: unknownObject,
+      inputSchema: emailSearchInputSchema,
       outputSchema: z.unknown(),
       readOnly: true,
       riskLevel: "safe",
@@ -108,7 +134,7 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
     {
       id: "email.searchThreadsAdvanced",
       description: "Advanced thread search using rich filter constraints.",
-      inputSchema: unknownObject,
+      inputSchema: emailSearchInputSchema,
       outputSchema: z.unknown(),
       readOnly: true,
       riskLevel: "safe",
@@ -119,8 +145,8 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
     },
     {
       id: "email.searchSent",
-      description: "Search sent mailbox messages and threads.",
-      inputSchema: unknownObject,
+      description: "Search sent mailbox messages and threads using query/filter constraints.",
+      inputSchema: emailSearchInputSchema,
       outputSchema: z.unknown(),
       readOnly: true,
       riskLevel: "safe",
@@ -132,7 +158,7 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
     {
       id: "email.searchInbox",
       description: "Search inbox-focused messages and threads.",
-      inputSchema: unknownObject,
+      inputSchema: emailSearchInputSchema,
       outputSchema: z.unknown(),
       readOnly: true,
       riskLevel: "safe",
