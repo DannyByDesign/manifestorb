@@ -28,6 +28,8 @@ import { env } from "../env";
 
 const SLACK_LEADER_LOCK_KEY = process.env.SLACK_LEADER_LOCK_KEY || "surfaces:slack:socket-mode:leader";
 const SLACK_LEADER_LOCK_TTL_MS = Number(process.env.SLACK_LEADER_LOCK_TTL_MS || 30000);
+const SLACK_SOCKET_CLIENT_PING_TIMEOUT_MS = 15_000;
+const SLACK_SOCKET_SERVER_PING_TIMEOUT_MS = 60_000;
 const SLACK_RECONNECT_WINDOW_MS = 60_000;
 const SLACK_RECONNECT_THRESHOLD = 8;
 const SLACK_IDENTITY_CACHE_TTL_MS = 30_000;
@@ -379,21 +381,31 @@ let slackLeaderHeartbeat: ReturnType<typeof setInterval> | null = null;
 let slackLeaderRetryTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectTimestamps: number[] = [];
 
-function getSocketModeClient(app: App): {
+type SocketModeDiagnosticsClient = {
     on?: (event: string, handler: (...args: unknown[]) => void) => void;
-} | null {
+    clientPingTimeoutMillis?: number;
+    serverPingTimeoutMillis?: number;
+};
+
+function getSocketModeClient(app: App): SocketModeDiagnosticsClient | null {
     const maybeReceiver = (app as unknown as { receiver?: unknown }).receiver;
     if (!maybeReceiver || typeof maybeReceiver !== "object") return null;
     const maybeClient = (maybeReceiver as { client?: unknown }).client;
     if (!maybeClient || typeof maybeClient !== "object") return null;
     const onFn = (maybeClient as { on?: unknown }).on;
     if (typeof onFn !== "function") return null;
-    return maybeClient as { on: (event: string, handler: (...args: unknown[]) => void) => void };
+    return maybeClient as SocketModeDiagnosticsClient;
+}
+
+function tuneSocketHeartbeatTimeouts(client: SocketModeDiagnosticsClient) {
+    client.clientPingTimeoutMillis = SLACK_SOCKET_CLIENT_PING_TIMEOUT_MS;
+    client.serverPingTimeoutMillis = SLACK_SOCKET_SERVER_PING_TIMEOUT_MS;
 }
 
 function registerSocketModeDiagnostics(app: App) {
     const client = getSocketModeClient(app);
     if (!client?.on) return;
+    tuneSocketHeartbeatTimeouts(client);
 
     client.on("connected", () => {
         reconnectTimestamps = [];

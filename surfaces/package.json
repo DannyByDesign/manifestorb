@@ -4,14 +4,14 @@
     "description": "Sidecar service for handling Slack/Discord/Telegram connections",
     "main": "src/index.ts",
     "engines": {
-        "bun": ">=1.0.0"
+        "node": ">=20.0.0"
     },
     "scripts": {
-        "dev": "bun run --watch src/index.ts",
-        "start": "bun run src/index.ts",
+        "dev": "tsx watch src/index.ts",
+        "start": "tsx src/index.ts",
         "typecheck": "tsc --noEmit",
-        "prisma:generate": "bunx prisma generate --schema ./prisma/schema.prisma",
-        "postinstall": "bunx prisma generate --schema ./prisma/schema.prisma"
+        "prisma:generate": "prisma generate --schema ./prisma/schema.prisma",
+        "postinstall": "prisma generate --schema ./prisma/schema.prisma"
     },
     "dependencies": {
         "@ai-sdk/google": "^0.0.30",
@@ -23,6 +23,7 @@
         "discord.js": "^14.25.1",
         "dotenv": "^16.3.1",
         "ioredis": "^5.3.2",
+        "tsx": "^4.20.4",
         "telegraf": "^4.16.3",
         "zod": "^3.22.4"
     },
