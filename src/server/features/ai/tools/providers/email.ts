@@ -180,7 +180,33 @@ export async function createEmailProvider(
         if (candidateToken.length >= 2 && valueToken.length === 1) {
             return candidateToken.startsWith(valueToken);
         }
-        return false;
+        // Lightweight typo tolerance for person/entity names.
+        // We keep this conservative to avoid broad false positives.
+        if (candidateToken.length < 4 || valueToken.length < 4) return false;
+        const maxDistance = candidateToken.length <= 6 ? 1 : 2;
+        if (Math.abs(candidateToken.length - valueToken.length) > maxDistance) return false;
+
+        const aLen = candidateToken.length;
+        const bLen = valueToken.length;
+        let prev = new Array<number>(bLen + 1);
+        let curr = new Array<number>(bLen + 1);
+        for (let j = 0; j <= bLen; j += 1) prev[j] = j;
+        for (let i = 1; i <= aLen; i += 1) {
+            curr[0] = i;
+            let minInRow = curr[0];
+            for (let j = 1; j <= bLen; j += 1) {
+                const cost = candidateToken[i - 1] === valueToken[j - 1] ? 0 : 1;
+                curr[j] = Math.min(
+                    prev[j] + 1,
+                    curr[j - 1] + 1,
+                    prev[j - 1] + cost,
+                );
+                if (curr[j] < minInRow) minInRow = curr[j];
+            }
+            if (minInRow > maxDistance) return false;
+            [prev, curr] = [curr, prev];
+        }
+        return prev[bLen] <= maxDistance;
     };
 
     const includesLooseTerm = (value: string | undefined, term: string | undefined): boolean => {

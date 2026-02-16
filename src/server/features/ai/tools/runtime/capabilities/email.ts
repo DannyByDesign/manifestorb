@@ -165,6 +165,51 @@ function messageTimestampMs(message: ParsedMessage): number {
   return 0;
 }
 
+function normalizeSearchText(value: string | undefined): string {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+function includesAllTermTokens(
+  haystack: string,
+  term: string,
+): boolean {
+  const normalizedHaystack = normalizeSearchText(haystack);
+  const normalizedTerm = normalizeSearchText(term);
+  if (!normalizedTerm) return false;
+  if (normalizedHaystack.includes(normalizedTerm)) return true;
+  const tokens = normalizedTerm.split(/[^a-z0-9@._-]+/u).filter((token) => token.length > 0);
+  if (tokens.length === 0) return false;
+  return tokens.every((token) => normalizedHaystack.includes(token));
+}
+
+function scoreMentionMatch(message: ParsedMessage, term: string): number {
+  if (!term.trim()) return 0;
+  const subject = message.subject || message.headers?.subject || "";
+  const body = message.textPlain || message.snippet || "";
+  const from = message.headers?.from || "";
+  const to = message.headers?.to || "";
+
+  let score = 0;
+  if (includesAllTermTokens(subject, term)) score += 6;
+  if (includesAllTermTokens(body, term)) score += 4;
+  if (includesAllTermTokens(from, term)) score += 3;
+  if (includesAllTermTokens(to, term)) score += 1;
+  return score;
+}
+
+function sortMentionMatches(messages: ParsedMessage[], term: string): ParsedMessage[] {
+  const uniqueById = new Map<string, ParsedMessage>();
+  for (const message of messages) {
+    if (!message?.id) continue;
+    if (!uniqueById.has(message.id)) uniqueById.set(message.id, message);
+  }
+  return [...uniqueById.values()].sort((left, right) => {
+    const scoreDiff = scoreMentionMatch(right, term) - scoreMentionMatch(left, term);
+    if (scoreDiff !== 0) return scoreDiff;
+    return messageTimestampMs(right) - messageTimestampMs(left);
+  });
+}
+
 function asMetaItemCount(count: number): ToolResult["meta"] {
   return { resource: "email", itemCount: count };
 }
@@ -380,6 +425,11 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           : undefined;
       const hasDateRange = Boolean(before || after);
       const query = typeof filter.query === "string" ? filter.query : "";
+      const fromFilter =
+        typeof filter.from === "string" && filter.from.trim().length > 0
+          ? filter.from.trim()
+          : undefined;
+      const strictSenderOnly = filter.strictSenderOnly === true;
       const normalizedLimit = computeEmailSearchLimit({
         requestedLimit,
         fetchAll,
@@ -388,7 +438,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         purpose,
       });
 
-      const result = await searchEmailThreads(provider, {
+      const baseSearch = {
         query,
         limit: normalizedLimit,
         fetchAll,
@@ -402,7 +452,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         bodyContains:
           typeof filter.bodyContains === "string" ? filter.bodyContains : undefined,
         text: typeof filter.text === "string" ? filter.text : undefined,
-        from: typeof filter.from === "string" ? filter.from : undefined,
+        from: fromFilter,
         to: typeof filter.to === "string" ? filter.to : undefined,
         hasAttachment:
           typeof filter.hasAttachment === "boolean"
@@ -414,14 +464,37 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           typeof filter.receivedByMe === "boolean"
             ? filter.receivedByMe
             : undefined,
-      });
+      };
 
-      const messages = Boolean(filter.subscriptionsOnly)
+      const result = await searchEmailThreads(provider, baseSearch);
+
+      let effectiveResult = result;
+      let messages = Boolean(filter.subscriptionsOnly)
         ? result.messages.filter(isLikelySubscription)
         : result.messages;
-      const sortedMessages = [...messages].sort(
-        (a, b) => messageTimestampMs(b) - messageTimestampMs(a),
-      );
+      let usedMentionFallback = false;
+
+      if (fromFilter && !strictSenderOnly && messages.length === 0) {
+        const fallbackSubjectContains =
+          typeof filter.subjectContains === "string" && filter.subjectContains.trim().length > 0
+            ? filter.subjectContains
+            : fromFilter;
+        const fallbackResult = await searchEmailThreads(provider, {
+          ...baseSearch,
+          from: undefined,
+          text: fromFilter,
+          subjectContains: fallbackSubjectContains,
+        });
+        effectiveResult = fallbackResult;
+        messages = Boolean(filter.subscriptionsOnly)
+          ? fallbackResult.messages.filter(isLikelySubscription)
+          : fallbackResult.messages;
+        usedMentionFallback = messages.length > 0;
+      }
+
+      const sortedMessages = usedMentionFallback
+        ? sortMentionMatches(messages, fromFilter ?? "")
+        : [...messages].sort((a, b) => messageTimestampMs(b) - messageTimestampMs(a));
       const data = toSearchItems(sortedMessages, { timeZone: displayTimeZone });
       return {
         success: true,
@@ -429,13 +502,13 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         message:
           data.length === 0
             ? "No matching emails found."
-            : result.nextPageToken
+            : effectiveResult.nextPageToken
               ? `Found at least ${data.length} matching email${data.length === 1 ? "" : "s"}.`
               : `Found ${data.length} matching email${data.length === 1 ? "" : "s"}.`,
-        truncated: Boolean(result.nextPageToken),
+        truncated: Boolean(effectiveResult.nextPageToken),
         paging: {
-          nextPageToken: result.nextPageToken ?? null,
-          totalEstimate: result.totalEstimate ?? null,
+          nextPageToken: effectiveResult.nextPageToken ?? null,
+          totalEstimate: effectiveResult.totalEstimate ?? null,
         },
         meta: asMetaItemCount(data.length),
       };
@@ -532,6 +605,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       subscriptionsOnly: Boolean(filter.subscriptionsOnly),
       limit: typeof filter.limit === "number" ? filter.limit : 1000,
       fetchAll: true,
+      strictSenderOnly: true,
     });
 
     const items = Array.isArray(search.data) ? search.data : [];
