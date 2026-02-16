@@ -58,9 +58,9 @@ const EMAIL_TOPIC_SCOPE_RE =
 const EMAIL_TEXT_SCOPE_RE =
   /\bfor\s+([^,.!?]+?)(?=\s+(?:today|tonight|tomorrow|this week|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|$)/iu;
 const EMAIL_QUOTED_TEXT_SCOPE_RE = /(?:^|\s)["'“”]([^"'“”]{2,})["'“”](?:$|\s|[,.!?])/u;
-const EMAIL_LIST_FULL_THRESHOLD = 20;
-const CALENDAR_LIST_FULL_THRESHOLD = 20;
-const RULE_LIST_FULL_THRESHOLD = 20;
+const EMAIL_LIST_FULL_THRESHOLD = 10;
+const CALENDAR_LIST_FULL_THRESHOLD = 10;
+const RULE_LIST_FULL_THRESHOLD = 10;
 
 const WEEKDAY_INDEX: Record<string, number> = {
   sunday: 0,
