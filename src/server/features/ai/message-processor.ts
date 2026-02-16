@@ -18,6 +18,7 @@ import { executeApprovalRequest } from "@/features/approvals/execute";
 import { resolveScheduleProposalRequestById } from "@/features/calendar/schedule-proposal";
 import { resolveAmbiguousTimeRequestById } from "@/features/calendar/ambiguous-time";
 import { enqueueConversationMessageEmbedding } from "@/features/memory/embeddings/conversation-ingestion";
+import type { ToolExecutionSummary } from "@/server/features/ai/tools/fabric/types";
 
 export interface ProcessorContext {
   conversationId?: string;
@@ -712,6 +713,92 @@ function mapConversationRoleToModelRole(
   return null;
 }
 
+type PersistedToolEvidenceEntry = {
+  toolName: string;
+  outcome: "success" | "partial" | "blocked" | "failed";
+  message?: string;
+  error?: string;
+  clarification?: unknown;
+  data?: unknown;
+  truncated?: boolean;
+  paging?: Record<string, unknown>;
+};
+
+const TOOL_EVIDENCE_MAX_SUMMARIES = 6;
+const TOOL_EVIDENCE_MAX_OBJECT_KEYS = 8;
+const TOOL_EVIDENCE_MAX_ARRAY_ITEMS = 6;
+
+function compactToolEvidenceValue(value: unknown, depth = 0): unknown {
+  if (depth > 2) {
+    return typeof value === "object" ? "[truncated]" : value;
+  }
+  if (Array.isArray(value)) {
+    const out = value
+      .slice(0, TOOL_EVIDENCE_MAX_ARRAY_ITEMS)
+      .map((item) => compactToolEvidenceValue(item, depth + 1));
+    if (value.length > TOOL_EVIDENCE_MAX_ARRAY_ITEMS) {
+      out.push({
+        truncated: true,
+        omitted: value.length - TOOL_EVIDENCE_MAX_ARRAY_ITEMS,
+      });
+    }
+    return out;
+  }
+  if (!value || typeof value !== "object") return value;
+
+  const record = value as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(record).slice(0, TOOL_EVIDENCE_MAX_OBJECT_KEYS)) {
+    out[key] = compactToolEvidenceValue(entry, depth + 1);
+  }
+  return out;
+}
+
+function compactToolSummariesForPersistence(
+  summaries: ToolExecutionSummary[] | undefined,
+): PersistedToolEvidenceEntry[] {
+  if (!Array.isArray(summaries) || summaries.length === 0) return [];
+
+  return summaries.slice(-TOOL_EVIDENCE_MAX_SUMMARIES).map((summary) => {
+    const result = summary.result;
+    return {
+      toolName: summary.toolName,
+      outcome: summary.outcome,
+      message:
+        typeof result?.message === "string" && result.message.trim().length > 0
+          ? result.message.trim()
+          : undefined,
+      error:
+        typeof result?.error === "string" && result.error.trim().length > 0
+          ? result.error.trim()
+          : undefined,
+      clarification: result?.clarification
+        ? compactToolEvidenceValue(result.clarification)
+        : undefined,
+      data: compactToolEvidenceValue(result?.data),
+      truncated: result?.truncated === true,
+      paging:
+        result?.paging && typeof result.paging === "object"
+          ? (compactToolEvidenceValue(result.paging) as Record<string, unknown>)
+          : undefined,
+    };
+  });
+}
+
+function renderToolEvidencePrompt(toolCalls: unknown): string | null {
+  if (!toolCalls || typeof toolCalls !== "object") return null;
+  const record = toolCalls as Record<string, unknown>;
+  const rawEvidence = record.runtimeToolEvidence;
+  if (!Array.isArray(rawEvidence) || rawEvidence.length === 0) return null;
+  const serialized = JSON.stringify(rawEvidence);
+  if (!serialized || serialized === "[]") return null;
+
+  return [
+    "Last turn tool evidence (ground truth for follow-up questions about prior results):",
+    serialized,
+  ].join("\n");
+}
+
 async function loadConversationHistoryMessages(params: {
   conversationId: string;
   maxMessages?: number;
@@ -721,18 +808,39 @@ async function loadConversationHistoryMessages(params: {
     orderBy: { createdAt: "desc" },
     take: Math.max(1, Math.min(params.maxMessages ?? 40, 200)),
     select: {
+      id: true,
       role: true,
       content: true,
+      toolCalls: true,
     },
   });
 
   const ordered = [...rows].reverse();
+  let latestEvidenceRowId: string | null = null;
+  for (let i = ordered.length - 1; i >= 0; i -= 1) {
+    const row = ordered[i];
+    if (row.role !== "assistant") continue;
+    if (renderToolEvidencePrompt(row.toolCalls)) {
+      latestEvidenceRowId = row.id;
+      break;
+    }
+  }
+
   const mapped: ModelMessage[] = [];
   for (const row of ordered) {
     const role = mapConversationRoleToModelRole(row.role);
     if (!role) continue;
     if (typeof row.content === "string") {
       mapped.push({ role, content: row.content });
+    }
+    if (row.id === latestEvidenceRowId) {
+      const evidencePrompt = renderToolEvidencePrompt(row.toolCalls);
+      if (evidencePrompt) {
+        mapped.push({
+          role: "system",
+          content: evidencePrompt,
+        });
+      }
     }
   }
   return mapped;
@@ -812,13 +920,16 @@ export async function processMessage(
 
   const messageContent =
     input.message ?? extractLatestUserMessage(input.messages ?? []);
+  const persistedConversationHistory = await loadConversationHistoryMessages({
+    conversationId,
+    maxMessages: 60,
+  });
   const runtimeMessages =
-    input.messages && input.messages.length > 0
-      ? input.messages
-      : await loadConversationHistoryMessages({
-          conversationId,
-          maxMessages: 40,
-        });
+    context.provider === "web"
+      ? input.messages && input.messages.length > 0
+        ? input.messages
+        : persistedConversationHistory
+      : persistedConversationHistory;
 
   let sourceEmailContextCache: SourceEmailContext | null = null;
   const getSourceEmailContext = async (): Promise<SourceEmailContext> => {
@@ -892,6 +1003,17 @@ export async function processMessage(
   const text = runtimeResult.text ?? "";
   const interactivePayloads = runtimeResult.interactivePayloads;
   const approvals = runtimeResult.approvals;
+  const runtimeToolEvidence = compactToolSummariesForPersistence(
+    runtimeResult.toolSummaries,
+  );
+  const assistantToolCallsPayload =
+    interactivePayloads.length > 0 || approvals.length > 0 || runtimeToolEvidence.length > 0
+      ? {
+          ...(interactivePayloads.length > 0 ? { interactivePayloads } : {}),
+          ...(approvals.length > 0 ? { approvals } : {}),
+          ...(runtimeToolEvidence.length > 0 ? { runtimeToolEvidence } : {}),
+        }
+      : undefined;
 
   // Persist assistant message for all providers, respecting PrivacyService.
   await persistAssistantMessage(
@@ -904,9 +1026,7 @@ export async function processMessage(
     context.channelId,
     context.threadId,
     context.messageId ?? context.threadId ?? messageContent,
-    interactivePayloads.length > 0 || approvals.length > 0
-      ? { interactivePayloads, approvals }
-      : undefined,
+    assistantToolCallsPayload,
   );
 
   triggerMemoryRecording(user.id, emailAccount.email, logger);

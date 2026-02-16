@@ -85,35 +85,34 @@ function toPlatform(provider: string): Platform {
   return "web";
 }
 
-function buildRuntimeMessages(session: RuntimeSession): ModelMessage[] {
+export function buildRuntimeMessages(session: RuntimeSession): ModelMessage[] {
   const history = Array.isArray(session.input.messages) ? session.input.messages : [];
   if (history.length === 0) {
     return [{ role: "user", content: session.input.message }];
   }
 
   const normalizedCurrent = session.input.message.trim();
-  const hasCurrentUserTurn = history.some((message) => {
-    if (message.role !== "user") return false;
-    if (typeof message.content === "string") {
-      return message.content.trim() === normalizedCurrent;
+  const lastMessage = history[history.length - 1];
+  const hasCurrentUserTurn = (() => {
+    if (!lastMessage || lastMessage.role !== "user") return false;
+    if (typeof lastMessage.content === "string") {
+      return lastMessage.content.trim() === normalizedCurrent;
     }
-    if (Array.isArray(message.content)) {
-      const joined = message.content
-        .map((part) => {
-          if (!part || typeof part !== "object" || !("type" in part)) return "";
-          if (part.type !== "text") return "";
-          return "text" in part && typeof part.text === "string" ? part.text : "";
-        })
-        .join(" ")
-        .trim();
-      return joined === normalizedCurrent;
-    }
-    return false;
-  });
+    if (!Array.isArray(lastMessage.content)) return false;
 
-  return hasCurrentUserTurn
-    ? history
-    : [...history, { role: "user", content: session.input.message }];
+    const joined = lastMessage.content
+      .map((part) => {
+        if (!part || typeof part !== "object" || !("type" in part)) return "";
+        if (part.type !== "text") return "";
+        return "text" in part && typeof part.text === "string" ? part.text : "";
+      })
+      .join(" ")
+      .trim();
+
+    return joined === normalizedCurrent;
+  })();
+
+  return hasCurrentUserTurn ? history : [...history, { role: "user", content: session.input.message }];
 }
 
 function formatNowInTimeZone(timeZone: string): string {
