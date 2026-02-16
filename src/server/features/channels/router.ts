@@ -19,6 +19,7 @@ import {
 } from "./conversation-key";
 import { runSerializedConversationTurn } from "./runtime";
 import { enqueueConversationMessageEmbedding } from "@/features/memory/embeddings/conversation-ingestion";
+import { renderSurfaceResponseText } from "@/server/features/ai/runtime/response-writer";
 
 const logger = createScopedLogger("ChannelRouter");
 
@@ -331,6 +332,24 @@ export class ChannelRouter {
             incomingThreadId,
             messageId: providerMessageId,
         });
+        const renderResponses = async (responses: OutboundMessage[]): Promise<OutboundMessage[]> => {
+            return await Promise.all(
+                responses.map(async (response) => {
+                    const content = typeof response.content === "string" ? response.content : "";
+                    if (!content.trim()) return response;
+                    const rewritten = await renderSurfaceResponseText({
+                        provider: message.provider,
+                        request: message.content,
+                        draftText: content,
+                        logger,
+                    });
+                    return {
+                        ...response,
+                        content: rewritten,
+                    };
+                }),
+            );
+        };
 
         // 1. Fetch User via Account Link
         // We must look up the user by their external provider ID (Account table)
@@ -386,7 +405,7 @@ export class ChannelRouter {
 
             const linkUrl = `${env.NEXT_PUBLIC_BASE_URL}/link?token=${token}`;
 
-            return [{
+            return await renderResponses([{
                 targetChannelId: message.context.channelId,
                 targetThreadId: outboundThreadIdForProvider({
                     provider: message.provider,
@@ -402,7 +421,7 @@ export class ChannelRouter {
                         { label: "Link Account", style: "primary", value: linkUrl, url: linkUrl }
                     ]
                 }
-            }];
+            }]);
         }
 
         const user = linkedAccount.account.user;
@@ -423,7 +442,7 @@ export class ChannelRouter {
                 provider: message.provider,
                 channelId: message.context.channelId,
             });
-            return [{
+            return await renderResponses([{
                 targetChannelId: message.context.channelId,
                 targetThreadId: outboundThreadIdForProvider({
                     provider: message.provider,
@@ -431,7 +450,7 @@ export class ChannelRouter {
                     canonicalThreadId,
                 }),
                 content: "Your account is linked, but you haven't connected a Gmail/Outlook account yet.\n\nPlease go to the Amodel Web App to connect your email."
-            }];
+            }]);
         }
 
         const accountRowForEmailAccount = user.emailAccounts.find(
@@ -445,7 +464,7 @@ export class ChannelRouter {
                 channelId: message.context.channelId,
                 disconnectedAt: accountRowForEmailAccount.account.disconnectedAt,
             });
-            return [{
+            return await renderResponses([{
                 targetChannelId: message.context.channelId,
                 targetThreadId: outboundThreadIdForProvider({
                     provider: message.provider,
@@ -453,7 +472,7 @@ export class ChannelRouter {
                     canonicalThreadId,
                 }),
                 content: `Your email account (${emailAccount.email}) has been disconnected (e.g. due to a password change or revoked access).\n\nPlease reconnect it in the Amodel web app: ${env.NEXT_PUBLIC_BASE_URL}/connect`,
-            }];
+            }]);
         }
 
         const queueKey = buildConversationIdentityKey({
@@ -464,7 +483,7 @@ export class ChannelRouter {
         });
 
         try {
-            return await runSerializedConversationTurn({
+            const responses = await runSerializedConversationTurn({
                 queueKey,
                 provider: message.provider,
                 channelId,
@@ -630,6 +649,7 @@ export class ChannelRouter {
                     }
                 },
             });
+            return await renderResponses(responses);
         } catch (error) {
             logger.error("Error running serialized conversation turn", {
                 error,
@@ -638,7 +658,7 @@ export class ChannelRouter {
                 threadId: canonicalThreadId,
                 resolvedUserId: user.id,
             });
-            return [
+            return await renderResponses([
                 {
                     targetChannelId: message.context.channelId,
                     targetThreadId: outboundThreadIdForProvider({
@@ -648,7 +668,7 @@ export class ChannelRouter {
                     }),
                     content: internalIssueMessage(),
                 },
-            ];
+            ]);
         }
     }
 
