@@ -59,6 +59,8 @@ const EMAIL_TEXT_SCOPE_RE =
   /\bfor\s+([^,.!?]+?)(?=\s+(?:today|tonight|tomorrow|this week|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|$)/iu;
 const EMAIL_QUOTED_TEXT_SCOPE_RE = /(?:^|\s)["'“”]([^"'“”]{2,})["'“”](?:$|\s|[,.!?])/u;
 const EMAIL_LIST_FULL_THRESHOLD = 20;
+const CALENDAR_LIST_FULL_THRESHOLD = 20;
+const RULE_LIST_FULL_THRESHOLD = 20;
 
 const WEEKDAY_INDEX: Record<string, number> = {
   sunday: 0,
@@ -356,7 +358,7 @@ function summarizeCalendarList(timeZone: string) {
 
     if (items.length === 0) return "No calendar events found in that window.";
 
-    const top = items.slice(0, 3).map((item) => {
+    const previewItems = items.slice(0, CALENDAR_LIST_FULL_THRESHOLD).map((item) => {
       const title = asString(item.title) ?? "Untitled event";
       const startLocal = asString(item.startLocal);
       const start = asString(item.start);
@@ -364,9 +366,15 @@ function summarizeCalendarList(timeZone: string) {
       return when ? `"${title}" at ${when}` : `"${title}"`;
     });
 
-    if (items.length === 1) return `You have 1 event: ${top[0]}.`;
-    if (items.length <= 3) return `You have ${items.length} events: ${top.join("; ")}.`;
-    return `You have ${items.length} events. First ones: ${top.join("; ")}.`;
+    const numberedPreview = previewItems
+      .map((entry, index) => `${index + 1}. ${entry}`)
+      .join("\n");
+
+    if (items.length === 1) return `You have 1 event:\n${numberedPreview}`;
+    if (items.length <= CALENDAR_LIST_FULL_THRESHOLD) {
+      return `You have ${items.length} events:\n${numberedPreview}`;
+    }
+    return `You have ${items.length} events. Showing first ${previewItems.length}:\n${numberedPreview}`;
   };
 }
 
@@ -438,15 +446,20 @@ function summarizeRuleList(): (result: RuntimeToolResult) => string {
       .map((item) => asRecord(item))
       .filter((item): item is Record<string, unknown> => Boolean(item));
     if (items.length === 0) return "You don't have any rules set up right now.";
-    const preview = items.slice(0, 3).map((item) => {
+    const previewItems = items.slice(0, RULE_LIST_FULL_THRESHOLD).map((item) => {
       const name = asString(item.name) ?? asString(item.id) ?? "unnamed rule";
       const type = asString(item.type);
       return type ? `${name} (${type})` : name;
     });
-    if (items.length <= 3) {
-      return `You have ${items.length} rule${items.length === 1 ? "" : "s"}: ${preview.join("; ")}.`;
+
+    const numberedPreview = previewItems
+      .map((entry, index) => `${index + 1}. ${entry}`)
+      .join("\n");
+
+    if (items.length <= RULE_LIST_FULL_THRESHOLD) {
+      return `You have ${items.length} rule${items.length === 1 ? "" : "s"}:\n${numberedPreview}`;
     }
-    return `You have ${items.length} rules. First ones: ${preview.join("; ")}.`;
+    return `You have ${items.length} rules. Showing first ${previewItems.length}:\n${numberedPreview}`;
   };
 }
 
