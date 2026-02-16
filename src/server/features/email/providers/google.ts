@@ -214,6 +214,20 @@ export class GmailProvider implements EmailProvider {
     return messages.messages;
   }
 
+  async getUnreadCount(options?: { scope?: "inbox" }): Promise<{
+    count: number;
+    exact: boolean;
+  }> {
+    const scope = options?.scope ?? "inbox";
+    if (scope !== "inbox") {
+      throw new Error(`Unsupported unread count scope for Gmail: ${scope}`);
+    }
+
+    const label = await getLabelById({ gmail: this.client, id: GmailLabel.INBOX });
+    const count = Math.max(0, Math.trunc(label.messagesUnread ?? 0));
+    return { count, exact: true };
+  }
+
   async getSentMessageIds(options: {
     maxResults: number;
     after?: Date;

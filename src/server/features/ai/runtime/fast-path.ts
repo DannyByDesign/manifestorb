@@ -205,6 +205,16 @@ function summarizeEmailCount(params: {
   };
 }
 
+function summarizeUnreadCount(result: RuntimeToolResult): string {
+  const payload = asRecord(result.data);
+  const count = Math.max(0, asNumber(payload?.count) ?? 0);
+  const exact = payload?.exact === true;
+  if (exact) {
+    return `You have ${count} unread emails right now.`;
+  }
+  return `You have about ${count} unread emails right now.`;
+}
+
 function pad2(value: number): string {
   return String(value).padStart(2, "0");
 }
@@ -465,7 +475,7 @@ function buildEmailCountFastPath(params: {
   timeZone: string;
 }): RuntimeFastPathMatch | null {
   const { session, normalized, timeZone } = params;
-  if (!semanticAdmitsIntents(session, ["inbox_read"])) return null;
+  if (!semanticAdmitsIntents(session, ["inbox_read", "inbox_attention"])) return null;
   if (!EMAIL_ENTITY_RE.test(normalized)) return null;
   if (!COUNT_RE.test(normalized)) return null;
   if (!hasTool(session, "email.searchInbox")) return null;
@@ -473,6 +483,17 @@ function buildEmailCountFastPath(params: {
   const dateRange = inferExplicitDateRange(normalized, timeZone);
   const unreadOnly = UNREAD_RE.test(normalized);
   if (!unreadOnly && !dateRange) return null;
+
+  if (unreadOnly && !dateRange && hasTool(session, "email.getUnreadCount")) {
+    return {
+      type: "tool_call",
+      toolName: "email.getUnreadCount",
+      args: { scope: "inbox" },
+      reason: "email_unread_count_exact",
+      summarize: summarizeUnreadCount,
+      onFailureText: "I couldn't load your unread email count right now. Please try again in a moment.",
+    };
+  }
 
   const allowEstimatedTotalWhenTruncated = unreadOnly && !dateRange;
   return {
@@ -691,7 +712,11 @@ export async function matchRuntimeFastPath(params: {
     };
   }
 
-  if (ATTENTION_HEURISTIC_RE.test(normalized) && EMAIL_ENTITY_RE.test(normalized)) {
+  if (
+    ATTENTION_HEURISTIC_RE.test(normalized) &&
+    EMAIL_ENTITY_RE.test(normalized) &&
+    !COUNT_RE.test(normalized)
+  ) {
     return null;
   }
 

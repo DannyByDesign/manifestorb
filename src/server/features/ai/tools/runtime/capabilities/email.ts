@@ -25,6 +25,7 @@ import {
 import { formatDateTimeForUser } from "@/server/features/ai/tools/timezone";
 
 export interface EmailCapabilities {
+  getUnreadCount(filter?: Record<string, unknown>): Promise<ToolResult>;
   searchThreads(filter: Record<string, unknown>): Promise<ToolResult>;
   searchThreadsAdvanced(filter: Record<string, unknown>): Promise<ToolResult>;
   searchSent(filter: Record<string, unknown>): Promise<ToolResult>;
@@ -443,6 +444,84 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
     }
   };
 
+  const runUnreadCount = async (
+    filter?: Record<string, unknown>,
+  ): Promise<ToolResult> => {
+    const scopeRaw =
+      typeof filter?.scope === "string"
+        ? filter.scope.trim().toLowerCase()
+        : "inbox";
+    if (scopeRaw.length > 0 && scopeRaw !== "inbox") {
+      return {
+        success: false,
+        error: "invalid_scope",
+        message: "Unread count currently supports inbox scope only.",
+        clarification: {
+          kind: "invalid_fields",
+          prompt: "Try asking for unread inbox emails.",
+          missingFields: ["scope"],
+        },
+      };
+    }
+
+    try {
+      const result = await provider.getUnreadCount({ scope: "inbox" });
+      const count = Math.max(0, Math.trunc(result.count));
+      return {
+        success: true,
+        data: {
+          count,
+          exact: Boolean(result.exact),
+          scope: "inbox",
+          source: "provider_counter",
+          asOf: new Date().toISOString(),
+        },
+        message: `You have ${count} unread emails right now.`,
+        meta: asMetaItemCount(1),
+      };
+    } catch (error) {
+      const fallback = await runSearchThreads({
+        query: "is:unread",
+        purpose: "count",
+        limit: 100,
+        fetchAll: false,
+      });
+      if (!fallback.success) {
+        return capabilityFailureResult(error, "I couldn't count unread emails right now.", {
+          resource: "email",
+        });
+      }
+
+      const items = Array.isArray(fallback.data) ? fallback.data : [];
+      const paging =
+        fallback.paging && typeof fallback.paging === "object"
+          ? (fallback.paging as Record<string, unknown>)
+          : null;
+      const totalEstimate =
+        paging &&
+        typeof paging.totalEstimate === "number" &&
+        Number.isFinite(paging.totalEstimate)
+          ? Math.max(0, Math.trunc(paging.totalEstimate))
+          : null;
+      const count = totalEstimate ?? items.length;
+
+      return {
+        success: true,
+        data: {
+          count,
+          exact: false,
+          scope: "inbox",
+          source: totalEstimate !== null ? "provider_estimate" : "sample_count",
+          asOf: new Date().toISOString(),
+        },
+        message: `You have about ${count} unread emails right now.`,
+        truncated: fallback.truncated,
+        paging: fallback.paging ?? null,
+        meta: asMetaItemCount(1),
+      };
+    }
+  };
+
   const runBulkIds = async (
     filter: Record<string, unknown>,
   ): Promise<string[]> => {
@@ -464,6 +543,10 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
   };
 
   return {
+    async getUnreadCount(filter) {
+      return runUnreadCount(filter);
+    },
+
     async searchThreads(filter) {
       return runSearchThreads(filter);
     },

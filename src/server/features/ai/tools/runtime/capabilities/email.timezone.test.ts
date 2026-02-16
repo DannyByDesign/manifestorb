@@ -20,7 +20,9 @@ vi.mock("@/server/features/ai/tools/email/primitives", () => ({
   trashEmailMessages: vi.fn(),
 }));
 
-function buildEnv(): CapabilityEnvironment {
+function buildEnv(options?: {
+  emailProvider?: CapabilityEnvironment["toolContext"]["providers"]["email"];
+}): CapabilityEnvironment {
   return {
     runtime: {
       userId: "user-1",
@@ -48,7 +50,7 @@ function buildEnv(): CapabilityEnvironment {
         with: vi.fn().mockReturnThis(),
       },
       providers: {
-        email: {} as never,
+        email: options?.emailProvider ?? ({} as never),
         calendar: {} as never,
       },
     },
@@ -184,5 +186,38 @@ describe("runtime email timezone handling", () => {
     };
     expect(filter.limit).toBe(5000);
     expect(filter.fetchAll).toBe(true);
+  });
+
+  it("returns exact unread count from provider counters", async () => {
+    const getUnreadCount = vi.fn().mockResolvedValue({
+      count: 1234,
+      exact: true,
+    });
+    const caps = createEmailCapabilities(
+      buildEnv({ emailProvider: { getUnreadCount } as never }),
+    );
+
+    const result = await caps.getUnreadCount({});
+    expect(getUnreadCount).toHaveBeenCalledWith({ scope: "inbox" });
+    expect(result.success).toBe(true);
+    expect((result.data as { count: number; exact: boolean }).count).toBe(1234);
+    expect((result.data as { count: number; exact: boolean }).exact).toBe(true);
+  });
+
+  it("falls back to unread estimate when provider counter lookup fails", async () => {
+    const getUnreadCount = vi.fn().mockRejectedValue(new Error("provider down"));
+    vi.mocked(searchEmailThreads).mockResolvedValueOnce({
+      messages: [],
+      nextPageToken: "token-1",
+      totalEstimate: 9876,
+    });
+    const caps = createEmailCapabilities(
+      buildEnv({ emailProvider: { getUnreadCount } as never }),
+    );
+
+    const result = await caps.getUnreadCount({});
+    expect(result.success).toBe(true);
+    expect((result.data as { count: number; exact: boolean }).count).toBe(9876);
+    expect((result.data as { count: number; exact: boolean }).exact).toBe(false);
   });
 });

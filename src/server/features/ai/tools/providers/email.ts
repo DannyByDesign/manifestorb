@@ -91,6 +91,10 @@ function isGmailAuthError(err: unknown): boolean {
 // Tool-Specific Interface (Adapter)
 export interface EmailProvider {
     // Core (Original)
+    getUnreadCount(options?: { scope?: "inbox" }): Promise<{
+        count: number;
+        exact: boolean;
+    }>;
     search(options: {
         query: string;
         limit?: number;
@@ -295,6 +299,17 @@ export async function createEmailProvider(
         });
 
     return {
+        getUnreadCount: async (options?: { scope?: "inbox" }) => runThrottled("getUnreadCount", async () => {
+            try {
+                return await service.getUnreadCount(options);
+            } catch (err: unknown) {
+                if (isGmailAuthError(err)) {
+                    throw new Error(GMAIL_RECONNECT_MESSAGE);
+                }
+                throw err;
+            }
+        }),
+
         search: async ({
             query,
             limit,

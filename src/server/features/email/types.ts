@@ -68,6 +68,10 @@ export interface EmailProvider {
   ): Promise<ParsedMessage | null>;
   getSentMessages(maxResults?: number): Promise<ParsedMessage[]>;
   getInboxMessages(maxResults?: number): Promise<ParsedMessage[]>;
+  getUnreadCount(options?: { scope?: "inbox" }): Promise<{
+    count: number;
+    exact: boolean;
+  }>;
   getSentMessageIds(options: {
     maxResults: number;
     after?: Date;

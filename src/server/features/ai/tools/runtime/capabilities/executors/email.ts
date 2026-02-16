@@ -7,6 +7,8 @@ import {
 } from "@/server/features/ai/tools/runtime/capabilities/executors/utils";
 
 export const emailToolExecutors: RuntimeToolExecutorMap = {
+  "email.getUnreadCount": async ({ args, capabilities }) =>
+    capabilities.email.getUnreadCount(asObject(args)),
   "email.searchThreads": async ({ args, capabilities }) =>
     capabilities.email.searchThreads(asObject(args)),
   "email.searchThreadsAdvanced": async ({ args, capabilities }) =>

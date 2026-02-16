@@ -75,6 +75,22 @@ const eventIdSchema = z.object({
 function buildCapabilityDefinitions(): CapabilityDefinition[] {
   return [
     {
+      id: "email.getUnreadCount",
+      description: "Return unread inbox count using provider-level counters.",
+      inputSchema: z
+        .object({
+          scope: z.literal("inbox").optional(),
+        })
+        .strict(),
+      outputSchema: z.unknown(),
+      readOnly: true,
+      riskLevel: "safe",
+      approvalOperation: "query",
+      intentFamilies: ["inbox_read"],
+      tags: ["email", "count", "unread", "inbox"],
+      effects: [{ resource: "email", mutates: false }],
+    },
+    {
       id: "email.searchThreads",
       description: "Search inbox threads using query/filter constraints.",
       inputSchema: unknownObject,

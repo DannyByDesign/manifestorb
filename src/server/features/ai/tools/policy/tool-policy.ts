@@ -8,6 +8,7 @@ const TOOL_NAME_ALIASES: Record<string, string> = {
 
 const TOOL_GROUPS: Record<string, string[]> = {
   "group:inbox_read": [
+    "email.getUnreadCount",
     "email.searchThreads",
     "email.searchThreadsAdvanced",
     "email.searchSent",

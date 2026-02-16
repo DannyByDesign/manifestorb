@@ -111,6 +111,7 @@ function buildSemanticForTest(message: string): RuntimeSession["semantic"] {
 function buildSession(message: string): RuntimeSession {
   const toolLookup = new Map<string, RuntimeSession["toolRegistry"][number]>();
   for (const name of [
+    "email.getUnreadCount",
     "email.searchInbox",
     "calendar.listEvents",
     "policy.listRules",
@@ -255,6 +256,19 @@ describe("runtime fast path", () => {
         },
       });
       expect(match.requireCompleteResult).toBe(true);
+    }
+  });
+
+  it("routes unread inbox count requests to provider counter fast path", async () => {
+    const match = await matchRuntimeFastPath({
+      session: buildSession("how many unread emails do i have right now?"),
+      mode: "strict",
+    });
+
+    expect(match?.type).toBe("tool_call");
+    if (match?.type === "tool_call") {
+      expect(match.toolName).toBe("email.getUnreadCount");
+      expect(match.args).toEqual({ scope: "inbox" });
     }
   });
 

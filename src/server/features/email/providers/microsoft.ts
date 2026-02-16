@@ -294,6 +294,29 @@ export class OutlookProvider implements EmailProvider {
       .map((message: Message) => convertMessage(message, folderIds));
   }
 
+  async getUnreadCount(options?: { scope?: "inbox" }): Promise<{
+    count: number;
+    exact: boolean;
+  }> {
+    const scope = options?.scope ?? "inbox";
+    if (scope !== "inbox") {
+      throw new Error(`Unsupported unread count scope for Outlook: ${scope}`);
+    }
+
+    const folder: { unreadItemCount?: number | null } = await withOutlookRetry(
+      () =>
+        this.client
+          .getClient()
+          .api("/me/mailFolders/inbox")
+          .select("unreadItemCount")
+          .get(),
+      this.logger,
+    );
+
+    const count = Math.max(0, Math.trunc(folder.unreadItemCount ?? 0));
+    return { count, exact: true };
+  }
+
   async getSentMessageIds(options: {
     maxResults: number;
     after?: Date;
