@@ -10,6 +10,7 @@
  * - Reliable embedding queue (no fire-and-forget)
  * - PostHog analytics integration
  */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { tool } from "ai";
 import { z } from "zod";
 import prisma from "@/server/db/client";
@@ -17,6 +18,7 @@ import type { Logger } from "@/server/lib/logger";
 import { posthogCaptureEvent } from "@/server/lib/posthog";
 import { EmbeddingService } from "@/features/memory/embeddings/service";
 import { EmbeddingQueue } from "@/features/memory/embeddings/queue";
+import { orchestrateMemoryRetrieval } from "@/server/features/memory/retrieval/orchestrator";
 
 export interface MemoryToolOptions {
   userId: string;
@@ -236,19 +238,19 @@ export const recallFactsTool = ({ userId, email, logger }: MemoryToolOptions) =>
       trackToolCall({ tool: "recall_facts", email, logger });
 
       const trimmedQuery = query.trim().toLowerCase();
+      const limit = 10;
+      const minScore = 0.15;
 
       try {
-        const facts = await prisma.memoryFact.findMany({
-          where: {
-            userId,
-            OR: [
-              { key: { contains: trimmedQuery, mode: 'insensitive' } },
-              { value: { contains: trimmedQuery, mode: 'insensitive' } }
-            ]
-          },
-          orderBy: { updatedAt: 'desc' },
-          take: 10
+        const retrieval = await orchestrateMemoryRetrieval({
+          userId,
+          query: trimmedQuery,
+          limit,
+          surface: "legacy_tool",
         });
+        const facts = retrieval.semanticFacts
+          .filter((result) => result.score >= minScore)
+          .slice(0, limit);
 
         // Track in PostHog
         posthogCaptureEvent(email, "memory_facts_recalled", {
@@ -265,12 +267,16 @@ export const recallFactsTool = ({ userId, email, logger }: MemoryToolOptions) =>
         }
 
         return {
-          facts: facts.map(f => ({
-            key: f.key,
-            value: f.value,
-            confidence: f.confidence,
-            lastUpdated: f.updatedAt.toISOString()
+          facts: facts.map((result) => ({
+            key: result.key,
+            value: result.value,
+            confidence: result.confidence,
+            score: result.score,
+            matchType: result.matchType,
+            lastUpdated: result.updatedAt
           })),
+          citations: retrieval.citations,
+          summary: retrieval.summary,
           message: `Found ${facts.length} related memories`
         };
       } catch (error) {

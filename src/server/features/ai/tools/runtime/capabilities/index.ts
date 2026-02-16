@@ -4,6 +4,7 @@ import { createCalendarCapabilities } from "@/server/features/ai/tools/runtime/c
 import { createPlannerCapabilities } from "@/server/features/ai/tools/runtime/capabilities/planner";
 import { createPolicyCapabilities } from "@/server/features/ai/tools/runtime/capabilities/policy";
 import { createTaskCapabilities } from "@/server/features/ai/tools/runtime/capabilities/task";
+import { createMemoryCapabilities } from "@/server/features/ai/tools/runtime/capabilities/memory";
 import type { CapabilityRuntimeContext } from "@/server/features/ai/tools/runtime/capabilities/types";
 
 export async function createCapabilities(runtime: CapabilityRuntimeContext) {
@@ -16,6 +17,7 @@ export async function createCapabilities(runtime: CapabilityRuntimeContext) {
     task: createTaskCapabilities(env),
     planner: createPlannerCapabilities(),
     policy: createPolicyCapabilities(env),
+    memory: createMemoryCapabilities(env),
   };
 }
 

@@ -1,20 +1,232 @@
 /**
- * Semantic search utilities using pgvector
- * Provides hybrid search (semantic + keyword) for memories and knowledge
- * 
- * Part of the context and memory management system.
+ * Semantic search utilities using pgvector.
+ * Provides robust hybrid search (semantic + keyword) with graceful fallback.
  */
 import { Prisma } from "@/generated/prisma/client";
 import prisma from "@/server/db/client";
 import { EmbeddingService } from "./service";
 import { createScopedLogger } from "@/server/lib/logger";
 import type { MemoryFact, Knowledge, ConversationMessage } from "@/generated/prisma/client";
+import { logMemoryAccessAudit } from "@/server/features/memory/structured/service";
 
 const logger = createScopedLogger("SemanticSearch");
 
+type VectorTarget = "MemoryFact" | "Knowledge" | "ConversationMessage";
+
+type HybridScoredCandidate<T extends { id: string }> = {
+  item: T;
+  semanticScore?: number;
+  keywordScore?: number;
+};
+
+type ReadinessCacheEntry = {
+  checkedAt: number;
+  ready: boolean;
+  reason?: string;
+};
+
+const VECTOR_READINESS_TTL_MS = 5 * 60 * 1000;
+const readinessCache = new Map<VectorTarget, ReadinessCacheEntry>();
+
+const HYBRID_VECTOR_WEIGHT = resolveEnvNumber(
+  "MEMORY_HYBRID_VECTOR_WEIGHT",
+  0.72,
+  0,
+  1,
+);
+const HYBRID_TEXT_WEIGHT = resolveEnvNumber(
+  "MEMORY_HYBRID_TEXT_WEIGHT",
+  0.28,
+  0,
+  1,
+);
+const HYBRID_CANDIDATE_MULTIPLIER = Math.max(
+  1,
+  Math.round(resolveEnvNumber("MEMORY_HYBRID_CANDIDATE_MULTIPLIER", 3, 1, 8)),
+);
+const CONVERSATION_SIMILARITY_THRESHOLD = resolveEnvNumber(
+  "MEMORY_CONVERSATION_SIMILARITY_THRESHOLD",
+  0.3,
+  0,
+  1,
+);
+
+function resolveEnvNumber(name: string, fallback: number, min: number, max: number): number {
+  const raw = process.env[name];
+  if (typeof raw !== "string" || raw.trim().length === 0) return fallback;
+  const parsed = Number.parseFloat(raw);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(Math.max(parsed, min), max);
+}
+
 /** Format embedding number[] as a pgvector literal for raw SQL (e.g. [0.1, -0.2, ...]). */
 function toPgVectorLiteral(embedding: number[]): string {
-  return "[" + embedding.join(",") + "]";
+  return `[${embedding.join(",")}]`;
+}
+
+function splitKeywords(query: string): string[] {
+  return query
+    .toLowerCase()
+    .split(/\s+/)
+    .map((part) => part.trim())
+    .filter((part) => part.length >= 2);
+}
+
+function clampScore(score: number): number {
+  return Math.max(0, Math.min(1, score));
+}
+
+async function hasVectorExtension(): Promise<boolean> {
+  const rows = await prisma.$queryRaw<Array<{ exists: boolean }>>`
+    SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'vector') AS "exists"
+  `;
+  return Boolean(rows[0]?.exists);
+}
+
+async function embeddingColumnReachable(target: VectorTarget): Promise<void> {
+  await prisma.$queryRawUnsafe(`SELECT embedding FROM "${target}" WHERE embedding IS NOT NULL LIMIT 1`);
+}
+
+async function canUseSemanticFor(target: VectorTarget): Promise<boolean> {
+  if (!EmbeddingService.isAvailable()) return false;
+
+  const cached = readinessCache.get(target);
+  if (cached && Date.now() - cached.checkedAt < VECTOR_READINESS_TTL_MS) {
+    return cached.ready;
+  }
+
+  try {
+    const hasVector = await hasVectorExtension();
+    if (!hasVector) {
+      readinessCache.set(target, {
+        checkedAt: Date.now(),
+        ready: false,
+        reason: "vector_extension_missing",
+      });
+      logger.warn("Semantic search disabled: pgvector extension unavailable", { target });
+      return false;
+    }
+
+    await embeddingColumnReachable(target);
+    readinessCache.set(target, {
+      checkedAt: Date.now(),
+      ready: true,
+    });
+    return true;
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    readinessCache.set(target, {
+      checkedAt: Date.now(),
+      ready: false,
+      reason,
+    });
+    logger.warn("Semantic search disabled: vector infrastructure not ready", {
+      target,
+      reason,
+    });
+    return false;
+  }
+}
+
+function candidateLimit(limit: number): number {
+  return Math.min(Math.max(limit * HYBRID_CANDIDATE_MULTIPLIER, limit), 80);
+}
+
+function fuseHybridResults<T extends { id: string }>(params: {
+  semantic: Array<{ item: T; score: number }>;
+  keyword: Array<{ item: T; score: number }>;
+  limit: number;
+}): SearchResult<T>[] {
+  const map = new Map<string, HybridScoredCandidate<T>>();
+
+  for (const entry of params.semantic) {
+    map.set(entry.item.id, {
+      item: entry.item,
+      semanticScore: clampScore(entry.score),
+    });
+  }
+
+  for (const entry of params.keyword) {
+    const existing = map.get(entry.item.id);
+    if (existing) {
+      existing.keywordScore = clampScore(entry.score);
+    } else {
+      map.set(entry.item.id, {
+        item: entry.item,
+        keywordScore: clampScore(entry.score),
+      });
+    }
+  }
+
+  const out: SearchResult<T>[] = [];
+  for (const candidate of map.values()) {
+    const semanticScore = candidate.semanticScore;
+    const keywordScore = candidate.keywordScore;
+
+    if (typeof semanticScore === "number" && typeof keywordScore === "number") {
+      out.push({
+        item: candidate.item,
+        score: clampScore(semanticScore * HYBRID_VECTOR_WEIGHT + keywordScore * HYBRID_TEXT_WEIGHT),
+        matchType: "both",
+      });
+      continue;
+    }
+
+    if (typeof semanticScore === "number") {
+      out.push({
+        item: candidate.item,
+        score: clampScore(semanticScore * HYBRID_VECTOR_WEIGHT),
+        matchType: "semantic",
+      });
+      continue;
+    }
+
+    out.push({
+      item: candidate.item,
+      score: clampScore((keywordScore ?? 0.5) * HYBRID_TEXT_WEIGHT),
+      matchType: "keyword",
+    });
+  }
+
+  return out.sort((a, b) => b.score - a.score).slice(0, params.limit);
+}
+
+function memoryKeywordScore(params: {
+  fact: Pick<MemoryFact, "key" | "value">;
+  keywords: string[];
+  normalizedQuery: string;
+}): number {
+  const haystack = `${params.fact.key} ${params.fact.value}`.toLowerCase();
+  if (params.normalizedQuery.length > 0 && haystack.includes(params.normalizedQuery)) {
+    return 0.85;
+  }
+
+  if (params.keywords.length === 0) return 0.5;
+  const matches = params.keywords.reduce(
+    (count, keyword) => count + (haystack.includes(keyword) ? 1 : 0),
+    0,
+  );
+  if (matches === 0) return 0.35;
+  return 0.4 + (matches / params.keywords.length) * 0.5;
+}
+
+function knowledgeKeywordScore(params: {
+  item: Pick<Knowledge, "title" | "content">;
+  keywords: string[];
+  normalizedQuery: string;
+}): number {
+  const haystack = `${params.item.title} ${params.item.content}`.toLowerCase();
+  if (params.normalizedQuery.length > 0 && haystack.includes(params.normalizedQuery)) {
+    return 0.85;
+  }
+
+  if (params.keywords.length === 0) return 0.5;
+  const matches = params.keywords.reduce(
+    (count, keyword) => count + (haystack.includes(keyword) ? 1 : 0),
+    0,
+  );
+  if (matches === 0) return 0.35;
+  return 0.4 + (matches / params.keywords.length) * 0.5;
 }
 
 export interface SearchResult<T> {
@@ -24,166 +236,205 @@ export interface SearchResult<T> {
 }
 
 /**
- * Search MemoryFacts using hybrid (semantic + keyword) approach.
- * Requires embeddings to be available and the embedding column to exist; does not fall back on failure.
+ * Search MemoryFacts using a resilient hybrid retrieval path.
  */
 export async function searchMemoryFacts({
   userId,
   query,
-  limit = 10
+  limit = 10,
 }: {
   userId: string;
   query: string;
   limit?: number;
 }): Promise<SearchResult<MemoryFact>[]> {
-  if (EmbeddingService.isAvailable()) {
-    return await hybridSearchMemoryFacts({ userId, query, limit });
+  const trimmedQuery = query.trim();
+  if (!trimmedQuery) return [];
+
+  const semanticReady = await canUseSemanticFor("MemoryFact");
+  if (!semanticReady) {
+    const results = await keywordSearchMemoryFacts({ userId, query: trimmedQuery, limit });
+    logMemoryAccessAudit({
+      userId,
+      accessType: "memory_fact_search",
+      query: trimmedQuery,
+      resultCount: results.length,
+      metadata: { semanticReady: false, strategy: "keyword" },
+    }).catch(() => {});
+    return results;
   }
-  return await keywordSearchMemoryFacts({ userId, query, limit });
+
+  try {
+    const results = await hybridSearchMemoryFacts({ userId, query: trimmedQuery, limit });
+    logMemoryAccessAudit({
+      userId,
+      accessType: "memory_fact_search",
+      query: trimmedQuery,
+      resultCount: results.length,
+      metadata: { semanticReady: true, strategy: "hybrid" },
+    }).catch(() => {});
+    return results;
+  } catch (error) {
+    logger.warn("Hybrid memory fact search failed; falling back to keyword search", {
+      userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    const fallbackResults = await keywordSearchMemoryFacts({ userId, query: trimmedQuery, limit });
+    logMemoryAccessAudit({
+      userId,
+      accessType: "memory_fact_search",
+      query: trimmedQuery,
+      resultCount: fallbackResults.length,
+      metadata: { semanticReady: true, strategy: "keyword_fallback" },
+    }).catch(() => {});
+    return fallbackResults;
+  }
 }
 
-/**
- * Hybrid search combining semantic and keyword matching
- */
 async function hybridSearchMemoryFacts({
   userId,
   query,
-  limit
+  limit,
 }: {
   userId: string;
   query: string;
   limit: number;
 }): Promise<SearchResult<MemoryFact>[]> {
-  // Generate query embedding
   const queryEmbedding = await EmbeddingService.generateEmbedding(query);
   const vectorLiteral = toPgVectorLiteral(queryEmbedding);
+  const normalizedQuery = query.toLowerCase().trim();
+  const keywords = splitKeywords(query);
+  const take = candidateLimit(limit);
 
-  // Semantic search using pgvector
-  // Using cosine distance (<=>), lower is better
-  // Only search active facts
-  const semanticResults = await prisma.$queryRaw<(MemoryFact & { distance: number })[]>`
-    SELECT *, (embedding <=> ${Prisma.raw("'" + vectorLiteral + "'::vector")}) AS distance
-    FROM "MemoryFact"
-    WHERE "userId" = ${userId}
-      AND embedding IS NOT NULL
-      AND "isActive" = true
-    ORDER BY embedding <=> ${Prisma.raw("'" + vectorLiteral + "'::vector")}
-    LIMIT ${limit}
-  `;
+  const [semanticRows, keywordRows] = await Promise.all([
+    prisma.$queryRaw<Array<MemoryFact & { distance: number }>>`
+      SELECT *, (embedding <=> ${Prisma.raw(`'${vectorLiteral}'::vector`)}) AS distance
+      FROM "MemoryFact"
+      WHERE "userId" = ${userId}
+        AND embedding IS NOT NULL
+        AND "isActive" = true
+      ORDER BY embedding <=> ${Prisma.raw(`'${vectorLiteral}'::vector`)}
+      LIMIT ${take}
+    `,
+    prisma.memoryFact.findMany({
+      where: {
+        userId,
+        isActive: true,
+        OR:
+          keywords.length > 0
+            ? keywords.flatMap((keyword) => [
+                { key: { contains: keyword, mode: "insensitive" } },
+                { value: { contains: keyword, mode: "insensitive" } },
+              ])
+            : [
+                { key: { contains: query, mode: "insensitive" } },
+                { value: { contains: query, mode: "insensitive" } },
+              ],
+      },
+      take,
+    }),
+  ]);
 
-  // Keyword search (fallback/boost)
-  // Only search active facts
-  const keywords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-  const keywordResults = keywords.length > 0
-    ? await prisma.memoryFact.findMany({
-        where: {
-          userId,
-          isActive: true, // Note: Requires Prisma client regeneration after migration
-          OR: keywords.flatMap(k => [
-            { key: { contains: k, mode: 'insensitive' } },
-            { value: { contains: k, mode: 'insensitive' } }
-          ])
-        } as any,
-        take: limit
-      })
-    : [];
+  const semantic = semanticRows.map((row) => {
+    const { distance, ...item } = row;
+    return {
+      item: item as MemoryFact,
+      score: clampScore(1 - distance / 2),
+    };
+  });
 
-  // Merge results with scoring
-  const resultMap = new Map<string, SearchResult<MemoryFact>>();
+  const keyword = keywordRows.map((row) => ({
+    item: row,
+    score: memoryKeywordScore({
+      fact: row,
+      keywords,
+      normalizedQuery,
+    }),
+  }));
 
-  // Add semantic results (score = 1 - distance, so closer = higher)
-  for (const r of semanticResults) {
-    // Cosine distance ranges from 0 (identical) to 2 (opposite)
-    // We normalize to 0-1 where 1 is best
-    const score = Math.max(0, 1 - (r.distance / 2));
-    resultMap.set(r.id, {
-      item: r,
-      score,
-      matchType: "semantic"
-    });
-  }
+  return fuseHybridResults({ semantic, keyword, limit });
+}
 
-  // Boost keyword matches
-  for (const r of keywordResults) {
-    const existing = resultMap.get(r.id);
-    if (existing) {
-      existing.score += 0.3; // Boost for keyword match
-      existing.matchType = "both";
-    } else {
-      resultMap.set(r.id, {
-        item: r,
-        score: 0.5, // Base score for keyword-only match
-        matchType: "keyword"
-      });
-    }
-  }
+async function keywordSearchMemoryFacts({
+  userId,
+  query,
+  limit,
+}: {
+  userId: string;
+  query: string;
+  limit: number;
+}): Promise<SearchResult<MemoryFact>[]> {
+  const normalizedQuery = query.toLowerCase().trim();
+  const keywords = splitKeywords(query);
 
-  // Sort by score and return
-  return Array.from(resultMap.values())
+  const rows = await prisma.memoryFact.findMany({
+    where: {
+      userId,
+      isActive: true,
+      OR:
+        keywords.length > 0
+          ? keywords.flatMap((keyword) => [
+              { key: { contains: keyword, mode: "insensitive" } },
+              { value: { contains: keyword, mode: "insensitive" } },
+            ])
+          : [
+              { key: { contains: query, mode: "insensitive" } },
+              { value: { contains: query, mode: "insensitive" } },
+            ],
+    },
+    take: Math.max(1, limit),
+  });
+
+  return rows
+    .map((row) => ({
+      item: row,
+      score: clampScore(
+        memoryKeywordScore({
+          fact: row,
+          keywords,
+          normalizedQuery,
+        }) * HYBRID_TEXT_WEIGHT,
+      ),
+      matchType: "keyword" as const,
+    }))
     .sort((a, b) => b.score - a.score)
     .slice(0, limit);
 }
 
 /**
- * Keyword-only search (fallback when embeddings unavailable)
- */
-async function keywordSearchMemoryFacts({
-  userId,
-  query,
-  limit
-}: {
-  userId: string;
-  query: string;
-  limit: number;
-}): Promise<SearchResult<MemoryFact>[]> {
-  const keywords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-  if (keywords.length === 0) return [];
-
-  const results = await prisma.memoryFact.findMany({
-    where: {
-      userId,
-      isActive: true, // Note: Requires Prisma client regeneration after migration
-      OR: keywords.flatMap(k => [
-        { key: { contains: k, mode: 'insensitive' } },
-        { value: { contains: k, mode: 'insensitive' } }
-      ])
-    } as any,
-    take: limit
-  });
-
-  return results.map(r => ({
-    item: r,
-    score: 0.5,
-    matchType: "keyword" as const
-  }));
-}
-
-/**
- * Search Knowledge using hybrid approach (scoped by user).
- * Requires embeddings to be available; does not fall back on failure.
+ * Search Knowledge using a resilient hybrid retrieval path.
  */
 export async function searchKnowledge({
   userId,
   query,
-  limit = 5
+  limit = 5,
 }: {
   userId: string;
   query: string;
   limit?: number;
 }): Promise<SearchResult<Knowledge>[]> {
-  if (EmbeddingService.isAvailable()) {
-    return await hybridSearchKnowledge({ userId, query, limit });
+  const trimmedQuery = query.trim();
+  if (!trimmedQuery) return [];
+
+  const semanticReady = await canUseSemanticFor("Knowledge");
+  if (!semanticReady) {
+    return keywordSearchKnowledge({ userId, query: trimmedQuery, limit });
   }
-  return await keywordSearchKnowledge({ userId, query, limit });
+
+  try {
+    return await hybridSearchKnowledge({ userId, query: trimmedQuery, limit });
+  } catch (error) {
+    logger.warn("Hybrid knowledge search failed; falling back to keyword search", {
+      userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return keywordSearchKnowledge({ userId, query: trimmedQuery, limit });
+  }
 }
 
-/**
- * Hybrid search for Knowledge (scoped by user)
- */
 async function hybridSearchKnowledge({
   userId,
   query,
-  limit
+  limit,
 }: {
   userId: string;
   query: string;
@@ -191,92 +442,109 @@ async function hybridSearchKnowledge({
 }): Promise<SearchResult<Knowledge>[]> {
   const queryEmbedding = await EmbeddingService.generateEmbedding(query);
   const vectorLiteral = toPgVectorLiteral(queryEmbedding);
+  const normalizedQuery = query.toLowerCase().trim();
+  const keywords = splitKeywords(query);
+  const take = candidateLimit(limit);
 
-  const semanticResults = await prisma.$queryRaw<(Knowledge & { distance: number })[]>`
-    SELECT *, (embedding <=> ${Prisma.raw("'" + vectorLiteral + "'::vector")}) AS distance
-    FROM "Knowledge"
-    WHERE "userId" = ${userId}
-      AND embedding IS NOT NULL
-    ORDER BY embedding <=> ${Prisma.raw("'" + vectorLiteral + "'::vector")}
-    LIMIT ${limit}
-  `;
+  const [semanticRows, keywordRows] = await Promise.all([
+    prisma.$queryRaw<Array<Knowledge & { distance: number }>>`
+      SELECT *, (embedding <=> ${Prisma.raw(`'${vectorLiteral}'::vector`)}) AS distance
+      FROM "Knowledge"
+      WHERE "userId" = ${userId}
+        AND embedding IS NOT NULL
+      ORDER BY embedding <=> ${Prisma.raw(`'${vectorLiteral}'::vector`)}
+      LIMIT ${take}
+    `,
+    prisma.knowledge.findMany({
+      where: {
+        userId,
+        OR:
+          keywords.length > 0
+            ? keywords.flatMap((keyword) => [
+                { title: { contains: keyword, mode: "insensitive" } },
+                { content: { contains: keyword, mode: "insensitive" } },
+              ])
+            : [
+                { title: { contains: query, mode: "insensitive" } },
+                { content: { contains: query, mode: "insensitive" } },
+              ],
+      },
+      take,
+    }),
+  ]);
 
-  const keywords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-  const keywordResults = keywords.length > 0
-    ? await prisma.knowledge.findMany({
-        where: {
-          userId,
-          OR: keywords.flatMap(k => [
-            { title: { contains: k, mode: 'insensitive' } },
-            { content: { contains: k, mode: 'insensitive' } }
-          ])
-        },
-        take: limit
-      })
-    : [];
+  const semantic = semanticRows.map((row) => {
+    const { distance, ...item } = row;
+    return {
+      item: item as Knowledge,
+      score: clampScore(1 - distance / 2),
+    };
+  });
 
-  const resultMap = new Map<string, SearchResult<Knowledge>>();
+  const keyword = keywordRows.map((row) => ({
+    item: row,
+    score: knowledgeKeywordScore({
+      item: row,
+      keywords,
+      normalizedQuery,
+    }),
+  }));
 
-  for (const r of semanticResults) {
-    const score = Math.max(0, 1 - (r.distance / 2));
-    resultMap.set(r.id, { item: r, score, matchType: "semantic" });
-  }
-
-  for (const r of keywordResults) {
-    const existing = resultMap.get(r.id);
-    if (existing) {
-      existing.score += 0.3;
-      existing.matchType = "both";
-    } else {
-      resultMap.set(r.id, { item: r, score: 0.5, matchType: "keyword" });
-    }
-  }
-
-  return Array.from(resultMap.values())
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit);
+  return fuseHybridResults({ semantic, keyword, limit });
 }
 
-/**
- * Keyword-only search for Knowledge
- */
 async function keywordSearchKnowledge({
   userId,
   query,
-  limit
+  limit,
 }: {
   userId: string;
   query: string;
   limit: number;
 }): Promise<SearchResult<Knowledge>[]> {
-  const keywords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-  if (keywords.length === 0) return [];
+  const normalizedQuery = query.toLowerCase().trim();
+  const keywords = splitKeywords(query);
 
-  const results = await prisma.knowledge.findMany({
+  const rows = await prisma.knowledge.findMany({
     where: {
       userId,
-      OR: keywords.flatMap(k => [
-        { title: { contains: k, mode: 'insensitive' } },
-        { content: { contains: k, mode: 'insensitive' } }
-      ])
+      OR:
+        keywords.length > 0
+          ? keywords.flatMap((keyword) => [
+              { title: { contains: keyword, mode: "insensitive" } },
+              { content: { contains: keyword, mode: "insensitive" } },
+            ])
+          : [
+              { title: { contains: query, mode: "insensitive" } },
+              { content: { contains: query, mode: "insensitive" } },
+            ],
     },
-    take: limit
+    take: Math.max(1, limit),
   });
 
-  return results.map(r => ({
-    item: r,
-    score: 0.5,
-    matchType: "keyword" as const
-  }));
+  return rows
+    .map((row) => ({
+      item: row,
+      score: clampScore(
+        knowledgeKeywordScore({
+          item: row,
+          keywords,
+          normalizedQuery,
+        }) * HYBRID_TEXT_WEIGHT,
+      ),
+      matchType: "keyword" as const,
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
 }
 
 // ============================================================================
-// Conversation history relevance search (Issue 24)
+// Conversation history relevance search
 // ============================================================================
 
 /**
  * Search conversation history by semantic relevance to the current message.
- * Requires ConversationMessage.embedding to exist. Throws on failure (e.g. missing column).
+ * Fails soft when vector infra is unavailable.
  */
 export async function searchConversationHistory({
   userId,
@@ -287,35 +555,54 @@ export async function searchConversationHistory({
   query: string;
   limit: number;
 }): Promise<SearchResult<ConversationMessage>[]> {
-  if (!EmbeddingService.isAvailable() || !query.trim()) return [];
-  const queryEmbedding = await EmbeddingService.generateEmbedding(query);
-  const vectorLiteral = toPgVectorLiteral(queryEmbedding);
+  const trimmedQuery = query.trim();
+  if (!trimmedQuery) return [];
 
-  const rows = await prisma.$queryRaw<
-    Array<
-      ConversationMessage & { similarity: number }
-    >
-  >`
-    SELECT cm.id, cm."createdAt", cm."userId", cm."conversationId", cm."dedupeKey",
-           cm.role, cm.content, cm."toolCalls", cm.provider, cm."providerMessageId",
-           cm."channelId", cm."threadId", cm."emailAccountId",
-           1 - (cm.embedding <=> ${Prisma.raw("'" + vectorLiteral + "'::vector")}) as similarity
-    FROM "ConversationMessage" cm
-    WHERE cm."userId" = ${userId}
-      AND cm.embedding IS NOT NULL
-      AND (1 - (cm.embedding <=> ${Prisma.raw("'" + vectorLiteral + "'::vector")})) > 0.3
-    ORDER BY cm.embedding <=> ${Prisma.raw("'" + vectorLiteral + "'::vector")}
-    LIMIT ${limit}
-  `;
+  const semanticReady = await canUseSemanticFor("ConversationMessage");
+  if (!semanticReady) return [];
 
-  return rows.map((r) => {
-    const { similarity, ...msg } = r;
-    return {
-      item: msg as ConversationMessage,
-      score: similarity,
-      matchType: "semantic" as const,
-    };
-  });
+  try {
+    const queryEmbedding = await EmbeddingService.generateEmbedding(trimmedQuery);
+    const vectorLiteral = toPgVectorLiteral(queryEmbedding);
+
+    const rows = await prisma.$queryRaw<
+      Array<ConversationMessage & { similarity: number }>
+    >`
+      SELECT cm.id, cm."createdAt", cm."userId", cm."conversationId", cm."dedupeKey",
+             cm.role, cm.content, cm."toolCalls", cm.provider, cm."providerMessageId",
+             cm."channelId", cm."threadId", cm."emailAccountId",
+             1 - (cm.embedding <=> ${Prisma.raw(`'${vectorLiteral}'::vector`)}) AS similarity
+      FROM "ConversationMessage" cm
+      WHERE cm."userId" = ${userId}
+        AND cm.embedding IS NOT NULL
+        AND (1 - (cm.embedding <=> ${Prisma.raw(`'${vectorLiteral}'::vector`)})) > ${CONVERSATION_SIMILARITY_THRESHOLD}
+      ORDER BY cm.embedding <=> ${Prisma.raw(`'${vectorLiteral}'::vector`)}
+      LIMIT ${Math.max(1, limit)}
+    `;
+
+    const results = rows.map((row) => {
+      const { similarity, ...item } = row;
+      return {
+        item: item as ConversationMessage,
+        score: clampScore(similarity),
+        matchType: "semantic" as const,
+      };
+    });
+    logMemoryAccessAudit({
+      userId,
+      accessType: "conversation_semantic_search",
+      query: trimmedQuery,
+      resultCount: results.length,
+      metadata: { threshold: CONVERSATION_SIMILARITY_THRESHOLD },
+    }).catch(() => {});
+    return results;
+  } catch (error) {
+    logger.warn("Conversation semantic search failed", {
+      userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return [];
+  }
 }
 
 // ============================================================================
@@ -323,50 +610,41 @@ export async function searchConversationHistory({
 // ============================================================================
 
 /**
- * Find semantically similar existing memory facts
- * Used to prevent storing duplicate facts with different wording
- * 
- * @param userId - User to check duplicates for
- * @param newFactText - Text of the new fact (key: value format)
- * @param threshold - Minimum similarity score to consider duplicate (0-1, default: 0.92)
- * @returns Array of potentially duplicate facts with their similarity scores
+ * Find semantically similar existing memory facts.
  */
 export async function findSemanticDuplicates({
   userId,
   newFactText,
-  threshold = 0.92
+  threshold = 0.92,
 }: {
   userId: string;
   newFactText: string;
   threshold?: number;
 }): Promise<Array<{ fact: MemoryFact; similarity: number }>> {
-  // If embeddings unavailable, can't check semantic duplicates
   if (!EmbeddingService.isAvailable()) {
     logger.trace("Embedding service unavailable, skipping semantic dedupe");
     return [];
   }
 
   try {
-    // Search for similar facts
     const results = await searchMemoryFacts({
       userId,
       query: newFactText,
-      limit: 5
+      limit: 5,
     });
 
-    // Filter to high-similarity matches
     const duplicates = results
-      .filter(r => r.score >= threshold)
-      .map(r => ({
-        fact: r.item,
-        similarity: r.score
+      .filter((result) => result.score >= threshold)
+      .map((result) => ({
+        fact: result.item,
+        similarity: result.score,
       }));
 
     if (duplicates.length > 0) {
       logger.trace("Found potential duplicates", {
         newFactText: newFactText.slice(0, 50),
         duplicateCount: duplicates.length,
-        topSimilarity: duplicates[0]?.similarity
+        topSimilarity: duplicates[0]?.similarity,
       });
     }
 
@@ -378,17 +656,12 @@ export async function findSemanticDuplicates({
 }
 
 /**
- * Check if a new fact would be a duplicate of an existing one
- * 
- * @param userId - User to check for
- * @param key - The key of the new fact
- * @param value - The value of the new fact
- * @returns The existing duplicate fact if found, null otherwise
+ * Check if a new fact would be a duplicate of an existing one.
  */
 export async function checkForDuplicate({
   userId,
   key,
-  value
+  value,
 }: {
   userId: string;
   key: string;
@@ -398,11 +671,10 @@ export async function checkForDuplicate({
   const duplicates = await findSemanticDuplicates({
     userId,
     newFactText: text,
-    threshold: 0.92
+    threshold: 0.92,
   });
 
   if (duplicates.length > 0) {
-    // Return the most similar duplicate
     return duplicates[0].fact;
   }
 

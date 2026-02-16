@@ -6,6 +6,7 @@ import type { RuntimeSession } from "@/server/features/ai/runtime/types";
 import type { RuntimeToolResult } from "@/server/features/ai/tools/contracts/tool-result";
 import { resolveDefaultCalendarTimeZone } from "@/server/features/ai/tools/calendar-time";
 import { env } from "@/env";
+import { renderRuntimeContextForPrompt } from "@/server/features/ai/runtime/context/render";
 
 const runtimeResponseSchema = z
   .object({
@@ -80,6 +81,12 @@ export async function generateRuntimeUserReply(params: {
     emailSendEnabled: env.NEXT_PUBLIC_EMAIL_SEND_ENABLED,
     userConfig: session.userPromptConfig,
   });
+  const contextSection = renderRuntimeContextForPrompt(session.input.runtimeContextPack, {
+    maxChars: 1_600,
+    maxFacts: 5,
+    maxKnowledge: 3,
+    maxHistory: 3,
+  });
 
   const result = await generate({
     model: modelOptions.model,
@@ -107,6 +114,12 @@ export async function generateRuntimeUserReply(params: {
       `Mode: ${mode}`,
       `User timezone: ${userTimeZone}`,
       `User request: ${request}`,
+      session.input.runtimeContextStatus
+        ? `Runtime context status: ${session.input.runtimeContextStatus}`
+        : "Runtime context status: unknown",
+      contextSection.promptBlock
+        ? `Runtime memory context snapshot:\\n${contextSection.promptBlock}`
+        : "Runtime memory context snapshot: unavailable",
       `Approvals count: ${approvalsCount}`,
       "Executed tool evidence JSON:",
       formatEvidence(results),

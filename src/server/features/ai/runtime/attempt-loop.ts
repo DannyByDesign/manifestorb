@@ -15,6 +15,17 @@ import { emitRuntimeTelemetry } from "@/server/features/ai/runtime/telemetry/sch
 import { runRuntimeSessionRunner } from "@/server/features/ai/runtime/harness/session-runner";
 import { emitToolLifecycleEvents } from "@/server/features/ai/runtime/harness/tool-events";
 import type { RuntimeToolResult } from "@/server/features/ai/tools/contracts/tool-result";
+import { renderRuntimeContextForPrompt } from "@/server/features/ai/runtime/context/render";
+import {
+  pruneRuntimeMessages,
+  resolveRuntimeMessagePruningConfig,
+  estimateRuntimeMessagesChars,
+} from "@/server/features/ai/runtime/context/pruning";
+import {
+  maybeRunPreCompactionMemoryFlush,
+  resolveMemoryFlushThresholdRatio,
+} from "@/server/features/ai/runtime/context/memory-flush";
+import { resolveRuntimeContextSlotBudget } from "@/server/features/ai/runtime/context/slot-budget";
 
 const RUNTIME_TURN_BUDGET_MS = 180_000;
 const MAX_SKILL_PROMPT_CHARS = 2_200;
@@ -134,6 +145,15 @@ function buildNativeRuntimeSystemPrompt(params: {
   const skillSection = session.skillSnapshot.promptSection
     ? session.skillSnapshot.promptSection.slice(0, MAX_SKILL_PROMPT_CHARS)
     : "";
+  const slotBudget = resolveRuntimeContextSlotBudget(lane as Parameters<typeof resolveRuntimeContextSlotBudget>[0]);
+  const contextSection = renderRuntimeContextForPrompt(session.input.runtimeContextPack, {
+    maxChars: slotBudget.maxChars,
+    maxFacts: slotBudget.maxFacts,
+    maxKnowledge: slotBudget.maxKnowledge,
+    maxHistory: slotBudget.maxHistory,
+  });
+  const contextStatus = session.input.runtimeContextStatus;
+  const contextIssues = session.input.runtimeContextIssues?.slice(0, 5) ?? [];
 
   return [
     basePrompt,
@@ -149,6 +169,15 @@ function buildNativeRuntimeSystemPrompt(params: {
     "- Do not claim missing capability for task/calendar rescheduling when runtime tools are available; ask a clarifying question if identifiers are missing.",
     "- If a tool indicates missing fields, ask one precise follow-up question.",
     "- Keep output concise and natural in assistant voice; avoid rigid templated phrasing.",
+    ...(contextStatus && contextStatus !== "ready"
+      ? [`- Runtime memory context status: ${contextStatus}${contextIssues.length > 0 ? ` (${contextIssues.join(", ")})` : ""}.`]
+      : []),
+    ...(contextSection.promptBlock
+      ? [
+          "Runtime memory context (read-only):",
+          contextSection.promptBlock,
+        ]
+      : []),
     ...(skillSection
       ? [
           "Active skill guidance:",
@@ -166,6 +195,18 @@ function latestClarificationPrompt(results: RuntimeToolResult[]): string | null 
     }
   }
   return null;
+}
+
+function isOverflowLikeError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return (
+    message.includes("context length") ||
+    message.includes("maximum context length") ||
+    message.includes("too many tokens") ||
+    message.includes("input is too long") ||
+    message.includes("token limit") ||
+    message.includes("context_window_exceeded")
+  );
 }
 
 function resolveNativeMaxSteps(params: {
@@ -485,7 +526,48 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
     modelOptions,
   });
 
-  const messages = buildRuntimeMessages(session);
+  const slotBudget = resolveRuntimeContextSlotBudget(
+    routingPlan.lane as Parameters<typeof resolveRuntimeContextSlotBudget>[0],
+  );
+  emitRuntimeTelemetry(session.input.logger, "openworld.runtime.context_slots", {
+    userId: session.input.userId,
+    provider: session.input.provider,
+    lane: routingPlan.lane as Parameters<typeof resolveRuntimeContextSlotBudget>[0],
+    maxChars: slotBudget.maxChars,
+    maxFacts: slotBudget.maxFacts,
+    maxKnowledge: slotBudget.maxKnowledge,
+    maxHistory: slotBudget.maxHistory,
+  });
+
+  const baseMessages = buildRuntimeMessages(session);
+  const pruningConfig = resolveRuntimeMessagePruningConfig();
+  const softPrune = pruneRuntimeMessages({
+    messages: baseMessages,
+    mode: "soft",
+    config: pruningConfig,
+  });
+  if (softPrune.pruned) {
+    emitRuntimeTelemetry(session.input.logger, "openworld.runtime.context_pruned", {
+      userId: session.input.userId,
+      provider: session.input.provider,
+      lane: routingPlan.lane as Parameters<typeof resolveRuntimeContextSlotBudget>[0],
+      mode: "soft",
+      beforeChars: softPrune.beforeChars,
+      afterChars: softPrune.afterChars,
+      removedCount: softPrune.removedCount,
+      truncatedCount: softPrune.truncatedCount,
+    });
+  }
+  let messagesForGeneration = softPrune.messages;
+
+  const flushThresholdRatio = resolveMemoryFlushThresholdRatio();
+  if (softPrune.afterChars > pruningConfig.hardLimitChars * flushThresholdRatio) {
+    await maybeRunPreCompactionMemoryFlush({
+      session,
+      reason: "threshold",
+    });
+  }
+
   const resolvedTimeZone = await resolveDefaultCalendarTimeZone({
     userId: session.input.userId,
     emailAccountId: session.input.emailAccountId,
@@ -513,9 +595,8 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
     budgetBeforeGenerate,
   );
 
-  let generation;
-  try {
-    generation = await withRuntimeTimeout({
+  const runNativeGeneration = (runtimeMessages: ModelMessage[]) =>
+    withRuntimeTimeout({
       operation: "native_generate",
       timeoutMs: nativeTimeoutMs,
       run: () =>
@@ -527,12 +608,16 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
             userTimeZone,
             lane: routingPlan.lane,
           }),
-          messages,
+          messages: runtimeMessages,
           maxSteps: nativeMaxSteps,
           builtInTools: session.toolHarness.builtInTools,
           customTools: session.toolHarness.customTools,
         }),
     });
+
+  let generation;
+  try {
+    generation = await runNativeGeneration(messagesForGeneration);
   } catch (error) {
     session.input.logger.error("Runtime native generation failed", {
       error,
@@ -541,31 +626,96 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
       nativeTimeoutMs,
     });
 
-    const recoveryFastPath = await matchRuntimeFastPath({
-      session,
-      mode: "recovery",
-    });
-    if (recoveryFastPath) {
-      const recovered = await executeFastPathMatch(recoveryFastPath, 1, "recovery");
-      if (recovered) return recovered;
-    } else {
-      emitFastPathTelemetry({
-        mode: "recovery",
-        reason: "no_fast_path_match",
-        decision: "skipped",
-        outcome: "not_admitted",
-        fallbackCause: "not_matched",
+    if (isOverflowLikeError(error)) {
+      const flushQueued = await maybeRunPreCompactionMemoryFlush({
+        session,
+        reason: "overflow",
       });
+      const hardPrune = pruneRuntimeMessages({
+        messages: messagesForGeneration,
+        mode: "hard",
+        config: pruningConfig,
+      });
+
+      emitRuntimeTelemetry(session.input.logger, "openworld.runtime.compaction_retry", {
+        userId: session.input.userId,
+        provider: session.input.provider,
+        lane: routingPlan.lane as Parameters<typeof resolveRuntimeContextSlotBudget>[0],
+        overflowDetected: true,
+        retryAttempted: true,
+        retrySucceeded: false,
+        beforeChars: estimateRuntimeMessagesChars(messagesForGeneration),
+        afterChars: hardPrune.afterChars,
+        memoryFlushQueued: flushQueued,
+      });
+
+      if (hardPrune.pruned) {
+        emitRuntimeTelemetry(session.input.logger, "openworld.runtime.context_pruned", {
+          userId: session.input.userId,
+          provider: session.input.provider,
+          lane: routingPlan.lane as Parameters<typeof resolveRuntimeContextSlotBudget>[0],
+          mode: "hard",
+          beforeChars: hardPrune.beforeChars,
+          afterChars: hardPrune.afterChars,
+          removedCount: hardPrune.removedCount,
+          truncatedCount: hardPrune.truncatedCount,
+        });
+      }
+
+      if (
+        hardPrune.afterChars < estimateRuntimeMessagesChars(messagesForGeneration) &&
+        hardPrune.messages.length > 0
+      ) {
+        try {
+          messagesForGeneration = hardPrune.messages;
+          generation = await runNativeGeneration(messagesForGeneration);
+          emitRuntimeTelemetry(session.input.logger, "openworld.runtime.compaction_retry", {
+            userId: session.input.userId,
+            provider: session.input.provider,
+            lane: routingPlan.lane as Parameters<typeof resolveRuntimeContextSlotBudget>[0],
+            overflowDetected: true,
+            retryAttempted: true,
+            retrySucceeded: true,
+            beforeChars: hardPrune.beforeChars,
+            afterChars: hardPrune.afterChars,
+            memoryFlushQueued: flushQueued,
+          });
+        } catch (retryError) {
+          session.input.logger.error("Runtime compaction retry failed", {
+            error: retryError,
+            lane: routingPlan.lane,
+          });
+        }
+      }
     }
 
-    return {
-      text: await composeAssistantReply({
-        mode: "error",
-        fallbackText: "I hit a temporary issue while handling that. Please try again.",
-      }),
-      stopReason: "runtime_error",
-      attempts: 1,
-    };
+    if (!generation) {
+      const recoveryFastPath = await matchRuntimeFastPath({
+        session,
+        mode: "recovery",
+      });
+      if (recoveryFastPath) {
+        const recovered = await executeFastPathMatch(recoveryFastPath, 1, "recovery");
+        if (recovered) return recovered;
+      } else {
+        emitFastPathTelemetry({
+          mode: "recovery",
+          reason: "no_fast_path_match",
+          decision: "skipped",
+          outcome: "not_admitted",
+          fallbackCause: "not_matched",
+        });
+      }
+
+      return {
+        text: await composeAssistantReply({
+          mode: "error",
+          fallbackText: "I hit a temporary issue while handling that. Please try again.",
+        }),
+        stopReason: "runtime_error",
+        attempts: 1,
+      };
+    }
   }
 
   emitToolLifecycleEvents({

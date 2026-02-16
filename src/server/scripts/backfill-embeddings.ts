@@ -1,5 +1,5 @@
 /**
- * Backfill embeddings for existing MemoryFact and Knowledge records
+ * Backfill embeddings for existing MemoryFact, Knowledge, and ConversationMessage records.
  * 
  * Run with: bunx tsx src/server/scripts/backfill-embeddings.ts
  * 
@@ -88,6 +88,49 @@ async function backfillKnowledge() {
   return { success, failed };
 }
 
+async function backfillConversationMessages() {
+  console.log("💬 Backfilling ConversationMessage embeddings...\n");
+
+  const rows = await prisma.$queryRaw<{
+    id: string;
+    role: string;
+    content: string;
+  }[]>`
+    SELECT id, role, content
+    FROM "ConversationMessage"
+    WHERE embedding IS NULL
+      AND content IS NOT NULL
+      AND length(trim(content)) > 0
+  `;
+
+  console.log(`Found ${rows.length} conversation messages without embeddings\n`);
+
+  let success = 0;
+  let failed = 0;
+
+  for (const row of rows) {
+    try {
+      const text = `${row.role}: ${row.content}`;
+      const embedding = await EmbeddingService.generateEmbedding(text);
+      await prisma.$executeRaw`
+        UPDATE "ConversationMessage"
+        SET embedding = ${embedding}::vector
+        WHERE id = ${row.id}
+      `;
+      console.log(`✓ ConversationMessage ${row.id}: ${row.role}`);
+      success++;
+    } catch (e) {
+      console.error(`✗ ConversationMessage ${row.id}: ${e instanceof Error ? e.message : String(e)}`);
+      failed++;
+    }
+
+    await new Promise(r => setTimeout(r, RATE_LIMIT_DELAY_MS));
+  }
+
+  console.log(`\nConversationMessage backfill complete: ${success} success, ${failed} failed\n`);
+  return { success, failed };
+}
+
 async function main() {
   console.log("=".repeat(60));
   console.log("  Embedding Backfill Script");
@@ -104,15 +147,17 @@ async function main() {
 
   const memoryResult = await backfillMemoryFacts();
   const knowledgeResult = await backfillKnowledge();
+  const conversationResult = await backfillConversationMessages();
 
   console.log("=".repeat(60));
   console.log("  Summary");
   console.log("=".repeat(60));
   console.log(`MemoryFact: ${memoryResult.success} success, ${memoryResult.failed} failed`);
   console.log(`Knowledge:  ${knowledgeResult.success} success, ${knowledgeResult.failed} failed`);
+  console.log(`ConversationMessage: ${conversationResult.success} success, ${conversationResult.failed} failed`);
   console.log("=".repeat(60) + "\n");
 
-  if (memoryResult.failed > 0 || knowledgeResult.failed > 0) {
+  if (memoryResult.failed > 0 || knowledgeResult.failed > 0 || conversationResult.failed > 0) {
     console.log("⚠️  Some embeddings failed to generate. Re-run the script to retry.");
   } else {
     console.log("✅ All embeddings generated successfully!");

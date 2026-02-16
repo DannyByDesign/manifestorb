@@ -17,6 +17,10 @@ const DEFAULT_SUBAGENT_TOOL_DENY = [
   "cron",
   "memory_search",
   "memory_get",
+  "memory.remember",
+  "memory.recall",
+  "memory.forget",
+  "memory.list",
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {

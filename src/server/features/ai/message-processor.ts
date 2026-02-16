@@ -17,6 +17,7 @@ import { ApprovalService } from "@/features/approvals/service";
 import { executeApprovalRequest } from "@/features/approvals/execute";
 import { resolveScheduleProposalRequestById } from "@/features/calendar/schedule-proposal";
 import { resolveAmbiguousTimeRequestById } from "@/features/calendar/ambiguous-time";
+import { enqueueConversationMessageEmbedding } from "@/features/memory/embeddings/conversation-ingestion";
 
 export interface ProcessorContext {
   conversationId?: string;
@@ -743,6 +744,7 @@ async function persistAssistantMessage(
   text: string,
   provider: string,
   logger: Logger,
+  email?: string,
   channelId?: string,
   threadId?: string,
   anchorSeed?: string,
@@ -757,7 +759,7 @@ async function persistAssistantMessage(
     .digest("hex");
 
   try {
-    await prisma.conversationMessage.upsert({
+    const persisted = await prisma.conversationMessage.upsert({
       where: { dedupeKey },
       update: {},
       create: {
@@ -772,6 +774,15 @@ async function persistAssistantMessage(
         threadId: threadId ?? null,
         providerMessageId: null,
       },
+    });
+    enqueueConversationMessageEmbedding({
+      recordId: persisted.id,
+      content: text,
+      role: "assistant",
+      email,
+      logger,
+    }).catch((error) => {
+      logger.warn("Failed to enqueue assistant conversation embedding", { error });
     });
   } catch (e) {
     logger.error("Failed to persist assistant response", { error: e });
@@ -850,6 +861,7 @@ export async function processMessage(
       pendingDecisionResult.text,
       context.provider,
       logger,
+      emailAccount.email,
       context.channelId,
       context.threadId,
       context.messageId ?? context.threadId ?? messageContent,
@@ -888,6 +900,7 @@ export async function processMessage(
     text,
     context.provider,
     logger,
+    emailAccount.email,
     context.channelId,
     context.threadId,
     context.messageId ?? context.threadId ?? messageContent,
