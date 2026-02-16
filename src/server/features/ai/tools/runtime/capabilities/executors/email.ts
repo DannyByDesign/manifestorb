@@ -89,6 +89,8 @@ export const emailToolExecutors: RuntimeToolExecutorMap = {
   "email.createDraft": async ({ args, capabilities }) =>
     capabilities.email.createDraft({
       to: asStringArray(args.to),
+      cc: asStringArray(args.cc),
+      bcc: asStringArray(args.bcc),
       subject: asString(args.subject),
       body: asString(args.body) ?? "",
       type:

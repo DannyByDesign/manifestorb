@@ -25,22 +25,6 @@ vi.mock("@/server/db/client", () => ({
   },
 }));
 
-vi.mock("@/features/referrals/referral-code", () => ({
-  getOrCreateReferralCode: vi.fn().mockResolvedValue({ code: "TEST123" }),
-}));
-
-vi.mock("@/features/referrals/referral-link", () => ({
-  generateReferralLink: vi
-    .fn()
-    .mockReturnValue("https://getamodel.com/?ref=TEST123"),
-}));
-
-vi.mock("@/env", () => ({
-  env: {
-    NEXT_PUBLIC_DISABLE_REFERRAL_SIGNATURE: true,
-  },
-}));
-
 import prisma from "@/server/db/client";
 
 const mockLogger = {

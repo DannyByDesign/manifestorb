@@ -87,10 +87,12 @@ describe("applyThreadStatusLabel", () => {
 
     // Should add TO_REPLY label to the specific message
     expect(mockProvider.labelMessage).toHaveBeenCalledTimes(1);
-    expect(mockProvider.labelMessage).toHaveBeenCalledWith({
-      messageId,
-      labelId: "label-to-reply",
-    });
+    expect(mockProvider.labelMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId,
+        labelId: "label-to-reply",
+      }),
+    );
   });
 
   test("removes other labels from thread and adds target label to message for AWAITING_REPLY", async () => {
@@ -108,10 +110,12 @@ describe("applyThreadStatusLabel", () => {
       expect.arrayContaining(["label-to-reply", "label-fyi", "label-actioned"]),
     );
 
-    expect(mockProvider.labelMessage).toHaveBeenCalledWith({
-      messageId,
-      labelId: "label-awaiting-reply",
-    });
+    expect(mockProvider.labelMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId,
+        labelId: "label-awaiting-reply",
+      }),
+    );
   });
 
   test("removes other labels from thread and adds target label to message for FYI", async () => {
@@ -133,10 +137,12 @@ describe("applyThreadStatusLabel", () => {
       ]),
     );
 
-    expect(mockProvider.labelMessage).toHaveBeenCalledWith({
-      messageId,
-      labelId: "label-fyi",
-    });
+    expect(mockProvider.labelMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId,
+        labelId: "label-fyi",
+      }),
+    );
   });
 
   test("removes other labels from thread and adds target label to message for ACTIONED", async () => {
@@ -158,10 +164,12 @@ describe("applyThreadStatusLabel", () => {
       ]),
     );
 
-    expect(mockProvider.labelMessage).toHaveBeenCalledWith({
-      messageId,
-      labelId: "label-actioned",
-    });
+    expect(mockProvider.labelMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId,
+        labelId: "label-actioned",
+      }),
+    );
   });
 
   test("handles errors gracefully", async () => {

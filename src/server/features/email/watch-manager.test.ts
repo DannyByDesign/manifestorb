@@ -2,15 +2,10 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { ensureEmailAccountsWatched } from "@/server/features/email/watch-manager";
 import prisma from "@/server/lib/__mocks__/prisma";
 import { createEmailProvider } from "@/features/email/provider";
-import { hasAiAccess, getPremiumUserFilter } from "@/features/premium";
 
 vi.mock("@/server/db/client");
 vi.mock("@/features/email/provider", () => ({
   createEmailProvider: vi.fn(),
-}));
-vi.mock("@/features/premium", () => ({
-  hasAiAccess: vi.fn(),
-  getPremiumUserFilter: vi.fn().mockReturnValue({}),
 }));
 
 const logger = {
@@ -26,7 +21,6 @@ describe("ensureEmailAccountsWatched", () => {
   });
 
   it("returns success when provider watch succeeds", async () => {
-    vi.mocked(hasAiAccess).mockReturnValue(true);
     prisma.emailAccount.findMany.mockResolvedValue([
       {
         id: "email-1",
@@ -38,8 +32,8 @@ describe("ensureEmailAccountsWatched", () => {
           access_token: "a",
           refresh_token: "r",
           expires_at: null,
+          disconnectedAt: null,
         },
-        user: { id: "user-1", premium: { tier: "BUSINESS_MONTHLY" } },
       },
     ] as any);
     vi.mocked(createEmailProvider).mockResolvedValue({
@@ -55,12 +49,11 @@ describe("ensureEmailAccountsWatched", () => {
       logger,
     });
 
-    expect(result[0].status).toBe("success");
+    expect(result[0]?.status).toBe("success");
     expect(prisma.emailAccount.update).toHaveBeenCalled();
   });
 
-  it("returns error when tokens missing", async () => {
-    vi.mocked(hasAiAccess).mockReturnValue(true);
+  it("returns error when tokens are missing", async () => {
     prisma.emailAccount.findMany.mockResolvedValue([
       {
         id: "email-1",
@@ -72,8 +65,8 @@ describe("ensureEmailAccountsWatched", () => {
           access_token: null,
           refresh_token: null,
           expires_at: null,
+          disconnectedAt: null,
         },
-        user: { id: "user-1", premium: { tier: "BUSINESS_MONTHLY" } },
       },
     ] as any);
 
@@ -82,6 +75,6 @@ describe("ensureEmailAccountsWatched", () => {
       logger,
     });
 
-    expect(result[0].status).toBe("error");
+    expect(result[0]?.status).toBe("error");
   });
 });

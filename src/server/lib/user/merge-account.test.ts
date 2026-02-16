@@ -5,7 +5,6 @@ import { createScopedLogger } from "@/server/lib/logger";
 import { getMockUserSelect } from "@/tests/support/helpers";
 
 vi.mock("@/server/db/client");
-vi.mock("@/server/lib/user/merge-premium");
 
 const logger = createScopedLogger("test");
 
@@ -136,11 +135,6 @@ describe("mergeAccount", () => {
       prisma.user.delete.mockResolvedValue({} as any);
       prisma.$transaction.mockImplementation((ops: any[]) => Promise.resolve(ops));
 
-      const { transferPremiumDuringMerge } = await import(
-        "@/server/lib/user/merge-premium"
-      );
-      vi.mocked(transferPremiumDuringMerge).mockResolvedValue();
-
       const result = await mergeAccount({
         sourceAccountId: accountId,
         sourceUserId,
@@ -151,11 +145,6 @@ describe("mergeAccount", () => {
       });
 
       expect(result).toBe("full_merge");
-      expect(transferPremiumDuringMerge).toHaveBeenCalledWith({
-        sourceUserId,
-        targetUserId,
-        logger,
-      });
       expect(prisma.$transaction).toHaveBeenCalledWith(
         expect.arrayContaining([
           expect.anything(), // account update

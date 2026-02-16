@@ -1,33 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { validateWebhookAccount } from "./validate-webhook-account";
 import type { ValidatedWebhookAccountData } from "./validate-webhook-account";
-import { PremiumTier } from "@/generated/prisma/enums";
 import { createScopedLogger } from "@/server/lib/logger";
 
 const logger = createScopedLogger("test");
 
-vi.mock("@/features/premium");
-vi.mock("@/app/api/watch/controller");
-vi.mock("@/features/email/provider");
-vi.mock("@/features/email/watch-manager");
 vi.mock("@/server/db/client");
 vi.mock("@/server/features/policy-plane/repository", () => ({
   listEffectiveCanonicalRules: vi.fn(),
 }));
 vi.mock("server-only", () => ({}));
 
-import { isPremium, hasAiAccess } from "@/features/premium";
-import { unwatchEmails } from "@/features/email/watch-manager";
-import { createEmailProvider } from "@/features/email/provider";
 import { listEffectiveCanonicalRules } from "@/server/features/policy-plane/repository";
 
 describe("validateWebhookAccount", () => {
-  const mockEmailProvider = { type: "google" as const };
-
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(createEmailProvider).mockResolvedValue(mockEmailProvider as never);
-    vi.mocked(unwatchEmails).mockResolvedValue(undefined);
     vi.mocked(listEffectiveCanonicalRules).mockResolvedValue([
       {
         id: "rule-id",
@@ -69,206 +57,115 @@ describe("validateWebhookAccount", () => {
         expires_at: new Date(),
         disconnectedAt: null,
       },
-      user: {
-        premium: {
-          stripeSubscriptionStatus: "active",
-          tier: PremiumTier.PRO_MONTHLY,
-        },
-      },
+      user: { id: "user-id" },
       ...overrides,
     };
   }
 
-  describe("when emailAccount is null", () => {
-    it("should return failure with error logged", async () => {
-      const result = await validateWebhookAccount(null, logger);
+  it("returns failure when emailAccount is null", async () => {
+    const result = await validateWebhookAccount(null, logger);
 
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(await result.response.json()).toEqual({ ok: true });
-      }
-    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(await result.response.json()).toEqual({ ok: true });
+    }
   });
 
-  describe("when account is disconnected", () => {
-    it("should return failure with 200 OK early", async () => {
-      const emailAccount = createMockEmailAccount({
-        account: {
-          provider: "google",
-          access_token: "access-token",
-          refresh_token: "refresh-token",
-          expires_at: new Date(),
-          disconnectedAt: new Date(),
-        },
-      });
-
-      const result = await validateWebhookAccount(emailAccount, logger);
-
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(await result.response.json()).toEqual({ ok: true });
-      }
-    });
-  });
-
-  describe("when account is not premium", () => {
-    it("should unwatch emails and return failure", async () => {
-      const emailAccount = createMockEmailAccount({
-        user: {
-          premium: null,
-        },
-      });
-
-      vi.mocked(isPremium).mockReturnValue(false);
-
-      const result = await validateWebhookAccount(emailAccount, logger);
-
-      expect(result.success).toBe(false);
-      expect(createEmailProvider).toHaveBeenCalledWith({
-        emailAccountId: "account-id",
+  it("returns failure when account is disconnected", async () => {
+    const emailAccount = createMockEmailAccount({
+      account: {
         provider: "google",
-        logger,
+        access_token: "access-token",
+        refresh_token: "refresh-token",
+        expires_at: new Date(),
+        disconnectedAt: new Date(),
+      },
+    });
+
+    const result = await validateWebhookAccount(emailAccount, logger);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(await result.response.json()).toEqual({ ok: true });
+    }
+  });
+
+  it("returns failure when account has no active automation rules", async () => {
+    vi.mocked(listEffectiveCanonicalRules).mockResolvedValue([] as never);
+
+    const emailAccount = createMockEmailAccount();
+    const result = await validateWebhookAccount(emailAccount, logger);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(await result.response.json()).toEqual({ ok: true });
+    }
+  });
+
+  it("returns failure when access_token is missing", async () => {
+    const emailAccount = createMockEmailAccount({
+      account: {
+        provider: "google",
+        access_token: null,
+        refresh_token: "refresh-token",
+        expires_at: new Date(),
+        disconnectedAt: null,
+      },
+    });
+
+    const result = await validateWebhookAccount(emailAccount, logger);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(await result.response.json()).toEqual({ ok: true });
+    }
+  });
+
+  it("returns failure when refresh_token is missing", async () => {
+    const emailAccount = createMockEmailAccount({
+      account: {
+        provider: "google",
+        access_token: "access-token",
+        refresh_token: null,
+        expires_at: new Date(),
+        disconnectedAt: null,
+      },
+    });
+
+    const result = await validateWebhookAccount(emailAccount, logger);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(await result.response.json()).toEqual({ ok: true });
+    }
+  });
+
+  it("returns failure when account relation is null", async () => {
+    const emailAccount = {
+      ...createMockEmailAccount(),
+      account: null,
+    } as unknown as ValidatedWebhookAccountData;
+
+    const result = await validateWebhookAccount(emailAccount, logger);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(await result.response.json()).toEqual({ ok: true });
+    }
+  });
+
+  it("returns success when validation passes", async () => {
+    const emailAccount = createMockEmailAccount();
+
+    const result = await validateWebhookAccount(emailAccount, logger);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toEqual({
+        emailAccount,
+        hasAutomationRules: true,
+        hasAiAccess: true,
       });
-      expect(unwatchEmails).toHaveBeenCalledWith(
-        expect.objectContaining({
-          emailAccountId: "account-id",
-          provider: mockEmailProvider,
-          subscriptionId: "subscription-id",
-        }),
-      );
-      if (!result.success) {
-        expect(await result.response.json()).toEqual({ ok: true });
-      }
-    });
-  });
-
-  describe("when user does not have AI access", () => {
-    it("should unwatch emails and return failure", async () => {
-      const emailAccount = createMockEmailAccount();
-
-      vi.mocked(isPremium).mockReturnValue(true);
-      vi.mocked(hasAiAccess).mockReturnValue(false);
-
-      const result = await validateWebhookAccount(emailAccount, logger);
-
-      expect(result.success).toBe(false);
-      expect(unwatchEmails).toHaveBeenCalledWith(
-        expect.objectContaining({
-          emailAccountId: "account-id",
-          provider: mockEmailProvider,
-          subscriptionId: "subscription-id",
-        }),
-      );
-      if (!result.success) {
-        expect(await result.response.json()).toEqual({ ok: true });
-      }
-    });
-  });
-
-  describe("when account has no automation rules", () => {
-    it("should return failure", async () => {
-      const emailAccount = createMockEmailAccount();
-
-      vi.mocked(isPremium).mockReturnValue(true);
-      vi.mocked(hasAiAccess).mockReturnValue(true);
-      vi.mocked(listEffectiveCanonicalRules).mockResolvedValue([] as never);
-
-      const result = await validateWebhookAccount(emailAccount, logger);
-
-      expect(result.success).toBe(false);
-      expect(unwatchEmails).not.toHaveBeenCalled();
-      if (!result.success) {
-        expect(await result.response.json()).toEqual({ ok: true });
-      }
-    });
-  });
-
-  describe("when access_token is missing", () => {
-    it("should return failure with error logged", async () => {
-      const emailAccount = createMockEmailAccount({
-        account: {
-          provider: "google",
-          access_token: null,
-          refresh_token: "refresh-token",
-          expires_at: new Date(),
-          disconnectedAt: null,
-        },
-      });
-
-      vi.mocked(isPremium).mockReturnValue(true);
-      vi.mocked(hasAiAccess).mockReturnValue(true);
-
-      const result = await validateWebhookAccount(emailAccount, logger);
-
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(await result.response.json()).toEqual({ ok: true });
-      }
-    });
-  });
-
-  describe("when refresh_token is missing", () => {
-    it("should return failure with error logged", async () => {
-      const emailAccount = createMockEmailAccount({
-        account: {
-          provider: "google",
-          access_token: "access-token",
-          refresh_token: null,
-          expires_at: new Date(),
-          disconnectedAt: null,
-        },
-      });
-
-      vi.mocked(isPremium).mockReturnValue(true);
-      vi.mocked(hasAiAccess).mockReturnValue(true);
-
-      const result = await validateWebhookAccount(emailAccount, logger);
-
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(await result.response.json()).toEqual({ ok: true });
-      }
-    });
-  });
-
-  describe("when account is null", () => {
-    it("should return failure with error logged", async () => {
-      const emailAccount = {
-        ...createMockEmailAccount(),
-        account: null,
-      } as unknown as ValidatedWebhookAccountData;
-
-      vi.mocked(isPremium).mockReturnValue(true);
-      vi.mocked(hasAiAccess).mockReturnValue(true);
-
-      const result = await validateWebhookAccount(emailAccount, logger);
-
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(await result.response.json()).toEqual({ ok: true });
-      }
-    });
-  });
-
-  describe("when all validation passes", () => {
-    it("should return success with validated data", async () => {
-      const emailAccount = createMockEmailAccount();
-
-      vi.mocked(isPremium).mockReturnValue(true);
-      vi.mocked(hasAiAccess).mockReturnValue(true);
-
-      const result = await validateWebhookAccount(emailAccount, logger);
-
-      expect(result.success).toBe(true);
-      expect(unwatchEmails).not.toHaveBeenCalled();
-
-      if (result.success) {
-        expect(result.data).toEqual({
-          emailAccount,
-          hasAutomationRules: true,
-          hasAiAccess: true,
-        });
-      }
-    });
+    }
   });
 });

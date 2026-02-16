@@ -5,9 +5,9 @@ All auth and WorkOS usage is centralized here.
 ## Layout
 
 - **`index.ts`** – Public API. Re-exports session helpers and WorkOS entry points (`getSignInUrl`, `handleAuth`, `signOut`, `authkitMiddleware`). **This is the only place that imports from `@workos-inc/authkit-nextjs`.**
-- **`session.ts`** – Session logic: `withAuth()` → local user lookup/creation, `saveTokens()`, post-sign-up (referral, premium invite, Resend).
+- **`session.ts`** – Session logic: `withAuth()` → local user lookup/creation, `saveTokens()`, post-sign-up Resend contact sync.
 - **`cleanup-invalid-tokens.ts`** – Invalid token cleanup (e.g. after disconnect).
-- **`session.test.ts`** – Tests for `handleReferralOnSignUp` and `saveTokens`.
+- **`session.test.ts`** – Tests for `saveTokens`.
 
 ## Usage
 

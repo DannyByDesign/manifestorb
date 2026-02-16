@@ -64,6 +64,8 @@ export interface EmailCapabilities {
   getDraft(draftId: string): Promise<ToolResult>;
   createDraft(input: {
     to?: string[];
+    cc?: string[];
+    bcc?: string[];
     subject?: string;
     body: string;
     type?: "new" | "reply" | "forward";
@@ -496,7 +498,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       const paging =
         fallback.paging && typeof fallback.paging === "object"
           ? (fallback.paging as Record<string, unknown>)
-          : null;
+          : undefined;
       const totalEstimate =
         paging &&
         typeof paging.totalEstimate === "number" &&
@@ -516,7 +518,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         },
         message: `You have about ${count} unread emails right now.`,
         truncated: fallback.truncated,
-        paging: fallback.paging ?? null,
+        paging: paging ?? undefined,
         meta: asMetaItemCount(1),
       };
     }
@@ -1203,6 +1205,12 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           ...(input.parentId ? { parentId: input.parentId } : {}),
           ...(Array.isArray(input.to) && input.to.length > 0
             ? { to: input.to }
+            : {}),
+          ...(Array.isArray(input.cc) && input.cc.length > 0
+            ? { cc: input.cc }
+            : {}),
+          ...(Array.isArray(input.bcc) && input.bcc.length > 0
+            ? { bcc: input.bcc }
             : {}),
           ...(input.subject ? { subject: input.subject } : {}),
           body: input.body,

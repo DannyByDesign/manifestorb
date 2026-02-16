@@ -26,16 +26,6 @@ vi.mock("@/server/db/client", () => ({
   },
 }));
 
-vi.mock("@/features/referrals/referral-code", () => ({
-  getOrCreateReferralCode: vi.fn().mockResolvedValue({ code: "TEST123" }),
-}));
-
-vi.mock("@/features/referrals/referral-link", () => ({
-  generateReferralLink: vi
-    .fn()
-    .mockReturnValue("https://getamodel.com/?ref=TEST123"),
-}));
-
 vi.mock("@/features/knowledge/ai/extract", () => ({
   aiExtractRelevantKnowledge: vi.fn().mockResolvedValue(null),
 }));
@@ -59,12 +49,6 @@ vi.mock("@/features/meeting-briefs/recipient-context", () => ({
 
 vi.mock("@/features/knowledge/ai/extract-from-email-history", () => ({
   aiExtractFromEmailHistory: vi.fn().mockResolvedValue(null),
-}));
-
-vi.mock("@/env", () => ({
-  env: {
-    NEXT_PUBLIC_DISABLE_REFERRAL_SIGNATURE: false,
-  },
 }));
 
 import { aiDraftReply } from "@/features/reply-tracker/ai/draft-reply";
@@ -147,10 +131,8 @@ describe("fetchMessagesAndGenerateDraft - AI content escaping", () => {
     expect(result).toContain("&lt;div");
     expect(result).toContain("LEAKED SECRET DATA"); // Text should still be visible (escaped)
 
-    // Referral signature HTML should NOT be escaped - link should work
-    expect(result).toContain(
-      '<a href="https://getamodel.com/?ref=TEST123">Amodel</a>',
-    );
+    // Referral signature text is appended after escaped model output.
+    expect(result).toContain("Drafted by Amodel.");
 
     // User signature HTML should NOT be escaped
     expect(result).toContain('<p style="color:blue">');

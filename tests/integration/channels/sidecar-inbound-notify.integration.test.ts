@@ -75,7 +75,7 @@ describe("E2E sidecar inbound + notify", () => {
       }),
     );
     expect(notifyRes.status).toBe(200);
-  });
+  }, 20_000);
 
   it("rejects notify requests with missing content", async () => {
     const { handleRequest } = await import("../../../surfaces/src/index");

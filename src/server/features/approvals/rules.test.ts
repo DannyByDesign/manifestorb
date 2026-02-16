@@ -1,25 +1,29 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
-  findUniqueMock,
+  findFirstMock,
   findManyMock,
   upsertMock,
   deleteManyMock,
+  transactionMock,
 } = vi.hoisted(() => ({
-  findUniqueMock: vi.fn(),
+  findFirstMock: vi.fn(),
   findManyMock: vi.fn(),
   upsertMock: vi.fn(),
   deleteManyMock: vi.fn(),
+  transactionMock: vi.fn(),
 }));
 
 vi.mock("@/server/db/client", () => ({
   default: {
-    approvalPreference: {
-      findUnique: findUniqueMock,
+    canonicalRule: {
+      findFirst: findFirstMock,
       findMany: findManyMock,
-      upsert: upsertMock,
+      update: upsertMock,
+      create: upsertMock,
       deleteMany: deleteManyMock,
     },
+    $transaction: transactionMock,
   },
 }));
 
@@ -38,10 +42,19 @@ import {
 describe("approval rules engine", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    findUniqueMock.mockResolvedValue(null);
+    findFirstMock.mockResolvedValue(null);
     findManyMock.mockResolvedValue([]);
     upsertMock.mockResolvedValue({});
     deleteManyMock.mockResolvedValue({ count: 0 });
+    transactionMock.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) =>
+      callback({
+        canonicalRule: {
+          findFirst: findFirstMock,
+          update: upsertMock,
+          create: upsertMock,
+        },
+      }),
+    );
   });
 
   it("derives operation and recipients for send calls", () => {
@@ -105,9 +118,9 @@ describe("approval rules engine", () => {
   });
 
   it("supports legacy conditional external-only preferences", async () => {
-    findUniqueMock.mockResolvedValue({
-      policy: "conditional",
-      conditions: { externalOnly: true, domains: ["example.com"] },
+    findFirstMock.mockResolvedValue({
+      decision: "conditional",
+      preferencePatch: { externalOnly: true, domains: ["example.com"] },
     });
 
     await expect(
@@ -128,9 +141,9 @@ describe("approval rules engine", () => {
   });
 
   it("supports v2 scoped rules persisted in conditions", async () => {
-    findUniqueMock.mockResolvedValue({
-      policy: "never",
-      conditions: {
+    findFirstMock.mockResolvedValue({
+      decision: "never",
+      preferencePatch: {
         version: 2,
         defaultPolicy: "never",
         rules: [
@@ -169,9 +182,9 @@ describe("approval rules engine", () => {
   it("allows approval rules to be listed and mutated", async () => {
     findManyMock.mockResolvedValue([
       {
-        toolName: "send",
-        policy: "always",
-        conditions: {
+        name: "approval:send",
+        decision: "always",
+        preferencePatch: {
           version: 2,
           defaultPolicy: "always",
           rules: [],
@@ -202,9 +215,9 @@ describe("approval rules engine", () => {
     });
     expect(upsertMock).toHaveBeenCalledTimes(2);
 
-    findUniqueMock.mockResolvedValue({
-      policy: "never",
-      conditions: {
+    findFirstMock.mockResolvedValue({
+      decision: "never",
+      preferencePatch: {
         version: 2,
         defaultPolicy: "never",
         rules: [{ id: "r1", name: "x", policy: "always" }],
@@ -224,18 +237,18 @@ describe("approval rules engine", () => {
   it("resolves approval rules by fuzzy name and respects toolName scoping", async () => {
     findManyMock.mockResolvedValue([
       {
-        toolName: "send",
-        policy: "always",
-        conditions: {
+        name: "approval:send",
+        decision: "always",
+        preferencePatch: {
           version: 2,
           defaultPolicy: "always",
           rules: [{ id: "a1", name: "External send guard", policy: "always" }],
         },
       },
       {
-        toolName: "delete",
-        policy: "never",
-        conditions: {
+        name: "approval:delete",
+        decision: "never",
+        preferencePatch: {
           version: 2,
           defaultPolicy: "never",
           rules: [{ id: "a2", name: "Delete guard", policy: "always" }],

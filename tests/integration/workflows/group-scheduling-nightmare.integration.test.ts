@@ -4,12 +4,12 @@ import {
   type ScheduleProposalPayload,
 } from "@/server/features/calendar/schedule-proposal";
 import prisma from "@/server/lib/__mocks__/prisma";
-import { createAgentTools } from "@/features/ai/tools";
+import { executeStructuredApprovalAction } from "@/features/approvals/structured-execution";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/server/db/client");
-vi.mock("@/features/ai/tools", () => ({
-  createAgentTools: vi.fn(),
+vi.mock("@/features/approvals/structured-execution", () => ({
+  executeStructuredApprovalAction: vi.fn(),
 }));
 
 const TIMEOUT = 10_000;
@@ -53,10 +53,10 @@ describe.runIf(isAiTest)("edge-case: group scheduling nightmare", () => {
       prisma.approvalRequest.findUnique.mockResolvedValue(requestRecord);
       prisma.approvalRequest.update.mockResolvedValue({ id: "req-group-1" });
 
-      const execute = vi.fn().mockResolvedValue({ ok: true });
-      vi.mocked(createAgentTools).mockResolvedValue({
-        create: { execute },
-      } as any);
+      vi.mocked(executeStructuredApprovalAction).mockResolvedValue({
+        success: true,
+        data: { ok: true },
+      } as never);
 
       const res = await resolveScheduleProposalRequestById({
         requestId: "req-group-1",
@@ -64,7 +64,7 @@ describe.runIf(isAiTest)("edge-case: group scheduling nightmare", () => {
       });
 
       expect(res.ok).toBe(true);
-      expect(execute).toHaveBeenCalled();
+      expect(executeStructuredApprovalAction).toHaveBeenCalled();
     },
     TIMEOUT,
   );

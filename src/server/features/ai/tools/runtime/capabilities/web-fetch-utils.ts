@@ -87,7 +87,7 @@ export function truncateText(
   return { text: value.slice(0, maxChars), truncated: true };
 }
 
-function selectReadableRoot($: cheerio.CheerioAPI): cheerio.Cheerio<cheerio.Element> {
+function selectReadableRoot($: cheerio.CheerioAPI): cheerio.Cheerio<any> {
   const candidates = ["main", "article", '[role="main"]', "#content", ".content", ".post-content"];
   for (const selector of candidates) {
     const match = $(selector).first();

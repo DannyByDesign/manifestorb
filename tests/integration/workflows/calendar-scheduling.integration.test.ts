@@ -4,11 +4,11 @@ import prisma from "@/server/lib/__mocks__/prisma";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/server/db/client");
-vi.mock("@/features/ai/tools", () => ({
-  createAgentTools: vi.fn(),
+vi.mock("@/features/approvals/structured-execution", () => ({
+  executeStructuredApprovalAction: vi.fn(),
 }));
 
-import { createAgentTools } from "@/features/ai/tools";
+import { executeStructuredApprovalAction } from "@/features/approvals/structured-execution";
 
 describe("E2E calendar scheduling", () => {
   beforeEach(() => {
@@ -26,16 +26,26 @@ describe("E2E calendar scheduling", () => {
         args: { data: { title: "Meet" } },
         originalIntent: "event",
         options: [
-          { start: "2024-01-01T10:00:00Z", end: "2024-01-01T11:00:00Z", timeZone: "UTC" },
-          { start: "2024-01-02T10:00:00Z", end: "2024-01-02T11:00:00Z", timeZone: "UTC" },
+          {
+            start: "2024-01-01T10:00:00Z",
+            end: "2024-01-01T11:00:00Z",
+            timeZone: "UTC",
+          },
+          {
+            start: "2024-01-02T10:00:00Z",
+            end: "2024-01-02T11:00:00Z",
+            timeZone: "UTC",
+          },
         ],
       },
       user: { emailAccounts: [{ id: "email-1", account: { provider: "google" } }] },
     } as any);
     prisma.approvalRequest.update.mockResolvedValue({} as any);
 
-    const execute = vi.fn().mockResolvedValue({ ok: true });
-    vi.mocked(createAgentTools).mockResolvedValue({ create: { execute } } as any);
+    vi.mocked(executeStructuredApprovalAction).mockResolvedValue({
+      success: true,
+      data: { ok: true },
+    } as never);
 
     const res = await resolveScheduleProposalRequestById({
       requestId: "req-1",
@@ -43,7 +53,7 @@ describe("E2E calendar scheduling", () => {
     });
 
     expect(res.ok).toBe(true);
-    expect(execute).toHaveBeenCalled();
+    expect(executeStructuredApprovalAction).toHaveBeenCalled();
   });
 
   it("resolves schedule proposal with multi-party constraints", async () => {
@@ -57,8 +67,16 @@ describe("E2E calendar scheduling", () => {
         args: { data: { title: "ExecClientSync" } },
         originalIntent: "event",
         options: [
-          { start: "2024-01-03T16:00:00Z", end: "2024-01-03T17:00:00Z", timeZone: "UTC" },
-          { start: "2024-01-04T20:00:00Z", end: "2024-01-04T21:00:00Z", timeZone: "UTC" },
+          {
+            start: "2024-01-03T16:00:00Z",
+            end: "2024-01-03T17:00:00Z",
+            timeZone: "UTC",
+          },
+          {
+            start: "2024-01-04T20:00:00Z",
+            end: "2024-01-04T21:00:00Z",
+            timeZone: "UTC",
+          },
         ],
       },
       user: { emailAccounts: [{ id: "email-2", account: { provider: "google" } }] },
@@ -67,10 +85,10 @@ describe("E2E calendar scheduling", () => {
     prisma.approvalRequest.findUnique.mockResolvedValue(requestRecord);
     prisma.approvalRequest.update.mockResolvedValue({} as any);
 
-    const execute = vi.fn().mockResolvedValue({ ok: true });
-    vi.mocked(createAgentTools).mockResolvedValue(
-      { create: { execute } } as any,
-    );
+    vi.mocked(executeStructuredApprovalAction).mockResolvedValue({
+      success: true,
+      data: { ok: true },
+    } as never);
 
     const res = await resolveScheduleProposalRequestById({
       requestId: "req-2",
@@ -78,12 +96,15 @@ describe("E2E calendar scheduling", () => {
     });
 
     expect(res.ok).toBe(true);
-    expect(execute).toHaveBeenCalledWith(
+    expect(executeStructuredApprovalAction).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
-          title: "ExecClientSync",
-          start: "2024-01-04T20:00:00Z",
-          end: "2024-01-04T21:00:00Z",
+        tool: "create",
+        args: expect.objectContaining({
+          data: expect.objectContaining({
+            title: "ExecClientSync",
+            start: "2024-01-04T20:00:00Z",
+            end: "2024-01-04T21:00:00Z",
+          }),
         }),
       }),
     );

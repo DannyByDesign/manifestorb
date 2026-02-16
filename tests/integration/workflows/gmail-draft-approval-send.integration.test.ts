@@ -1,95 +1,70 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createTool } from "@/server/features/ai/tools/create";
-import { sendTool } from "@/server/features/ai/tools/send";
-import { getEmailAccountWithAi } from "@/server/lib/user/get";
-
-vi.mock("server-only", () => ({}));
-vi.mock("@/server/lib/user/get", () => ({
-  getEmailAccountWithAi: vi.fn(),
-}));
-const MockChannelRouter = vi.hoisted(
-  () =>
-    class {
-      pushMessage = vi.fn();
-    },
-);
-
-vi.mock("@/features/channels/router", () => ({
-  ChannelRouter: MockChannelRouter,
-}));
-vi.mock("@/server/db/client");
+import { describe, it, expect, vi } from "vitest";
+import { emailToolExecutors } from "@/server/features/ai/tools/runtime/capabilities/executors/email";
 
 describe("E2E gmail draft approval send", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("creates draft then sends it", async () => {
-    vi.mocked(getEmailAccountWithAi).mockResolvedValue({
-      id: "email-1",
-      account: { provider: "google" },
-    } as any);
-
-    const createDraft = vi.fn().mockResolvedValue({ draftId: "draft-1" });
+    const createDraft = vi.fn().mockResolvedValue({
+      success: true,
+      data: { draftId: "draft-1" },
+    });
     const sendDraft = vi.fn().mockResolvedValue({
-      messageId: "msg-1",
-      threadId: "thread-1",
+      success: true,
+      data: { messageId: "msg-1", threadId: "thread-1" },
     });
 
-    const draftResult = await createTool.execute(
-      {
-        resource: "email",
-        type: "new",
-        data: { to: ["user@test.com"], subject: "Hi", body: "Body" },
+    const capabilities = {
+      email: {
+        createDraft,
+        sendDraft,
       },
-      {
-        emailAccountId: "email-1",
-        providers: { email: { createDraft } },
-      } as any,
-    );
+    } as never;
 
-    expect(draftResult.success).toBe(true);
-    const sendResult = await sendTool.execute(
-      { draftId: "draft-1" },
-      {
-        providers: {
-          email: {
-            getDraft: vi.fn().mockResolvedValue({ id: "draft-1" }),
-            sendDraft,
-          },
-        },
-      } as any,
-    );
+    const draftResult = await emailToolExecutors["email.createDraft"]?.({
+      args: {
+        to: ["user@test.com"],
+        subject: "Hi",
+        body: "Body",
+        type: "new",
+      },
+      capabilities,
+    });
 
-    expect(sendResult.success).toBe(true);
+    expect(draftResult).toEqual({
+      success: true,
+      data: { draftId: "draft-1" },
+    });
+
+    const sendResult = await emailToolExecutors["email.sendDraft"]?.({
+      args: { draftId: "draft-1" },
+      capabilities,
+    });
+
+    expect(sendResult).toEqual({
+      success: true,
+      data: { messageId: "msg-1", threadId: "thread-1" },
+    });
   });
 
   it("passes cc and bcc through when creating a draft", async () => {
-    vi.mocked(getEmailAccountWithAi).mockResolvedValue({
-      id: "email-1",
-      account: { provider: "google" },
-    } as any);
+    const createDraft = vi.fn().mockResolvedValue({ success: true });
 
-    const createDraft = vi.fn().mockResolvedValue({ draftId: "draft-2" });
-
-    const result = await createTool.execute(
-      {
-        resource: "email",
-        type: "new",
-        data: {
-          to: ["user@test.com"],
-          cc: ["cc@test.com"],
-          bcc: ["bcc@test.com"],
-          subject: "Hello",
-          body: "Body",
-        },
+    const capabilities = {
+      email: {
+        createDraft,
       },
-      {
-        emailAccountId: "email-1",
-        userId: "user-1",
-        providers: { email: { createDraft } },
-      } as any,
-    );
+    } as never;
+
+    const result = await emailToolExecutors["email.createDraft"]?.({
+      args: {
+        to: ["user@test.com"],
+        cc: ["cc@test.com"],
+        bcc: ["bcc@test.com"],
+        subject: "Hello",
+        body: "Body",
+        type: "new",
+      },
+      capabilities,
+    });
 
     expect(createDraft).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -97,8 +72,6 @@ describe("E2E gmail draft approval send", () => {
         bcc: ["bcc@test.com"],
       }),
     );
-    expect(result.success).toBe(true);
-    expect(result.interactive?.preview?.cc).toEqual(["cc@test.com"]);
-    expect(result.interactive?.preview?.bcc).toEqual(["bcc@test.com"]);
+    expect(result).toEqual({ success: true });
   });
 });

@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { findUniqueMock } = vi.hoisted(() => ({
-  findUniqueMock: vi.fn(),
+const { findFirstMock } = vi.hoisted(() => ({
+  findFirstMock: vi.fn(),
 }));
 
 vi.mock("@/server/db/client", () => ({
   default: {
-    approvalPreference: {
-      findUnique: findUniqueMock,
+    canonicalRule: {
+      findFirst: findFirstMock,
     },
   },
 }));
@@ -20,7 +20,7 @@ describe("requiresApproval defaults", () => {
   });
 
   it("requires approval by default for send", async () => {
-    findUniqueMock.mockResolvedValue(null);
+    findFirstMock.mockResolvedValue(null);
 
     await expect(
       requiresApproval({ userId: "user-1", toolName: "send" }),
@@ -28,7 +28,7 @@ describe("requiresApproval defaults", () => {
   });
 
   it("does not require approval by default for low-risk create/query operations", async () => {
-    findUniqueMock.mockResolvedValue(null);
+    findFirstMock.mockResolvedValue(null);
 
     await expect(
       requiresApproval({ userId: "user-1", toolName: "query" }),
@@ -43,7 +43,7 @@ describe("requiresApproval defaults", () => {
   });
 
   it("requires approval by default for modify email trash operations", async () => {
-    findUniqueMock.mockResolvedValue(null);
+    findFirstMock.mockResolvedValue(null);
 
     await expect(
       requiresApproval({
@@ -59,9 +59,9 @@ describe("requiresApproval defaults", () => {
   });
 
   it("respects explicit user preference overrides", async () => {
-    findUniqueMock.mockResolvedValue({
-      policy: "never",
-      conditions: null,
+    findFirstMock.mockResolvedValue({
+      decision: "never",
+      preferencePatch: null,
     });
 
     await expect(
@@ -70,9 +70,9 @@ describe("requiresApproval defaults", () => {
   });
 
   it("evaluates conditional externalOnly policy from nested create args", async () => {
-    findUniqueMock.mockResolvedValue({
-      policy: "conditional",
-      conditions: { externalOnly: true, domains: ["example.com"] },
+    findFirstMock.mockResolvedValue({
+      decision: "conditional",
+      preferencePatch: { externalOnly: true, domains: ["example.com"] },
     });
 
     await expect(
@@ -99,9 +99,9 @@ describe("requiresApproval defaults", () => {
   });
 
   it("requires approval for conditional policy when recipients cannot be resolved", async () => {
-    findUniqueMock.mockResolvedValue({
-      policy: "conditional",
-      conditions: { externalOnly: true, domains: ["example.com"] },
+    findFirstMock.mockResolvedValue({
+      decision: "conditional",
+      preferencePatch: { externalOnly: true, domains: ["example.com"] },
     });
 
     await expect(
@@ -114,9 +114,9 @@ describe("requiresApproval defaults", () => {
   });
 
   it("never requires approval for modify(resource=approval)", async () => {
-    findUniqueMock.mockResolvedValue({
-      policy: "always",
-      conditions: null,
+    findFirstMock.mockResolvedValue({
+      decision: "always",
+      preferencePatch: null,
     });
 
     await expect(
