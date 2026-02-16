@@ -58,6 +58,7 @@ const EMAIL_TOPIC_SCOPE_RE =
 const EMAIL_TEXT_SCOPE_RE =
   /\bfor\s+([^,.!?]+?)(?=\s+(?:today|tonight|tomorrow|this week|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|$)/iu;
 const EMAIL_QUOTED_TEXT_SCOPE_RE = /(?:^|\s)["'“”]([^"'“”]{2,})["'“”](?:$|\s|[,.!?])/u;
+const EMAIL_LIST_FULL_THRESHOLD = 20;
 
 const WEEKDAY_INDEX: Record<string, number> = {
   sunday: 0,
@@ -168,7 +169,7 @@ function summarizeEmailList(timeZone: string) {
     const paging = asRecord(result.paging);
     const totalEstimate = asNumber(paging?.totalEstimate);
 
-    const top = items.slice(0, 3).map((item) => {
+    const previewItems = items.slice(0, EMAIL_LIST_FULL_THRESHOLD).map((item) => {
       const subject = asString(item.title) ?? "No subject";
       const from = asString(item.from) ?? "unknown sender";
       const localDate = asString(item.dateLocal);
@@ -179,18 +180,24 @@ function summarizeEmailList(timeZone: string) {
         : `"${subject}" from ${from}`;
     });
 
-    if (items.length === 1) return `I found one: ${top[0]}.`;
-    if (items.length <= 3 && !isTruncated) return `Top ${items.length} emails: ${top.join("; ")}.`;
+    const numberedPreview = previewItems
+      .map((entry, index) => `${index + 1}. ${entry}`)
+      .join("\n");
 
-    if (isTruncated && totalEstimate !== null && totalEstimate > items.length) {
-      return `I found roughly ${totalEstimate} matching emails. Top ones: ${top.join("; ")}.`;
+    if (items.length === 1) return `I found one:\n${numberedPreview}`;
+    if (!isTruncated && items.length <= EMAIL_LIST_FULL_THRESHOLD) {
+      return `I found ${items.length} matching emails:\n${numberedPreview}`;
+    }
+
+    if (isTruncated && totalEstimate !== null && totalEstimate > previewItems.length) {
+      return `I found roughly ${totalEstimate} matching emails. Showing first ${previewItems.length}:\n${numberedPreview}`;
     }
 
     if (isTruncated) {
-      return `I found at least ${items.length} matching emails. Top ones: ${top.join("; ")}.`;
+      return `I found at least ${items.length} matching emails. Showing first ${previewItems.length}:\n${numberedPreview}`;
     }
 
-    return `I found ${items.length} matching emails. Top ones: ${top.join("; ")}.`;
+    return `I found ${items.length} matching emails. Showing first ${previewItems.length}:\n${numberedPreview}`;
   };
 }
 

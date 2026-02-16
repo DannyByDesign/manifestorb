@@ -15,12 +15,20 @@ const runtimeResponseSchema = z
     responseText: z.string().min(1).max(4000),
   })
   .strict();
+const RESPONSE_EVIDENCE_ARRAY_LIMIT = 20;
 
 function compact(value: unknown, depth = 0): unknown {
   if (depth > 2) return typeof value === "object" ? "[truncated]" : value;
   if (Array.isArray(value)) {
-    const out = value.slice(0, 4).map((item) => compact(item, depth + 1));
-    if (value.length > 4) out.push({ truncated: true, omitted: value.length - 4 });
+    const out = value
+      .slice(0, RESPONSE_EVIDENCE_ARRAY_LIMIT)
+      .map((item) => compact(item, depth + 1));
+    if (value.length > RESPONSE_EVIDENCE_ARRAY_LIMIT) {
+      out.push({
+        truncated: true,
+        omitted: value.length - RESPONSE_EVIDENCE_ARRAY_LIMIT,
+      });
+    }
     return out;
   }
   if (!value || typeof value !== "object") return value;
@@ -63,6 +71,7 @@ export async function renderSurfaceResponseText(params: {
         "- Rewrite the draft response to match assistant voice and tone.",
         "- Keep response concise and clear.",
         "- Preserve all concrete facts exactly (counts, names, dates, times, links, IDs).",
+        "- Do not drop numbered list items when there are 20 or fewer entries.",
         "- Preserve intent and actionability; do not remove instructions or next steps.",
         "- Keep markdown links and list formatting if present.",
         "- Do not invent new facts.",
@@ -153,6 +162,8 @@ export async function generateRuntimeUserReply(params: {
       "- Do not self-introduce unless the user asks who you are.",
       "- Preserve concrete facts from fallback guidance exactly (especially dates/times); do not reinterpret time zones.",
       "- If evidence includes dateLocal/startLocal/endLocal, use those fields for user-facing times.",
+      "- For list/search results: include all items when there are 20 or fewer.",
+      "- If there are more than 20 items, state the total and that you're showing the first 20.",
       "- Never present raw UTC offsets to the user unless they asked for UTC explicitly.",
       "- If mode is clarification, ask one concrete follow-up question.",
       "- If mode is approval_pending, clearly say approval is needed and what happens next.",
