@@ -5,6 +5,7 @@ import { createPlannerCapabilities } from "@/server/features/ai/tools/runtime/ca
 import { createPolicyCapabilities } from "@/server/features/ai/tools/runtime/capabilities/policy";
 import { createTaskCapabilities } from "@/server/features/ai/tools/runtime/capabilities/task";
 import { createMemoryCapabilities } from "@/server/features/ai/tools/runtime/capabilities/memory";
+import { createWebCapabilities } from "@/server/features/ai/tools/runtime/capabilities/web";
 import type { CapabilityRuntimeContext } from "@/server/features/ai/tools/runtime/capabilities/types";
 
 export async function createCapabilities(runtime: CapabilityRuntimeContext) {
@@ -18,6 +19,7 @@ export async function createCapabilities(runtime: CapabilityRuntimeContext) {
     planner: createPlannerCapabilities(),
     policy: createPolicyCapabilities(env),
     memory: createMemoryCapabilities(env),
+    web: createWebCapabilities(env),
   };
 }
 

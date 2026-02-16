@@ -79,6 +79,34 @@ export const env = createEnv({
     // LLM API Keys (Google + OpenAI required)
     GOOGLE_API_KEY: z.string().min(1), // Primary provider for base tier
     OPENAI_API_KEY: z.string().min(1), // Required for embeddings only
+    BRAVE_API_KEY: z.string().optional(),
+    PERPLEXITY_API_KEY: z.string().optional(),
+    OPENROUTER_API_KEY: z.string().optional(),
+    FIRECRAWL_API_KEY: z.string().optional(),
+
+    TOOL_WEB_SEARCH_ENABLED: booleanString.optional(),
+    TOOL_WEB_SEARCH_PROVIDER: z.enum(["brave", "perplexity"]).optional(),
+    TOOL_WEB_SEARCH_BRAVE_API_KEY: z.string().optional(),
+    TOOL_WEB_SEARCH_MAX_RESULTS: z.string().optional(),
+    TOOL_WEB_SEARCH_TIMEOUT_SECONDS: z.string().optional(),
+    TOOL_WEB_SEARCH_CACHE_TTL_MINUTES: z.string().optional(),
+    TOOL_WEB_SEARCH_PERPLEXITY_API_KEY: z.string().optional(),
+    TOOL_WEB_SEARCH_PERPLEXITY_BASE_URL: z.string().url().optional(),
+    TOOL_WEB_SEARCH_PERPLEXITY_MODEL: z.string().optional(),
+
+    TOOL_WEB_FETCH_ENABLED: booleanString.optional(),
+    TOOL_WEB_FETCH_MAX_CHARS: z.string().optional(),
+    TOOL_WEB_FETCH_TIMEOUT_SECONDS: z.string().optional(),
+    TOOL_WEB_FETCH_CACHE_TTL_MINUTES: z.string().optional(),
+    TOOL_WEB_FETCH_MAX_REDIRECTS: z.string().optional(),
+    TOOL_WEB_FETCH_USER_AGENT: z.string().optional(),
+    TOOL_WEB_FETCH_READABILITY: booleanString.optional(),
+    TOOL_WEB_FETCH_FIRECRAWL_ENABLED: booleanString.optional(),
+    TOOL_WEB_FETCH_FIRECRAWL_API_KEY: z.string().optional(),
+    TOOL_WEB_FETCH_FIRECRAWL_BASE_URL: z.string().url().optional(),
+    TOOL_WEB_FETCH_FIRECRAWL_ONLY_MAIN_CONTENT: booleanString.optional(),
+    TOOL_WEB_FETCH_FIRECRAWL_MAX_AGE_MS: z.string().optional(),
+    TOOL_WEB_FETCH_FIRECRAWL_TIMEOUT_SECONDS: z.string().optional(),
 
     OPENAI_ZERO_DATA_RETENTION: booleanString.default(false),
 

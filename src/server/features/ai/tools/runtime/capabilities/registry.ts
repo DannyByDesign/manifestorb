@@ -13,10 +13,11 @@ export type CapabilityIntentFamily =
   | "calendar_policy"
   | "cross_surface_planning"
   | "memory_read"
-  | "memory_mutate";
+  | "memory_mutate"
+  | "web_read";
 
 export interface CapabilityEffectDescriptor {
-  resource: "email" | "calendar" | "planner" | "preferences" | "rule" | "task";
+  resource: "email" | "calendar" | "planner" | "preferences" | "rule" | "task" | "knowledge";
   mutates: boolean;
 }
 
@@ -856,6 +857,41 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       intentFamilies: ["memory_read", "cross_surface_planning"],
       tags: ["memory", "list", "facts"],
       effects: [{ resource: "preferences", mutates: false }],
+    },
+    {
+      id: "web.search",
+      description: "Search the public web with provider-backed search APIs.",
+      inputSchema: z.object({
+        query: z.string().min(1),
+        count: z.number().int().min(1).max(10).optional(),
+        country: z.string().min(1).max(12).optional(),
+        search_lang: z.string().min(1).max(12).optional(),
+        ui_lang: z.string().min(1).max(12).optional(),
+        freshness: z.string().min(1).max(64).optional(),
+      }).strict(),
+      outputSchema: z.unknown(),
+      readOnly: true,
+      riskLevel: "safe",
+      approvalOperation: "query",
+      intentFamilies: ["web_read", "cross_surface_planning"],
+      tags: ["web", "search", "research", "internet"],
+      effects: [{ resource: "knowledge", mutates: false }],
+    },
+    {
+      id: "web.fetch",
+      description: "Fetch and extract readable content from a public URL.",
+      inputSchema: z.object({
+        url: z.string().url(),
+        extractMode: z.enum(["markdown", "text"]).optional(),
+        maxChars: z.number().int().min(100).max(200_000).optional(),
+      }).strict(),
+      outputSchema: z.unknown(),
+      readOnly: true,
+      riskLevel: "safe",
+      approvalOperation: "get",
+      intentFamilies: ["web_read", "cross_surface_planning"],
+      tags: ["web", "fetch", "url", "extract", "content"],
+      effects: [{ resource: "knowledge", mutates: false }],
     },
     {
       id: "planner.composeDayPlan",

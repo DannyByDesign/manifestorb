@@ -485,6 +485,93 @@ Required cases:
 - Add operator docs in `docs/` for enabling providers.
 - DoD: docs include setup + safety notes.
 
+### 15.1 Granular Atomic Implementation Checklist (Execution Tracker)
+
+This section breaks each issue into file-level atomic units so implementation can be completed and verified incrementally.
+
+Status legend:
+- `[ ]` not started
+- `[-]` in progress
+- `[x]` complete
+
+#### WSF-01 Registry Definitions
+
+- `[x]` Add `web.search` definition in `src/server/features/ai/tools/runtime/capabilities/registry.ts`
+- `[x]` Add `web.fetch` definition in `src/server/features/ai/tools/runtime/capabilities/registry.ts`
+- `[x]` Add/confirm taxonomy fields: `readOnly`, `riskLevel`, `approvalOperation`, tags, effects
+- `[x]` Run executor coverage test to confirm new definitions are wired
+
+#### WSF-02 Core Web Capability Module
+
+- `[x]` Create `src/server/features/ai/tools/runtime/capabilities/web-shared.ts` (timeouts/cache helpers)
+- `[x]` Create `src/server/features/ai/tools/runtime/capabilities/web-fetch-utils.ts` (extract + truncate)
+- `[x]` Create `src/server/features/ai/tools/runtime/capabilities/web.ts`
+- `[x]` Implement `web.search` provider resolution (`brave` default, `perplexity` optional)
+- `[x]` Implement `web.search` API-key resolution priority and setup errors
+- `[x]` Implement `web.search` freshness validation and Brave-only restriction
+- `[x]` Implement `web.search` cache key + TTL
+- `[x]` Implement `web.fetch` URL validation, redirect limit, timeout, extract mode, max chars
+- `[x]` Implement `web.fetch` cache key + TTL
+- `[x]` Implement `web.fetch` Firecrawl fallback behavior when configured
+
+#### WSF-03 SSRF Utility
+
+- `[x]` Create `src/server/features/ai/tools/runtime/capabilities/web-ssrf.ts`
+- `[x]` Implement hostname blocklist checks
+- `[x]` Implement private IPv4/IPv6 checks
+- `[x]` Implement DNS resolution checks for private/internal targets
+- `[x]` Implement pinned DNS lookup/dispatcher for request path
+- `[x]` Revalidate redirect targets per hop
+
+#### WSF-04 Runtime Executors
+
+- `[x]` Create `src/server/features/ai/tools/runtime/capabilities/executors/web.ts`
+- `[x]` Add `web.search` executor mapping
+- `[x]` Add `web.fetch` executor mapping
+- `[x]` Merge web executors in `src/server/features/ai/tools/runtime/capabilities/executors/index.ts`
+
+#### WSF-05 Capability Assembly
+
+- `[x]` Export web capability interface from `src/server/features/ai/tools/runtime/capabilities/web.ts`
+- `[x]` Attach `web: createWebCapabilities(env)` in `src/server/features/ai/tools/runtime/capabilities/index.ts`
+
+#### WSF-06 Tool Pack
+
+- `[x]` Create `src/server/features/ai/tools/packs/web/tools/index.ts`
+- `[x]` Create `src/server/features/ai/tools/packs/web/manifest.ts`
+- `[x]` Register `webToolPackManifest()` in `src/server/features/ai/tools/packs/registry.ts`
+- `[x]` Verify pack loader resolves web tool names through registry/executor chain
+
+#### WSF-07 Policy Groups
+
+- `[x]` Add `"group:web"` in `src/server/features/ai/tools/policy/tool-policy.ts`
+- `[x]` Ensure group expansion resolves to both web tools
+- `[x]` Validate allow/deny path still passes parity tests
+
+#### WSF-08 Env + Config Surface
+
+- `[x]` Add optional provider keys in `src/env.ts`: `BRAVE_API_KEY`, `PERPLEXITY_API_KEY`, `OPENROUTER_API_KEY`, `FIRECRAWL_API_KEY`
+- `[x]` Add optional runtime tuning env keys for web search/fetch defaults in `src/env.ts`
+- `[x]` Add `.env.example` documentation for web tool keys
+- `[x]` Confirm safe defaults when env keys are absent
+
+#### WSF-09 Tests
+
+- `[x]` Add search provider/key resolution tests
+- `[x]` Add search parameter/freshness validation tests
+- `[x]` Add search cache hit marker tests
+- `[x]` Add fetch URL scheme validation tests
+- `[x]` Add fetch SSRF tests: localhost/private/dns-rebinding/redirect-to-private
+- `[x]` Add fetch normalization/extraction payload tests
+- `[x]` Add executor map tests for web tools
+- `[x]` Add pack/policy wiring tests for `group:web`
+
+#### WSF-10 Docs + Attribution
+
+- `[x]` Add attribution comments in fork-derived web files
+- `[x]` Add operator docs for provider setup + SSRF behavior
+- `[x]` Link docs from PRD status area (`docs/web-tools-runtime.md`)
+
 ---
 
 ## 16. Acceptance Criteria (Release Gate)
@@ -585,4 +672,3 @@ Source: `/Users/dannywang/Projects/openclaw/src/infra/net/ssrf.ts`
 ```
 
 Source: `/Users/dannywang/Projects/openclaw/src/agents/tool-policy.ts`
-

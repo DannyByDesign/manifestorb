@@ -65,6 +65,10 @@ const TOOL_GROUPS: Record<string, string[]> = {
     "planner.planDay",
     "planner.prioritizeWork",
   ],
+  "group:web": [
+    "web.search",
+    "web.fetch",
+  ],
   "group:inbox": [
     "group:inbox_read",
     "group:inbox_mutate",
