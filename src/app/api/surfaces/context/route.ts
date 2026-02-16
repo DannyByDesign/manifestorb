@@ -3,6 +3,7 @@ import prisma from "@/server/db/client";
 import { createScopedLogger } from "@/server/lib/logger";
 import { z } from "zod";
 import { deriveCanonicalThreadId } from "@/features/channels/conversation-key";
+import { resolveSurfaceAccount } from "@/features/channels/surface-account";
 import { env } from "@/env";
 
 const logger = createScopedLogger("api/surfaces/context");
@@ -17,27 +18,6 @@ const bodySchema = z.object({
     incomingThreadId: z.string().optional(),
     messageId: z.string().optional(),
 });
-
-function normalizeSlackAccountCandidates(input: {
-    providerAccountId: string;
-    providerTeamId?: string;
-}): string[] {
-    const raw = input.providerAccountId.trim();
-    const team = input.providerTeamId?.trim();
-    const candidates: string[] = [];
-
-    if (team && !raw.includes(":")) {
-        candidates.push(`${team}:${raw}`, raw);
-        return candidates;
-    }
-
-    candidates.push(raw);
-    if (raw.includes(":")) {
-        const legacy = raw.split(":").pop();
-        if (legacy) candidates.push(legacy);
-    }
-    return candidates;
-}
 
 export async function POST(req: NextRequest) {
     const authHeader = req.headers.get("x-surfaces-secret");
@@ -73,64 +53,19 @@ export async function POST(req: NextRequest) {
             messageId,
         });
 
-        const accountIdCandidates =
-            provider === "slack"
-                ? normalizeSlackAccountCandidates({
-                    providerAccountId,
-                    providerTeamId,
-                })
-                : [providerAccountId.trim()];
-
-        let accountUserId: string | null = null;
-        for (const candidate of accountIdCandidates) {
-            const account = await prisma.account.findUnique({
-                where: {
-                    provider_providerAccountId: {
-                        provider,
-                        providerAccountId: candidate,
-                    },
-                },
-                select: {
-                    userId: true,
-                },
-            });
-            if (account?.userId) {
-                accountUserId = account.userId;
-                break;
-            }
-        }
-
-        if (!accountUserId && provider === "slack" && !providerAccountId.includes(":")) {
-            const suffixMatchesRaw = await prisma.account.findMany({
-                where: {
-                    provider: "slack",
-                    providerAccountId: {
-                        endsWith: `:${providerAccountId.trim()}`,
-                    },
-                },
-                select: {
-                    userId: true,
-                },
-                take: 2,
-            });
-            const suffixMatches = Array.isArray(suffixMatchesRaw) ? suffixMatchesRaw : [];
-            if (suffixMatches.length === 1) {
-                accountUserId = suffixMatches[0].userId;
-            } else if (suffixMatches.length > 1) {
-                return NextResponse.json({
-                    linked: false,
-                    canonicalThreadId,
-                    resolutionStatus: "unknown",
-                    reason: "ambiguous_slack_account_suffix",
-                });
-            }
-        }
+        const accountResolution = await resolveSurfaceAccount({
+            provider,
+            providerAccountId,
+            workspaceId: providerTeamId,
+        });
+        const accountUserId = accountResolution.userId;
 
         if (!accountUserId) {
             return NextResponse.json({
                 linked: false,
                 canonicalThreadId,
-                resolutionStatus: "unlinked",
+                resolutionStatus: accountResolution.resolutionStatus,
+                ...(accountResolution.reason ? { reason: accountResolution.reason } : {}),
             });
         }
 

@@ -49,6 +49,40 @@ export interface SurfaceIdentityResult {
     reason?: string;
 }
 
+export interface SurfaceSessionResult extends SurfaceIdentityResult {
+    matchedProviderAccountId?: string;
+    canonicalThreadId?: string;
+    canonicalChannelId?: string;
+    conversationId?: string;
+}
+
+type SurfaceActionPayload =
+    | {
+        type: "approval";
+        requestId: string;
+        decision: "approve" | "deny";
+        reason?: string;
+    }
+    | {
+        type: "ambiguous_time";
+        requestId: string;
+        choice: "earlier" | "later";
+    }
+    | {
+        type: "draft";
+        draftId: string;
+        decision: "send" | "discard";
+        userId: string;
+        emailAccountId: string;
+    };
+
+export type SurfaceActionResult = {
+    ok: boolean;
+    status: number;
+    error?: string;
+    body?: unknown;
+};
+
 export type BrainOutboundResponse = {
     responseId?: string;
     content?: string;
@@ -144,7 +178,7 @@ export async function fetchSurfaceIdentity(params: {
     }
 }
 
-export async function fetchCanonicalSidecarThread(params: {
+export async function resolveSurfaceSession(params: {
     provider: "slack" | "discord" | "telegram";
     providerAccountId: string;
     providerTeamId?: string;
@@ -152,9 +186,9 @@ export async function fetchCanonicalSidecarThread(params: {
     isDirectMessage?: boolean;
     incomingThreadId?: string;
     messageId: string;
-}): Promise<string | null> {
+}): Promise<SurfaceSessionResult> {
     try {
-        const response = await fetch(`${CORE_BASE_URL}/api/surfaces/context`, {
+        const response = await fetch(`${CORE_BASE_URL}/api/surfaces/session/resolve`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -163,21 +197,51 @@ export async function fetchCanonicalSidecarThread(params: {
             body: JSON.stringify(params),
         });
         if (!response.ok) {
-            return null;
+            return {
+                status: "unknown",
+                linked: false,
+                reason: `session_http_${response.status}`,
+            };
         }
-        const data = (await response.json()) as { canonicalThreadId?: string | null };
-        return typeof data.canonicalThreadId === "string" && data.canonicalThreadId.length > 0
-            ? data.canonicalThreadId
-            : null;
+        const data = (await response.json()) as {
+            linked?: boolean;
+            status?: SurfaceIdentityStatus;
+            userId?: string;
+            reason?: string;
+            matchedProviderAccountId?: string;
+            canonicalThreadId?: string;
+            canonicalChannelId?: string;
+            conversationId?: string;
+        };
+        const status = data.status ?? (data.linked ? "linked" : "unlinked");
+        return {
+            status,
+            linked: status === "linked",
+            ...(typeof data.userId === "string" ? { userId: data.userId } : {}),
+            ...(typeof data.reason === "string" ? { reason: data.reason } : {}),
+            ...(typeof data.matchedProviderAccountId === "string"
+                ? { matchedProviderAccountId: data.matchedProviderAccountId }
+                : {}),
+            ...(typeof data.canonicalThreadId === "string"
+                ? { canonicalThreadId: data.canonicalThreadId }
+                : {}),
+            ...(typeof data.canonicalChannelId === "string"
+                ? { canonicalChannelId: data.canonicalChannelId }
+                : {}),
+            ...(typeof data.conversationId === "string"
+                ? { conversationId: data.conversationId }
+                : {}),
+        };
     } catch (error) {
-        console.error("[Surfaces] Failed to resolve canonical sidecar thread", {
+        console.error("[Surfaces] Failed to resolve sidecar session", {
             provider: params.provider,
-            channelId: params.channelId,
-            providerAccountId: params.providerAccountId,
-            messageId: params.messageId,
             error: error instanceof Error ? error.message : String(error),
         });
-        return null;
+        return {
+            status: "unknown",
+            linked: false,
+            reason: "session_transport_error",
+        };
     }
 }
 
@@ -196,6 +260,58 @@ export async function forwardToBrain(params: {
     }
 
     return null;
+}
+
+export async function submitSurfaceAction(params: {
+    provider: "slack" | "discord" | "telegram";
+    providerAccountId: string;
+    action: SurfaceActionPayload;
+}): Promise<SurfaceActionResult> {
+    try {
+        const response = await fetch(`${CORE_BASE_URL}/api/surfaces/actions`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${SHARED_SECRET}`,
+            },
+            body: JSON.stringify(params),
+        });
+
+        let payload: unknown = null;
+        let bodyText = "";
+        try {
+            payload = await response.json();
+        } catch {
+            bodyText = await response.text().catch(() => "");
+        }
+
+        const record = payload && typeof payload === "object"
+            ? (payload as Record<string, unknown>)
+            : null;
+        const error =
+            typeof record?.error === "string"
+                ? record.error
+                : typeof record?.message === "string"
+                    ? record.message
+                    : typeof record?.detail === "string"
+                        ? record.detail
+                        : bodyText.length > 0
+                            ? bodyText.slice(0, 500)
+                            : undefined;
+
+        return {
+            ok: response.ok,
+            status: response.status,
+            ...(payload !== null ? { body: payload } : {}),
+            ...(error ? { error } : {}),
+        };
+    } catch (error) {
+        return {
+            ok: false,
+            status: 0,
+            error: error instanceof Error ? error.message : String(error),
+        };
+    }
 }
 
 /**

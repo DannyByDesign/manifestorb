@@ -12,6 +12,11 @@ import { env } from "./env";
 import { prisma } from "./db/prisma";
 import { redis } from "./db/redis";
 import { getPlatformStatuses, setPlatformError, type PlatformName } from "./platform-status";
+import {
+    acknowledgeSidecarDelivery,
+    hasSidecarResponseBeenDelivered,
+    markSidecarResponseDelivered,
+} from "./delivery";
 
 config();
 
@@ -62,25 +67,65 @@ export async function handleRequest(req: Request) {
             }
 
             const body = await req.json();
-            const { platform, channelId, threadId, content } = body;
+            const { platform, channelId, threadId, content, responseId } = body as {
+                platform?: "slack" | "discord" | "telegram";
+                channelId?: string;
+                threadId?: string;
+                content?: string;
+                responseId?: string;
+            };
 
             if (!platform || !channelId || !content) {
                 return new Response("Missing required fields", { status: 400 });
             }
 
+            if (
+                typeof responseId === "string" &&
+                responseId.length > 0 &&
+                await hasSidecarResponseBeenDelivered({ provider: platform, responseId })
+            ) {
+                return new Response("Notification already delivered", { status: 200 });
+            }
+
+            let providerMessageId: string | undefined;
             if (platform === "slack") {
                 const { sendSlackMessage } = await import("./slack");
-                await sendSlackMessage(channelId, content, undefined, threadId);
-                return new Response("Notification sent to Slack", { status: 200 });
-            }
-
-            if (platform === "discord") {
+                providerMessageId = await sendSlackMessage(channelId, content, undefined, threadId);
+            } else if (platform === "discord") {
                 const { sendDiscordMessage } = await import("./discord");
-                await sendDiscordMessage(channelId, content);
-                return new Response("Notification sent to Discord", { status: 200 });
+                providerMessageId = await sendDiscordMessage(channelId, content);
+            } else if (platform === "telegram") {
+                const { sendTelegramMessage } = await import("./telegram");
+                providerMessageId = await sendTelegramMessage(channelId, content);
+            } else {
+                return new Response("Unsupported platform", { status: 400 });
             }
 
-            return new Response("Unsupported platform", { status: 400 });
+            if (typeof responseId === "string" && responseId.length > 0 && providerMessageId) {
+                await markSidecarResponseDelivered({
+                    provider: platform,
+                    responseId,
+                });
+                try {
+                    await acknowledgeSidecarDelivery({
+                        responseId,
+                        provider: platform,
+                        providerMessageId,
+                        channelId,
+                        threadId,
+                    });
+                } catch (error) {
+                    console.warn("[Surfaces] Failed to acknowledge notify delivery", {
+                        platform,
+                        channelId,
+                        threadId: threadId ?? null,
+                        responseId,
+                        error: error instanceof Error ? error.message : String(error),
+                    });
+                }
+            }
+
+            return new Response(`Notification sent to ${platform}`, { status: 200 });
 
         } catch (err) {
             console.error("Failed to process notification", err);

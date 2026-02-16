@@ -11,8 +11,9 @@ import {
 } from "discord.js";
 import {
     fetchOnboardingLinkUrl,
-    fetchSurfaceIdentity,
     forwardToBrain,
+    resolveSurfaceSession,
+    submitSurfaceAction,
     toPlainSidecarText,
     type InteractiveAction,
     type InteractivePayload
@@ -23,10 +24,12 @@ import {
     setPlatformStarted,
     touchPlatformEvent
 } from "../platform-status";
+import {
+    acknowledgeSidecarDelivery,
+    hasSidecarResponseBeenDelivered,
+    markSidecarResponseDelivered,
+} from "../delivery";
 import { env } from "../env";
-
-const CORE_BASE_URL = env.CORE_BASE_URL;
-const SHARED_SECRET = env.SURFACES_SHARED_SECRET;
 
 async function clearInteractionButtons(interaction: ButtonInteraction) {
     const currentContent = toPlainSidecarText(
@@ -99,32 +102,38 @@ export function startDiscord() {
 
             if (action === "draft_send") {
                 console.log(`[Surfaces] Discord: Sending draft ${draftId}`);
-                
-                const response = await fetch(`${CORE_BASE_URL}/api/drafts/${draftId}/send`, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "x-surfaces-secret": SHARED_SECRET,
+                const result = await submitSurfaceAction({
+                    provider: "discord",
+                    providerAccountId: interaction.user.id,
+                    action: {
+                        type: "draft",
+                        draftId,
+                        decision: "send",
+                        userId,
+                        emailAccountId,
                     },
-                    body: JSON.stringify({ userId, emailAccountId })
                 });
 
-                if (response.ok) {
+                if (result.ok) {
                     await interaction.followUp(toPlainSidecarText("success"));
                 } else {
                     await interaction.followUp(toPlainSidecarText("Failed to send email."));
                 }
             } else if (action === "draft_discard") {
                 console.log(`[Surfaces] Discord: Discarding draft ${draftId}`);
-                
-                const response = await fetch(`${CORE_BASE_URL}/api/drafts/${draftId}?userId=${userId}&emailAccountId=${emailAccountId}`, {
-                    method: "DELETE",
-                    headers: {
-                        "x-surfaces-secret": SHARED_SECRET,
-                    }
+                const result = await submitSurfaceAction({
+                    provider: "discord",
+                    providerAccountId: interaction.user.id,
+                    action: {
+                        type: "draft",
+                        draftId,
+                        decision: "discard",
+                        userId,
+                        emailAccountId,
+                    },
                 });
 
-                if (response.ok) {
+                if (result.ok) {
                     await interaction.followUp(toPlainSidecarText("success"));
                 } else {
                     await interaction.followUp(toPlainSidecarText("Failed to discard draft."));
@@ -140,16 +149,17 @@ export function startDiscord() {
             const [, choice, requestId] = customId.split(":");
             if (choice !== "earlier" && choice !== "later") return;
 
-            const response = await fetch(`${CORE_BASE_URL}/api/ambiguous-time/${requestId}/resolve`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "x-surfaces-secret": SHARED_SECRET,
+            const result = await submitSurfaceAction({
+                provider: "discord",
+                providerAccountId: interaction.user.id,
+                action: {
+                    type: "ambiguous_time",
+                    requestId,
+                    choice,
                 },
-                body: JSON.stringify({ choice })
             });
 
-            if (response.ok) {
+            if (result.ok) {
                 await interaction.followUp(toPlainSidecarText("success"));
             } else {
                 await interaction.followUp(toPlainSidecarText("Failed to resolve that time."));
@@ -165,19 +175,17 @@ export function startDiscord() {
 
         console.log(`[Surfaces] Discord: Processing ${action} for request ${requestId}`);
 
-        const response = await fetch(`${CORE_BASE_URL}/api/approvals/${requestId}/${action}`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "x-surfaces-secret": SHARED_SECRET,
+        const result = await submitSurfaceAction({
+            provider: "discord",
+            providerAccountId: interaction.user.id,
+            action: {
+                type: "approval",
+                requestId,
+                decision: action,
             },
-            body: JSON.stringify({
-                userId: interaction.user.id,
-                provider: "discord",
-            })
         });
 
-        if (!response.ok) {
+        if (!result.ok) {
             await interaction.followUp(toPlainSidecarText(`Failed to ${action} request.`));
         }
     });
@@ -215,16 +223,19 @@ export function startDiscord() {
         const isDM = message.channel.type === ChannelType.DM;
         try {
             const providerAccountId = message.author.id;
-            const identity = await fetchSurfaceIdentity({
+            const session = await resolveSurfaceSession({
                 provider: "discord",
                 providerAccountId,
+                channelId: message.channelId,
+                isDirectMessage: isDM,
+                messageId: message.id,
             });
-            if (identity.status === "unknown") {
+            if (session.status === "unknown") {
                 console.warn("[Surfaces][Discord] Identity check unavailable; skipping onboarding", {
                     providerAccountId,
-                    reason: identity.reason ?? "unknown",
+                    reason: session.reason ?? "unknown",
                 });
-            } else if (!identity.linked) {
+            } else if (!session.linked) {
                 if (isDM) {
                     const linkUrl = await fetchOnboardingLinkUrl(
                         "discord",
@@ -255,6 +266,7 @@ export function startDiscord() {
                     userId: message.author.id,
                     userName: message.author.username,
                     messageId: message.id,
+                    threadId: session.canonicalThreadId,
                     isDirectMessage: isDM,
                     guildId: message.guildId,
                 },
@@ -262,9 +274,29 @@ export function startDiscord() {
 
             if (brainResponse && brainResponse.responses) {
                 for (const resp of brainResponse.responses) {
+                    const responseId =
+                        resp && typeof resp === "object" && typeof (resp as { responseId?: unknown }).responseId === "string"
+                            ? (resp as { responseId: string }).responseId
+                            : undefined;
+                    if (
+                        responseId &&
+                        await hasSidecarResponseBeenDelivered({
+                            provider: "discord",
+                            responseId,
+                        })
+                    ) {
+                        console.log("[Surfaces][Discord] Skipping already delivered response", {
+                            channelId: message.channelId,
+                            messageId: message.id,
+                            responseId,
+                        });
+                        continue;
+                    }
+
                     const plainResponseContent = toPlainSidecarText(
                         typeof resp.content === "string" ? resp.content : "",
                     );
+                    let providerMessageId: string | undefined;
                     if (resp.interactive) {
                         const interactive = resp.interactive as InteractivePayload;
                         const plainInteractiveSummary = toPlainSidecarText(interactive.summary || "");
@@ -316,27 +348,52 @@ export function startDiscord() {
                                 }
                                 lines.push("", bodySnippet || "(empty body)");
 
-                                await message.reply({
+                                const sent = await message.reply({
                                     content: lines.join("\n"),
                                     components: [row]
                                 });
+                                providerMessageId = sent.id;
                             } else {
                                 // Default for approvals/action requests or drafts without preview
-                                await message.reply({
+                                const sent = await message.reply({
                                     content: [plainInteractiveSummary, plainResponseContent]
                                         .filter((part) => part.length > 0)
                                         .join("\n"),
                                     components: [row]
                                 });
+                                providerMessageId = sent.id;
                             }
                         } catch (err) {
                             console.error("[Surfaces] Failed to reply interactive on Discord:", err);
                         }
                     } else if (resp.content) {
                         try {
-                            await message.reply(plainResponseContent);
+                            const sent = await message.reply(plainResponseContent);
+                            providerMessageId = sent.id;
                         } catch (err) {
                             console.error("[Surfaces] Failed to reply on Discord:", err);
+                        }
+                    }
+
+                    if (responseId && providerMessageId) {
+                        await markSidecarResponseDelivered({
+                            provider: "discord",
+                            responseId,
+                        });
+                        try {
+                            await acknowledgeSidecarDelivery({
+                                responseId,
+                                provider: "discord",
+                                providerMessageId,
+                                channelId: message.channelId,
+                            });
+                        } catch (error) {
+                            console.warn("[Surfaces][Discord] Failed to acknowledge delivery", {
+                                channelId: message.channelId,
+                                messageId: message.id,
+                                responseId,
+                                error: error instanceof Error ? error.message : String(error),
+                            });
                         }
                     }
                 }
@@ -354,18 +411,21 @@ export function startDiscord() {
 
 let discordClient: Client | undefined;
 
-export async function sendDiscordMessage(channelId: string, content: string) {
+export async function sendDiscordMessage(channelId: string, content: string): Promise<string | undefined> {
     if (!discordClient) {
         console.error("Discord client not initialized");
-        return;
+        return undefined;
     }
     try {
         const channel = await discordClient.channels.fetch(channelId);
         if (channel && channel.isTextBased() && "send" in channel) {
-            await channel.send(toPlainSidecarText(content));
+            const sent = await channel.send(toPlainSidecarText(content));
+            return typeof sent.id === "string" ? sent.id : undefined;
         }
+        return undefined;
     } catch (error) {
         console.error("Failed to send Discord message", error);
+        return undefined;
     }
 }
 

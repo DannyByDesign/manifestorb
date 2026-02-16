@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { env } from "@/env";
-import prisma from "@/server/db/client";
+import { resolveSurfaceAccount } from "@/features/channels/surface-account";
 import { createScopedLogger } from "@/server/lib/logger";
 
 const logger = createScopedLogger("api/surfaces/identity");
@@ -13,68 +13,6 @@ const bodySchema = z.object({
   providerAccountId: z.string().min(1),
   providerTeamId: z.string().optional(),
 });
-
-function normalizeSlackAccountId(input: {
-  providerAccountId: string;
-  providerTeamId?: string;
-}): { primary: string; fallbacks: string[] } {
-  const raw = input.providerAccountId.trim();
-  const team = input.providerTeamId?.trim();
-  const fallbacks: string[] = [];
-
-  // Preferred: "T123:U456" (avoids collisions across workspaces).
-  if (team && !raw.includes(":")) {
-    return { primary: `${team}:${raw}`, fallbacks: [raw] };
-  }
-
-  // If caller already sent composite, accept it but also allow legacy "U456".
-  if (raw.includes(":")) {
-    const parts = raw.split(":");
-    const legacy = parts.length >= 2 ? parts[parts.length - 1] : null;
-    if (legacy) fallbacks.push(legacy);
-  }
-
-  return { primary: raw, fallbacks };
-}
-
-async function resolveSlackBySuffix(rawProviderAccountId: string) {
-  const normalized = rawProviderAccountId.trim();
-  if (!normalized || normalized.includes(":")) return null;
-
-  const matchesRaw = await prisma.account.findMany({
-    where: {
-      provider: "slack",
-      providerAccountId: {
-        endsWith: `:${normalized}`,
-      },
-    },
-    select: {
-      userId: true,
-      providerAccountId: true,
-    },
-    take: 2,
-  });
-  const matches = Array.isArray(matchesRaw) ? matchesRaw : [];
-
-  if (matches.length === 1) {
-    return {
-      linked: true as const,
-      userId: matches[0].userId,
-      matchedProviderAccountId: matches[0].providerAccountId,
-      status: "linked" as const,
-    };
-  }
-
-  if (matches.length > 1) {
-    return {
-      linked: false as const,
-      status: "unknown" as const,
-      reason: "ambiguous_slack_account_suffix",
-    };
-  }
-
-  return null;
-}
 
 export async function POST(req: NextRequest) {
   const authHeader = req.headers.get("x-surfaces-secret");
@@ -91,47 +29,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid body", details: parse.error.issues }, { status: 400 });
     }
 
-    const { provider } = parse.data;
-    const providerAccountIdRaw = parse.data.providerAccountId;
-    const providerTeamId = parse.data.providerTeamId;
+    const { provider, providerAccountId, providerTeamId } = parse.data;
+    const resolution = await resolveSurfaceAccount({
+      provider,
+      providerAccountId,
+      workspaceId: providerTeamId,
+    });
 
-    const candidates =
-      provider === "slack"
-        ? (() => {
-            const normalized = normalizeSlackAccountId({
-              providerAccountId: providerAccountIdRaw,
-              providerTeamId,
-            });
-            return [normalized.primary, ...normalized.fallbacks];
-          })()
-        : [providerAccountIdRaw.trim()];
-
-    for (const providerAccountId of candidates) {
-      const account = await prisma.account.findUnique({
-        where: {
-          provider_providerAccountId: {
-            provider,
-            providerAccountId,
-          },
-        },
-        select: { userId: true },
+    if (resolution.userId && resolution.matchedProviderAccountId) {
+      return NextResponse.json({
+        status: "linked",
+        linked: true,
+        userId: resolution.userId,
+        matchedProviderAccountId: resolution.matchedProviderAccountId,
       });
-
-      if (account?.userId) {
-        return NextResponse.json({
-          status: "linked",
-          linked: true,
-          userId: account.userId,
-          matchedProviderAccountId: providerAccountId,
-        });
-      }
     }
 
-    if (provider === "slack") {
-      const suffix = await resolveSlackBySuffix(providerAccountIdRaw);
-      if (suffix) {
-        return NextResponse.json(suffix);
-      }
+    if (resolution.resolutionStatus === "unknown") {
+      return NextResponse.json({
+        linked: false,
+        status: "unknown",
+        ...(resolution.reason ? { reason: resolution.reason } : {}),
+      });
     }
 
     return NextResponse.json({ status: "unlinked", linked: false });

@@ -2,10 +2,11 @@ import { App } from "@slack/bolt";
 import type { Block, KnownBlock } from "@slack/types";
 import { randomUUID } from "node:crypto";
 import {
-    fetchCanonicalSidecarThread,
     forwardToBrain,
     fetchSurfaceIdentity,
     fetchOnboardingLinkUrl,
+    resolveSurfaceSession,
+    submitSurfaceAction,
     toPlainSidecarText,
     type InteractiveAction,
     type InteractivePayload,
@@ -17,11 +18,14 @@ import {
     setPlatformStarted,
     touchPlatformEvent
 } from "../platform-status";
+import {
+    acknowledgeSidecarDelivery,
+    hasSidecarResponseBeenDelivered,
+    markSidecarResponseDelivered,
+} from "../delivery";
 import { redis } from "../db/redis";
 import { env } from "../env";
 
-const CORE_BASE_URL = env.CORE_BASE_URL;
-const SHARED_SECRET = env.SURFACES_SHARED_SECRET;
 const SLACK_LEADER_LOCK_KEY = process.env.SLACK_LEADER_LOCK_KEY || "surfaces:slack:socket-mode:leader";
 const SLACK_LEADER_LOCK_TTL_MS = Number(process.env.SLACK_LEADER_LOCK_TTL_MS || 30000);
 const SLACK_RECONNECT_WINDOW_MS = 60_000;
@@ -29,11 +33,6 @@ const SLACK_RECONNECT_THRESHOLD = 8;
 const SLACK_IDENTITY_CACHE_TTL_MS = 30_000;
 const SLACK_UNLINKED_CONFIRMATION_THRESHOLD = 2;
 const SLACK_UNLINKED_STREAK_TTL_MS = 5 * 60_000;
-const SLACK_DELIVERY_DEDUPE_TTL_MS = Math.max(
-    60_000,
-    Number(process.env.SLACK_DELIVERY_DEDUPE_TTL_MS || 7 * 24 * 60 * 60 * 1000),
-);
-const SLACK_DELIVERY_DEDUPE_KEY_PREFIX = "surfaces:slack:delivery";
 type SlackBlock = Record<string, unknown>;
 type SlackButtonElement = Record<string, unknown>;
 
@@ -59,87 +58,19 @@ type SlackIdentityCacheEntry = {
 const slackThreadContext = new Map<string, string>();
 const slackIdentityCache = new Map<string, SlackIdentityCacheEntry>();
 const slackUnlinkedStreak = new Map<string, { count: number; updatedAt: number }>();
-const slackDeliveryDedupeFallback = new Map<string, number>();
 
 function threadContextKey(channelId: string, userId: string): string {
     return `${channelId}:${userId}`;
 }
 
-function slackDeliveryDedupeKey(responseId: string): string {
-    return `${SLACK_DELIVERY_DEDUPE_KEY_PREFIX}:${responseId}`;
-}
-
-async function hasSlackResponseBeenDelivered(responseId: string): Promise<boolean> {
-    if (redis) {
-        try {
-            const value = await redis.get(slackDeliveryDedupeKey(responseId));
-            return value === "1";
-        } catch (error) {
-            console.warn("[Surfaces][Slack] Failed to read delivery dedupe key", {
-                responseId,
-                error: error instanceof Error ? error.message : String(error),
-            });
-        }
-    }
-
-    const expiresAt = slackDeliveryDedupeFallback.get(responseId);
-    if (!expiresAt) return false;
-    if (expiresAt < Date.now()) {
-        slackDeliveryDedupeFallback.delete(responseId);
-        return false;
-    }
-    return true;
-}
-
-async function markSlackResponseDelivered(responseId: string): Promise<void> {
-    if (redis) {
-        try {
-            await redis.set(
-                slackDeliveryDedupeKey(responseId),
-                "1",
-                "PX",
-                SLACK_DELIVERY_DEDUPE_TTL_MS,
-            );
-            return;
-        } catch (error) {
-            console.warn("[Surfaces][Slack] Failed to write delivery dedupe key", {
-                responseId,
-                error: error instanceof Error ? error.message : String(error),
-            });
-        }
-    }
-
-    slackDeliveryDedupeFallback.set(responseId, Date.now() + SLACK_DELIVERY_DEDUPE_TTL_MS);
-}
-
-async function acknowledgeSlackDelivery(params: {
-    responseId: string;
-    providerMessageId: string;
-    channelId: string;
-    threadId?: string;
-}) {
-    const response = await fetch(`${CORE_BASE_URL}/api/surfaces/inbound/ack`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "x-surfaces-secret": SHARED_SECRET,
-        },
-        body: JSON.stringify({
-            responseId: params.responseId,
-            provider: "slack",
-            providerMessageId: params.providerMessageId,
-            channelId: params.channelId,
-            threadId: params.threadId,
-        }),
-    });
-
-    if (!response.ok) {
-        throw new Error(`ack_http_${response.status}`);
-    }
-}
-
 function normalizeSlackThreadTs(value: unknown): string | undefined {
     return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function extractSlackSentTs(result: unknown): string | undefined {
+    if (!result || typeof result !== "object") return undefined;
+    const record = result as Record<string, unknown>;
+    return typeof record.ts === "string" && record.ts.length > 0 ? record.ts : undefined;
 }
 
 function extractSlackTeamId(bodyOrContext: unknown): string | undefined {
@@ -644,33 +575,6 @@ async function clearSlackAssistantThinkingStatus(params: {
     await setSlackAssistantThreadStatus({ ...params, status: "" });
 }
 
-async function resolvePersistedSlackThreadTs(params: {
-    providerAccountId: string;
-    channelId: string;
-}): Promise<string | undefined> {
-    try {
-        const response = await fetch(`${CORE_BASE_URL}/api/surfaces/thread-context`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "x-surfaces-secret": SHARED_SECRET,
-            },
-            body: JSON.stringify({
-                provider: "slack",
-                providerAccountId: params.providerAccountId,
-                channelId: params.channelId,
-            }),
-        });
-        if (!response.ok) return undefined;
-        const body = (await response.json()) as { threadId?: string | null };
-        return typeof body.threadId === "string" && body.threadId.length > 0
-            ? body.threadId
-            : undefined;
-    } catch {
-        return undefined;
-    }
-}
-
 export async function startSlack() {
     if (slackStarted) {
         console.log("[Surfaces][Slack] start requested while already running");
@@ -715,38 +619,31 @@ export async function startSlack() {
         const actionId = ("action_id" in action) ? action.action_id : undefined;
         if (!actionId) return;
         const requestId = action.value;
+        if (typeof requestId !== "string" || requestId.length === 0) return;
         const decision = actionId === "approve_request" ? "approve" : "deny";
+        const providerAccountId = toSlackProviderAccountId({
+            teamId: extractSlackTeamId(body),
+            userId: body.user.id,
+        }).providerAccountId;
 
         console.log(`[Surfaces] Processing ${decision} for request ${requestId}`);
 
-        const response = await fetch(`${CORE_BASE_URL}/api/approvals/${requestId}/${decision}`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "x-surfaces-secret": SHARED_SECRET,
+        const actionResult = await submitSurfaceAction({
+            provider: "slack",
+            providerAccountId,
+            action: {
+                type: "approval",
+                requestId,
+                decision,
             },
-            body: JSON.stringify({
-                userId: toSlackProviderAccountId({
-                    teamId: extractSlackTeamId(body),
-                    userId: body.user.id,
-                }).providerAccountId,
-                provider: "slack",
-            })
         });
 
-        let responseBody: { error?: string; message?: string; decision?: string } | null = null;
-        try {
-            responseBody = (await response.json()) as { error?: string; message?: string; decision?: string };
-        } catch {
-            responseBody = null;
-        }
-
-        if (!response.ok) {
-            const detail = responseBody?.message || responseBody?.error || response.statusText;
+        if (!actionResult.ok) {
+            const detail = actionResult.error || "request_failed";
             console.error("[Surfaces][Slack] Approval action failed", {
                 requestId,
                 decision,
-                status: response.status,
+                status: actionResult.status,
                 detail,
                 userId: body.user.id,
             });
@@ -767,18 +664,24 @@ export async function startSlack() {
         const actionId = ("action_id" in action) ? action.action_id : undefined;
         if (!actionId) return;
         const requestId = action.value;
+        if (typeof requestId !== "string" || requestId.length === 0) return;
         const choice = actionId === "ambiguous_earlier" ? "earlier" : "later";
+        const providerAccountId = toSlackProviderAccountId({
+            teamId: extractSlackTeamId(body),
+            userId: body.user.id,
+        }).providerAccountId;
 
-        const response = await fetch(`${CORE_BASE_URL}/api/ambiguous-time/${requestId}/resolve`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "x-surfaces-secret": SHARED_SECRET,
+        const actionResult = await submitSurfaceAction({
+            provider: "slack",
+            providerAccountId,
+            action: {
+                type: "ambiguous_time",
+                requestId,
+                choice,
             },
-            body: JSON.stringify({ choice })
         });
 
-        if (response.ok) {
+        if (actionResult.ok) {
             await replyToInteractionThread({
                 app,
                 body,
@@ -788,7 +691,7 @@ export async function startSlack() {
             await replyToInteractionThread({
                 app,
                 body,
-                text: `Failed to resolve that time. ${response.statusText}`,
+                text: `Failed to resolve that time. ${actionResult.error || "request_failed"}`,
             });
         }
     });
@@ -813,32 +716,49 @@ export async function startSlack() {
         if (actionId === "draft_send") {
             console.log(`[Surfaces] Sending draft ${draftId}`);
 
-            const response = await fetch(`${CORE_BASE_URL}/api/drafts/${draftId}/send`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "x-surfaces-secret": SHARED_SECRET,
+            const actionResult = await submitSurfaceAction({
+                provider: "slack",
+                providerAccountId: toSlackProviderAccountId({
+                    teamId: extractSlackTeamId(body),
+                    userId: body.user.id,
+                }).providerAccountId,
+                action: {
+                    type: "draft",
+                    draftId,
+                    decision: "send",
+                    userId,
+                    emailAccountId,
                 },
-                body: JSON.stringify({ userId, emailAccountId })
             });
 
-            if (response.ok) {
+            if (actionResult.ok) {
                 await replyToInteractionThread({ app, body, text: "✅ Email sent successfully!" });
             } else {
-                const error = await response.text();
-                await replyToInteractionThread({ app, body, text: `❌ Failed to send email: ${error}` });
+                await replyToInteractionThread({
+                    app,
+                    body,
+                    text: `❌ Failed to send email: ${actionResult.error || "request_failed"}`,
+                });
             }
         } else if (actionId === "draft_discard") {
             console.log(`[Surfaces] Discarding draft ${draftId}`);
 
-            const response = await fetch(`${CORE_BASE_URL}/api/drafts/${draftId}?userId=${userId}&emailAccountId=${emailAccountId}`, {
-                method: "DELETE",
-                headers: {
-                    "x-surfaces-secret": SHARED_SECRET,
+            const actionResult = await submitSurfaceAction({
+                provider: "slack",
+                providerAccountId: toSlackProviderAccountId({
+                    teamId: extractSlackTeamId(body),
+                    userId: body.user.id,
+                }).providerAccountId,
+                action: {
+                    type: "draft",
+                    draftId,
+                    decision: "discard",
+                    userId,
+                    emailAccountId,
                 }
             });
 
-            if (response.ok) {
+            if (actionResult.ok) {
                 await replyToInteractionThread({ app, body, text: "🗑️ Draft discarded." });
             } else {
                 await replyToInteractionThread({ app, body, text: "Failed to discard draft." });
@@ -933,14 +853,22 @@ export async function startSlack() {
             const { providerAccountId, providerTeamId } = toSlackProviderAccountId({ teamId, userId: slackUserId });
             const cacheKey = threadContextKey(channelId, providerAccountId);
             const cachedThreadTs = slackThreadContext.get(cacheKey);
-            const identity = await resolveSlackIdentity({ providerAccountId, providerTeamId });
-            if (identity.status === "unknown") {
+            const session = await resolveSurfaceSession({
+                provider: "slack",
+                providerAccountId,
+                providerTeamId,
+                channelId,
+                isDirectMessage,
+                incomingThreadId: meta.threadTs,
+                messageId: messageTs,
+            });
+            if (session.status === "unknown") {
                 console.warn("[Surfaces][Slack] Identity check unavailable; continuing without onboarding", {
                     providerAccountId,
                     providerTeamId: providerTeamId ?? null,
-                    reason: identity.reason ?? "unknown",
+                    reason: session.reason ?? "unknown",
                 });
-            } else if (!identity.linked) {
+            } else if (!session.linked) {
                 if (isDirectMessage) {
                     await sendSlackOnboardingWelcome({
                         client: app.client,
@@ -962,18 +890,9 @@ export async function startSlack() {
                 }
                 return;
             }
-            const backendCanonicalThreadTs = await fetchCanonicalSidecarThread({
-                provider: "slack",
-                providerAccountId: providerAccountId,
-                providerTeamId,
-                channelId,
-                isDirectMessage,
-                incomingThreadId: meta.threadTs,
-                messageId: messageTs,
-            });
 
             const canonicalThreadTs =
-                normalizeSlackThreadTs(backendCanonicalThreadTs) ??
+                normalizeSlackThreadTs(session.canonicalThreadId) ??
                 normalizeSlackThreadTs(inboundThreadTs) ??
                 normalizeSlackThreadTs(cachedThreadTs) ??
                 messageTs;
@@ -987,7 +906,7 @@ export async function startSlack() {
                 user: slackUserId,
                 messageTs,
                 incomingThreadTs: meta.threadTs ?? null,
-                backendThreadTs: backendCanonicalThreadTs ?? null,
+                backendThreadTs: session.canonicalThreadId ?? null,
                 inboundThreadTs: inboundThreadTs ?? null,
                 cachedThreadTs: cachedThreadTs ?? null,
                 resolvedThreadTs: canonicalThreadTs ?? null,
@@ -1008,7 +927,7 @@ export async function startSlack() {
                     content: messageText,
                     context: {
                         channelId,
-                        userId: providerAccountId,
+                        userId: session.matchedProviderAccountId ?? providerAccountId,
                         workspaceId: providerTeamId,
                         messageId: messageTs,
                         threadId: replyThreadTs,
@@ -1060,7 +979,13 @@ export async function startSlack() {
                             resp && typeof resp === "object" && typeof (resp as { responseId?: unknown }).responseId === "string"
                                 ? (resp as { responseId: string }).responseId
                                 : undefined;
-                        if (responseId && await hasSlackResponseBeenDelivered(responseId)) {
+                        if (
+                            responseId &&
+                            await hasSidecarResponseBeenDelivered({
+                                provider: "slack",
+                                responseId,
+                            })
+                        ) {
                             console.log("[Surfaces][Slack] Skipping already delivered response", {
                                 channel: channelId,
                                 user: slackUserId,
@@ -1187,7 +1112,7 @@ export async function startSlack() {
                                 ];
                             }
 
-                            await say({
+                            const sent = await say({
                                 thread_ts: replyThreadTs,
                                 blocks: blocks as unknown as (Block | KnownBlock)[],
                                 text:
@@ -1195,22 +1120,29 @@ export async function startSlack() {
                                     plainInteractiveSummary ||
                                     "I completed that request.",
                             });
+                            const providerMessageId = extractSlackSentTs(sent);
                             if (responseId) {
-                                await markSlackResponseDelivered(responseId);
-                                try {
-                                    await acknowledgeSlackDelivery({
-                                        responseId,
-                                        providerMessageId: messageTs,
-                                        channelId,
-                                        threadId: replyThreadTs,
-                                    });
-                                } catch (error) {
-                                    console.warn("[Surfaces][Slack] Failed to acknowledge delivery", {
-                                        responseId,
-                                        channel: channelId,
-                                        ts: messageTs,
-                                        error: error instanceof Error ? error.message : String(error),
-                                    });
+                                await markSidecarResponseDelivered({
+                                    provider: "slack",
+                                    responseId,
+                                });
+                                if (providerMessageId) {
+                                    try {
+                                        await acknowledgeSidecarDelivery({
+                                            responseId,
+                                            provider: "slack",
+                                            providerMessageId,
+                                            channelId,
+                                            threadId: replyThreadTs,
+                                        });
+                                    } catch (error) {
+                                        console.warn("[Surfaces][Slack] Failed to acknowledge delivery", {
+                                            responseId,
+                                            channel: channelId,
+                                            ts: messageTs,
+                                            error: error instanceof Error ? error.message : String(error),
+                                        });
+                                    }
                                 }
                             }
                             slackThreadContext.set(cacheKey, replyThreadTs);
@@ -1224,26 +1156,33 @@ export async function startSlack() {
                                 actionsCount: interactive.actions.length,
                             });
                         } else if (resp.content) {
-                            await say({
+                            const sent = await say({
                                 thread_ts: replyThreadTs,
                                 text: plainResponseContent,
                             });
+                            const providerMessageId = extractSlackSentTs(sent);
                             if (responseId) {
-                                await markSlackResponseDelivered(responseId);
-                                try {
-                                    await acknowledgeSlackDelivery({
-                                        responseId,
-                                        providerMessageId: messageTs,
-                                        channelId,
-                                        threadId: replyThreadTs,
-                                    });
-                                } catch (error) {
-                                    console.warn("[Surfaces][Slack] Failed to acknowledge delivery", {
-                                        responseId,
-                                        channel: channelId,
-                                        ts: messageTs,
-                                        error: error instanceof Error ? error.message : String(error),
-                                    });
+                                await markSidecarResponseDelivered({
+                                    provider: "slack",
+                                    responseId,
+                                });
+                                if (providerMessageId) {
+                                    try {
+                                        await acknowledgeSidecarDelivery({
+                                            responseId,
+                                            provider: "slack",
+                                            providerMessageId,
+                                            channelId,
+                                            threadId: replyThreadTs,
+                                        });
+                                    } catch (error) {
+                                        console.warn("[Surfaces][Slack] Failed to acknowledge delivery", {
+                                            responseId,
+                                            channel: channelId,
+                                            ts: messageTs,
+                                            error: error instanceof Error ? error.message : String(error),
+                                        });
+                                    }
                                 }
                             }
                             slackThreadContext.set(cacheKey, replyThreadTs);
@@ -1318,20 +1257,22 @@ export async function sendSlackMessage(
     text: string,
     _blocks?: (Block | KnownBlock)[],
     threadId?: string | null,
-) {
+): Promise<string | undefined> {
     if (!slackApp) {
         console.error("Slack app not initialized");
-        return;
+        return undefined;
     }
     try {
-        await slackApp.client.chat.postMessage({
+        const sent = await slackApp.client.chat.postMessage({
             channel: channelId,
             text: toPlainSidecarText(text),
             blocks: undefined,
             thread_ts: normalizeSlackThreadTs(threadId),
         });
+        return typeof sent.ts === "string" ? sent.ts : undefined;
     } catch (error) {
         console.error("Failed to send Slack message", error);
+        return undefined;
     }
 }
 

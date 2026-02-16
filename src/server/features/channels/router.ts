@@ -20,6 +20,11 @@ import {
 import { runSerializedConversationTurn } from "./runtime";
 import { enqueueConversationMessageEmbedding } from "@/features/memory/embeddings/conversation-ingestion";
 import { renderSurfaceResponseText } from "@/server/features/ai/runtime/response-writer";
+import {
+    preferredProviderAccountId,
+    resolveSurfaceAccount,
+} from "./surface-account";
+import { createDeterministicIdempotencyKey } from "@/server/lib/idempotency";
 
 const logger = createScopedLogger("ChannelRouter");
 
@@ -192,48 +197,6 @@ function buildApprovalInteractivePayload(params: {
     };
 }
 
-function buildProviderAccountCandidates(params: {
-    provider: ChannelProvider;
-    providerAccountId: string;
-    workspaceId?: string;
-}): string[] {
-    const raw = params.providerAccountId.trim();
-    const candidates = new Set<string>();
-
-    if (params.provider === "slack") {
-        const workspaceId = params.workspaceId?.trim();
-        if (workspaceId && !raw.includes(":")) {
-            candidates.add(`${workspaceId}:${raw}`);
-            candidates.add(raw);
-        } else {
-            candidates.add(raw);
-            if (raw.includes(":")) {
-                const legacy = raw.split(":").pop();
-                if (legacy) candidates.add(legacy);
-            }
-        }
-    } else {
-        candidates.add(raw);
-    }
-
-    return [...candidates].filter((candidate) => candidate.length > 0);
-}
-
-function preferredProviderAccountId(params: {
-    provider: ChannelProvider;
-    providerAccountId: string;
-    workspaceId?: string;
-}): string {
-    const raw = params.providerAccountId.trim();
-    if (params.provider === "slack") {
-        const workspaceId = params.workspaceId?.trim();
-        if (workspaceId && !raw.includes(":")) {
-            return `${workspaceId}:${raw}`;
-        }
-    }
-    return raw;
-}
-
 async function findLinkedSurfaceAccount(params: {
     provider: ChannelProvider;
     providerAccountId: string;
@@ -254,62 +217,44 @@ async function findLinkedSurfaceAccount(params: {
         },
     };
 
-    const candidates = buildProviderAccountCandidates(params);
-    for (const candidate of candidates) {
-        const account = await prisma.account.findUnique({
-            where: {
-                provider_providerAccountId: {
-                    provider: params.provider,
-                    providerAccountId: candidate,
-                },
-            },
-            include,
-        });
-        if (account?.user) {
-            return { account, matchedProviderAccountId: candidate, resolutionStatus: "linked" as const };
-        }
-    }
-
-    if (
-        params.provider === "slack" &&
-        !params.providerAccountId.includes(":")
-    ) {
-        const raw = params.providerAccountId.trim();
-        const suffixMatchesRaw = await prisma.account.findMany({
-            where: {
-                provider: "slack",
-                providerAccountId: {
-                    endsWith: `:${raw}`,
-                },
-            },
-            select: {
-                id: true,
-                providerAccountId: true,
-            },
-            take: 2,
-        });
-        const suffixMatches = Array.isArray(suffixMatchesRaw) ? suffixMatchesRaw : [];
-
-        if (suffixMatches.length === 1) {
-            const matchedProviderAccountId = suffixMatches[0].providerAccountId;
-            const account = await prisma.account.findUnique({
-                where: { id: suffixMatches[0].id },
-                include,
-            });
-            if (account?.user) {
-                return { account, matchedProviderAccountId, resolutionStatus: "linked" as const };
-            }
-        } else if (suffixMatches.length > 1) {
+    const resolved = await resolveSurfaceAccount(params);
+    if (!resolved.userId || !resolved.matchedProviderAccountId) {
+        if (resolved.resolutionStatus === "unknown") {
             logger.warn("Ambiguous Slack account lookup by suffix", {
                 providerAccountId: params.providerAccountId,
                 workspaceId: params.workspaceId ?? null,
-                matches: suffixMatches.map((match) => match.providerAccountId),
+                matches: resolved.ambiguousMatches ?? [],
             });
-            return { account: null, matchedProviderAccountId: null, resolutionStatus: "unknown" as const };
         }
+        return {
+            account: null,
+            matchedProviderAccountId: resolved.matchedProviderAccountId,
+            resolutionStatus: resolved.resolutionStatus,
+        };
     }
 
-    return { account: null, matchedProviderAccountId: null, resolutionStatus: "unlinked" as const };
+    const account = await prisma.account.findUnique({
+        where: {
+            provider_providerAccountId: {
+                provider: params.provider,
+                providerAccountId: resolved.matchedProviderAccountId,
+            },
+        },
+        include,
+    });
+    if (account?.user) {
+        return {
+            account,
+            matchedProviderAccountId: resolved.matchedProviderAccountId,
+            resolutionStatus: "linked" as const,
+        };
+    }
+
+    return {
+        account: null,
+        matchedProviderAccountId: resolved.matchedProviderAccountId,
+        resolutionStatus: "unlinked" as const,
+    };
 }
 
 export class ChannelRouter {
@@ -336,16 +281,39 @@ export class ChannelRouter {
             return await Promise.all(
                 responses.map(async (response) => {
                     const content = typeof response.content === "string" ? response.content : "";
-                    if (!content.trim()) return response;
-                    const rewritten = await renderSurfaceResponseText({
-                        provider: message.provider,
-                        request: message.content,
-                        draftText: content,
-                        logger,
-                    });
+                    const interactiveSummary =
+                        typeof response.interactive?.summary === "string"
+                            ? response.interactive.summary
+                            : "";
+
+                    const rewrittenContent = content.trim().length > 0
+                        ? await renderSurfaceResponseText({
+                            provider: message.provider,
+                            request: message.content,
+                            draftText: content,
+                            logger,
+                        })
+                        : content;
+                    const rewrittenSummary = interactiveSummary.trim().length > 0
+                        ? await renderSurfaceResponseText({
+                            provider: message.provider,
+                            request: message.content,
+                            draftText: interactiveSummary,
+                            logger,
+                        })
+                        : interactiveSummary;
+
                     return {
                         ...response,
-                        content: rewritten,
+                        content: rewrittenContent,
+                        ...(response.interactive
+                            ? {
+                                interactive: {
+                                    ...response.interactive,
+                                    summary: rewrittenSummary,
+                                },
+                            }
+                            : {}),
                     };
                 }),
             );
@@ -735,6 +703,21 @@ export class ChannelRouter {
                 return false;
             }
 
+            const rewrittenContent = await renderSurfaceResponseText({
+                provider: conversation.provider,
+                request: content,
+                draftText: content,
+                logger,
+            });
+            const responseId = createDeterministicIdempotencyKey(
+                "surfaces-notify",
+                userId,
+                conversation.provider,
+                conversation.channelId,
+                conversation.threadId ?? "",
+                rewrittenContent,
+            );
+
             const response = await fetch(`${surfaceUrl}/notify`, {
                 method: "POST",
                 headers: { 
@@ -745,7 +728,8 @@ export class ChannelRouter {
                     platform: conversation.provider,
                     channelId: conversation.channelId,
                     threadId: conversation.threadId,
-                    content: content
+                    content: rewrittenContent,
+                    responseId,
                 })
             });
 

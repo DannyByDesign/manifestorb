@@ -2,8 +2,9 @@
 import { Markup, Telegraf } from "telegraf";
 import {
     fetchOnboardingLinkUrl,
-    fetchSurfaceIdentity,
     forwardToBrain,
+    resolveSurfaceSession,
+    submitSurfaceAction,
     toPlainSidecarText,
     type InteractiveAction,
     type InteractivePayload
@@ -14,10 +15,13 @@ import {
     setPlatformStarted,
     touchPlatformEvent
 } from "../platform-status";
+import {
+    acknowledgeSidecarDelivery,
+    hasSidecarResponseBeenDelivered,
+    markSidecarResponseDelivered,
+} from "../delivery";
 import { env } from "../env";
 
-const CORE_BASE_URL = env.CORE_BASE_URL;
-const SHARED_SECRET = env.SURFACES_SHARED_SECRET;
 let telegramBot: Telegraf | undefined;
 
 type CallbackButtonContext = {
@@ -72,32 +76,38 @@ export function startTelegram() {
 
             if (action === "draft_send") {
                 console.log(`[Surfaces] Telegram: Sending draft ${draftId}`);
-                
-                const response = await fetch(`${CORE_BASE_URL}/api/drafts/${draftId}/send`, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "x-surfaces-secret": SHARED_SECRET,
+                const result = await submitSurfaceAction({
+                    provider: "telegram",
+                    providerAccountId: ctx.from.id.toString(),
+                    action: {
+                        type: "draft",
+                        draftId,
+                        decision: "send",
+                        userId,
+                        emailAccountId,
                     },
-                    body: JSON.stringify({ userId, emailAccountId })
                 });
 
-                if (response.ok) {
+                if (result.ok) {
                     await ctx.reply(toPlainSidecarText("success"));
                 } else {
                     await ctx.reply(toPlainSidecarText("Failed to send email."));
                 }
             } else if (action === "draft_discard") {
                 console.log(`[Surfaces] Telegram: Discarding draft ${draftId}`);
-                
-                const response = await fetch(`${CORE_BASE_URL}/api/drafts/${draftId}?userId=${userId}&emailAccountId=${emailAccountId}`, {
-                    method: "DELETE",
-                    headers: {
-                        "x-surfaces-secret": SHARED_SECRET,
-                    }
+                const result = await submitSurfaceAction({
+                    provider: "telegram",
+                    providerAccountId: ctx.from.id.toString(),
+                    action: {
+                        type: "draft",
+                        draftId,
+                        decision: "discard",
+                        userId,
+                        emailAccountId,
+                    },
                 });
 
-                if (response.ok) {
+                if (result.ok) {
                     await ctx.reply(toPlainSidecarText("success"));
                 } else {
                     await ctx.reply(toPlainSidecarText("Failed to discard draft."));
@@ -114,16 +124,17 @@ export function startTelegram() {
             const [, choice, requestId] = data.split(":");
             if (choice !== "earlier" && choice !== "later") return;
 
-            const response = await fetch(`${CORE_BASE_URL}/api/ambiguous-time/${requestId}/resolve`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "x-surfaces-secret": SHARED_SECRET,
+            const result = await submitSurfaceAction({
+                provider: "telegram",
+                providerAccountId: ctx.from.id.toString(),
+                action: {
+                    type: "ambiguous_time",
+                    requestId,
+                    choice,
                 },
-                body: JSON.stringify({ choice })
             });
 
-            if (response.ok) {
+            if (result.ok) {
                 await ctx.reply(toPlainSidecarText("success"));
             } else {
                 await ctx.reply(toPlainSidecarText("Failed to resolve that time."));
@@ -140,19 +151,17 @@ export function startTelegram() {
 
         console.log(`[Surfaces] Telegram: Processing ${action} for request ${requestId}`);
 
-        const response = await fetch(`${CORE_BASE_URL}/api/approvals/${requestId}/${action}`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "x-surfaces-secret": SHARED_SECRET,
+        const result = await submitSurfaceAction({
+            provider: "telegram",
+            providerAccountId: ctx.from.id.toString(),
+            action: {
+                type: "approval",
+                requestId,
+                decision: action,
             },
-            body: JSON.stringify({
-                userId: ctx.from.id.toString(),
-                provider: "telegram",
-            })
         });
 
-        if (!response.ok) {
+        if (!result.ok) {
             await ctx.reply(toPlainSidecarText(`Failed to ${action} request.`));
         }
     });
@@ -192,16 +201,19 @@ export function startTelegram() {
         };
 
         try {
-            const identity = await fetchSurfaceIdentity({
+            const session = await resolveSurfaceSession({
                 provider: "telegram",
                 providerAccountId: userId,
+                channelId: chatId,
+                isDirectMessage: isDM,
+                messageId: ctx.message.message_id.toString(),
             });
-            if (identity.status === "unknown") {
+            if (session.status === "unknown") {
                 console.warn("[Surfaces][Telegram] Identity check unavailable; skipping onboarding", {
                     providerAccountId: userId,
-                    reason: identity.reason ?? "unknown",
+                    reason: session.reason ?? "unknown",
                 });
-            } else if (!identity.linked) {
+            } else if (!session.linked) {
                 if (isDM) {
                     const linkUrl = await fetchOnboardingLinkUrl(
                         "telegram",
@@ -229,15 +241,36 @@ export function startTelegram() {
                     userId: userId,
                     userName: ctx.from.username || ctx.from.first_name,
                     messageId: ctx.message.message_id.toString(),
+                    threadId: session.canonicalThreadId,
                     isDirectMessage: isDM
                 },
             });
 
             if (brainResponse && brainResponse.responses) {
                 for (const resp of brainResponse.responses) {
+                    const responseId =
+                        resp && typeof resp === "object" && typeof (resp as { responseId?: unknown }).responseId === "string"
+                            ? (resp as { responseId: string }).responseId
+                            : undefined;
+                    if (
+                        responseId &&
+                        await hasSidecarResponseBeenDelivered({
+                            provider: "telegram",
+                            responseId,
+                        })
+                    ) {
+                        console.log("[Surfaces][Telegram] Skipping already delivered response", {
+                            chatId,
+                            inboundMessageId: ctx.message.message_id,
+                            responseId,
+                        });
+                        continue;
+                    }
+
                     const plainResponseContent = toPlainSidecarText(
                         typeof resp.content === "string" ? resp.content : "",
                     );
+                    let providerMessageId: string | undefined;
                     if (resp.interactive) {
                         const interactive = resp.interactive as InteractivePayload;
                         const plainInteractiveSummary = toPlainSidecarText(interactive.summary || "");
@@ -299,18 +332,48 @@ export function startTelegram() {
                                     .join("\n");
                             }
 
-                            await ctx.reply(toPlainSidecarText(messageText), {
+                            const sent = await ctx.reply(toPlainSidecarText(messageText), {
                                 ...Markup.inlineKeyboard([buttons])
                             });
+                            providerMessageId =
+                                typeof sent?.message_id === "number"
+                                    ? String(sent.message_id)
+                                    : undefined;
                         } catch (err) {
                             console.error("[Surfaces] Failed to reply interactive on Telegram:", err);
                         }
 
                     } else if (resp.content) {
                         try {
-                            await ctx.reply(toPlainSidecarText(plainResponseContent));
+                            const sent = await ctx.reply(toPlainSidecarText(plainResponseContent));
+                            providerMessageId =
+                                typeof sent?.message_id === "number"
+                                    ? String(sent.message_id)
+                                    : undefined;
                         } catch (err) {
                             console.error("[Surfaces] Failed to reply on Telegram:", err);
+                        }
+                    }
+
+                    if (responseId && providerMessageId) {
+                        await markSidecarResponseDelivered({
+                            provider: "telegram",
+                            responseId,
+                        });
+                        try {
+                            await acknowledgeSidecarDelivery({
+                                responseId,
+                                provider: "telegram",
+                                providerMessageId,
+                                channelId: chatId,
+                            });
+                        } catch (error) {
+                            console.warn("[Surfaces][Telegram] Failed to acknowledge delivery", {
+                                chatId,
+                                inboundMessageId: ctx.message.message_id,
+                                responseId,
+                                error: error instanceof Error ? error.message : String(error),
+                            });
                         }
                     }
                 }
@@ -331,6 +394,23 @@ export function startTelegram() {
     // Enable graceful stop
     process.once('SIGINT', () => bot.stop('SIGINT'));
     process.once('SIGTERM', () => bot.stop('SIGTERM'));
+}
+
+export async function sendTelegramMessage(channelId: string, content: string): Promise<string | undefined> {
+    if (!telegramBot) {
+        console.error("Telegram bot not initialized");
+        return undefined;
+    }
+    try {
+        const sent = await telegramBot.telegram.sendMessage(
+            channelId,
+            toPlainSidecarText(content),
+        );
+        return typeof sent.message_id === "number" ? String(sent.message_id) : undefined;
+    } catch (error) {
+        console.error("Failed to send Telegram message", error);
+        return undefined;
+    }
 }
 
 export async function sendLinkedToTelegramUser(providerAccountId: string): Promise<{ ok: boolean; error?: string }> {
