@@ -252,15 +252,23 @@ export async function searchMemoryFacts({
 
   const semanticReady = await canUseSemanticFor("MemoryFact");
   if (!semanticReady) {
-    const results = await keywordSearchMemoryFacts({ userId, query: trimmedQuery, limit });
-    logMemoryAccessAudit({
-      userId,
-      accessType: "memory_fact_search",
-      query: trimmedQuery,
-      resultCount: results.length,
-      metadata: { semanticReady: false, strategy: "keyword" },
-    }).catch(() => {});
-    return results;
+    try {
+      const results = await keywordSearchMemoryFacts({ userId, query: trimmedQuery, limit });
+      logMemoryAccessAudit({
+        userId,
+        accessType: "memory_fact_search",
+        query: trimmedQuery,
+        resultCount: results.length,
+        metadata: { semanticReady: false, strategy: "keyword" },
+      }).catch(() => {});
+      return results;
+    } catch (error) {
+      logger.warn("Memory fact keyword search failed", {
+        userId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
   }
 
   try {
@@ -278,15 +286,23 @@ export async function searchMemoryFacts({
       userId,
       error: error instanceof Error ? error.message : String(error),
     });
-    const fallbackResults = await keywordSearchMemoryFacts({ userId, query: trimmedQuery, limit });
-    logMemoryAccessAudit({
-      userId,
-      accessType: "memory_fact_search",
-      query: trimmedQuery,
-      resultCount: fallbackResults.length,
-      metadata: { semanticReady: true, strategy: "keyword_fallback" },
-    }).catch(() => {});
-    return fallbackResults;
+    try {
+      const fallbackResults = await keywordSearchMemoryFacts({ userId, query: trimmedQuery, limit });
+      logMemoryAccessAudit({
+        userId,
+        accessType: "memory_fact_search",
+        query: trimmedQuery,
+        resultCount: fallbackResults.length,
+        metadata: { semanticReady: true, strategy: "keyword_fallback" },
+      }).catch(() => {});
+      return fallbackResults;
+    } catch (fallbackError) {
+      logger.warn("Memory fact fallback search failed", {
+        userId,
+        error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+      });
+      return [];
+    }
   }
 }
 
@@ -417,7 +433,15 @@ export async function searchKnowledge({
 
   const semanticReady = await canUseSemanticFor("Knowledge");
   if (!semanticReady) {
-    return keywordSearchKnowledge({ userId, query: trimmedQuery, limit });
+    try {
+      return await keywordSearchKnowledge({ userId, query: trimmedQuery, limit });
+    } catch (error) {
+      logger.warn("Knowledge keyword search failed", {
+        userId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
   }
 
   try {
@@ -427,7 +451,15 @@ export async function searchKnowledge({
       userId,
       error: error instanceof Error ? error.message : String(error),
     });
-    return keywordSearchKnowledge({ userId, query: trimmedQuery, limit });
+    try {
+      return await keywordSearchKnowledge({ userId, query: trimmedQuery, limit });
+    } catch (fallbackError) {
+      logger.warn("Knowledge fallback search failed", {
+        userId,
+        error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+      });
+      return [];
+    }
   }
 }
 
