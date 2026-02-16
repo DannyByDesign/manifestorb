@@ -169,6 +169,10 @@ function normalizeSearchText(value: string | undefined): string {
   return value?.trim().toLowerCase() ?? "";
 }
 
+function hasMailboxScopeInQuery(query: string): boolean {
+  return /\bin:(inbox|sent|draft|trash|spam|archive)\b/i.test(query);
+}
+
 function includesAllTermTokens(
   haystack: string,
   term: string,
@@ -424,7 +428,11 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           ? purposeRaw
           : undefined;
       const hasDateRange = Boolean(before || after);
-      const query = typeof filter.query === "string" ? filter.query : "";
+      const rawQuery = typeof filter.query === "string" ? filter.query : "";
+      const query =
+        filter.sentByMe === true && !hasMailboxScopeInQuery(rawQuery)
+          ? `in:sent ${rawQuery}`.trim()
+          : rawQuery;
       const fromFilter =
         typeof filter.from === "string" && filter.from.trim().length > 0
           ? filter.from.trim()

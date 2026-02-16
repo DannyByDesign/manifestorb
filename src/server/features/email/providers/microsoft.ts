@@ -1014,6 +1014,28 @@ export class OutlookProvider implements EmailProvider {
       query: options.query,
     });
 
+    // Extract Gmail-style mailbox scope hints and map them to Outlook folder IDs.
+    // This keeps sent/inbox scoped searches deterministic while still using Outlook search for text matching.
+    const mailboxScopeMatch = (options.query || "").match(
+      /\bin:(inbox|sent|draft|trash|spam|archive)\b/i,
+    );
+    const mailboxScope = mailboxScopeMatch?.[1]?.toLowerCase();
+    const queryWithoutMailboxScope = (options.query || "")
+      .replace(/\bin:(inbox|sent|draft|trash|spam|archive)\b/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const folderIds = await getFolderIds(this.client, this.logger);
+    const folderIdByMailboxScope: Record<string, string | undefined> = {
+      inbox: folderIds.inbox,
+      sent: folderIds.sentitems,
+      draft: folderIds.drafts,
+      trash: folderIds.deleteditems,
+      spam: folderIds.junkemail,
+      archive: folderIds.archive,
+    };
+    const scopedFolderId = mailboxScope ? folderIdByMailboxScope[mailboxScope] : undefined;
+
     // IMPORTANT: This is intentionally lossy!
     // Gmail-style prefixes like "subject:" can't be translated to Microsoft Graph because:
     // 1. $filter with contains(subject, ...) can't be combined with $search or date filters
@@ -1037,7 +1059,7 @@ export class OutlookProvider implements EmailProvider {
         .trim();
     }
 
-    const searchQuery = stripGmailPrefixes(options.query || "");
+    const searchQuery = stripGmailPrefixes(queryWithoutMailboxScope);
 
     // Build date filter for Outlook (no quotes for DateTimeOffset comparison)
     const dateFilters: string[] = [];
@@ -1052,13 +1074,14 @@ export class OutlookProvider implements EmailProvider {
       dateFilters,
       maxResults: options.maxResults || 20,
       pageToken: options.pageToken,
+      mailboxScope: mailboxScope || undefined,
+      scopedFolderId,
     });
     this.logger.trace("Search query", {
       searchQuery: searchQuery || undefined,
     });
 
-    // Don't pass folderId - let the API return all folders except Junk/Deleted (auto-excluded)
-    // Drafts are filtered out in convertMessages
+    // When mailbox scope is present (e.g., in:sent), pass folderId for deterministic filtering.
     const response = await queryBatchMessages(
       this.client,
       {
@@ -1066,6 +1089,7 @@ export class OutlookProvider implements EmailProvider {
         dateFilters,
         maxResults: options.maxResults || 20,
         pageToken: options.pageToken,
+        folderId: scopedFolderId,
       },
       this.logger,
     );

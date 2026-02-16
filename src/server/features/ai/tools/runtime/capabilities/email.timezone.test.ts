@@ -116,6 +116,22 @@ describe("runtime email timezone handling", () => {
     expect(filter.receivedByMe).toBeUndefined();
   });
 
+  it("scopes sent search to sent mailbox when query has no explicit mailbox", async () => {
+    const caps = createEmailCapabilities(buildEnv());
+
+    await caps.searchSent({
+      query: "portfolio review",
+      limit: 10,
+    });
+
+    const filter = vi.mocked(searchEmailThreads).mock.calls[0]?.[1] as {
+      query?: string;
+      sentByMe?: boolean;
+    };
+    expect(filter.sentByMe).toBe(true);
+    expect(filter.query).toBe("in:sent portfolio review");
+  });
+
   it("returns localized display time fields for inbox items", async () => {
     vi.mocked(searchEmailThreads).mockResolvedValueOnce({
       messages: [
