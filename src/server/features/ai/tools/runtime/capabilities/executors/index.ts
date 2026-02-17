@@ -6,6 +6,7 @@ import { policyToolExecutors } from "@/server/features/ai/tools/runtime/capabili
 import { taskToolExecutors } from "@/server/features/ai/tools/runtime/capabilities/executors/task";
 import { memoryToolExecutors } from "@/server/features/ai/tools/runtime/capabilities/executors/memory";
 import { webToolExecutors } from "@/server/features/ai/tools/runtime/capabilities/executors/web";
+import { searchToolExecutors } from "@/server/features/ai/tools/runtime/capabilities/executors/search";
 import type {
   RuntimeToolExecutor,
   RuntimeToolExecutorMap,
@@ -19,6 +20,7 @@ const runtimeToolExecutors: RuntimeToolExecutorMap = {
   ...policyToolExecutors,
   ...memoryToolExecutors,
   ...webToolExecutors,
+  ...searchToolExecutors,
 };
 
 export function resolveRuntimeToolExecutor(toolName: ToolName): RuntimeToolExecutor {

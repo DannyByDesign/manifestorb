@@ -6,6 +6,7 @@ import { createPolicyCapabilities } from "@/server/features/ai/tools/runtime/cap
 import { createTaskCapabilities } from "@/server/features/ai/tools/runtime/capabilities/task";
 import { createMemoryCapabilities } from "@/server/features/ai/tools/runtime/capabilities/memory";
 import { createWebCapabilities } from "@/server/features/ai/tools/runtime/capabilities/web";
+import { createSearchCapabilities } from "@/server/features/ai/tools/runtime/capabilities/search";
 import type { CapabilityRuntimeContext } from "@/server/features/ai/tools/runtime/capabilities/types";
 
 export async function createCapabilities(runtime: CapabilityRuntimeContext) {
@@ -20,6 +21,7 @@ export async function createCapabilities(runtime: CapabilityRuntimeContext) {
     policy: createPolicyCapabilities(env),
     memory: createMemoryCapabilities(env),
     web: createWebCapabilities(env),
+    search: createSearchCapabilities(env),
   };
 }
 

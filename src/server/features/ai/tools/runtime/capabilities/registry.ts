@@ -885,6 +885,63 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       effects: [{ resource: "preferences", mutates: false }],
     },
     {
+      id: "search.query",
+      description:
+        "Run unified semantic + lexical search across email, calendar, rules, and memory.",
+      inputSchema: z
+        .object({
+          query: z.string().min(1).optional(),
+          text: z.string().min(1).optional(),
+          scopes: z.array(z.enum(["email", "calendar", "rule", "memory"])).optional(),
+          mailbox: z
+            .enum(["inbox", "sent", "draft", "trash", "spam", "archive", "all"])
+            .optional(),
+          from: z.string().min(1).optional(),
+          to: z.string().min(1).optional(),
+          attendeeEmail: z.string().min(1).optional(),
+          attendee: z.string().min(1).optional(),
+          dateRange: z
+            .object({
+              after: z.string().optional(),
+              before: z.string().optional(),
+              timeZone: z.string().optional(),
+            })
+            .optional(),
+          after: z.string().optional(),
+          before: z.string().optional(),
+          timeZone: z.string().optional(),
+          limit: z.number().int().min(1).max(200).optional(),
+          fetchAll: z.boolean().optional(),
+        })
+        .strict(),
+      outputSchema: z.unknown(),
+      readOnly: true,
+      riskLevel: "safe",
+      approvalOperation: "query",
+      intentFamilies: [
+        "inbox_read",
+        "calendar_read",
+        "memory_read",
+        "cross_surface_planning",
+      ],
+      tags: [
+        "search",
+        "unified",
+        "semantic",
+        "keyword",
+        "email",
+        "calendar",
+        "rule",
+        "memory",
+      ],
+      effects: [
+        { resource: "email", mutates: false },
+        { resource: "calendar", mutates: false },
+        { resource: "rule", mutates: false },
+        { resource: "knowledge", mutates: false },
+      ],
+    },
+    {
       id: "web.search",
       description: "Search the public web with provider-backed search APIs.",
       inputSchema: z.object({

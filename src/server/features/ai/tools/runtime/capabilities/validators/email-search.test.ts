@@ -9,11 +9,12 @@ describe("email search filter validator", () => {
     expect(result.filter.from).toBe("Haseeb");
   });
 
-  it("rejects conversation-metadata sender scopes", () => {
+  it("converts conversation-metadata sender scopes into free text", () => {
     const result = validateEmailSearchFilter({ from: "our conversation memory" });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.error).toBe("invalid_sender_scope");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.filter.from).toBeUndefined();
+    expect(result.filter.text).toBe("our conversation memory");
   });
 
   it("passes through concrete sender scopes", () => {

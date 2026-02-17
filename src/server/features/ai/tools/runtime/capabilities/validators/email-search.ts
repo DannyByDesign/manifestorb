@@ -87,15 +87,11 @@ export function validateEmailSearchFilter(
     if (!normalizedFrom) {
       delete sanitized.from;
     } else if (isSuspiciousFromValue(normalizedFrom)) {
-      return {
-        ok: false,
-        error: "invalid_sender_scope",
-        message:
-          "The sender filter doesn't look like a real sender. It looks like conversation metadata instead.",
-        prompt:
-          "Who should I filter by? Give me a sender name or email address, or say 'any sender'.",
-        fields: ["from"],
-      };
+      // Convert over-broad sender prose into a soft text hint instead of hard-failing.
+      delete sanitized.from;
+      if (!normalizeStringValue(sanitized.text)) {
+        sanitized.text = normalizedFrom;
+      }
     } else {
       sanitized.from = normalizedFrom;
     }

@@ -15,6 +15,7 @@ import {
   classifyCapabilityError,
 } from "@/server/features/ai/tools/runtime/capabilities/errors";
 import { validateEmailSearchFilter } from "@/server/features/ai/tools/runtime/capabilities/validators/email-search";
+import { createUnifiedSearchService } from "@/server/features/search/unified/service";
 import { createCapabilityIdempotencyKey } from "@/server/features/ai/tools/runtime/capabilities/idempotency";
 import {
   getEmailMessages,
@@ -417,6 +418,140 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
     return resolved;
   };
 
+  const unifiedSearch = createUnifiedSearchService({
+    userId: capEnv.runtime.userId,
+    emailAccountId: capEnv.runtime.emailAccountId,
+    email: capEnv.runtime.email,
+    logger: capEnv.runtime.logger,
+    providers: capEnv.toolContext.providers,
+  });
+
+  const runUnifiedSearchThreads = async (
+    filter: Record<string, unknown>,
+    mailboxOverride?: "inbox" | "sent",
+  ): Promise<ToolResult> => {
+    const validatedFilter = validateEmailSearchFilter(filter);
+    if (!validatedFilter.ok) {
+      return {
+        success: false,
+        error: validatedFilter.error,
+        message: validatedFilter.message,
+        clarification: {
+          kind: "invalid_fields",
+          prompt: validatedFilter.prompt,
+          missingFields: validatedFilter.fields,
+        },
+      };
+    }
+
+    const requestFilter = validatedFilter.filter;
+    const dateRange =
+      requestFilter && typeof requestFilter.dateRange === "object"
+        ? (requestFilter.dateRange as Record<string, unknown>)
+        : undefined;
+
+    const mailbox =
+      mailboxOverride ??
+      (typeof requestFilter.mailbox === "string" ? requestFilter.mailbox : undefined) ??
+      (requestFilter.sentByMe === true ? "sent" : undefined);
+
+    try {
+      const result = await unifiedSearch.query({
+        scopes: ["email"],
+        mailbox:
+          mailbox === "inbox" || mailbox === "sent"
+            ? mailbox
+            : undefined,
+        query:
+          typeof requestFilter.query === "string"
+            ? requestFilter.query
+            : undefined,
+        text:
+          typeof requestFilter.text === "string"
+            ? requestFilter.text
+            : undefined,
+        from:
+          typeof requestFilter.from === "string"
+            ? requestFilter.from
+            : undefined,
+        to:
+          typeof requestFilter.to === "string"
+            ? requestFilter.to
+            : undefined,
+        dateRange: dateRange
+          ? {
+              after:
+                typeof dateRange.after === "string" ? dateRange.after : undefined,
+              before:
+                typeof dateRange.before === "string" ? dateRange.before : undefined,
+              timeZone:
+                typeof dateRange.timeZone === "string"
+                  ? dateRange.timeZone
+                  : typeof dateRange.timezone === "string"
+                    ? dateRange.timezone
+                    : typeof requestFilter.timeZone === "string"
+                      ? requestFilter.timeZone
+                      : typeof requestFilter.timezone === "string"
+                        ? requestFilter.timezone
+                        : undefined,
+            }
+          : undefined,
+        limit:
+          typeof requestFilter.limit === "number" && Number.isFinite(requestFilter.limit)
+            ? requestFilter.limit
+            : undefined,
+        fetchAll: Boolean(requestFilter.fetchAll),
+      });
+
+      const data = result.items
+        .filter((item) => item.surface === "email")
+        .map((item) => {
+          const metadata =
+            item.metadata && typeof item.metadata === "object"
+              ? (item.metadata as Record<string, unknown>)
+              : {};
+          return {
+            id:
+              typeof metadata.messageId === "string"
+                ? metadata.messageId
+                : item.id,
+            threadId:
+              typeof metadata.threadId === "string"
+                ? metadata.threadId
+                : null,
+            title: item.title,
+            snippet: item.snippet,
+            date: item.timestamp ?? null,
+            from:
+              typeof metadata.from === "string" ? metadata.from : "",
+            to: typeof metadata.to === "string" ? metadata.to : "",
+            hasAttachment: metadata.hasAttachment === true,
+            attachmentNames: [],
+            score: item.score,
+          };
+        });
+
+      return {
+        success: true,
+        data,
+        message:
+          data.length === 0
+            ? "No matching emails found."
+            : `Found ${data.length} matching email${data.length === 1 ? "" : "s"}.`,
+        truncated: result.truncated,
+        paging: {
+          nextPageToken: null,
+          totalEstimate: result.total,
+        },
+        meta: asMetaItemCount(data.length),
+      };
+    } catch (error) {
+      return capabilityFailureResult(error, "I couldn't search your inbox right now.", {
+        resource: "email",
+      });
+    }
+  };
+
   const runSearchThreads = async (
     filter: Record<string, unknown>,
   ): Promise<ToolResult> => {
@@ -769,19 +904,19 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
     },
 
     async searchThreads(filter) {
-      return runSearchThreads(filter);
+      return runUnifiedSearchThreads(filter);
     },
 
     async searchThreadsAdvanced(filter) {
-      return runSearchThreads(filter);
+      return runUnifiedSearchThreads(filter);
     },
 
     async searchSent(filter) {
-      return runSearchThreads({ ...filter, sentByMe: true });
+      return runUnifiedSearchThreads({ ...filter, sentByMe: true }, "sent");
     },
 
     async searchInbox(filter) {
-      return runSearchThreads(filter);
+      return runUnifiedSearchThreads(filter, "inbox");
     },
 
     async getThreadMessages(threadId) {

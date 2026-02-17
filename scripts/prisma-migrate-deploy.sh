@@ -102,25 +102,7 @@ BEGIN
       AND table_name = 'Knowledge'
       AND column_name = 'userId'
   ) THEN
-    IF NOT EXISTS (
-      SELECT 1
-      FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND table_name = 'Knowledge'
-        AND column_name = 'emailAccountId'
-    ) THEN
-      RAISE EXCEPTION 'missing required ownership column: Knowledge.userId or Knowledge.emailAccountId';
-    END IF;
-
-    IF NOT EXISTS (
-      SELECT 1
-      FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND table_name = 'EmailAccount'
-        AND column_name = 'userId'
-    ) THEN
-      RAISE EXCEPTION 'missing required column for Knowledge ownership fallback: EmailAccount.userId';
-    END IF;
+    RAISE EXCEPTION 'missing required column: Knowledge.userId';
   END IF;
 
 END
