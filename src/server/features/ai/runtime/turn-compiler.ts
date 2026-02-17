@@ -36,19 +36,10 @@ const GREETING_RE =
   /^(hi|hello|hey|yo|sup|good morning|good afternoon|good evening|howdy)[\s!.?]*$/u;
 const CAPABILITIES_RE =
   /\b(what can you do|capabilit(?:y|ies)|how can you help|what do you do|help me understand)\b/u;
-const EMAIL_ENTITY_RE = /\b(email|emails|inbox|message|messages|thread|threads|mailbox|outbox)\b/u;
-const CALENDAR_ENTITY_RE = /\b(calendar|meeting|meetings|event|events|schedule)\b/u;
-const POLICY_ENTITY_RE = /\b(rule|rules|automation|automations|policy|policies)\b/u;
-const LOOKUP_VERB_RE = /\b(show|list|find|check|lookup|search|what|which|when|where|who|scan|fetch)\b/u;
-const MUTATION_VERB_RE =
-  /\b(create|update|edit|change|delete|remove|archive|trash|send|reply|move|label|reschedule|book|cancel|approve|deny|unsubscribe|block)\b/u;
-const CONDITIONAL_RE = /\b(if|unless|otherwise|except|only if|when)\b/u;
-const CHAINING_RE = /\b(and then|then|also|plus|follow(?:ed)? by|after that|before that|next)\b/u;
-const SENT_MAILBOX_RE =
-  /\b(?:my\s+)?sent\s+(?:inbox|emails?|messages?|mail|threads?|folder)\b|\bsent\s+mailbox\b|\boutbox\b/u;
-const COUNT_RE = /\b(how many|count|number of)\b/u;
-const UNREAD_RE = /\bunread\b/u;
+const TASK_SIGNAL_RE =
+  /\b(email|emails|inbox|calendar|meeting|meetings|event|events|schedule|find|search|list|show|check|create|update|delete|send|reply|archive|move|label|count|unread)\b/u;
 const ATTACHMENT_RE = /\battach(?:ment|ments|ed)?\b|\battatch(?:ment|ments|ed)?\b/u;
+
 const META_CONSTRAINT_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /\b(?:fresh|new)\s+search\b/u, label: "fresh_search" },
   { pattern: /\bnot\s+from\s+(?:our\s+)?conversation\s+memory\b/u, label: "not_from_conversation_memory" },
@@ -60,9 +51,6 @@ const META_CONSTRAINT_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
 const SUSPICIOUS_SLOT_RE =
   /\b(conversation|chat\s+history|memory|our\s+conversation|previous\s+messages|this\s+chat)\b/iu;
 
-const SENDER_SCOPE_RE = /\b(?:from|by)\s+([^,.!?]+?)(?=\s+(?:today|tonight|tomorrow|this week|next week|this month|last month)\b|$)/iu;
-const QUOTED_TEXT_RE = /(?:^|\s)["'“”]([^"'“”]{2,})["'“”](?:$|\s|[,.!?])/u;
-const FOR_TEXT_RE = /\bfor\s+([^,.!?]+?)(?=\s+(?:today|tonight|tomorrow|this week|next week|this month|last month)\b|$)/iu;
 const ATTACHMENT_TERM_CAPTURE_RE =
   /\b(?:containing|with|including|include|contains)\s+["'“”]?([^"'“”,.!?]{2,80}?)?["'“”]?\s+att(?:ach|atch)\w*\b/iu;
 
@@ -83,34 +71,38 @@ const compilerSchema = z
     metaConstraints: z.array(z.string().min(1)).max(8).default([]),
     needsClarification: z.boolean().default(false),
     confidence: z.number().min(0).max(1).default(0.5),
+    singleToolCandidate: z
+      .object({
+        toolName: z.enum([
+          "email.getUnreadCount",
+          "email.searchInbox",
+          "email.searchSent",
+          "calendar.listEvents",
+        ]),
+        reason: z.string().min(1).max(120),
+        confidence: z.number().min(0).max(1),
+        args: z.record(z.string(), z.unknown()).default({}),
+        onFailureText: z.string().min(1).max(300).optional(),
+      })
+      .optional(),
   })
   .strict();
 
-const ENABLE_MODEL_COMPILER =
-  process.env.VITEST !== "true" && process.env.NODE_ENV !== "test";
+type CompilerModelResult = z.infer<typeof compilerSchema>;
 
-function normalizeScopeValue(raw: string | undefined): string | undefined {
+type SupportedSingleTool = NonNullable<CompilerModelResult["singleToolCandidate"]>["toolName"];
+
+function shouldUseModelCompiler(): boolean {
+  if (process.env.RUNTIME_TURN_COMPILER_FORCE_MODEL === "true") return true;
+  if (process.env.RUNTIME_TURN_COMPILER_USE_MODEL === "false") return false;
+  return process.env.VITEST !== "true" && process.env.NODE_ENV !== "test";
+}
+
+function normalizeScopeValue(raw: unknown): string | undefined {
   if (typeof raw !== "string") return undefined;
   const value = raw.trim().replace(/\s+/g, " ");
   if (!value || value.length < 2) return undefined;
   return value;
-}
-
-function parseSenderScope(message: string): string | undefined {
-  const match = message.match(SENDER_SCOPE_RE);
-  const sender = normalizeScopeValue(match?.[1]);
-  if (!sender) return undefined;
-  if (SUSPICIOUS_SLOT_RE.test(sender)) return undefined;
-  return sender;
-}
-
-function parseTextScope(message: string): string | undefined {
-  const quoted = normalizeScopeValue(message.match(QUOTED_TEXT_RE)?.[1]);
-  if (quoted) return quoted;
-  const scoped = normalizeScopeValue(message.match(FOR_TEXT_RE)?.[1]);
-  if (!scoped) return undefined;
-  if (/^(?:me|myself|us|ourselves)$/iu.test(scoped)) return undefined;
-  return scoped;
 }
 
 function normalizeAttachmentIntentTerm(raw: string | undefined): string | undefined {
@@ -128,7 +120,7 @@ function normalizeAttachmentIntentTerm(raw: string | undefined): string | undefi
 function inferAttachmentIntentTerm(message: string, textScope: string | undefined): string | undefined {
   if (!ATTACHMENT_RE.test(message)) return undefined;
   const explicit = message.match(ATTACHMENT_TERM_CAPTURE_RE)?.[1];
-  const normalized = normalizeAttachmentIntentTerm(explicit);
+  const normalized = normalizeAttachmentIntentTerm(normalizeScopeValue(explicit));
   if (normalized) return normalized;
   return normalizeAttachmentIntentTerm(textScope);
 }
@@ -180,6 +172,21 @@ function inferDateRangeFromMessage(message: string, timeZone: string): { after: 
     return { after: formatLocalYmd(start), before: formatLocalYmd(end) };
   }
 
+  const lastDaysMatch = normalized.match(/\b(?:last|past)\s+(\d{1,3})\s+days?\b/u);
+  if (lastDaysMatch) {
+    const days = Number.parseInt(lastDaysMatch[1] ?? "", 10);
+    if (Number.isFinite(days) && days > 0 && days <= 365) {
+      const start = addLocalDays(today, -(days - 1));
+      return { after: formatLocalYmd(start), before: formatLocalYmd(today) };
+    }
+  }
+
+  if (/\byesterday\b/u.test(normalized)) {
+    const day = addLocalDays(today, -1);
+    const ymd = formatLocalYmd(day);
+    return { after: ymd, before: ymd };
+  }
+
   if (/\btoday|tonight\b/u.test(normalized)) {
     const ymd = formatLocalYmd(today);
     return { after: ymd, before: ymd };
@@ -208,73 +215,76 @@ function inferDateRangeFromMessage(message: string, timeZone: string): { after: 
   return null;
 }
 
-function extractMetaConstraints(message: string): string[] {
-  const constraints: string[] = [];
-  for (const entry of META_CONSTRAINT_PATTERNS) {
-    if (entry.pattern.test(message)) constraints.push(entry.label);
-  }
-  return constraints;
+function stripTrailingTemporalPhrase(value: string): string {
+  return value
+    .replace(
+      /\s+(?:in\s+)?(?:the\s+)?(?:last|past)\s+\d{1,3}\s+(?:day|days|week|weeks|month|months|year|years)\b.*$/iu,
+      "",
+    )
+    .replace(
+      /\s+(?:today|tonight|tomorrow|yesterday|this\s+week|next\s+week|this\s+month|last\s+month)\b.*$/iu,
+      "",
+    )
+    .trim();
 }
 
-function fastCapabilitiesReply(): string {
-  return [
-    "I can help across inbox and calendar.",
-    "I can search and summarize email, draft and send replies with approval safeguards, and manage labels and rules.",
-    "I can review your schedule, find availability, create or reschedule events, and enforce your policy guardrails.",
-  ].join(" ");
+function sanitizeSenderValue(raw: unknown): string | undefined {
+  const normalized = normalizeScopeValue(raw);
+  if (!normalized) return undefined;
+  const stripped = stripTrailingTemporalPhrase(normalized);
+  if (!stripped || stripped.length < 2) return undefined;
+  if (SUSPICIOUS_SLOT_RE.test(stripped)) return undefined;
+  return stripped;
 }
 
-function resolveIntent(message: string): {
-  intent:
-    | "greeting"
-    | "capabilities"
-    | "inbox_read"
-    | "inbox_attention"
-    | "inbox_mutation"
-    | "calendar_read"
-    | "calendar_mutation"
-    | "policy_controls"
-    | "cross_surface_plan"
-    | "general";
-  domain: "general" | "inbox" | "calendar" | "policy" | "cross_surface";
-  action: "meta" | "read" | "mutate" | "mixed";
-} {
-  const normalized = message.toLowerCase();
-  if (GREETING_RE.test(normalized)) {
-    return { intent: "greeting", domain: "general", action: "meta" };
-  }
-  if (CAPABILITIES_RE.test(normalized)) {
-    return { intent: "capabilities", domain: "general", action: "meta" };
-  }
-
-  const hasEmail = EMAIL_ENTITY_RE.test(normalized);
-  const hasCalendar = CALENDAR_ENTITY_RE.test(normalized);
-  const hasPolicy = POLICY_ENTITY_RE.test(normalized);
-  const mutation = MUTATION_VERB_RE.test(normalized);
-
-  if ((hasEmail && hasCalendar) || (hasPolicy && (hasEmail || hasCalendar))) {
-    return { intent: "cross_surface_plan", domain: "cross_surface", action: "mixed" };
-  }
-  if (hasEmail && /\bunread|attention|reply\b/u.test(normalized)) {
-    return { intent: "inbox_attention", domain: "inbox", action: "read" };
-  }
-  if (hasEmail && mutation) return { intent: "inbox_mutation", domain: "inbox", action: "mutate" };
-  if (hasCalendar && mutation) return { intent: "calendar_mutation", domain: "calendar", action: "mutate" };
-  if (hasEmail) return { intent: "inbox_read", domain: "inbox", action: "read" };
-  if (hasCalendar) return { intent: "calendar_read", domain: "calendar", action: "read" };
-  if (hasPolicy) return { intent: "policy_controls", domain: "policy", action: mutation ? "mixed" : "read" };
-  return { intent: "general", domain: "general", action: mutation ? "mutate" : "read" };
+function sanitizeDateRange(value: unknown): { after: string; before: string } | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const raw = value as Record<string, unknown>;
+  const after = normalizeScopeValue(raw.after);
+  const before = normalizeScopeValue(raw.before);
+  if (!after || !before) return undefined;
+  return { after, before };
 }
 
-function inferComplexity(message: string, action: "meta" | "read" | "mutate" | "mixed"): "simple" | "moderate" | "complex" {
-  const normalized = message.toLowerCase();
-  const tokens = normalized.split(/\s+/u).filter(Boolean).length;
-  const hasConditional = CONDITIONAL_RE.test(normalized);
-  const chainCount = [...normalized.matchAll(new RegExp(CHAINING_RE.source, "gu"))].length;
+function sanitizeBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
 
-  if (tokens > 45 || hasConditional || chainCount >= 2) return "complex";
-  if (tokens > 20 || action === "mutate" || chainCount === 1) return "moderate";
-  return "simple";
+function sanitizePurpose(value: unknown): "lookup" | "list" | "count" | undefined {
+  return value === "lookup" || value === "list" || value === "count" ? value : undefined;
+}
+
+function sanitizeLimit(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  return Math.max(1, Math.min(5000, Math.trunc(value)));
+}
+
+function defaultSingleToolReason(toolName: SupportedSingleTool): string {
+  switch (toolName) {
+    case "email.getUnreadCount":
+      return "email_unread_count";
+    case "email.searchSent":
+      return "email_sent_list";
+    case "calendar.listEvents":
+      return "calendar_read_window";
+    case "email.searchInbox":
+    default:
+      return "email_inbox_list";
+  }
+}
+
+function defaultSingleToolFailureText(toolName: SupportedSingleTool): string {
+  switch (toolName) {
+    case "email.getUnreadCount":
+      return "I couldn't load your unread email count right now.";
+    case "email.searchSent":
+    case "email.searchInbox":
+      return "I couldn't load those emails right now.";
+    case "calendar.listEvents":
+      return "I couldn't read your calendar right now.";
+    default:
+      return "I hit a temporary issue while handling that.";
+  }
 }
 
 async function resolveTimeZone(params: {
@@ -295,94 +305,99 @@ async function resolveTimeZone(params: {
   }
 }
 
-async function buildEmailSingleToolCall(params: {
+async function buildSingleToolCallFromCandidate(params: {
+  candidate: NonNullable<CompilerModelResult["singleToolCandidate"]>;
   message: string;
-  normalized: string;
   userId: string;
   emailAccountId: string;
   logger: Logger;
 }): Promise<RuntimeSingleToolCall | undefined> {
-  const { message, normalized } = params;
-  if (!EMAIL_ENTITY_RE.test(normalized)) return undefined;
-  if (!LOOKUP_VERB_RE.test(normalized) && !COUNT_RE.test(normalized)) return undefined;
+  const { candidate } = params;
+  if (candidate.confidence < 0.78) return undefined;
 
-  const sentRequested = SENT_MAILBOX_RE.test(normalized);
-  const toolName = sentRequested ? "email.searchSent" : "email.searchInbox";
-  const sender = parseSenderScope(message);
-  const textScope = parseTextScope(message);
-  const attachmentIntentTerm = inferAttachmentIntentTerm(message, textScope);
-  const hasAttachment = ATTACHMENT_RE.test(normalized) || Boolean(attachmentIntentTerm);
-  const timeZone = await resolveTimeZone(params);
-  const dateRange = inferDateRangeFromMessage(normalized, timeZone);
-
-  if (COUNT_RE.test(normalized)) {
-    if (UNREAD_RE.test(normalized) && !dateRange && !sentRequested) {
-      return {
-        toolName: "email.getUnreadCount",
-        args: { scope: "inbox" },
-        reason: "email_unread_count",
-        onFailureText: "I couldn't load your unread email count right now.",
-      };
-    }
-
+  if (candidate.toolName === "email.getUnreadCount") {
     return {
-      toolName,
-      args: {
-        query: textScope ?? "",
-        purpose: "count",
-        limit: dateRange ? 5000 : 100,
-        fetchAll: Boolean(dateRange),
-        ...(dateRange ? { dateRange } : {}),
-        ...(sender ? { from: sender } : {}),
-        ...(hasAttachment ? { hasAttachment: true } : {}),
-        ...(attachmentIntentTerm ? { text: attachmentIntentTerm } : {}),
-      },
-      reason: sentRequested ? "email_sent_count" : "email_inbox_count",
-      onFailureText: "I couldn't count those emails right now.",
+      toolName: "email.getUnreadCount",
+      args: { scope: "inbox" },
+      reason: candidate.reason || defaultSingleToolReason(candidate.toolName),
+      onFailureText: candidate.onFailureText ?? defaultSingleToolFailureText(candidate.toolName),
     };
   }
 
-  const queryParts: string[] = [];
-  if (textScope) queryParts.push(textScope);
-  if (attachmentIntentTerm && !textScope) queryParts.push(attachmentIntentTerm);
+  if (candidate.toolName === "calendar.listEvents") {
+    const timeZone = await resolveTimeZone(params);
+    const explicitDateRange = sanitizeDateRange(candidate.args.dateRange);
+    const inferredDateRange = explicitDateRange ?? inferDateRangeFromMessage(params.message, timeZone);
+    if (!inferredDateRange) return undefined;
+    return {
+      toolName: "calendar.listEvents",
+      args: {
+        dateRange: inferredDateRange,
+        limit: sanitizeLimit(candidate.args.limit) ?? 20,
+      },
+      reason: candidate.reason || defaultSingleToolReason(candidate.toolName),
+      onFailureText: candidate.onFailureText ?? defaultSingleToolFailureText(candidate.toolName),
+    };
+  }
+
+  const timeZone = await resolveTimeZone(params);
+  const query = normalizeScopeValue(candidate.args.query) ?? "";
+  const text = normalizeScopeValue(candidate.args.text);
+  const from = sanitizeSenderValue(candidate.args.from);
+  const to = normalizeScopeValue(candidate.args.to);
+  const hasAttachment = sanitizeBoolean(candidate.args.hasAttachment);
+  const purpose = sanitizePurpose(candidate.args.purpose) ?? "list";
+  const explicitDateRange = sanitizeDateRange(candidate.args.dateRange);
+  const dateRange = explicitDateRange ?? inferDateRangeFromMessage(params.message, timeZone);
+  const attachmentIntentTerm =
+    normalizeAttachmentIntentTerm(normalizeScopeValue(candidate.args.attachmentIntentTerm)) ??
+    inferAttachmentIntentTerm(params.message, text ?? query);
+
+  const args: Record<string, unknown> = {
+    query,
+    purpose,
+    limit: sanitizeLimit(candidate.args.limit) ?? (purpose === "count" ? 100 : dateRange ? 100 : 25),
+    fetchAll: sanitizeBoolean(candidate.args.fetchAll) ?? false,
+  };
+
+  if (dateRange) args.dateRange = dateRange;
+  if (from) args.from = from;
+  if (to) args.to = to;
+  if (typeof hasAttachment === "boolean") args.hasAttachment = hasAttachment;
+  if (attachmentIntentTerm) args.text = attachmentIntentTerm;
+
+  if (candidate.toolName === "email.searchSent") {
+    args.sentByMe = true;
+  } else {
+    const sentByMe = sanitizeBoolean(candidate.args.sentByMe);
+    if (typeof sentByMe === "boolean") args.sentByMe = sentByMe;
+  }
+
+  const receivedByMe = sanitizeBoolean(candidate.args.receivedByMe);
+  if (typeof receivedByMe === "boolean") args.receivedByMe = receivedByMe;
 
   return {
-    toolName,
-    args: {
-      query: queryParts.join(" ").trim(),
-      purpose: "list",
-      limit: dateRange ? 100 : 25,
-      fetchAll: false,
-      ...(dateRange ? { dateRange } : {}),
-      ...(sender ? { from: sender } : {}),
-      ...(hasAttachment ? { hasAttachment: true } : {}),
-      ...(attachmentIntentTerm ? { text: attachmentIntentTerm } : {}),
-    },
-    reason: sentRequested ? "email_sent_list" : "email_inbox_list",
-    onFailureText: "I couldn't load those emails right now.",
+    toolName: candidate.toolName,
+    args,
+    reason: candidate.reason || defaultSingleToolReason(candidate.toolName),
+    onFailureText: candidate.onFailureText ?? defaultSingleToolFailureText(candidate.toolName),
   };
 }
 
-function buildCalendarSingleToolCall(message: string): RuntimeSingleToolCall | undefined {
-  const normalized = message.toLowerCase();
-  if (!CALENDAR_ENTITY_RE.test(normalized)) return undefined;
-  if (!LOOKUP_VERB_RE.test(normalized) && !/\bnext\b/u.test(normalized)) return undefined;
+function extractMetaConstraints(message: string): string[] {
+  const constraints: string[] = [];
+  for (const entry of META_CONSTRAINT_PATTERNS) {
+    if (entry.pattern.test(message)) constraints.push(entry.label);
+  }
+  return constraints;
+}
 
-  return {
-    toolName: "calendar.listEvents",
-    args: {
-      dateRange: {
-        ...( /\bthis month\b/u.test(normalized)
-          ? { after: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10), before: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().slice(0, 10) }
-          : /\btomorrow\b/u.test(normalized)
-            ? { after: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10), before: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10) }
-            : { after: new Date().toISOString().slice(0, 10), before: new Date().toISOString().slice(0, 10) }),
-      },
-      limit: 20,
-    },
-    reason: "calendar_read_window",
-    onFailureText: "I couldn't read your calendar right now.",
-  };
+function fastCapabilitiesReply(): string {
+  return [
+    "I can help across inbox and calendar.",
+    "I can search and summarize email, draft and send replies with approval safeguards, and manage labels and rules.",
+    "I can review your schedule, find availability, create or reschedule events, and enforce your policy guardrails.",
+  ].join(" ");
 }
 
 async function compileWithModel(params: {
@@ -391,9 +406,8 @@ async function compileWithModel(params: {
   email: string;
   emailAccountId: string;
   logger: Logger;
-}): Promise<z.infer<typeof compilerSchema> | null> {
-  if (!ENABLE_MODEL_COMPILER) return null;
-  if (process.env.RUNTIME_TURN_COMPILER_USE_MODEL === "false") return null;
+}): Promise<CompilerModelResult | null> {
+  if (!shouldUseModelCompiler()) return null;
 
   const modelOptions = getModel("economy");
   const generate = createGenerateObject({
@@ -411,17 +425,24 @@ async function compileWithModel(params: {
     model: modelOptions.model,
     schema: compilerSchema,
     system: [
-      "You compile a user turn into structured intent.",
+      "You compile a user turn into structured intent for a conversational AI runtime.",
       "Return JSON only.",
-      "Separate conversational text from executable tasks.",
-      "Meta constraints like 'not from conversation memory' are meta constraints, not sender filters.",
-      "If unsure, choose planner and set needsClarification=true.",
+      "Primary goal: preserve conversational nuance. Do not force tool execution when intent is ambiguous.",
+      "`singleToolCandidate` is optional and only for high-confidence one-tool requests.",
+      "If uncertain, set routeHint=planner and needsClarification=true.",
+      "Meta constraints like 'not from conversation memory' are metaConstraints, not sender filters.",
+      "For 'from <person> in the last N days', set args.from to the person only and put timeframe in dateRange.",
+      "Allowed single tools: email.getUnreadCount, email.searchInbox, email.searchSent, calendar.listEvents.",
+      "Do not invent tools or unsupported args.",
     ].join("\n"),
-    prompt: `User turn: ${params.message}`,
+    prompt: [
+      `Current UTC date: ${new Date().toISOString().slice(0, 10)}`,
+      `User turn: ${params.message}`,
+    ].join("\n"),
   });
 
   const timeoutMs = Math.min(
-    Math.max(Number.parseInt(process.env.RUNTIME_TURN_COMPILER_TIMEOUT_MS ?? "1200", 10) || 1200, 500),
+    Math.max(Number.parseInt(process.env.RUNTIME_TURN_COMPILER_TIMEOUT_MS ?? "1400", 10) || 1400, 500),
     4_000,
   );
 
@@ -448,9 +469,6 @@ export async function compileRuntimeTurn(params: {
   const message = params.message.trim();
   const normalized = message.toLowerCase();
   const metaConstraints = extractMetaConstraints(normalized);
-
-  const intent = resolveIntent(normalized);
-  const complexity = inferComplexity(normalized, intent.action);
 
   if (GREETING_RE.test(normalized)) {
     return {
@@ -480,68 +498,92 @@ export async function compileRuntimeTurn(params: {
 
   const modelResult = await compileWithModel(params);
 
-  if (intent.domain === "inbox" && intent.action === "read" && complexity !== "complex") {
-    const emailCall = await buildEmailSingleToolCall({
-      message,
-      normalized,
-      userId: params.userId,
-      emailAccountId: params.emailAccountId,
-      logger: params.logger,
-    });
-    if (emailCall) {
+  if (modelResult) {
+    const mergedMeta = [...new Set([...(modelResult.metaConstraints ?? []), ...metaConstraints])];
+    const singleToolCall = modelResult.singleToolCandidate
+      ? await buildSingleToolCallFromCandidate({
+          candidate: modelResult.singleToolCandidate,
+          message,
+          userId: params.userId,
+          emailAccountId: params.emailAccountId,
+          logger: params.logger,
+        })
+      : undefined;
+
+    if (singleToolCall && !modelResult.needsClarification) {
+      const inferredTaskClause: RuntimeTaskClause =
+        singleToolCall.toolName.startsWith("email.")
+          ? { domain: "inbox", action: "read", confidence: 0.8 }
+          : { domain: "calendar", action: "read", confidence: 0.8 };
       return {
         routeHint: "single_tool",
-        conversationClauses: modelResult?.conversationClauses ?? [],
-        taskClauses: [{ domain: "inbox", action: "read", confidence: 0.86 }],
-        metaConstraints: [...new Set([...(modelResult?.metaConstraints ?? []), ...metaConstraints])],
+        conversationClauses: modelResult.conversationClauses,
+        taskClauses:
+          modelResult.taskClauses.length > 0
+            ? modelResult.taskClauses
+            : [inferredTaskClause],
+        metaConstraints: mergedMeta,
         needsClarification: false,
-        singleToolCall: emailCall,
-        confidence: modelResult?.confidence ?? 0.86,
-        source: modelResult ? "compiler_model" : "compiler_fallback",
+        singleToolCall,
+        confidence: Number(Math.max(modelResult.confidence, modelResult.singleToolCandidate?.confidence ?? 0).toFixed(4)),
+        source: "compiler_model",
       };
     }
-  }
 
-  if (intent.domain === "calendar" && intent.action === "read" && complexity === "simple") {
-    const calendarCall = buildCalendarSingleToolCall(message);
-    if (calendarCall) {
+    const modelConversationOnly =
+      modelResult.routeHint === "conversation_only" &&
+      modelResult.taskClauses.length === 0 &&
+      !modelResult.needsClarification;
+
+    if (modelConversationOnly) {
       return {
-        routeHint: "single_tool",
-        conversationClauses: modelResult?.conversationClauses ?? [],
-        taskClauses: [{ domain: "calendar", action: "read", confidence: 0.8 }],
-        metaConstraints: [...new Set([...(modelResult?.metaConstraints ?? []), ...metaConstraints])],
+        routeHint: "conversation_only",
+        conversationClauses:
+          modelResult.conversationClauses.length > 0
+            ? modelResult.conversationClauses
+            : [message],
+        taskClauses: [],
+        metaConstraints: mergedMeta,
         needsClarification: false,
-        singleToolCall: calendarCall,
-        confidence: modelResult?.confidence ?? 0.8,
-        source: modelResult ? "compiler_model" : "compiler_fallback",
+        confidence: Number(modelResult.confidence.toFixed(4)),
+        source: "compiler_model",
       };
     }
+
+    return {
+      routeHint: "planner",
+      conversationClauses: modelResult.conversationClauses,
+      taskClauses:
+        modelResult.taskClauses.length > 0
+          ? modelResult.taskClauses
+          : [{ domain: "general", action: "read", confidence: 0.55 }],
+      metaConstraints: mergedMeta,
+      needsClarification: modelResult.needsClarification,
+      confidence: Number(modelResult.confidence.toFixed(4)),
+      source: "compiler_model",
+    };
   }
 
-  const hasDomainSignals = EMAIL_ENTITY_RE.test(normalized) || CALENDAR_ENTITY_RE.test(normalized) || POLICY_ENTITY_RE.test(normalized);
-  if (!hasDomainSignals && !MUTATION_VERB_RE.test(normalized) && !LOOKUP_VERB_RE.test(normalized)) {
+  if (!TASK_SIGNAL_RE.test(normalized)) {
     return {
       routeHint: "conversation_only",
-      conversationClauses: modelResult?.conversationClauses ?? [message],
+      conversationClauses: [message],
       taskClauses: [],
-      metaConstraints: [...new Set([...(modelResult?.metaConstraints ?? []), ...metaConstraints])],
+      metaConstraints,
       needsClarification: false,
-      confidence: modelResult?.confidence ?? 0.72,
-      source: modelResult ? "compiler_model" : "compiler_fallback",
+      confidence: 0.62,
+      source: "compiler_fallback",
     };
   }
 
   return {
-    routeHint: modelResult?.routeHint ?? "planner",
-    conversationClauses: modelResult?.conversationClauses ?? [],
-    taskClauses:
-      modelResult?.taskClauses.length && modelResult.taskClauses.length > 0
-        ? modelResult.taskClauses
-        : [{ domain: intent.domain, action: intent.action, confidence: 0.66 }],
-    metaConstraints: [...new Set([...(modelResult?.metaConstraints ?? []), ...metaConstraints])],
-    needsClarification: modelResult?.needsClarification ?? false,
-    confidence: modelResult?.confidence ?? 0.66,
-    source: modelResult ? "compiler_model" : "compiler_fallback",
+    routeHint: "planner",
+    conversationClauses: [],
+    taskClauses: [{ domain: "general", action: "read", confidence: 0.5 }],
+    metaConstraints,
+    needsClarification: false,
+    confidence: 0.5,
+    source: "compiler_fallback",
   };
 }
 

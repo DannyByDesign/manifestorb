@@ -6,6 +6,11 @@ const SUSPICIOUS_FROM_PATTERNS: RegExp[] = [
   /\bprevious\s+messages?\b/iu,
 ];
 
+const TRAILING_TEMPORAL_SUFFIX_PATTERNS: RegExp[] = [
+  /\s+(?:in\s+)?(?:the\s+)?(?:last|past)\s+\d{1,3}\s+(?:day|days|week|weeks|month|months|year|years)\b.*$/iu,
+  /\s+(?:today|tonight|tomorrow|yesterday|this\s+week|next\s+week|this\s+month|last\s+month)\b.*$/iu,
+];
+
 function normalizeStringValue(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value.trim().replace(/\s+/g, " ");
@@ -15,6 +20,13 @@ function normalizeStringValue(value: unknown): string | undefined {
 function isSuspiciousFromValue(value: string): boolean {
   if (value.length > 120) return true;
   return SUSPICIOUS_FROM_PATTERNS.some((pattern) => pattern.test(value));
+}
+
+function stripTrailingTemporalScope(value: string): string {
+  return TRAILING_TEMPORAL_SUFFIX_PATTERNS.reduce(
+    (current, pattern) => current.replace(pattern, "").trim(),
+    value,
+  );
 }
 
 function sanitizeDateRange(value: unknown): Record<string, unknown> | undefined {
@@ -71,7 +83,10 @@ export function validateEmailSearchFilter(
 
   const from = normalizeStringValue(filter.from);
   if (from) {
-    if (isSuspiciousFromValue(from)) {
+    const normalizedFrom = stripTrailingTemporalScope(from);
+    if (!normalizedFrom) {
+      delete sanitized.from;
+    } else if (isSuspiciousFromValue(normalizedFrom)) {
       return {
         ok: false,
         error: "invalid_sender_scope",
@@ -81,8 +96,9 @@ export function validateEmailSearchFilter(
           "Who should I filter by? Give me a sender name or email address, or say 'any sender'.",
         fields: ["from"],
       };
+    } else {
+      sanitized.from = normalizedFrom;
     }
-    sanitized.from = from;
   } else {
     delete sanitized.from;
   }

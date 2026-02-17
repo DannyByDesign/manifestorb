@@ -146,6 +146,27 @@ describe("runtime email timezone handling", () => {
     expect(searchEmailThreads).not.toHaveBeenCalled();
   });
 
+  it("normalizes sender scope when temporal phrasing is embedded in sender text", async () => {
+    const caps = createEmailCapabilities(buildEnv());
+
+    await caps.searchInbox({
+      from: "Haseeb in the last 7 days",
+      query: "",
+      limit: 10,
+    });
+
+    expect(searchEmailThreads).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(searchEmailThreads).mock.calls[0]?.[1]).toMatchObject({
+      from: undefined,
+      query: expect.stringContaining("from:Haseeb"),
+    });
+    expect(vi.mocked(searchEmailThreads).mock.calls[1]?.[1]).toMatchObject({
+      from: undefined,
+      query: expect.not.stringContaining("from:Haseeb"),
+      text: "Haseeb",
+    });
+  });
+
   it("returns localized display time fields for inbox items", async () => {
     vi.mocked(searchEmailThreads).mockResolvedValueOnce({
       messages: [
@@ -311,11 +332,13 @@ describe("runtime email timezone handling", () => {
 
     expect(searchEmailThreads).toHaveBeenCalledTimes(2);
     expect(vi.mocked(searchEmailThreads).mock.calls[0]?.[1]).toMatchObject({
-      from: "Haseeb",
+      from: undefined,
+      query: expect.stringContaining("from:Haseeb"),
       text: undefined,
     });
     expect(vi.mocked(searchEmailThreads).mock.calls[1]?.[1]).toMatchObject({
       from: undefined,
+      query: expect.not.stringContaining("from:Haseeb"),
       text: "Haseeb",
       subjectContains: "Haseeb",
     });

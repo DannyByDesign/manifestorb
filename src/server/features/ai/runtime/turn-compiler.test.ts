@@ -30,7 +30,7 @@ describe("runtime turn compiler", () => {
     });
   });
 
-  it("routes mixed conversational+task sent-inbox requests to single-tool email search", async () => {
+  it("routes mixed conversational+task turns to planner when model compiler is unavailable", async () => {
     const turn = await compileRuntimeTurn({
       message:
         "Find all emails in my sent inbox containing invoice attachments from this month. do a fresh search in my sent inbox, not from our conversation memory",
@@ -40,20 +40,10 @@ describe("runtime turn compiler", () => {
       logger: testLogger(),
     });
 
-    expect(turn.routeHint).toBe("single_tool");
-    expect(turn.singleToolCall?.toolName).toBe("email.searchSent");
+    expect(turn.routeHint).toBe("planner");
+    expect(turn.singleToolCall).toBeUndefined();
     expect(turn.metaConstraints).toEqual(
       expect.arrayContaining(["fresh_search", "not_from_conversation_memory"]),
-    );
-
-    const args = (turn.singleToolCall?.args ?? {}) as Record<string, unknown>;
-    expect(args.from).toBeUndefined();
-    expect(args.hasAttachment).toBe(true);
-    expect(args.dateRange).toEqual(
-      expect.objectContaining({
-        after: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
-        before: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
-      }),
     );
   });
 

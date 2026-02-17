@@ -222,6 +222,30 @@ function hasMailboxScopeInQuery(query: string): boolean {
   return /\bin:(inbox|sent|draft|trash|spam|archive)\b/i.test(query);
 }
 
+const EMAIL_LIKE_RE = /[^\s@]+@[^\s@]+\.[^\s@]+/u;
+
+function quoteQueryTerm(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (/^[^\s"]+$/u.test(trimmed)) return trimmed;
+  return `"${trimmed.replace(/"/g, "")}"`;
+}
+
+function appendQueryToken(query: string, token: string | undefined): string {
+  const normalizedToken = token?.trim();
+  if (!normalizedToken) return query.trim();
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) return normalizedToken;
+  if (normalizedQuery.toLowerCase().includes(normalizedToken.toLowerCase())) {
+    return normalizedQuery;
+  }
+  return `${normalizedQuery} ${normalizedToken}`.trim();
+}
+
+function removeSenderScopeTokens(query: string): string {
+  return query.replace(/\bfrom:(?:"[^"]+"|\S+)\b/giu, " ").replace(/\s+/g, " ").trim();
+}
+
 function includesAllTermTokens(
   haystack: string,
   term: string,
@@ -503,24 +527,56 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           ? requestFilter.from.trim()
           : undefined;
       const strictSenderOnly = requestFilter.strictSenderOnly === true;
+      let senderScopeQueryTerm: string | undefined;
+      if (fromFilter && !strictSenderOnly) {
+        if (EMAIL_LIKE_RE.test(fromFilter)) {
+          senderScopeQueryTerm = fromFilter;
+        } else {
+          try {
+            const contacts = await provider.searchContacts(fromFilter);
+            const bestContact = contacts.find(
+              (contact) =>
+                typeof contact.email === "string" &&
+                contact.email.trim().length > 0 &&
+                includesAllTermTokens(
+                  `${contact.name ?? ""} ${contact.email ?? ""}`,
+                  fromFilter,
+                ),
+            );
+            const fallbackContact = contacts.find(
+              (contact) =>
+                typeof contact.email === "string" && contact.email.trim().length > 0,
+            );
+            senderScopeQueryTerm =
+              bestContact?.email?.trim() ??
+              fallbackContact?.email?.trim() ??
+              fromFilter;
+          } catch {
+            senderScopeQueryTerm = fromFilter;
+          }
+        }
+      }
+      const providerQuery = senderScopeQueryTerm
+        ? appendQueryToken(query, `from:${quoteQueryTerm(senderScopeQueryTerm)}`)
+        : query;
       const normalizedLimit = computeEmailSearchLimit({
         requestedLimit,
         fetchAll,
         hasDateRange,
-        query,
+        query: providerQuery,
         purpose,
       });
       const attachmentIntentTerm =
         typeof requestFilter.hasAttachment === "boolean" && requestFilter.hasAttachment
           ? inferAttachmentIntentTerm({
               currentMessage: capEnv.toolContext.currentMessage,
-              query,
+              query: providerQuery,
               text: typeof requestFilter.text === "string" ? requestFilter.text : undefined,
             })
           : undefined;
 
       const baseSearch = {
-        query,
+        query: providerQuery,
         limit: normalizedLimit,
         fetchAll,
         includeNonPrimary: Boolean(requestFilter.subscriptionsOnly),
@@ -535,7 +591,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
             ? requestFilter.bodyContains
             : undefined,
         text: typeof requestFilter.text === "string" ? requestFilter.text : undefined,
-        from: fromFilter,
+        from: strictSenderOnly ? fromFilter : undefined,
         to: typeof requestFilter.to === "string" ? requestFilter.to : undefined,
         hasAttachment:
           typeof requestFilter.hasAttachment === "boolean"
@@ -566,8 +622,10 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           requestFilter.subjectContains.trim().length > 0
             ? requestFilter.subjectContains
             : fromFilter;
+        const fallbackQuery = removeSenderScopeTokens(baseSearch.query);
         const fallbackResult = await searchEmailThreads(provider, {
           ...baseSearch,
+          query: fallbackQuery,
           from: undefined,
           text: fromFilter,
           subjectContains: fallbackSubjectContains,
