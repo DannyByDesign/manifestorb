@@ -35,7 +35,7 @@ const compilerOutputSchema = z
               "lte",
               "exists",
             ]),
-            value: z.unknown().optional(),
+            valueJson: z.string().max(4_000).optional(),
           })
           .strict(),
       )
@@ -45,7 +45,7 @@ const compilerOutputSchema = z
         z
           .object({
             path: z.string().min(1),
-            value: z.unknown(),
+            valueJson: z.string().max(10_000),
           })
           .strict(),
       )
@@ -56,7 +56,7 @@ const compilerOutputSchema = z
         z
           .object({
             actionType: z.string().min(1),
-            args: z.record(z.string(), z.unknown()).default({}),
+            argsJson: z.string().max(10_000).default("{}"),
             idempotencyScope: z.enum(["event", "thread", "message", "user"]).optional(),
           })
           .strict(),
@@ -67,7 +67,7 @@ const compilerOutputSchema = z
         z
           .object({
             key: z.string().min(1),
-            value: z.unknown(),
+            valueJson: z.string().max(4_000),
           })
           .strict(),
       )
@@ -78,6 +78,8 @@ const compilerOutputSchema = z
     clarificationPrompt: z.string().optional(),
   })
   .strict();
+
+export const ruleCompilerModelSchema = compilerOutputSchema;
 
 export type RuleCompilerResult = {
   ok: boolean;
@@ -91,6 +93,25 @@ export type RuleCompilerResult = {
   needsClarification: boolean;
   clarificationPrompt?: string;
 };
+
+function parseJsonValue(raw: string | undefined): unknown {
+  if (typeof raw !== "string") return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return trimmed;
+  }
+}
+
+function parseJsonObject(raw: string | undefined): Record<string, unknown> {
+  const parsed = parseJsonValue(raw);
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    return parsed as Record<string, unknown>;
+  }
+  return {};
+}
 
 function heuristicCompile(input: string): RuleCompilerResult {
   const lower = input.toLowerCase();
@@ -168,13 +189,22 @@ function toCandidateFromModel(params: {
     match: {
       resource: out.resource,
       operation: out.operation,
-      conditions: out.conditions,
+      conditions: out.conditions.map((condition) => ({
+        field: condition.field,
+        op: condition.op,
+        ...(condition.valueJson !== undefined
+          ? { value: parseJsonValue(condition.valueJson) }
+          : {}),
+      })),
     },
     ...(out.decision ? { decision: out.decision } : {}),
     ...(out.transformPatch.length > 0
       ? {
           transform: {
-            patch: out.transformPatch,
+            patch: out.transformPatch.map((entry) => ({
+              path: entry.path,
+              value: parseJsonValue(entry.valueJson),
+            })),
             reason: out.transformReason ?? "Applied by natural-language compiler",
           },
         }
@@ -182,14 +212,21 @@ function toCandidateFromModel(params: {
     ...(out.actionPlan.length > 0
       ? {
           actionPlan: {
-            actions: out.actionPlan,
+            actions: out.actionPlan.map((action) => ({
+              actionType: action.actionType,
+              args: parseJsonObject(action.argsJson),
+              idempotencyScope: action.idempotencyScope,
+            })),
           },
         }
       : {}),
     ...(out.preferenceUpdates.length > 0
       ? {
           preferencePatch: {
-            updates: out.preferenceUpdates,
+            updates: out.preferenceUpdates.map((update) => ({
+              key: update.key,
+              value: parseJsonValue(update.valueJson),
+            })),
           },
         }
       : {}),
@@ -278,6 +315,11 @@ Hard constraints:
 - If information is missing, set needsClarification=true.
 - Do NOT invent unknown action types.
 - Keep confidence conservative.
+- Encode dynamic payloads as JSON strings:
+  - conditions[].valueJson
+  - transformPatch[].valueJson
+  - actionPlan[].argsJson
+  - preferenceUpdates[].valueJson
 
 User request:
 ${text}`,

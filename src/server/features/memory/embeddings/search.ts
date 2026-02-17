@@ -25,8 +25,25 @@ type ReadinessCacheEntry = {
   reason?: string;
 };
 
+type KnowledgeColumnCacheEntry = {
+  checkedAt: number;
+  columns: Set<string>;
+};
+
+type KnowledgeSearchContract = {
+  ready: boolean;
+  projection?: Prisma.Sql;
+  missingRequired: string[];
+  missingOptional: string[];
+};
+
 const VECTOR_READINESS_TTL_MS = 5 * 60 * 1000;
 const readinessCache = new Map<VectorTarget, ReadinessCacheEntry>();
+const KNOWLEDGE_COLUMN_CACHE_TTL_MS = 5 * 60 * 1000;
+const KNOWLEDGE_REQUIRED_COLUMNS = ["id", "title", "content", "userId"] as const;
+const KNOWLEDGE_OPTIONAL_COLUMNS = ["createdAt", "updatedAt", "emailAccountId"] as const;
+let knowledgeColumnCache: KnowledgeColumnCacheEntry | null = null;
+let knowledgeContractWarningSignature: string | null = null;
 
 const HYBRID_VECTOR_WEIGHT = resolveEnvNumber(
   "MEMORY_HYBRID_VECTOR_WEIGHT",
@@ -125,6 +142,107 @@ async function canUseSemanticFor(target: VectorTarget): Promise<boolean> {
       reason,
     });
     return false;
+  }
+}
+
+async function getKnowledgeColumns(): Promise<Set<string>> {
+  if (
+    knowledgeColumnCache &&
+    Date.now() - knowledgeColumnCache.checkedAt < KNOWLEDGE_COLUMN_CACHE_TTL_MS
+  ) {
+    return knowledgeColumnCache.columns;
+  }
+
+  const rows = await prisma.$queryRaw<Array<{ column_name: string }>>`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'Knowledge'
+  `;
+  const columns = new Set(
+    rows
+      .map((row) => row.column_name)
+      .filter((name): name is string => typeof name === "string" && name.length > 0),
+  );
+  knowledgeColumnCache = {
+    checkedAt: Date.now(),
+    columns,
+  };
+  return columns;
+}
+
+function buildKnowledgeProjection(columns: Set<string>): Prisma.Sql {
+  const createdAtExpr = columns.has("createdAt")
+    ? Prisma.sql`k."createdAt"`
+    : Prisma.sql`NOW()`;
+  const updatedAtExpr = columns.has("updatedAt")
+    ? Prisma.sql`k."updatedAt"`
+    : columns.has("createdAt")
+      ? Prisma.sql`k."createdAt"`
+      : Prisma.sql`NOW()`;
+  const emailAccountIdExpr = columns.has("emailAccountId")
+    ? Prisma.sql`k."emailAccountId"`
+    : Prisma.sql`NULL::text`;
+
+  return Prisma.sql`
+    k.id,
+    k.title,
+    k.content,
+    k."userId",
+    ${createdAtExpr} AS "createdAt",
+    ${updatedAtExpr} AS "updatedAt",
+    ${emailAccountIdExpr} AS "emailAccountId"
+  `;
+}
+
+async function resolveKnowledgeSearchContract(): Promise<KnowledgeSearchContract> {
+  try {
+    const columns = await getKnowledgeColumns();
+    const missingRequired = KNOWLEDGE_REQUIRED_COLUMNS.filter(
+      (column) => !columns.has(column),
+    );
+    const missingOptional = KNOWLEDGE_OPTIONAL_COLUMNS.filter(
+      (column) => !columns.has(column),
+    );
+    const signature = `${missingRequired.join(",")}|${missingOptional.join(",")}`;
+
+    if (signature !== knowledgeContractWarningSignature) {
+      knowledgeContractWarningSignature = signature;
+      if (missingRequired.length > 0) {
+        logger.warn("Knowledge search disabled: required columns missing", {
+          missingRequired,
+          missingOptional,
+        });
+      } else if (missingOptional.length > 0) {
+        logger.warn("Knowledge search running in compatibility mode", {
+          missingOptional,
+        });
+      }
+    }
+
+    if (missingRequired.length > 0) {
+      return {
+        ready: false,
+        missingRequired,
+        missingOptional,
+      };
+    }
+
+    return {
+      ready: true,
+      projection: buildKnowledgeProjection(columns),
+      missingRequired,
+      missingOptional,
+    };
+  } catch (error) {
+    logger.warn("Knowledge search disabled: failed to inspect schema contract", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return {
+      ready: false,
+      missingRequired: [...KNOWLEDGE_REQUIRED_COLUMNS],
+      missingOptional: [...KNOWLEDGE_OPTIONAL_COLUMNS],
+    };
   }
 }
 
@@ -227,6 +345,25 @@ function knowledgeKeywordScore(params: {
   );
   if (matches === 0) return 0.35;
   return 0.4 + (matches / params.keywords.length) * 0.5;
+}
+
+function buildKnowledgeKeywordFilterSql(params: {
+  keywords: string[];
+  query: string;
+}): Prisma.Sql {
+  const terms = params.keywords.length > 0 ? params.keywords : [params.query];
+  const clauses = terms.flatMap((term) => {
+    const pattern = `%${term}%`;
+    return [
+      Prisma.sql`k.title ILIKE ${pattern}`,
+      Prisma.sql`k.content ILIKE ${pattern}`,
+    ];
+  });
+
+  if (clauses.length === 0) {
+    return Prisma.sql`TRUE`;
+  }
+  return Prisma.sql`(${Prisma.join(clauses, " OR ")})`;
 }
 
 export interface SearchResult<T> {
@@ -430,11 +567,18 @@ export async function searchKnowledge({
 }): Promise<SearchResult<Knowledge>[]> {
   const trimmedQuery = query.trim();
   if (!trimmedQuery) return [];
+  const contract = await resolveKnowledgeSearchContract();
+  if (!contract.ready || !contract.projection) return [];
 
   const semanticReady = await canUseSemanticFor("Knowledge");
   if (!semanticReady) {
     try {
-      return await keywordSearchKnowledge({ userId, query: trimmedQuery, limit });
+      return await keywordSearchKnowledge({
+        userId,
+        query: trimmedQuery,
+        limit,
+        projection: contract.projection,
+      });
     } catch (error) {
       logger.warn("Knowledge keyword search failed", {
         userId,
@@ -445,14 +589,24 @@ export async function searchKnowledge({
   }
 
   try {
-    return await hybridSearchKnowledge({ userId, query: trimmedQuery, limit });
+    return await hybridSearchKnowledge({
+      userId,
+      query: trimmedQuery,
+      limit,
+      projection: contract.projection,
+    });
   } catch (error) {
     logger.warn("Hybrid knowledge search failed; falling back to keyword search", {
       userId,
       error: error instanceof Error ? error.message : String(error),
     });
     try {
-      return await keywordSearchKnowledge({ userId, query: trimmedQuery, limit });
+      return await keywordSearchKnowledge({
+        userId,
+        query: trimmedQuery,
+        limit,
+        projection: contract.projection,
+      });
     } catch (fallbackError) {
       logger.warn("Knowledge fallback search failed", {
         userId,
@@ -467,42 +621,39 @@ async function hybridSearchKnowledge({
   userId,
   query,
   limit,
+  projection,
 }: {
   userId: string;
   query: string;
   limit: number;
+  projection: Prisma.Sql;
 }): Promise<SearchResult<Knowledge>[]> {
   const queryEmbedding = await EmbeddingService.generateEmbedding(query);
   const vectorLiteral = toPgVectorLiteral(queryEmbedding);
   const normalizedQuery = query.toLowerCase().trim();
   const keywords = splitKeywords(query);
   const take = candidateLimit(limit);
+  const keywordFilterSql = buildKnowledgeKeywordFilterSql({
+    keywords,
+    query,
+  });
 
   const [semanticRows, keywordRows] = await Promise.all([
-    prisma.$queryRaw<Array<Knowledge & { distance: number }>>`
-      SELECT *, (embedding <=> ${Prisma.raw(`'${vectorLiteral}'::vector`)}) AS distance
-      FROM "Knowledge"
-      WHERE "userId" = ${userId}
-        AND embedding IS NOT NULL
-      ORDER BY embedding <=> ${Prisma.raw(`'${vectorLiteral}'::vector`)}
+    prisma.$queryRaw<Array<Knowledge & { distance: number }>>(Prisma.sql`
+      SELECT ${projection}, (k.embedding <=> ${Prisma.raw(`'${vectorLiteral}'::vector`)}) AS distance
+      FROM "Knowledge" k
+      WHERE k."userId" = ${userId}
+        AND k.embedding IS NOT NULL
+      ORDER BY k.embedding <=> ${Prisma.raw(`'${vectorLiteral}'::vector`)}
       LIMIT ${take}
-    `,
-    prisma.knowledge.findMany({
-      where: {
-        userId,
-        OR:
-          keywords.length > 0
-            ? keywords.flatMap((keyword) => [
-                { title: { contains: keyword, mode: "insensitive" } },
-                { content: { contains: keyword, mode: "insensitive" } },
-              ])
-            : [
-                { title: { contains: query, mode: "insensitive" } },
-                { content: { contains: query, mode: "insensitive" } },
-              ],
-      },
-      take,
-    }),
+    `),
+    prisma.$queryRaw<Array<Knowledge>>(Prisma.sql`
+      SELECT ${projection}
+      FROM "Knowledge" k
+      WHERE k."userId" = ${userId}
+        AND ${keywordFilterSql}
+      LIMIT ${take}
+    `),
   ]);
 
   const semantic = semanticRows.map((row) => {
@@ -529,30 +680,27 @@ async function keywordSearchKnowledge({
   userId,
   query,
   limit,
+  projection,
 }: {
   userId: string;
   query: string;
   limit: number;
+  projection: Prisma.Sql;
 }): Promise<SearchResult<Knowledge>[]> {
   const normalizedQuery = query.toLowerCase().trim();
   const keywords = splitKeywords(query);
-
-  const rows = await prisma.knowledge.findMany({
-    where: {
-      userId,
-      OR:
-        keywords.length > 0
-          ? keywords.flatMap((keyword) => [
-              { title: { contains: keyword, mode: "insensitive" } },
-              { content: { contains: keyword, mode: "insensitive" } },
-            ])
-          : [
-              { title: { contains: query, mode: "insensitive" } },
-              { content: { contains: query, mode: "insensitive" } },
-            ],
-    },
-    take: Math.max(1, limit),
+  const keywordFilterSql = buildKnowledgeKeywordFilterSql({
+    keywords,
+    query,
   });
+
+  const rows = await prisma.$queryRaw<Array<Knowledge>>(Prisma.sql`
+    SELECT ${projection}
+    FROM "Knowledge" k
+    WHERE k."userId" = ${userId}
+      AND ${keywordFilterSql}
+    LIMIT ${Math.max(1, limit)}
+  `);
 
   return rows
     .map((row) => ({

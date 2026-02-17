@@ -64,6 +64,76 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'missing required column: TaskSchedule.calendarEventId';
   END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'Knowledge'
+      AND column_name = 'id'
+  ) THEN
+    RAISE EXCEPTION 'missing required column: Knowledge.id';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'Knowledge'
+      AND column_name = 'createdAt'
+  ) THEN
+    RAISE EXCEPTION 'missing required column: Knowledge.createdAt';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'Knowledge'
+      AND column_name = 'updatedAt'
+  ) THEN
+    RAISE EXCEPTION 'missing required column: Knowledge.updatedAt';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'Knowledge'
+      AND column_name = 'title'
+  ) THEN
+    RAISE EXCEPTION 'missing required column: Knowledge.title';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'Knowledge'
+      AND column_name = 'content'
+  ) THEN
+    RAISE EXCEPTION 'missing required column: Knowledge.content';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'Knowledge'
+      AND column_name = 'userId'
+  ) THEN
+    RAISE EXCEPTION 'missing required column: Knowledge.userId';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'Knowledge'
+      AND column_name = 'emailAccountId'
+  ) THEN
+    RAISE EXCEPTION 'missing required column: Knowledge.emailAccountId';
+  END IF;
 END
 $$;
 SQL

@@ -109,15 +109,12 @@ function normalizeRuntimeHistoryForProvider(history: ModelMessage[]): ModelMessa
 
     const systemText = extractMessageTextContent(message.content);
     if (!systemText) continue;
-
-    if (normalized.length === 0) {
-      normalized.push({ role: "system", content: systemText });
-      continue;
-    }
-
+    const compact = systemText.replace(/\s+/g, " ").trim();
+    const clipped =
+      compact.length > 320 ? `${compact.slice(0, 317)}...` : compact;
     normalized.push({
       role: "assistant",
-      content: `Context note: ${systemText}`,
+      content: `Context note: ${clipped}`,
     });
   }
 

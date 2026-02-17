@@ -347,6 +347,84 @@ export async function createEmailProvider(
             options.receivedByMe !== undefined,
         );
 
+    const quoteQueryValue = (value: string): string => {
+        const trimmed = value.trim();
+        if (!trimmed) return "";
+        if (/^[^\s"]+$/u.test(trimmed)) return trimmed;
+        return `"${trimmed.replace(/"/g, "")}"`;
+    };
+
+    const appendQueryToken = (baseQuery: string, token: string | undefined): string => {
+        const normalizedToken = token?.trim();
+        if (!normalizedToken) return baseQuery.trim();
+        const normalizedBase = baseQuery.trim();
+        if (!normalizedBase) return normalizedToken;
+        if (normalizedBase.toLowerCase().includes(normalizedToken.toLowerCase())) {
+            return normalizedBase;
+        }
+        return `${normalizedBase} ${normalizedToken}`.trim();
+    };
+
+    const buildProviderScopedQuery = (params: {
+        baseQuery: string;
+        filters: {
+            subjectContains?: string;
+            bodyContains?: string;
+            text?: string;
+            from?: string;
+            to?: string;
+            hasAttachment?: boolean;
+            attachmentIntentTerm?: string;
+            sentByMe?: boolean;
+            receivedByMe?: boolean;
+        };
+    }): string => {
+        let query = params.baseQuery.trim();
+        const { filters } = params;
+
+        const from = filters.from?.trim();
+        if (from) query = appendQueryToken(query, `from:${quoteQueryValue(from)}`);
+
+        const to = filters.to?.trim();
+        if (to) query = appendQueryToken(query, `to:${quoteQueryValue(to)}`);
+
+        const subjectContains = filters.subjectContains?.trim();
+        if (subjectContains) {
+            query = appendQueryToken(
+                query,
+                `subject:${quoteQueryValue(subjectContains)}`,
+            );
+        }
+
+        const text = filters.text?.trim();
+        if (text) query = appendQueryToken(query, quoteQueryValue(text));
+
+        const attachmentIntentTerm = filters.attachmentIntentTerm?.trim();
+        if (attachmentIntentTerm) {
+            query = appendQueryToken(query, quoteQueryValue(attachmentIntentTerm));
+        }
+
+        if (filters.hasAttachment === true) {
+            query = appendQueryToken(query, "has:attachment");
+        }
+
+        if (filters.sentByMe === true) {
+            query = appendQueryToken(
+                query,
+                `from:${quoteQueryValue(account.email)}`,
+            );
+        }
+
+        if (filters.receivedByMe === true) {
+            query = appendQueryToken(
+                query,
+                `to:${quoteQueryValue(account.email)}`,
+            );
+        }
+
+        return query;
+    };
+
     const throttleKey = `email:${account.id}`;
     const runThrottled = async <T>(operation: string, run: () => Promise<T>): Promise<T> =>
         withToolThrottle({
@@ -424,10 +502,16 @@ export async function createEmailProvider(
                     sentByMe,
                     receivedByMe,
                 };
+                const scopedQuery = hasLocalFilter(localFilterOptions)
+                    ? buildProviderScopedQuery({
+                        baseQuery: query ?? "",
+                        filters: localFilterOptions,
+                    })
+                    : query;
 
                 if (!hasLocalFilter(localFilterOptions)) {
                     return await runPagedSearch({
-                        query,
+                        query: scopedQuery,
                         maxResults: limit,
                         pageToken,
                         includeNonPrimary,
@@ -472,7 +556,7 @@ export async function createEmailProvider(
                 do {
                     pagesScanned += 1;
                     const res = await runPagedSearch({
-                        query,
+                        query: scopedQuery,
                         maxResults: pageSize,
                         pageToken: nextPageToken,
                         includeNonPrimary,
@@ -493,7 +577,7 @@ export async function createEmailProvider(
                     if (pagesScanned >= maxPages || scannedMessages >= maxScannedMessages) {
                         logger.warn("Email local-filter guardrail reached", {
                             accountId: account.id,
-                            query,
+                            query: scopedQuery,
                             fetchAll: Boolean(fetchAll),
                             pagesScanned,
                             maxPages,

@@ -61,4 +61,22 @@ describe("buildRuntimeMessages", () => {
     });
     expect(messages[2]).toEqual({ role: "user", content: "show unread" });
   });
+
+  it("normalizes leading system messages to assistant context notes", () => {
+    const session = makeSession({
+      message: "show unread",
+      messages: [
+        { role: "system", content: "Runtime policy from previous turn." },
+        { role: "assistant", content: "Anything else?" },
+      ],
+    });
+
+    const messages = buildRuntimeMessages(session);
+    expect(messages[0]).toEqual({
+      role: "assistant",
+      content: "Context note: Runtime policy from previous turn.",
+    });
+    expect(messages.some((message) => message.role === "system")).toBe(false);
+    expect(messages[2]).toEqual({ role: "user", content: "show unread" });
+  });
 });
