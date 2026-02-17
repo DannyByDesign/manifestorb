@@ -11,6 +11,39 @@ else
   bunx prisma migrate deploy --schema "$SCHEMA_PATH"
 fi
 
+echo "[deploy] repairing known schema drift (Knowledge.userId) if needed"
+bunx prisma db execute --config prisma.config.ts --stdin <<'SQL'
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'Knowledge'
+      AND column_name = 'userId'
+  ) THEN
+    ALTER TABLE "Knowledge"
+    ADD COLUMN "userId" TEXT;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'Knowledge'
+      AND column_name = 'userId'
+  ) THEN
+    UPDATE "Knowledge" k
+    SET "userId" = ea."userId"
+    FROM "EmailAccount" ea
+    WHERE k."userId" IS NULL
+      AND k."emailAccountId" IS NOT NULL
+      AND ea.id = k."emailAccountId";
+  END IF;
+END
+$$;
+SQL
+
 echo "[deploy] verifying required database columns"
 bunx prisma db execute --config prisma.config.ts --stdin <<'SQL'
 DO $$

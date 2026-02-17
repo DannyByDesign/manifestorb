@@ -1,13 +1,15 @@
-import type { CalendarEvent } from "@/features/calendar/event-types";
 import {
   searchConversationHistory,
   searchKnowledge,
   searchMemoryFacts,
 } from "@/features/memory/embeddings/search";
-import { listRulePlaneRulesByType } from "@/server/features/policy-plane/service";
-import type { CanonicalRule } from "@/server/features/policy-plane/canonical-schema";
-import type { ParsedMessage } from "@/server/lib/types";
-import { searchIndexedDocuments } from "@/server/features/search/index/repository";
+import {
+  getSearchBehaviorScores,
+  listRecentIndexedDocuments,
+  recordSearchSignals,
+  searchIndexedDocuments,
+} from "@/server/features/search/index/repository";
+import { planUnifiedSearchQuery } from "@/server/features/search/unified/query";
 import { rankDocuments } from "@/server/features/search/unified/ranking";
 import type {
   RankingDocument,
@@ -54,78 +56,6 @@ function parseDate(value: string | undefined): Date | undefined {
   return new Date(parsed);
 }
 
-function inferEmailMailbox(message: ParsedMessage): string | undefined {
-  const labels = message.labelIds ?? [];
-  if (labels.includes("SENT")) return "sent";
-  if (labels.includes("INBOX")) return "inbox";
-  if (labels.includes("DRAFT")) return "draft";
-  if (labels.includes("TRASH")) return "trash";
-  if (labels.includes("SPAM")) return "spam";
-  return undefined;
-}
-
-function tokenInQuery(query: string, token: string): boolean {
-  return query.toLowerCase().includes(token.toLowerCase());
-}
-
-function appendToken(query: string, token: string): string {
-  if (!token.trim()) return query.trim();
-  if (tokenInQuery(query, token)) return query.trim();
-  if (!query.trim()) return token;
-  return `${query.trim()} ${token}`.trim();
-}
-
-function mailboxQueryToken(mailbox: UnifiedSearchMailbox | undefined): string | undefined {
-  switch (mailbox) {
-    case "inbox":
-      return "in:inbox";
-    case "sent":
-      return "in:sent";
-    case "draft":
-      return "in:draft";
-    case "trash":
-      return "in:trash";
-    case "spam":
-      return "in:spam";
-    case "archive":
-      return "in:archive";
-    default:
-      return undefined;
-  }
-}
-
-function buildRankingQuery(request: UnifiedSearchRequest): string {
-  const parts = [
-    normalizeString(request.query),
-    normalizeString(request.text),
-    normalizeString(request.from),
-    normalizeString(request.to),
-    normalizeString(request.attendeeEmail),
-  ].filter((part) => part.length > 0);
-
-  return parts.join(" ").trim();
-}
-
-function includeRuleByQuery(rule: CanonicalRule, query: string): boolean {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) return true;
-
-  const haystack = [
-    rule.name ?? "",
-    rule.description ?? "",
-    rule.source.sourceNl ?? "",
-    rule.match.resource,
-    rule.match.operation ?? "",
-    ...(rule.actionPlan?.actions ?? []).map((action) => action.actionType),
-  ]
-    .join(" ")
-    .toLowerCase();
-
-  const tokens = normalizedQuery.split(/[^a-z0-9@._-]+/u).filter((token) => token.length > 0);
-  if (tokens.length === 0) return true;
-  return tokens.every((token) => haystack.includes(token));
-}
-
 function toIsoTimestamp(dateValue: Date | string | undefined): string | undefined {
   if (!dateValue) return undefined;
   if (dateValue instanceof Date) {
@@ -134,88 +64,6 @@ function toIsoTimestamp(dateValue: Date | string | undefined): string | undefine
   const parsed = Date.parse(dateValue);
   if (!Number.isFinite(parsed)) return undefined;
   return new Date(parsed).toISOString();
-}
-
-function toEmailDocument(message: ParsedMessage): RankingDocument {
-  const from = message.headers?.from ?? "";
-  const to = message.headers?.to ?? "";
-  const subject = message.subject || message.headers?.subject || "(No Subject)";
-  const snippet = [message.snippet, message.textPlain]
-    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-    .join(" ")
-    .slice(0, 500);
-
-  return {
-    id: `email:${message.id}`,
-    surface: "email",
-    title: subject,
-    snippet,
-    timestamp: toIsoTimestamp(message.internalDate ? new Date(Number(message.internalDate)) : message.date),
-    metadata: {
-      messageId: message.id,
-      threadId: message.threadId,
-      from,
-      to,
-      mailbox: inferEmailMailbox(message),
-      hasAttachment: Array.isArray(message.attachments) && message.attachments.length > 0,
-      attachmentCount: message.attachments?.length ?? 0,
-    },
-  };
-}
-
-function toCalendarDocument(event: CalendarEvent): RankingDocument {
-  const attendees = (event.attendees ?? []).map((attendee) => attendee.email).filter(Boolean);
-  const snippet = [event.description, event.location, attendees.join(", ")]
-    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-    .join(" | ")
-    .slice(0, 500);
-
-  return {
-    id: `calendar:${event.id}`,
-    surface: "calendar",
-    title: event.title || "(Untitled Event)",
-    snippet,
-    timestamp: toIsoTimestamp(event.startTime),
-    metadata: {
-      eventId: event.id,
-      provider: event.provider,
-      calendarId: event.calendarId,
-      attendees,
-      start: event.startTime.toISOString(),
-      end: event.endTime.toISOString(),
-      location: event.location ?? null,
-    },
-  };
-}
-
-function toRuleDocument(rule: CanonicalRule): RankingDocument {
-  const actionTypes = (rule.actionPlan?.actions ?? []).map((action) => action.actionType);
-  const snippet = [
-    rule.description,
-    rule.source.sourceNl,
-    `resource=${rule.match.resource}`,
-    rule.match.operation ? `operation=${rule.match.operation}` : "",
-    actionTypes.length > 0 ? `actions=${actionTypes.join(",")}` : "",
-  ]
-    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-    .join(" | ")
-    .slice(0, 500);
-
-  return {
-    id: `rule:${rule.id}`,
-    surface: "rule",
-    title: rule.name ?? `${rule.type} rule`,
-    snippet,
-    metadata: {
-      ruleId: rule.id,
-      type: rule.type,
-      enabled: rule.enabled,
-      priority: rule.priority,
-      resource: rule.match.resource,
-      operation: rule.match.operation ?? null,
-      actionTypes,
-    },
-  };
 }
 
 function toSurfaceId(row: {
@@ -238,148 +86,223 @@ function toSurfaceId(row: {
   return null;
 }
 
+function asObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function includesNeedle(value: unknown, needle: string): boolean {
+  if (!needle) return true;
+  const normalizedNeedle = needle.toLowerCase().trim();
+  if (!normalizedNeedle) return true;
+  if (typeof value === "string") {
+    return value.toLowerCase().includes(normalizedNeedle);
+  }
+  if (Array.isArray(value)) {
+    return value.some((item) => includesNeedle(item, normalizedNeedle));
+  }
+  return false;
+}
+
+function computeGraphProximityScore(doc: RankingDocument, terms: string[]): number {
+  if (terms.length === 0) return 0;
+  const metadata = asObject(doc.metadata);
+  const graphTexts = [
+    String(metadata.authorIdentity ?? ""),
+    String(metadata.from ?? ""),
+    String(metadata.to ?? ""),
+    Array.isArray(metadata.attendees) ? metadata.attendees.join(" ") : "",
+    doc.title,
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  if (!graphTexts.trim()) return 0;
+  let matched = 0;
+  for (const term of terms) {
+    if (term.length <= 1) continue;
+    if (graphTexts.includes(term.toLowerCase())) matched += 1;
+  }
+  if (matched === 0) return 0;
+  return Math.min(1, matched / Math.max(1, terms.length));
+}
+
+function mailboxMatches(doc: RankingDocument, mailbox: UnifiedSearchMailbox | undefined): boolean {
+  if (doc.surface !== "email" || !mailbox || mailbox === "all") return true;
+  const metadata = asObject(doc.metadata);
+  const normalizedMailbox = String(metadata.mailbox ?? "").toLowerCase();
+  const isSent = metadata.isSent === true;
+  const isInbox = metadata.isInbox === true;
+  const isDraft = metadata.isDraft === true;
+  const isSpam = metadata.isSpam === true;
+  const isTrash = metadata.isTrash === true;
+  switch (mailbox) {
+    case "sent":
+      return normalizedMailbox === "sent" || isSent;
+    case "inbox":
+      return normalizedMailbox === "inbox" || isInbox;
+    case "draft":
+      return normalizedMailbox === "draft" || isDraft;
+    case "spam":
+      return normalizedMailbox === "spam" || isSpam;
+    case "trash":
+      return normalizedMailbox === "trash" || isTrash;
+    case "archive":
+      return normalizedMailbox === "archive";
+    default:
+      return true;
+  }
+}
+
+function matchDateRange(doc: RankingDocument, request: UnifiedSearchRequest): boolean {
+  const after = parseDate(request.dateRange?.after)?.getTime();
+  const before = parseDate(request.dateRange?.before)?.getTime();
+  if (!after && !before) return true;
+  const timestamp = doc.timestamp ? Date.parse(doc.timestamp) : NaN;
+  if (!Number.isFinite(timestamp)) return false;
+  if (after && timestamp < after) return false;
+  if (before) {
+    const inclusiveBefore = before + DAY_MS - 1;
+    if (timestamp > inclusiveBefore) return false;
+  }
+  return true;
+}
+
+function matchesRequest(doc: RankingDocument, request: UnifiedSearchRequest, mailbox: UnifiedSearchMailbox | undefined): boolean {
+  if (!mailboxMatches(doc, mailbox)) return false;
+  if (!matchDateRange(doc, request)) return false;
+
+  const metadata = asObject(doc.metadata);
+  const from = normalizeString(request.from);
+  if (from && doc.surface === "email") {
+    const sourceFrom = metadata.from ?? metadata.authorIdentity ?? doc.metadata?.authorIdentity ?? "";
+    if (!includesNeedle(sourceFrom, from)) return false;
+  }
+
+  const to = normalizeString(request.to);
+  if (to && doc.surface === "email") {
+    const sourceTo = metadata.to ?? "";
+    if (!includesNeedle(sourceTo, to)) return false;
+  }
+
+  const attendeeEmail = normalizeString(request.attendeeEmail);
+  if (attendeeEmail && doc.surface === "calendar") {
+    if (!includesNeedle(metadata.attendees, attendeeEmail)) return false;
+  }
+
+  return true;
+}
+
 async function searchIndexedSurface(params: {
   env: UnifiedSearchEnvironment;
   scopes: UnifiedSearchSurface[];
-  query: string;
+  queryVariants: string[];
   limit: number;
 }): Promise<RankingDocument[]> {
-  if (!params.query.trim()) return [];
+  const docsById = new Map<string, RankingDocument>();
+  const queryVariants = Array.from(new Set(params.queryVariants.map((value) => value.trim()).filter(Boolean)));
+  const perVariantLimit = clampInt(params.limit * 4, 40, 1200);
 
-  const rows = await searchIndexedDocuments({
-    userId: params.env.userId,
-    emailAccountId: params.env.emailAccountId,
-    query: params.query,
-    connectors: params.scopes,
-    limit: clampInt(params.limit * 8, 50, 2000),
-  });
+  if (queryVariants.length > 0) {
+    for (const query of queryVariants) {
+      const rows = await searchIndexedDocuments({
+        userId: params.env.userId,
+        emailAccountId: params.env.emailAccountId,
+        query,
+        connectors: params.scopes,
+        limit: perVariantLimit,
+      });
 
-  const docs: RankingDocument[] = [];
-  for (const row of rows) {
-    const mapped = toSurfaceId(row);
-    if (!mapped) continue;
-    docs.push({
-      id: mapped.id,
-      surface: mapped.surface,
-      title: row.title ?? "(Untitled)",
-      snippet: (row.snippet ?? row.bodyText ?? "").slice(0, 500),
-      timestamp: toIsoTimestamp(row.updatedSourceAt ?? row.occurredAt ?? row.startAt ?? undefined),
-      metadata: {
-        indexed: true,
-        connector: row.connector,
-        sourceType: row.sourceType,
-        sourceId: row.sourceId,
-        sourceParentId: row.sourceParentId,
-        url: row.url,
-        authorIdentity: row.authorIdentity,
-        freshnessScore: row.freshnessScore,
-        authorityScore: row.authorityScore,
-        ...(row.metadata ?? {}),
-      },
-    });
+      for (const row of rows) {
+        const mapped = toSurfaceId(row);
+        if (!mapped) continue;
+        docsById.set(mapped.id, {
+          id: mapped.id,
+          surface: mapped.surface,
+          title: row.title ?? "(Untitled)",
+          snippet: (row.snippet ?? row.bodyText ?? "").slice(0, 500),
+          timestamp: toIsoTimestamp(row.updatedSourceAt ?? row.occurredAt ?? row.startAt ?? undefined),
+          metadata: {
+            searchDocumentId: row.id,
+            connector: row.connector,
+            sourceType: row.sourceType,
+            sourceId: row.sourceId,
+            sourceParentId: row.sourceParentId,
+            url: row.url,
+            authorIdentity: row.authorIdentity,
+            freshnessScore: row.freshnessScore ?? 0,
+            authorityScore: row.authorityScore ?? 0,
+            eventId: row.sourceId,
+            start: toIsoTimestamp(row.startAt ?? undefined) ?? null,
+            end: toIsoTimestamp(row.endAt ?? undefined) ?? null,
+            ...(row.metadata ?? {}),
+          },
+        });
+      }
+    }
   }
-  return docs;
-}
 
-function normalizeMailbox(mailbox: UnifiedSearchRequest["mailbox"]): UnifiedSearchMailbox | undefined {
-  if (!mailbox) return undefined;
-  return mailbox;
-}
+  if (docsById.size === 0) {
+    const fallbackRows = await listRecentIndexedDocuments({
+      userId: params.env.userId,
+      emailAccountId: params.env.emailAccountId,
+      connectors: params.scopes,
+      limit: clampInt(params.limit * 6, 30, 1500),
+    });
+    for (const row of fallbackRows) {
+      const mapped = toSurfaceId(row);
+      if (!mapped) continue;
+      docsById.set(mapped.id, {
+        id: mapped.id,
+        surface: mapped.surface,
+        title: row.title ?? "(Untitled)",
+        snippet: (row.snippet ?? row.bodyText ?? "").slice(0, 500),
+        timestamp: toIsoTimestamp(row.updatedSourceAt ?? row.occurredAt ?? row.startAt ?? undefined),
+        metadata: {
+          searchDocumentId: row.id,
+          connector: row.connector,
+          sourceType: row.sourceType,
+          sourceId: row.sourceId,
+          sourceParentId: row.sourceParentId,
+          url: row.url,
+          authorIdentity: row.authorIdentity,
+          freshnessScore: row.freshnessScore ?? 0,
+          authorityScore: row.authorityScore ?? 0,
+          eventId: row.sourceId,
+          start: toIsoTimestamp(row.startAt ?? undefined) ?? null,
+          end: toIsoTimestamp(row.endAt ?? undefined) ?? null,
+          ...(row.metadata ?? {}),
+        },
+      });
+    }
+  }
 
-async function searchEmailSurface(params: {
-  env: UnifiedSearchEnvironment;
-  request: UnifiedSearchRequest;
-  limit: number;
-}): Promise<RankingDocument[]> {
-  const mailbox = normalizeMailbox(params.request.mailbox);
-  const queryBase = normalizeString(params.request.query) || normalizeString(params.request.text);
-  const queryWithMailbox = appendToken(queryBase, mailboxQueryToken(mailbox) ?? "");
-  const dateBefore = parseDate(params.request.dateRange?.before);
-  const dateAfter = parseDate(params.request.dateRange?.after);
-
-  const providerLimit = params.request.fetchAll
-    ? clampInt(params.limit * 8, 50, 2500)
-    : clampInt(params.limit * 5, 20, 1000);
-
-  const response = await params.env.providers.email.search({
-    query: queryWithMailbox,
-    limit: providerLimit,
-    fetchAll: Boolean(params.request.fetchAll),
-    before: dateBefore,
-    after: dateAfter,
-    text: normalizeString(params.request.text) || undefined,
-    from: normalizeString(params.request.from) || undefined,
-    to: normalizeString(params.request.to) || undefined,
-    sentByMe: mailbox === "sent" ? true : undefined,
-    receivedByMe: mailbox === "inbox" ? true : undefined,
-  });
-
-  return response.messages.map(toEmailDocument);
-}
-
-async function searchCalendarSurface(params: {
-  env: UnifiedSearchEnvironment;
-  request: UnifiedSearchRequest;
-}): Promise<RankingDocument[]> {
-  const now = Date.now();
-  const start = parseDate(params.request.dateRange?.after) ?? new Date(now - 30 * DAY_MS);
-  const end = parseDate(params.request.dateRange?.before) ?? new Date(now + 180 * DAY_MS);
-  const normalizedEnd = end.getTime() > start.getTime() ? end : new Date(start.getTime() + 30 * DAY_MS);
-
-  const attendeeEmail =
-    normalizeString(params.request.attendeeEmail) ||
-    (/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(normalizeString(params.request.from))
-      ? normalizeString(params.request.from)
-      : undefined);
-
-  const events = await params.env.providers.calendar.searchEvents(
-    normalizeString(params.request.query) || normalizeString(params.request.text),
-    {
-      start,
-      end: normalizedEnd,
-    },
-    attendeeEmail,
-  );
-
-  return events.map(toCalendarDocument);
-}
-
-async function searchRuleSurface(params: {
-  env: UnifiedSearchEnvironment;
-  request: UnifiedSearchRequest;
-}): Promise<RankingDocument[]> {
-  const rules = await listRulePlaneRulesByType({
-    userId: params.env.userId,
-    emailAccountId: params.env.emailAccountId,
-  });
-  const query = normalizeString(params.request.query) || normalizeString(params.request.text);
-
-  return rules.filter((rule) => includeRuleByQuery(rule, query)).map(toRuleDocument);
+  return Array.from(docsById.values());
 }
 
 async function searchMemorySurface(params: {
   env: UnifiedSearchEnvironment;
-  request: UnifiedSearchRequest;
+  query: string;
   limit: number;
 }): Promise<RankingDocument[]> {
-  const query = buildRankingQuery(params.request);
-  if (!query) return [];
+  if (!params.query) return [];
 
   const perSourceLimit = clampInt(Math.max(3, Math.ceil(params.limit / 2)), 3, 40);
   const [facts, knowledge, conversation] = await Promise.all([
     searchMemoryFacts({
       userId: params.env.userId,
-      query,
+      query: params.query,
       limit: perSourceLimit,
     }),
     searchKnowledge({
       userId: params.env.userId,
-      query,
+      query: params.query,
       limit: Math.min(20, perSourceLimit),
     }),
     searchConversationHistory({
       userId: params.env.userId,
-      query,
+      query: params.query,
       limit: perSourceLimit,
     }),
   ]);
@@ -446,6 +369,7 @@ function toUnifiedItem(entry: Awaited<ReturnType<typeof rankDocuments>>[number])
     score: entry.score,
     lexicalScore: entry.lexicalScore,
     semanticScore: entry.semanticScore,
+    ranking: entry.features,
     metadata: entry.doc.metadata,
   };
 }
@@ -457,71 +381,94 @@ export interface UnifiedSearchService {
 export function createUnifiedSearchService(env: UnifiedSearchEnvironment): UnifiedSearchService {
   return {
     async query(request) {
-      const scopes = normalizeSurfaceList(request.scopes);
+      const startedAt = Date.now();
       const limit = clampInt(request.limit ?? DEFAULT_LIMIT, 1, MAX_LIMIT);
-      const rankingQuery = buildRankingQuery(request);
+      const queryPlan = await planUnifiedSearchQuery({
+        userId: env.userId,
+        emailAccountId: env.emailAccountId,
+        request,
+      });
+      const scopes = normalizeSurfaceList(request.scopes ?? queryPlan.scopes);
+      const mailbox = queryPlan.mailbox ?? request.mailbox;
+      const rankingQuery = queryPlan.rewrittenQuery || normalizeString(request.query) || normalizeString(request.text);
+
       const indexedDocs = await searchIndexedSurface({
         env,
         scopes,
-        query: rankingQuery,
+        queryVariants: queryPlan.queryVariants,
         limit,
       });
+      const filteredIndexedDocs = indexedDocs.filter((doc) => matchesRequest(doc, request, mailbox));
 
-      const fetches: Array<Promise<RankingDocument[]>> = [];
-      if (scopes.includes("email")) {
-        fetches.push(
-          searchEmailSurface({
-            env,
-            request,
-            limit,
-          }),
-        );
-      }
-      if (scopes.includes("calendar")) {
-        fetches.push(
-          searchCalendarSurface({
-            env,
-            request,
-          }),
-        );
-      }
-      if (scopes.includes("rule")) {
-        fetches.push(
-          searchRuleSurface({
-            env,
-            request,
-          }),
-        );
-      }
-      if (scopes.includes("memory")) {
-        fetches.push(
-          searchMemorySurface({
-            env,
-            request,
-            limit,
-          }),
-        );
-      }
+      const indexedDocumentIds = filteredIndexedDocs
+        .map((doc) => {
+          const metadata = asObject(doc.metadata);
+          const searchDocumentId = metadata.searchDocumentId;
+          return typeof searchDocumentId === "string" ? searchDocumentId : undefined;
+        })
+        .filter((id): id is string => Boolean(id));
 
-      const liveDocs = (await Promise.all(fetches)).flat();
-      const docsById = new Map<string, RankingDocument>();
-      for (const doc of indexedDocs) {
-        docsById.set(doc.id, doc);
-      }
-      for (const doc of liveDocs) {
-        if (!docsById.has(doc.id)) {
-          docsById.set(doc.id, doc);
+      const behaviorScores = new Map<string, number>();
+      if (indexedDocumentIds.length > 0) {
+        const scoreRows = await getSearchBehaviorScores({
+          userId: env.userId,
+          emailAccountId: env.emailAccountId,
+          documentIds: indexedDocumentIds,
+          days: 45,
+        });
+        for (const row of scoreRows) {
+          behaviorScores.set(row.documentId, row.score);
         }
       }
+
+      const docsById = new Map<string, RankingDocument>();
+      for (const doc of filteredIndexedDocs) {
+        const metadata = asObject(doc.metadata);
+        const searchDocumentId =
+          typeof metadata.searchDocumentId === "string" ? metadata.searchDocumentId : undefined;
+        const behaviorScore =
+          searchDocumentId && behaviorScores.has(searchDocumentId)
+            ? behaviorScores.get(searchDocumentId)
+            : undefined;
+        const graphScore = computeGraphProximityScore(doc, [
+          ...queryPlan.terms,
+          ...queryPlan.aliasExpansions.map((value) => value.toLowerCase()),
+        ]);
+
+        docsById.set(doc.id, doc);
+        doc.metadata = {
+          ...metadata,
+          behaviorScore: behaviorScore ?? 0,
+          graphScore,
+        };
+      }
+
+      if (scopes.includes("memory")) {
+        const memoryDocs = await searchMemorySurface({
+          env,
+          query: rankingQuery,
+          limit,
+        });
+        for (const doc of memoryDocs) {
+          if (!docsById.has(doc.id)) {
+            docsById.set(doc.id, doc);
+          }
+        }
+      }
+
       const docs = Array.from(docsById.values());
 
       const ranked = await rankDocuments({
         query: rankingQuery,
         docs,
+        intentHints: {
+          requestedSurfaces: new Set(scopes),
+          mailbox,
+        },
       });
 
       const filteredRanked = rankingQuery
-        ? ranked.filter((entry) => entry.score >= 0.12)
+        ? ranked.filter((entry) => entry.score >= 0.1)
         : ranked;
 
       const total = filteredRanked.length;
@@ -537,11 +484,61 @@ export function createUnifiedSearchService(env: UnifiedSearchEnvironment): Unifi
         counts[item.surface] += 1;
       }
 
+      const topSearchDocumentIds = top
+        .map((item) => {
+          const metadata = asObject(item.metadata);
+          const id = metadata.searchDocumentId;
+          return typeof id === "string" ? id : undefined;
+        })
+        .filter((id): id is string => Boolean(id));
+
+      if (topSearchDocumentIds.length > 0) {
+        void recordSearchSignals({
+          userId: env.userId,
+          emailAccountId: env.emailAccountId,
+          signalType: "query_hit",
+          signalValue: 1,
+          documentIds: topSearchDocumentIds,
+          metadata: {
+            query: rankingQuery,
+            scopes,
+            mailbox: mailbox ?? null,
+          },
+        }).catch((error) => {
+          env.logger.warn("Failed to record unified search signals", {
+            userId: env.userId,
+            emailAccountId: env.emailAccountId,
+            error,
+          });
+        });
+      }
+
+      env.logger.info("Unified search completed", {
+        userId: env.userId,
+        emailAccountId: env.emailAccountId,
+        query: rankingQuery,
+        scopes,
+        mailbox,
+        totalCandidates: docs.length,
+        totalRanked: total,
+        topCount: top.length,
+        zeroResult: top.length === 0,
+        latencyMs: Date.now() - startedAt,
+      });
+
       return {
         items: top,
         counts,
         total,
         truncated: total > limit,
+        queryPlan: {
+          query: queryPlan.query,
+          rewrittenQuery: queryPlan.rewrittenQuery,
+          queryVariants: queryPlan.queryVariants,
+          scopes,
+          mailbox,
+          aliasExpansions: queryPlan.aliasExpansions,
+        },
       };
     },
   };

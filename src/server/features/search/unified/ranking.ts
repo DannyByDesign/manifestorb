@@ -1,5 +1,9 @@
 import { EmbeddingService } from "@/features/memory/embeddings/service";
-import type { RankingDocument } from "@/server/features/search/unified/types";
+import type {
+  RankingDocument,
+  UnifiedSearchIntentHints,
+  UnifiedSearchRankingFeatures,
+} from "@/server/features/search/unified/types";
 
 const MAX_SEMANTIC_DOCS = 80;
 const MIN_TOKEN_LENGTH = 2;
@@ -103,19 +107,75 @@ export interface RankedDocument {
   score: number;
   lexicalScore: number;
   semanticScore?: number;
+  features: UnifiedSearchRankingFeatures;
+}
+
+function clampUnit(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
+function readNumericMetadata(metadata: Record<string, unknown> | undefined, key: string): number | undefined {
+  if (!metadata) return undefined;
+  const value = metadata[key];
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+function intentSurfaceScore(doc: RankingDocument, hints: UnifiedSearchIntentHints | undefined): number {
+  if (!hints || hints.requestedSurfaces.size === 0) return 0.6;
+  if (hints.requestedSurfaces.has(doc.surface)) return 1;
+  return 0.25;
+}
+
+function mailboxIntentScore(
+  doc: RankingDocument,
+  hints: UnifiedSearchIntentHints | undefined,
+): number {
+  if (!hints?.mailbox || doc.surface !== "email") return 0.6;
+  const mailbox = String(doc.metadata?.mailbox ?? "").toLowerCase();
+  const isSent = doc.metadata?.isSent === true;
+  const isInbox = doc.metadata?.isInbox === true;
+  const isDraft = doc.metadata?.isDraft === true;
+  if (hints.mailbox === "sent") return mailbox === "sent" || isSent ? 1 : 0.15;
+  if (hints.mailbox === "inbox") return mailbox === "inbox" || isInbox ? 1 : 0.15;
+  if (hints.mailbox === "draft") return mailbox === "draft" || isDraft ? 1 : 0.15;
+  return 0.7;
 }
 
 export async function rankDocuments(params: {
   query: string;
   docs: RankingDocument[];
+  intentHints?: UnifiedSearchIntentHints;
 }): Promise<RankedDocument[]> {
   const lexicalRanked = params.docs.map((doc) => {
     const combinedText = `${doc.title}\n${doc.snippet}`;
     const lScore = lexicalScore(params.query, combinedText);
+    const freshnessMeta =
+      readNumericMetadata(doc.metadata, "freshnessScore") ??
+      readNumericMetadata(doc.metadata, "freshness");
+    const authorityMeta =
+      readNumericMetadata(doc.metadata, "authorityScore") ??
+      readNumericMetadata(doc.metadata, "authority");
+    const behaviorMeta =
+      readNumericMetadata(doc.metadata, "behaviorScore") ??
+      readNumericMetadata(doc.metadata, "behavior");
+    const graphMeta =
+      readNumericMetadata(doc.metadata, "graphScore") ??
+      readNumericMetadata(doc.metadata, "graphProximity");
+
     return {
       doc,
       lexicalScore: lScore,
       recency: recencyBoost(doc.timestamp),
+      freshnessMeta,
+      authorityMeta,
+      behaviorMeta,
+      graphMeta,
     };
   });
 
@@ -129,15 +189,45 @@ export async function rankDocuments(params: {
 
   const ranked = lexicalSorted.map((entry) => {
     const semantic = semanticById.get(entry.doc.id);
-    const score = hasSemantic
-      ? entry.lexicalScore * 0.62 + (semantic ?? 0) * 0.33 + entry.recency * 0.05
-      : entry.lexicalScore * 0.9 + entry.recency * 0.1;
+    const freshness = clampUnit(
+      entry.recency * 0.65 + (entry.freshnessMeta ?? entry.recency) * 0.35,
+    );
+    const authority = clampUnit(entry.authorityMeta ?? 0.4);
+    const intentSurface = clampUnit(
+      intentSurfaceScore(entry.doc, params.intentHints) * 0.7 +
+        mailboxIntentScore(entry.doc, params.intentHints) * 0.3,
+    );
+    const behavior = clampUnit(entry.behaviorMeta ?? 0);
+    const graph = clampUnit(entry.graphMeta ?? 0);
+
+    const lexicalWeight = hasSemantic ? 0.34 : 0.52;
+    const semanticWeight = hasSemantic ? 0.30 : 0;
+    const score =
+      entry.lexicalScore * lexicalWeight +
+      (semantic ?? 0) * semanticWeight +
+      freshness * 0.14 +
+      authority * 0.06 +
+      intentSurface * 0.08 +
+      behavior * 0.05 +
+      graph * 0.03;
+
+    const features: UnifiedSearchRankingFeatures = {
+      lexical: entry.lexicalScore,
+      semantic,
+      freshness,
+      authority,
+      intentSurface,
+      behavior,
+      graphProximity: graph,
+      final: clampUnit(score),
+    };
 
     return {
       doc: entry.doc,
-      score: Math.max(0, Math.min(1, score)),
+      score: features.final,
       lexicalScore: entry.lexicalScore,
       semanticScore: semantic,
+      features,
     } satisfies RankedDocument;
   });
 

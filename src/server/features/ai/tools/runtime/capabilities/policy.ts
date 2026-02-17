@@ -12,6 +12,7 @@ import {
   removeRulePlaneRule,
   updateRulePlaneRule,
 } from "@/server/features/policy-plane/service";
+import { createUnifiedSearchService } from "@/server/features/search/unified/service";
 import type {
   CanonicalRule,
   CanonicalRuleType,
@@ -125,11 +126,58 @@ async function selectRuleFromTarget(params: {
     };
   }
 
-  const rules = await listRulePlaneRulesByType({
+  const allRules = await listRulePlaneRulesByType({
     userId: params.env.runtime.userId,
     emailAccountId: params.env.runtime.emailAccountId,
     type: params.type,
   });
+
+  const unifiedSearch = createUnifiedSearchService({
+    userId: params.env.runtime.userId,
+    emailAccountId: params.env.runtime.emailAccountId,
+    email: params.env.runtime.email,
+    logger: params.env.runtime.logger,
+    providers: params.env.toolContext.providers,
+  });
+
+  let prioritizedRuleIds: string[] = [];
+  try {
+    const unified = await unifiedSearch.query({
+      scopes: ["rule"],
+      query: target,
+      limit: RULE_TARGET_MAX_CANDIDATES,
+    });
+
+    prioritizedRuleIds = unified.items
+      .filter((item) => item.surface === "rule")
+      .map((item) => {
+        const metadata =
+          item.metadata && typeof item.metadata === "object"
+            ? (item.metadata as Record<string, unknown>)
+            : {};
+        return typeof metadata.ruleId === "string"
+          ? metadata.ruleId
+          : typeof metadata.sourceId === "string"
+            ? metadata.sourceId
+            : undefined;
+      })
+      .filter((id): id is string => Boolean(id));
+  } catch (error) {
+    params.env.runtime.logger.warn("Unified search failed for rule target preselection", {
+      action: params.action,
+      target,
+      error,
+    });
+  }
+
+  const rulesById = new Map(allRules.map((rule) => [rule.id, rule]));
+  const prioritizedRules = prioritizedRuleIds
+    .map((id) => rulesById.get(id))
+    .filter((rule): rule is CanonicalRule => Boolean(rule));
+
+  const rules = prioritizedRules.length > 0
+    ? prioritizedRules
+    : allRules;
 
   if (rules.length === 0) {
     return {

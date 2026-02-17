@@ -2,6 +2,10 @@ import type { CanonicalRule } from "@/server/features/policy-plane/canonical-sch
 import { SearchIndexQueue } from "@/server/features/search/index/queue";
 import type { Logger } from "@/server/lib/logger";
 import type { SearchDocumentIdentity, SearchIndexedDocument } from "@/server/features/search/index/types";
+import {
+  upsertSearchAlias,
+  upsertSearchEntity,
+} from "@/server/features/search/index/repository";
 
 function toRuleBody(rule: CanonicalRule): string {
   const actions = rule.actionPlan?.actions?.map((action) => action.actionType).join(", ") ?? "";
@@ -54,6 +58,32 @@ export async function enqueueRuleDocumentForIndexing(params: {
 
   try {
     await SearchIndexQueue.enqueueUpsert(payload);
+    const canonicalRuleRef = params.rule.id;
+    void upsertSearchEntity({
+      userId: params.userId,
+      emailAccountId: params.emailAccountId,
+      entityType: "rule",
+      canonicalValue: canonicalRuleRef,
+      displayValue: params.rule.name ?? params.rule.id,
+      confidence: 0.95,
+      metadata: {
+        source: "rule",
+        ruleType: params.rule.type,
+      },
+    });
+    if (params.rule.name && params.rule.name.trim().length > 0) {
+      void upsertSearchAlias({
+        userId: params.userId,
+        emailAccountId: params.emailAccountId,
+        entityType: "rule",
+        canonicalValue: canonicalRuleRef,
+        aliasValue: params.rule.name,
+        confidence: 0.85,
+        metadata: {
+          source: "rule",
+        },
+      });
+    }
   } catch (error) {
     params.logger.warn("Failed to enqueue rule for indexing", {
       userId: params.userId,

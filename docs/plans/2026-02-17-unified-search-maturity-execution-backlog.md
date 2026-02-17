@@ -2,7 +2,7 @@
 
 Date: 2026-02-17  
 Owner: Search + Runtime  
-Status: In progress
+Status: Executed
 
 ## Goal
 Ship a single search path with:
@@ -17,7 +17,7 @@ Ship a single search path with:
 3. Remove duplicate active search logic.
 
 ## Epic 1: Corpus Foundation (Schema + Storage)
-Status: In progress
+Status: Done
 
 ### PR-1.1 Search corpus schema
 1. Add core tables:
@@ -47,7 +47,7 @@ Acceptance:
 1. A single function can upsert any surface document into corpus.
 
 ## Epic 2: Ingestion and Continuous Updates
-Status: In progress
+Status: Done
 
 ### PR-2.1 Queue + worker for indexing
 1. Add Redis-backed indexing queue with retries and stale-job recovery.
@@ -81,7 +81,7 @@ Acceptance:
 1. Rule edits immediately impact search results.
 
 ## Epic 3: Query Intelligence
-Status: Pending
+Status: Done
 
 ### PR-3.1 Query rewrite and scope planning
 1. Add rewrite stage for conversational phrasing.
@@ -98,7 +98,7 @@ Acceptance:
 1. Near-miss names and aliases resolve to intended entities.
 
 ## Epic 4: Retrieval and Ranking Maturity
-Status: Pending
+Status: Done
 
 ### PR-4.1 Candidate generation from corpus
 1. Replace query-time fanout as primary retrieval path.
@@ -122,7 +122,7 @@ Acceptance:
 1. Score quality improves known-item recall and ranking order.
 
 ## Epic 5: Single Active Search Path (Legacy Cut)
-Status: Pending
+Status: Done
 
 ### PR-5.1 Hard-cut retrieval ownership
 1. Keep legacy tool names but delegate to unified corpus search.
@@ -132,7 +132,7 @@ Acceptance:
 1. One active retrieval path in runtime.
 
 ## Epic 6: Reliability and Observability
-Status: Pending
+Status: Done
 
 ### PR-6.1 Reliability controls
 1. Add replay endpoint for failed index jobs.
@@ -153,7 +153,7 @@ Acceptance:
 1. Relevance and reliability regressions are observable.
 
 ## Epic 7: Validation Suite
-Status: Pending
+Status: Done
 
 ### PR-7.1 Retrieval regression tests
 1. Add tests for messy sent-mail lookups.
@@ -173,8 +173,10 @@ Acceptance:
 7. PR-6.x + PR-7.x
 
 ## Current Execution Slice
-Now implementing:
-1. PR-1.1 schema.
-2. PR-1.2 repository/contracts (initial).
-3. PR-2.1 queue/worker.
-4. PR-2.2/2.3/2.4 initial connector hooks.
+Executed in this cycle:
+1. Query-intelligence rewrite + mailbox/scope/entity-alias expansion.
+2. Corpus-first hard cut for search retrieval (email/calendar/rule), with memory included.
+3. Feature-based ranking with transparent score components.
+4. Connector checkpoint reliability and queue replay/health controls.
+5. Runtime policy target selection using unified search.
+6. Deployment self-heal for `Knowledge.userId` drift.

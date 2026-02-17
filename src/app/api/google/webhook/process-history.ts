@@ -18,6 +18,10 @@ import {
 import prisma from "@/server/db/client";
 import type { Logger } from "@/server/lib/logger";
 import type { gmail_v1 } from "@googleapis/gmail";
+import {
+  markSearchIngestionCheckpointError,
+  upsertSearchIngestionCheckpoint,
+} from "@/server/features/search/index/repository";
 
 export async function processHistoryForUser(
   decodedData: {
@@ -88,6 +92,7 @@ export async function processHistoryForUser(
 
     if (historyResult.status === "expired") {
       await updateLastSyncedHistoryId({
+        userId: validatedEmailAccount.userId,
         emailAccountId: validatedEmailAccount.id,
         lastSyncedHistoryId: historyId.toString(),
       });
@@ -124,6 +129,7 @@ export async function processHistoryForUser(
 
       // important to save this or we can get into a loop with never receiving history
       await updateLastSyncedHistoryId({
+        userId: validatedEmailAccount.userId,
         emailAccountId: validatedEmailAccount.id,
         lastSyncedHistoryId: historyId.toString(),
       });
@@ -140,6 +146,14 @@ export async function processHistoryForUser(
     }
 
     captureException(error, { userEmail: email, extra: { decodedData } });
+    if (validatedEmailAccount?.userId) {
+      void markSearchIngestionCheckpointError({
+        userId: validatedEmailAccount.userId,
+        connector: "email",
+        streamKey: `gmail_history:${validatedEmailAccount.id}`,
+        errorMessage: error instanceof Error ? error.message : "gmail_history_processing_failed",
+      }).catch(() => {});
+    }
     logger.error("Error processing webhook", {
       error:
         error instanceof Error
@@ -219,6 +233,7 @@ async function processHistory(options: ProcessHistoryOptions, logger: Logger) {
   const lastSyncedHistoryId = history[history.length - 1].id;
 
   await updateLastSyncedHistoryId({
+    userId: emailAccount.userId,
     emailAccountId,
     lastSyncedHistoryId,
   });
@@ -230,9 +245,11 @@ async function processHistory(options: ProcessHistoryOptions, logger: Logger) {
  * Only updates if the new value is greater than the current value.
  */
 async function updateLastSyncedHistoryId({
+  userId,
   emailAccountId,
   lastSyncedHistoryId,
 }: {
+  userId: string;
   emailAccountId: string;
   lastSyncedHistoryId?: string | null;
 }) {
@@ -250,6 +267,22 @@ async function updateLastSyncedHistoryId({
       OR CAST("lastSyncedHistoryId" AS NUMERIC) < CAST(${lastSyncedHistoryId} AS NUMERIC)
     )
   `;
+
+  const parsedHistoryId = Number.parseInt(lastSyncedHistoryId, 10);
+  void upsertSearchIngestionCheckpoint({
+    userId,
+    emailAccountId,
+    connector: "email",
+    streamKey: `gmail_history:${emailAccountId}`,
+    cursor: lastSyncedHistoryId,
+    cursorNumeric: Number.isFinite(parsedHistoryId) ? parsedHistoryId : null,
+    status: "active",
+    errorMessage: null,
+    lastSyncedAt: new Date(),
+    state: {
+      provider: "google",
+    },
+  }).catch(() => {});
 }
 
 const isInboxOrSentMessage = (message: {

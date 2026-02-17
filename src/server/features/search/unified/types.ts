@@ -32,6 +32,17 @@ export interface UnifiedSearchRequest {
   fetchAll?: boolean;
 }
 
+export interface UnifiedSearchRankingFeatures {
+  lexical: number;
+  semantic?: number;
+  freshness: number;
+  authority: number;
+  intentSurface: number;
+  behavior: number;
+  graphProximity: number;
+  final: number;
+}
+
 export interface UnifiedSearchItem {
   surface: UnifiedSearchSurface;
   id: string;
@@ -41,6 +52,7 @@ export interface UnifiedSearchItem {
   score: number;
   lexicalScore?: number;
   semanticScore?: number;
+  ranking?: UnifiedSearchRankingFeatures;
   metadata?: Record<string, unknown>;
 }
 
@@ -49,6 +61,14 @@ export interface UnifiedSearchResult {
   counts: Record<UnifiedSearchSurface, number>;
   total: number;
   truncated: boolean;
+  queryPlan?: {
+    query: string;
+    rewrittenQuery: string;
+    queryVariants: string[];
+    scopes: UnifiedSearchSurface[];
+    mailbox?: UnifiedSearchMailbox;
+    aliasExpansions: string[];
+  };
 }
 
 export interface UnifiedSearchEnvironment {
@@ -69,4 +89,9 @@ export interface RankingDocument {
   snippet: string;
   timestamp?: string;
   metadata?: Record<string, unknown>;
+}
+
+export interface UnifiedSearchIntentHints {
+  requestedSurfaces: Set<UnifiedSearchSurface>;
+  mailbox?: UnifiedSearchMailbox;
 }

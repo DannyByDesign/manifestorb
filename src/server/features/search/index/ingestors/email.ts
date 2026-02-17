@@ -2,6 +2,11 @@ import type { ParsedMessage } from "@/server/lib/types";
 import { SearchIndexQueue } from "@/server/features/search/index/queue";
 import type { SearchIndexedDocument } from "@/server/features/search/index/types";
 import type { Logger } from "@/server/lib/logger";
+import {
+  upsertSearchAlias,
+  upsertSearchEntity,
+} from "@/server/features/search/index/repository";
+import { extractEmailAddress, extractNameFromEmail } from "@/server/lib/email";
 
 function toIsoDate(value: Date | string | number | undefined): string | undefined {
   if (value === undefined || value === null) return undefined;
@@ -78,6 +83,37 @@ export async function enqueueEmailDocumentForIndexing(params: {
 
   try {
     await SearchIndexQueue.enqueueUpsert(payload);
+    const senderEmail = extractEmailAddress(params.message.headers?.from || "");
+    const senderName = extractNameFromEmail(params.message.headers?.from || "");
+
+    if (senderEmail) {
+      void upsertSearchEntity({
+        userId: params.userId,
+        emailAccountId: params.emailAccountId,
+        entityType: "person",
+        canonicalValue: senderEmail,
+        displayValue: senderName || senderEmail,
+        confidence: 0.9,
+        metadata: {
+          source: "email",
+          role: "sender",
+        },
+      });
+      if (senderName && senderName.toLowerCase() !== senderEmail.toLowerCase()) {
+        void upsertSearchAlias({
+          userId: params.userId,
+          emailAccountId: params.emailAccountId,
+          entityType: "person",
+          canonicalValue: senderEmail,
+          aliasValue: senderName,
+          confidence: 0.8,
+          metadata: {
+            source: "email",
+            role: "sender_name",
+          },
+        });
+      }
+    }
   } catch (error) {
     params.logger.warn("Failed to enqueue email document for indexing", {
       userId: params.userId,

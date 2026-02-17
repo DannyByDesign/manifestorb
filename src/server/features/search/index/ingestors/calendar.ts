@@ -2,6 +2,7 @@ import type { CalendarEvent } from "@/features/calendar/event-types";
 import { SearchIndexQueue } from "@/server/features/search/index/queue";
 import type { Logger } from "@/server/lib/logger";
 import type { SearchDocumentIdentity, SearchIndexedDocument } from "@/server/features/search/index/types";
+import { upsertSearchEntity } from "@/server/features/search/index/repository";
 
 function computeFreshnessScore(iso: string | undefined): number {
   if (!iso) return 0;
@@ -65,6 +66,21 @@ export async function enqueueCalendarEventDocumentForIndexing(params: {
 
   try {
     await SearchIndexQueue.enqueueUpsert(payload);
+    for (const attendee of attendees) {
+      void upsertSearchEntity({
+        userId: params.userId,
+        emailAccountId: params.emailAccountId,
+        entityType: "person",
+        canonicalValue: attendee,
+        displayValue: attendee,
+        confidence: 0.85,
+        metadata: {
+          source: "calendar",
+          role: "attendee",
+          calendarId: params.event.calendarId,
+        },
+      });
+    }
   } catch (error) {
     params.logger.warn("Failed to enqueue calendar event for indexing", {
       userId: params.userId,

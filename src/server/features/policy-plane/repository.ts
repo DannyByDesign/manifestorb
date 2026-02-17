@@ -14,6 +14,7 @@ import {
   enqueueRuleDeleteForIndexing,
   enqueueRuleDocumentForIndexing,
 } from "@/server/features/search/index/ingestors/rule";
+import { upsertSearchIngestionCheckpoint } from "@/server/features/search/index/repository";
 
 const logger = createScopedLogger("policy-plane/repository");
 
@@ -191,6 +192,26 @@ export async function createCanonicalRule(params: {
     rule: parsed,
     logger,
   });
+  void upsertSearchIngestionCheckpoint({
+    userId: params.userId,
+    emailAccountId: params.emailAccountId,
+    connector: "rule",
+    streamKey: `rule_plane:${params.emailAccountId ?? "global"}`,
+    cursor: `${Date.now()}`,
+    status: "active",
+    errorMessage: null,
+    lastSyncedAt: new Date(),
+    state: {
+      operation: "create",
+      ruleId: parsed.id,
+    },
+  }).catch((error) => {
+    logger.warn("Failed to update rule ingestion checkpoint", {
+      operation: "create",
+      ruleId: parsed.id,
+      error,
+    });
+  });
 
   return created;
 }
@@ -303,6 +324,26 @@ export async function updateCanonicalRule(params: {
       rule: normalized,
       logger,
     });
+    void upsertSearchIngestionCheckpoint({
+      userId: params.userId,
+      emailAccountId: updated.emailAccountId ?? undefined,
+      connector: "rule",
+      streamKey: `rule_plane:${updated.emailAccountId ?? "global"}`,
+      cursor: `${Date.now()}`,
+      status: "active",
+      errorMessage: null,
+      lastSyncedAt: new Date(),
+      state: {
+        operation: "update",
+        ruleId: updated.id,
+      },
+    }).catch((error) => {
+      logger.warn("Failed to update rule ingestion checkpoint", {
+        operation: "update",
+        ruleId: updated.id,
+        error,
+      });
+    });
   }
 
   return updated;
@@ -333,6 +374,26 @@ export async function disableCanonicalRule(params: {
       rule: normalized,
       logger,
     });
+    void upsertSearchIngestionCheckpoint({
+      userId: params.userId,
+      emailAccountId: updated.emailAccountId ?? undefined,
+      connector: "rule",
+      streamKey: `rule_plane:${updated.emailAccountId ?? "global"}`,
+      cursor: `${Date.now()}`,
+      status: "active",
+      errorMessage: null,
+      lastSyncedAt: new Date(),
+      state: {
+        operation: "disable",
+        ruleId: updated.id,
+      },
+    }).catch((error) => {
+      logger.warn("Failed to update rule ingestion checkpoint", {
+        operation: "disable",
+        ruleId: updated.id,
+        error,
+      });
+    });
   }
 
   return updated;
@@ -353,6 +414,25 @@ export async function deleteCanonicalRule(params: { userId: string; id: string }
       sourceId: params.id,
     },
     logger,
+  });
+  void upsertSearchIngestionCheckpoint({
+    userId: params.userId,
+    connector: "rule",
+    streamKey: "rule_plane:global",
+    cursor: `${Date.now()}`,
+    status: "active",
+    errorMessage: null,
+    lastSyncedAt: new Date(),
+    state: {
+      operation: "delete",
+      ruleId: params.id,
+    },
+  }).catch((error) => {
+    logger.warn("Failed to update rule ingestion checkpoint", {
+      operation: "delete",
+      ruleId: params.id,
+      error,
+    });
   });
 
   await prisma.canonicalRule.delete({ where: { id: params.id } });
