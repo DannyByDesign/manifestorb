@@ -33,15 +33,17 @@ type KnowledgeColumnCacheEntry = {
 type KnowledgeSearchContract = {
   ready: boolean;
   projection?: Prisma.Sql;
+  useDirectUserId?: boolean;
   missingRequired: string[];
   missingOptional: string[];
+  missingOwnership: string[];
 };
 
 const VECTOR_READINESS_TTL_MS = 5 * 60 * 1000;
 const readinessCache = new Map<VectorTarget, ReadinessCacheEntry>();
 const KNOWLEDGE_COLUMN_CACHE_TTL_MS = 5 * 60 * 1000;
-const KNOWLEDGE_REQUIRED_COLUMNS = ["id", "title", "content", "userId"] as const;
-const KNOWLEDGE_OPTIONAL_COLUMNS = ["createdAt", "updatedAt", "emailAccountId"] as const;
+const KNOWLEDGE_REQUIRED_COLUMNS = ["id", "title", "content"] as const;
+const KNOWLEDGE_OPTIONAL_COLUMNS = ["createdAt", "updatedAt"] as const;
 let knowledgeColumnCache: KnowledgeColumnCacheEntry | null = null;
 let knowledgeContractWarningSignature: string | null = null;
 
@@ -171,7 +173,11 @@ async function getKnowledgeColumns(): Promise<Set<string>> {
   return columns;
 }
 
-function buildKnowledgeProjection(columns: Set<string>): Prisma.Sql {
+function buildKnowledgeProjection(params: {
+  columns: Set<string>;
+  useDirectUserId: boolean;
+}): Prisma.Sql {
+  const { columns, useDirectUserId } = params;
   const createdAtExpr = columns.has("createdAt")
     ? Prisma.sql`k."createdAt"`
     : Prisma.sql`NOW()`;
@@ -183,12 +189,13 @@ function buildKnowledgeProjection(columns: Set<string>): Prisma.Sql {
   const emailAccountIdExpr = columns.has("emailAccountId")
     ? Prisma.sql`k."emailAccountId"`
     : Prisma.sql`NULL::text`;
+  const userIdExpr = useDirectUserId ? Prisma.sql`k."userId"` : Prisma.sql`ea."userId"`;
 
   return Prisma.sql`
     k.id,
     k.title,
     k.content,
-    k."userId",
+    ${userIdExpr} AS "userId",
     ${createdAtExpr} AS "createdAt",
     ${updatedAtExpr} AS "updatedAt",
     ${emailAccountIdExpr} AS "emailAccountId"
@@ -204,35 +211,45 @@ async function resolveKnowledgeSearchContract(): Promise<KnowledgeSearchContract
     const missingOptional = KNOWLEDGE_OPTIONAL_COLUMNS.filter(
       (column) => !columns.has(column),
     );
-    const signature = `${missingRequired.join(",")}|${missingOptional.join(",")}`;
+    const hasDirectUserId = columns.has("userId");
+    const hasEmailAccountId = columns.has("emailAccountId");
+    const missingOwnership =
+      hasDirectUserId || hasEmailAccountId ? [] : ["Knowledge.userId|Knowledge.emailAccountId"];
+    const useDirectUserId = hasDirectUserId;
+    const signature = `${missingRequired.join(",")}|${missingOptional.join(",")}|${missingOwnership.join(",")}`;
 
     if (signature !== knowledgeContractWarningSignature) {
       knowledgeContractWarningSignature = signature;
-      if (missingRequired.length > 0) {
+      if (missingRequired.length > 0 || missingOwnership.length > 0) {
         logger.warn("Knowledge search disabled: required columns missing", {
           missingRequired,
           missingOptional,
+          missingOwnership,
         });
-      } else if (missingOptional.length > 0) {
+      } else if (missingOptional.length > 0 || !useDirectUserId) {
         logger.warn("Knowledge search running in compatibility mode", {
           missingOptional,
+          usesEmailAccountJoin: !useDirectUserId,
         });
       }
     }
 
-    if (missingRequired.length > 0) {
+    if (missingRequired.length > 0 || missingOwnership.length > 0) {
       return {
         ready: false,
         missingRequired,
         missingOptional,
+        missingOwnership,
       };
     }
 
     return {
       ready: true,
-      projection: buildKnowledgeProjection(columns),
+      projection: buildKnowledgeProjection({ columns, useDirectUserId }),
+      useDirectUserId,
       missingRequired,
       missingOptional,
+      missingOwnership,
     };
   } catch (error) {
     logger.warn("Knowledge search disabled: failed to inspect schema contract", {
@@ -242,6 +259,7 @@ async function resolveKnowledgeSearchContract(): Promise<KnowledgeSearchContract
       ready: false,
       missingRequired: [...KNOWLEDGE_REQUIRED_COLUMNS],
       missingOptional: [...KNOWLEDGE_OPTIONAL_COLUMNS],
+      missingOwnership: ["Knowledge.userId|Knowledge.emailAccountId"],
     };
   }
 }
@@ -568,7 +586,9 @@ export async function searchKnowledge({
   const trimmedQuery = query.trim();
   if (!trimmedQuery) return [];
   const contract = await resolveKnowledgeSearchContract();
-  if (!contract.ready || !contract.projection) return [];
+  if (!contract.ready || !contract.projection || typeof contract.useDirectUserId !== "boolean") {
+    return [];
+  }
 
   const semanticReady = await canUseSemanticFor("Knowledge");
   if (!semanticReady) {
@@ -578,6 +598,7 @@ export async function searchKnowledge({
         query: trimmedQuery,
         limit,
         projection: contract.projection,
+        useDirectUserId: contract.useDirectUserId,
       });
     } catch (error) {
       logger.warn("Knowledge keyword search failed", {
@@ -594,6 +615,7 @@ export async function searchKnowledge({
       query: trimmedQuery,
       limit,
       projection: contract.projection,
+      useDirectUserId: contract.useDirectUserId,
     });
   } catch (error) {
     logger.warn("Hybrid knowledge search failed; falling back to keyword search", {
@@ -606,6 +628,7 @@ export async function searchKnowledge({
         query: trimmedQuery,
         limit,
         projection: contract.projection,
+        useDirectUserId: contract.useDirectUserId,
       });
     } catch (fallbackError) {
       logger.warn("Knowledge fallback search failed", {
@@ -622,11 +645,13 @@ async function hybridSearchKnowledge({
   query,
   limit,
   projection,
+  useDirectUserId,
 }: {
   userId: string;
   query: string;
   limit: number;
   projection: Prisma.Sql;
+  useDirectUserId: boolean;
 }): Promise<SearchResult<Knowledge>[]> {
   const queryEmbedding = await EmbeddingService.generateEmbedding(query);
   const vectorLiteral = toPgVectorLiteral(queryEmbedding);
@@ -637,20 +662,26 @@ async function hybridSearchKnowledge({
     keywords,
     query,
   });
+  const fromClause = useDirectUserId
+    ? Prisma.sql`FROM "Knowledge" k`
+    : Prisma.sql`FROM "Knowledge" k INNER JOIN "EmailAccount" ea ON ea.id = k."emailAccountId"`;
+  const ownerFilterSql = useDirectUserId
+    ? Prisma.sql`k."userId" = ${userId}`
+    : Prisma.sql`ea."userId" = ${userId}`;
 
   const [semanticRows, keywordRows] = await Promise.all([
     prisma.$queryRaw<Array<Knowledge & { distance: number }>>(Prisma.sql`
       SELECT ${projection}, (k.embedding <=> ${Prisma.raw(`'${vectorLiteral}'::vector`)}) AS distance
-      FROM "Knowledge" k
-      WHERE k."userId" = ${userId}
+      ${fromClause}
+      WHERE ${ownerFilterSql}
         AND k.embedding IS NOT NULL
       ORDER BY k.embedding <=> ${Prisma.raw(`'${vectorLiteral}'::vector`)}
       LIMIT ${take}
     `),
     prisma.$queryRaw<Array<Knowledge>>(Prisma.sql`
       SELECT ${projection}
-      FROM "Knowledge" k
-      WHERE k."userId" = ${userId}
+      ${fromClause}
+      WHERE ${ownerFilterSql}
         AND ${keywordFilterSql}
       LIMIT ${take}
     `),
@@ -681,11 +712,13 @@ async function keywordSearchKnowledge({
   query,
   limit,
   projection,
+  useDirectUserId,
 }: {
   userId: string;
   query: string;
   limit: number;
   projection: Prisma.Sql;
+  useDirectUserId: boolean;
 }): Promise<SearchResult<Knowledge>[]> {
   const normalizedQuery = query.toLowerCase().trim();
   const keywords = splitKeywords(query);
@@ -693,11 +726,17 @@ async function keywordSearchKnowledge({
     keywords,
     query,
   });
+  const fromClause = useDirectUserId
+    ? Prisma.sql`FROM "Knowledge" k`
+    : Prisma.sql`FROM "Knowledge" k INNER JOIN "EmailAccount" ea ON ea.id = k."emailAccountId"`;
+  const ownerFilterSql = useDirectUserId
+    ? Prisma.sql`k."userId" = ${userId}`
+    : Prisma.sql`ea."userId" = ${userId}`;
 
   const rows = await prisma.$queryRaw<Array<Knowledge>>(Prisma.sql`
     SELECT ${projection}
-    FROM "Knowledge" k
-    WHERE k."userId" = ${userId}
+    ${fromClause}
+    WHERE ${ownerFilterSql}
       AND ${keywordFilterSql}
     LIMIT ${Math.max(1, limit)}
   `);

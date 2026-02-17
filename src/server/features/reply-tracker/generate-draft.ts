@@ -21,9 +21,13 @@ import {
   formatMeetingContextForPrompt,
 } from "@/features/meeting-briefs/recipient-context";
 
-const KNOWLEDGE_REQUIRED_COLUMNS = ["id", "title", "content", "userId"] as const;
+const KNOWLEDGE_REQUIRED_COLUMNS = ["id", "title", "content"] as const;
 
-function buildKnowledgeProjection(columns: Set<string>): Prisma.Sql {
+function buildKnowledgeProjection(params: {
+  columns: Set<string>;
+  useDirectUserId: boolean;
+}): Prisma.Sql {
+  const { columns, useDirectUserId } = params;
   const createdAtExpr = columns.has("createdAt")
     ? Prisma.sql`k."createdAt"`
     : Prisma.sql`NOW()`;
@@ -35,12 +39,13 @@ function buildKnowledgeProjection(columns: Set<string>): Prisma.Sql {
   const emailAccountIdExpr = columns.has("emailAccountId")
     ? Prisma.sql`k."emailAccountId"`
     : Prisma.sql`NULL::text`;
+  const userIdExpr = useDirectUserId ? Prisma.sql`k."userId"` : Prisma.sql`ea."userId"`;
 
   return Prisma.sql`
     k.id,
     k.title,
     k.content,
-    k."userId",
+    ${userIdExpr} AS "userId",
     ${createdAtExpr} AS "createdAt",
     ${updatedAtExpr} AS "updatedAt",
     ${emailAccountIdExpr} AS "emailAccountId"
@@ -73,15 +78,36 @@ async function loadKnowledgeBaseForDraft(params: {
       return [];
     }
 
-    const projection = buildKnowledgeProjection(columnSet);
+    const hasDirectUserId = columnSet.has("userId");
+    const hasEmailAccountId = columnSet.has("emailAccountId");
+    if (!hasDirectUserId && !hasEmailAccountId) {
+      params.logger.warn(
+        "Draft generation knowledge lookup disabled: ownership columns missing",
+        {
+          missingOwnership: ["Knowledge.userId|Knowledge.emailAccountId"],
+        },
+      );
+      return [];
+    }
+
+    const projection = buildKnowledgeProjection({
+      columns: columnSet,
+      useDirectUserId: hasDirectUserId,
+    });
     const orderByClause = columnSet.has("updatedAt")
       ? Prisma.sql`ORDER BY k."updatedAt" DESC`
       : Prisma.sql`ORDER BY k.id DESC`;
+    const fromClause = hasDirectUserId
+      ? Prisma.sql`FROM "Knowledge" k`
+      : Prisma.sql`FROM "Knowledge" k INNER JOIN "EmailAccount" ea ON ea.id = k."emailAccountId"`;
+    const ownerFilterSql = hasDirectUserId
+      ? Prisma.sql`k."userId" = ${params.userId}`
+      : Prisma.sql`ea."userId" = ${params.userId}`;
 
     return await prisma.$queryRaw<Array<Knowledge>>(Prisma.sql`
       SELECT ${projection}
-      FROM "Knowledge" k
-      WHERE k."userId" = ${params.userId}
+      ${fromClause}
+      WHERE ${ownerFilterSql}
       ${orderByClause}
     `);
   } catch (error) {
