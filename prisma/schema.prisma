@@ -1722,6 +1722,158 @@ model UserSummary {
   @@index([userId])
 }
 
+model SearchDocument {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  userId          String
+  emailAccountId  String?
+  connector       String
+  sourceType      String
+  sourceId        String
+  sourceParentId  String?
+
+  title           String?
+  snippet         String?
+  bodyText        String?
+  url             String?
+  authorIdentity  String?
+
+  occurredAt      DateTime?
+  startAt         DateTime?
+  endAt           DateTime?
+  updatedSourceAt DateTime?
+  lastIngestedAt  DateTime @default(now())
+  deletedAt       DateTime?
+  isDeleted       Boolean  @default(false)
+
+  freshnessScore  Float    @default(0)
+  authorityScore  Float    @default(0)
+  metadata        Json?
+
+  @@unique([userId, connector, sourceType, sourceId])
+  @@index([userId, connector, updatedSourceAt])
+  @@index([userId, connector, occurredAt])
+  @@index([userId, connector, isDeleted])
+  @@index([emailAccountId, connector])
+}
+
+model SearchChunk {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  userId         String
+  emailAccountId String?
+  documentId     String
+  ordinal        Int
+  content        String   @db.Text
+  tokenCount     Int?
+  metadata       Json?
+  isDeleted      Boolean  @default(false)
+
+  @@unique([documentId, ordinal])
+  @@index([userId, documentId])
+  @@index([emailAccountId, documentId])
+}
+
+model SearchEntity {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  userId         String
+  emailAccountId String?
+  entityType     String
+  canonicalValue String
+  displayValue   String?
+  confidence     Float    @default(1)
+  metadata       Json?
+  isDeleted      Boolean  @default(false)
+
+  @@unique([userId, entityType, canonicalValue])
+  @@index([userId, entityType, isDeleted])
+}
+
+model SearchAlias {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  userId         String
+  emailAccountId String?
+  entityType     String
+  canonicalValue String
+  aliasValue     String
+  confidence     Float    @default(1)
+  metadata       Json?
+  isDeleted      Boolean  @default(false)
+
+  @@unique([userId, entityType, canonicalValue, aliasValue])
+  @@index([userId, entityType, aliasValue])
+}
+
+model SearchEdge {
+  id               String   @id @default(cuid())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  userId           String
+  emailAccountId   String?
+  edgeType         String
+  sourceEntityType String
+  sourceValue      String
+  targetEntityType String
+  targetValue      String
+  weight           Float    @default(1)
+  metadata         Json?
+  lastObservedAt   DateTime @default(now())
+  isDeleted        Boolean  @default(false)
+
+  @@unique([userId, edgeType, sourceEntityType, sourceValue, targetEntityType, targetValue])
+  @@index([userId, edgeType, isDeleted])
+  @@index([userId, sourceEntityType, sourceValue])
+  @@index([userId, targetEntityType, targetValue])
+}
+
+model SearchSignal {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  userId         String
+  emailAccountId String?
+  documentId     String
+  signalType     String
+  signalValue    Float
+  occurredAt     DateTime @default(now())
+  metadata       Json?
+
+  @@index([userId, documentId, signalType, occurredAt])
+  @@index([userId, signalType, occurredAt])
+}
+
+model SearchIngestionCheckpoint {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  userId         String
+  emailAccountId String?
+  connector      String
+  streamKey      String
+  cursor         String?
+  cursorNumeric  BigInt?
+  state          Json?
+  status         String   @default("active")
+  errorMessage   String?
+  lastSyncedAt   DateTime?
+
+  @@unique([userId, connector, streamKey])
+  @@index([userId, connector, status])
+}
+
 model InAppNotification {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())

@@ -7,6 +7,7 @@ import {
 import { listRulePlaneRulesByType } from "@/server/features/policy-plane/service";
 import type { CanonicalRule } from "@/server/features/policy-plane/canonical-schema";
 import type { ParsedMessage } from "@/server/lib/types";
+import { searchIndexedDocuments } from "@/server/features/search/index/repository";
 import { rankDocuments } from "@/server/features/search/unified/ranking";
 import type {
   RankingDocument,
@@ -217,6 +218,69 @@ function toRuleDocument(rule: CanonicalRule): RankingDocument {
   };
 }
 
+function toSurfaceId(row: {
+  connector: string;
+  sourceType: string;
+  sourceId: string;
+}): { surface: UnifiedSearchSurface; id: string } | null {
+  if (row.connector === "email") {
+    return { surface: "email", id: `email:${row.sourceId}` };
+  }
+  if (row.connector === "calendar") {
+    return { surface: "calendar", id: `calendar:${row.sourceId}` };
+  }
+  if (row.connector === "rule") {
+    return { surface: "rule", id: `rule:${row.sourceId}` };
+  }
+  if (row.connector === "memory") {
+    return { surface: "memory", id: `memory:${row.sourceType}:${row.sourceId}` };
+  }
+  return null;
+}
+
+async function searchIndexedSurface(params: {
+  env: UnifiedSearchEnvironment;
+  scopes: UnifiedSearchSurface[];
+  query: string;
+  limit: number;
+}): Promise<RankingDocument[]> {
+  if (!params.query.trim()) return [];
+
+  const rows = await searchIndexedDocuments({
+    userId: params.env.userId,
+    emailAccountId: params.env.emailAccountId,
+    query: params.query,
+    connectors: params.scopes,
+    limit: clampInt(params.limit * 8, 50, 2000),
+  });
+
+  const docs: RankingDocument[] = [];
+  for (const row of rows) {
+    const mapped = toSurfaceId(row);
+    if (!mapped) continue;
+    docs.push({
+      id: mapped.id,
+      surface: mapped.surface,
+      title: row.title ?? "(Untitled)",
+      snippet: (row.snippet ?? row.bodyText ?? "").slice(0, 500),
+      timestamp: toIsoTimestamp(row.updatedSourceAt ?? row.occurredAt ?? row.startAt ?? undefined),
+      metadata: {
+        indexed: true,
+        connector: row.connector,
+        sourceType: row.sourceType,
+        sourceId: row.sourceId,
+        sourceParentId: row.sourceParentId,
+        url: row.url,
+        authorIdentity: row.authorIdentity,
+        freshnessScore: row.freshnessScore,
+        authorityScore: row.authorityScore,
+        ...(row.metadata ?? {}),
+      },
+    });
+  }
+  return docs;
+}
+
 function normalizeMailbox(mailbox: UnifiedSearchRequest["mailbox"]): UnifiedSearchMailbox | undefined {
   if (!mailbox) return undefined;
   return mailbox;
@@ -396,6 +460,12 @@ export function createUnifiedSearchService(env: UnifiedSearchEnvironment): Unifi
       const scopes = normalizeSurfaceList(request.scopes);
       const limit = clampInt(request.limit ?? DEFAULT_LIMIT, 1, MAX_LIMIT);
       const rankingQuery = buildRankingQuery(request);
+      const indexedDocs = await searchIndexedSurface({
+        env,
+        scopes,
+        query: rankingQuery,
+        limit,
+      });
 
       const fetches: Array<Promise<RankingDocument[]>> = [];
       if (scopes.includes("email")) {
@@ -433,7 +503,17 @@ export function createUnifiedSearchService(env: UnifiedSearchEnvironment): Unifi
         );
       }
 
-      const docs = (await Promise.all(fetches)).flat();
+      const liveDocs = (await Promise.all(fetches)).flat();
+      const docsById = new Map<string, RankingDocument>();
+      for (const doc of indexedDocs) {
+        docsById.set(doc.id, doc);
+      }
+      for (const doc of liveDocs) {
+        if (!docsById.has(doc.id)) {
+          docsById.set(doc.id, doc);
+        }
+      }
+      const docs = Array.from(docsById.values());
 
       const ranked = await rankDocuments({
         query: rankingQuery,

@@ -14,6 +14,7 @@ import type { EmailAccountWithAI } from "@/server/lib/llms/types";
 import type { Logger } from "@/server/lib/logger";
 import { captureException } from "@/server/lib/error";
 import { executeCanonicalEmailAutomations } from "@/server/features/policy-plane/automation-executor";
+import { enqueueEmailDocumentForIndexing } from "@/server/features/search/index/ingestors/email";
 
 export type SharedProcessHistoryOptions = {
   provider: EmailProvider;
@@ -54,6 +55,16 @@ export async function processHistoryItem(
 
     // Use pre-fetched message if provided, otherwise fetch it
     const parsedMessage = message ?? (await provider.getMessage(messageId));
+
+    const providerName =
+      emailAccount.account?.provider === "microsoft" ? "microsoft" : "google";
+    void enqueueEmailDocumentForIndexing({
+      userId: emailAccount.userId,
+      emailAccountId,
+      provider: providerName,
+      message: parsedMessage,
+      logger,
+    });
 
     if (isIgnoredSender(parsedMessage.headers.from)) {
       logger.info("Skipping. Ignored sender.");

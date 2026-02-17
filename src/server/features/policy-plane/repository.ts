@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import prisma from "@/server/db/client";
 import { Prisma } from "@/generated/prisma/client";
+import { createScopedLogger } from "@/server/lib/logger";
 import {
   canonicalRuleSchema,
   canonicalRuleTypeSchema,
@@ -9,6 +10,12 @@ import {
   type CanonicalRuleCreateInput,
   type CanonicalRuleType,
 } from "@/server/features/policy-plane/canonical-schema";
+import {
+  enqueueRuleDeleteForIndexing,
+  enqueueRuleDocumentForIndexing,
+} from "@/server/features/search/index/ingestors/rule";
+
+const logger = createScopedLogger("policy-plane/repository");
 
 function toJsonDate(value: Date | null | undefined): string | undefined {
   if (!value) return undefined;
@@ -178,6 +185,13 @@ export async function createCanonicalRule(params: {
     },
   });
 
+  void enqueueRuleDocumentForIndexing({
+    userId: params.userId,
+    emailAccountId: params.emailAccountId,
+    rule: parsed,
+    logger,
+  });
+
   return created;
 }
 
@@ -282,6 +296,13 @@ export async function updateCanonicalRule(params: {
         sourceMode: updated.sourceMode,
       },
     });
+
+    void enqueueRuleDocumentForIndexing({
+      userId: params.userId,
+      emailAccountId: updated.emailAccountId ?? undefined,
+      rule: normalized,
+      logger,
+    });
   }
 
   return updated;
@@ -296,13 +317,25 @@ export async function disableCanonicalRule(params: {
     where: { id: params.id, userId: params.userId },
   });
   if (!existing) return null;
-  return prisma.canonicalRule.update({
+  const updated = await prisma.canonicalRule.update({
     where: { id: params.id },
     data: {
       enabled: false,
       disabledUntil: params.disabledUntil ? new Date(params.disabledUntil) : null,
     },
   });
+
+  const normalized = mapDbRuleToCanonical(updated);
+  if (normalized) {
+    void enqueueRuleDocumentForIndexing({
+      userId: params.userId,
+      emailAccountId: updated.emailAccountId ?? undefined,
+      rule: normalized,
+      logger,
+    });
+  }
+
+  return updated;
 }
 
 export async function deleteCanonicalRule(params: { userId: string; id: string }) {
@@ -311,6 +344,17 @@ export async function deleteCanonicalRule(params: { userId: string; id: string }
     select: { id: true },
   });
   if (!existing) return { deleted: false };
+
+  void enqueueRuleDeleteForIndexing({
+    identity: {
+      userId: params.userId,
+      connector: "rule",
+      sourceType: "canonical_rule",
+      sourceId: params.id,
+    },
+    logger,
+  });
+
   await prisma.canonicalRule.delete({ where: { id: params.id } });
   return { deleted: true };
 }
