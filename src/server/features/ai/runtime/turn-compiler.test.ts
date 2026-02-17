@@ -69,6 +69,20 @@ describe("runtime turn compiler", () => {
     expect(turn.singleToolCall).toBeUndefined();
   });
 
+  it("keeps thought-partner prompts in conversation-only lane", async () => {
+    const turn = await compileRuntimeTurn({
+      message:
+        "I need a thought partner. Help me reason through two options and challenge my assumptions.",
+      userId: "user-1",
+      email: "user@example.com",
+      emailAccountId: "email-1",
+      logger: testLogger(),
+    });
+
+    expect(turn.routeHint).toBe("conversation_only");
+    expect(turn.singleToolCall).toBeUndefined();
+  });
+
   it("keeps model schema provider-safe for structured output", () => {
     expect(() =>
       assertProviderFacingSchemaSafety({

@@ -52,6 +52,11 @@ function parseDate(value: string | undefined): Date | undefined {
   return new Date(parsed);
 }
 
+function isDateOnlyValue(value: string | undefined): boolean {
+  if (!value) return false;
+  return /^\d{4}-\d{2}-\d{2}$/u.test(value.trim());
+}
+
 function toIsoTimestamp(dateValue: Date | string | undefined): string | undefined {
   if (!dateValue) return undefined;
   if (dateValue instanceof Date) {
@@ -164,14 +169,17 @@ function mailboxMatches(doc: RankingDocument, mailbox: UnifiedSearchMailbox | un
 }
 
 function matchDateRange(doc: RankingDocument, request: UnifiedSearchRequest): boolean {
-  const after = parseDate(request.dateRange?.after)?.getTime();
-  const before = parseDate(request.dateRange?.before)?.getTime();
-  if (!after && !before) return true;
+  const afterRaw = request.dateRange?.after;
+  const beforeRaw = request.dateRange?.before;
+  const after = parseDate(afterRaw)?.getTime();
+  const beforeDate = parseDate(beforeRaw);
+  if (!after && !beforeDate) return true;
   const timestamp = doc.timestamp ? Date.parse(doc.timestamp) : NaN;
   if (!Number.isFinite(timestamp)) return false;
   if (after && timestamp < after) return false;
-  if (before) {
-    const inclusiveBefore = before + DAY_MS - 1;
+  if (beforeDate) {
+    const inclusiveBefore =
+      beforeDate.getTime() + (isDateOnlyValue(beforeRaw) ? DAY_MS - 1 : 0);
     if (timestamp > inclusiveBefore) return false;
   }
   return true;

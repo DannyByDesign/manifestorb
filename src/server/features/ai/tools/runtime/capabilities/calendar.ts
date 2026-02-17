@@ -4,6 +4,7 @@ import prisma from "@/server/db/client";
 import type { CalendarEventUpdateInput } from "@/features/calendar/event-types";
 import { capabilityFailureResult } from "@/server/features/ai/tools/runtime/capabilities/errors";
 import {
+  resolveCalendarTimeRange,
   resolveCalendarTimeZoneForRequest,
   resolveDefaultCalendarTimeZone,
 } from "@/server/features/ai/tools/calendar-time";
@@ -137,6 +138,72 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
     safeString(nested?.timeZone) ??
     safeString(nested?.timezone);
 
+  const formatLocalTimestamp = (
+    value: string | null,
+    timeZone: string | undefined,
+  ): string | null => {
+    if (!value || !timeZone) return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return formatDateTimeForUser(parsed, timeZone);
+  };
+
+  const resolveUnifiedCalendarDateRange = async (
+    source: Record<string, unknown>,
+  ): Promise<
+    | {
+        dateRange?: { after: string; before: string; timeZone?: string };
+        timeZone?: string;
+      }
+    | { errorResult: ToolResult }
+  > => {
+    const nestedDateRange =
+      source.dateRange && typeof source.dateRange === "object"
+        ? (source.dateRange as Record<string, unknown>)
+        : undefined;
+    const after = safeString(nestedDateRange?.after) ?? safeString(source.after);
+    const before = safeString(nestedDateRange?.before) ?? safeString(source.before);
+    const requestedTimeZone = resolveRequestedTimeZone(source, nestedDateRange);
+
+    if (!after && !before) {
+      return { dateRange: undefined, timeZone: requestedTimeZone };
+    }
+
+    const resolvedWindow = await resolveCalendarTimeRange({
+      userId: env.runtime.userId,
+      emailAccountId: env.runtime.emailAccountId,
+      requestedTimeZone,
+      dateRange: { after, before },
+      relativeDateHintText: safeString(source.query) ?? safeString(source.text),
+      defaultWindow: "next_7_days",
+      missingBoundDurationMs: rescheduleWindowDurationMs,
+    });
+
+    if ("error" in resolvedWindow) {
+      return {
+        errorResult: {
+          success: false,
+          error: "invalid_event_window",
+          message: resolvedWindow.error,
+          clarification: {
+            kind: "invalid_fields",
+            prompt: "Please provide a valid calendar date range.",
+            missingFields: ["dateRange.after", "dateRange.before"],
+          },
+        },
+      };
+    }
+
+    return {
+      dateRange: {
+        after: resolvedWindow.start.toISOString(),
+        before: resolvedWindow.end.toISOString(),
+        timeZone: resolvedWindow.timeZone,
+      },
+      timeZone: resolvedWindow.timeZone,
+    };
+  };
+
   return {
     async findAvailability(filter) {
       // NOTE: This is intentionally NOT "query calendar events".
@@ -207,28 +274,26 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
 
     async listEvents(filter) {
       try {
+        const filterRecord = filter as Record<string, unknown>;
+        const resolvedDateRange = await resolveUnifiedCalendarDateRange(filterRecord);
+        if ("errorResult" in resolvedDateRange) return resolvedDateRange.errorResult;
+
         const result = await unifiedSearch.query({
           scopes: ["calendar"],
           query:
-            safeString(filter.query) ??
-            safeString(filter.titleContains),
-          text: safeString(filter.text),
-          attendeeEmail: safeString(filter.attendeeEmail),
-          dateRange:
-            filter.dateRange && typeof filter.dateRange === "object"
-              ? {
-                  after: safeString((filter.dateRange as Record<string, unknown>).after),
-                  before: safeString((filter.dateRange as Record<string, unknown>).before),
-                  timeZone:
-                    safeString((filter.dateRange as Record<string, unknown>).timeZone) ??
-                    safeString(filter.timeZone),
-                }
-              : undefined,
+            safeString(filterRecord.query) ??
+            safeString(filterRecord.titleContains),
+          text: safeString(filterRecord.text),
+          attendeeEmail: safeString(filterRecord.attendeeEmail),
+          dateRange: resolvedDateRange.dateRange,
           limit:
-            typeof filter.limit === "number" && Number.isFinite(filter.limit)
-              ? Math.trunc(filter.limit)
+            typeof filterRecord.limit === "number" && Number.isFinite(filterRecord.limit)
+              ? Math.trunc(filterRecord.limit)
               : undefined,
-          fetchAll: typeof filter.fetchAll === "boolean" ? filter.fetchAll : undefined,
+          fetchAll:
+            typeof filterRecord.fetchAll === "boolean"
+              ? filterRecord.fetchAll
+              : undefined,
         });
 
         const data = result.items
@@ -238,16 +303,25 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
               item.metadata && typeof item.metadata === "object"
                 ? (item.metadata as Record<string, unknown>)
                 : {};
+            const start =
+              typeof metadata.start === "string"
+                ? metadata.start
+                : item.timestamp ?? null;
+            const end = typeof metadata.end === "string" ? metadata.end : null;
+            const eventTimeZone =
+              safeString(metadata.timeZone) ??
+              safeString(metadata.timezone) ??
+              resolvedDateRange.timeZone ??
+              safeString(filterRecord.timeZone);
 
             return {
               id:
                 typeof metadata.eventId === "string" ? metadata.eventId : item.id,
               title: item.title,
-              start:
-                typeof metadata.start === "string"
-                  ? metadata.start
-                  : item.timestamp ?? null,
-              end: typeof metadata.end === "string" ? metadata.end : null,
+              start,
+              end,
+              startLocal: formatLocalTimestamp(start, eventTimeZone),
+              endLocal: formatLocalTimestamp(end, eventTimeZone),
               attendees: Array.isArray(metadata.attendees)
                 ? metadata.attendees
                 : [],
@@ -276,33 +350,31 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
 
     async searchEventsByAttendee(filter) {
       try {
+        const filterRecord = filter as Record<string, unknown>;
+        const resolvedDateRange = await resolveUnifiedCalendarDateRange(filterRecord);
+        if ("errorResult" in resolvedDateRange) return resolvedDateRange.errorResult;
+
         const attendeeEmail =
-          safeString(filter.attendeeEmail) ??
-          safeString(filter.attendee) ??
-          safeString(filter.email);
+          safeString(filterRecord.attendeeEmail) ??
+          safeString(filterRecord.attendee) ??
+          safeString(filterRecord.email);
 
         const result = await unifiedSearch.query({
           scopes: ["calendar"],
           query:
-            safeString(filter.query) ??
-            safeString(filter.titleContains),
-          text: safeString(filter.text),
+            safeString(filterRecord.query) ??
+            safeString(filterRecord.titleContains),
+          text: safeString(filterRecord.text),
           attendeeEmail,
-          dateRange:
-            filter.dateRange && typeof filter.dateRange === "object"
-              ? {
-                  after: safeString((filter.dateRange as Record<string, unknown>).after),
-                  before: safeString((filter.dateRange as Record<string, unknown>).before),
-                  timeZone:
-                    safeString((filter.dateRange as Record<string, unknown>).timeZone) ??
-                    safeString(filter.timeZone),
-                }
-              : undefined,
+          dateRange: resolvedDateRange.dateRange,
           limit:
-            typeof filter.limit === "number" && Number.isFinite(filter.limit)
-              ? Math.trunc(filter.limit)
+            typeof filterRecord.limit === "number" && Number.isFinite(filterRecord.limit)
+              ? Math.trunc(filterRecord.limit)
               : undefined,
-          fetchAll: typeof filter.fetchAll === "boolean" ? filter.fetchAll : undefined,
+          fetchAll:
+            typeof filterRecord.fetchAll === "boolean"
+              ? filterRecord.fetchAll
+              : undefined,
         });
 
         const data = result.items
@@ -312,16 +384,25 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
               item.metadata && typeof item.metadata === "object"
                 ? (item.metadata as Record<string, unknown>)
                 : {};
+            const start =
+              typeof metadata.start === "string"
+                ? metadata.start
+                : item.timestamp ?? null;
+            const end = typeof metadata.end === "string" ? metadata.end : null;
+            const eventTimeZone =
+              safeString(metadata.timeZone) ??
+              safeString(metadata.timezone) ??
+              resolvedDateRange.timeZone ??
+              safeString(filterRecord.timeZone);
 
             return {
               id:
                 typeof metadata.eventId === "string" ? metadata.eventId : item.id,
               title: item.title,
-              start:
-                typeof metadata.start === "string"
-                  ? metadata.start
-                  : item.timestamp ?? null,
-              end: typeof metadata.end === "string" ? metadata.end : null,
+              start,
+              end,
+              startLocal: formatLocalTimestamp(start, eventTimeZone),
+              endLocal: formatLocalTimestamp(end, eventTimeZone),
               attendees: Array.isArray(metadata.attendees)
                 ? metadata.attendees
                 : [],

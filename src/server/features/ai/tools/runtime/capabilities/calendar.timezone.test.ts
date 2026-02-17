@@ -11,9 +11,12 @@ import {
   deleteCalendarEvent,
   findCalendarAvailability,
   getCalendarEvent,
-  listCalendarEvents,
   updateCalendarEvent,
 } from "@/server/features/ai/tools/calendar/primitives";
+
+const { mockUnifiedQuery } = vi.hoisted(() => ({
+  mockUnifiedQuery: vi.fn(),
+}));
 
 vi.mock("@/server/db/client", () => ({
   default: {
@@ -33,8 +36,13 @@ vi.mock("@/server/features/ai/tools/calendar/primitives", () => ({
   deleteCalendarEvent: vi.fn(),
   findCalendarAvailability: vi.fn(),
   getCalendarEvent: vi.fn(),
-  listCalendarEvents: vi.fn(),
   updateCalendarEvent: vi.fn(),
+}));
+
+vi.mock("@/server/features/search/unified/service", () => ({
+  createUnifiedSearchService: vi.fn(() => ({
+    query: mockUnifiedQuery,
+  })),
 }));
 
 function buildEnv(): CapabilityEnvironment {
@@ -89,7 +97,11 @@ describe("runtime calendar timezone handling", () => {
       end: new Date("2026-02-17T07:59:59.999Z"),
       timeZone: "America/Los_Angeles",
     });
-    vi.mocked(listCalendarEvents).mockResolvedValue([]);
+    mockUnifiedQuery.mockResolvedValue({
+      items: [],
+      total: 0,
+      truncated: false,
+    });
     vi.mocked(findCalendarAvailability).mockResolvedValue([]);
     vi.mocked(getCalendarEvent).mockResolvedValue(null);
     vi.mocked(updateCalendarEvent).mockRejectedValue(new Error("not used"));
@@ -104,15 +116,26 @@ describe("runtime calendar timezone handling", () => {
   });
 
   it("routes listEvents window through calendar timezone resolver", async () => {
-    vi.mocked(listCalendarEvents).mockResolvedValueOnce([
-      {
-        id: "evt-1",
-        title: "Standup",
-        startTime: new Date("2026-02-16T17:00:00.000Z"),
-        endTime: new Date("2026-02-16T17:30:00.000Z"),
-        attendees: [],
-      },
-    ] as never[]);
+    mockUnifiedQuery.mockResolvedValueOnce({
+      items: [
+        {
+          id: "calendar:evt-1",
+          surface: "calendar",
+          title: "Standup",
+          snippet: "Daily sync",
+          timestamp: "2026-02-16T17:00:00.000Z",
+          score: 0.9,
+          metadata: {
+            eventId: "evt-1",
+            start: "2026-02-16T17:00:00.000Z",
+            end: "2026-02-16T17:30:00.000Z",
+            attendees: [],
+          },
+        },
+      ],
+      total: 1,
+      truncated: false,
+    });
 
     const caps = createCalendarCapabilities(buildEnv());
     const result = await caps.listEvents({
@@ -126,11 +149,14 @@ describe("runtime calendar timezone handling", () => {
         dateRange: { after: "2026-02-16", before: "2026-02-16" },
       }),
     );
-    expect(listCalendarEvents).toHaveBeenCalledWith(
-      expect.anything(),
+    expect(mockUnifiedQuery).toHaveBeenCalledWith(
       expect.objectContaining({
-        start: new Date("2026-02-16T08:00:00.000Z"),
-        end: new Date("2026-02-17T07:59:59.999Z"),
+        scopes: ["calendar"],
+        dateRange: {
+          after: "2026-02-16T08:00:00.000Z",
+          before: "2026-02-17T07:59:59.999Z",
+          timeZone: "America/Los_Angeles",
+        },
       }),
     );
 
