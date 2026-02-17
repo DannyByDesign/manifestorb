@@ -4,9 +4,7 @@ import { env as appEnv } from "@/env";
 import { Client } from "@upstash/qstash";
 import { getInternalApiUrl } from "@/server/lib/internal-api";
 import { getCronSecretHeader } from "@/server/lib/cron";
-import type { ParsedMessage } from "@/server/types";
 import {
-  resolveCalendarTimeZoneForRequest,
   resolveDefaultCalendarTimeZone,
 } from "@/server/features/ai/tools/calendar-time";
 import { parseDateBoundInTimeZone } from "@/server/features/ai/tools/timezone";
@@ -21,10 +19,8 @@ import {
   getEmailMessages,
   getEmailThread,
   modifyEmailMessages,
-  searchEmailThreads,
   trashEmailMessages,
 } from "@/server/features/ai/tools/email/primitives";
-import { formatDateTimeForUser } from "@/server/features/ai/tools/timezone";
 
 export interface EmailCapabilities {
   getUnreadCount(filter?: Record<string, unknown>): Promise<ToolResult>;
@@ -101,238 +97,12 @@ export interface EmailCapabilities {
   scheduleSend(_draftId: string, _sendAt: string): Promise<ToolResult>;
 }
 
-function normalizeText(value: string | undefined): string {
-  return value?.trim().toLowerCase() ?? "";
-}
-
-function isLikelySubscription(message: ParsedMessage): boolean {
-  const listUnsubscribe = message.headers?.["list-unsubscribe"] ?? "";
-  const from = normalizeText(message.headers?.from ?? "");
-  const haystack = normalizeText(
-    [message.subject, message.snippet, message.textPlain, listUnsubscribe]
-      .filter(Boolean)
-      .join(" "),
-  );
-  return (
-    listUnsubscribe.trim().length > 0 ||
-    haystack.includes("unsubscribe") ||
-    haystack.includes("manage preferences") ||
-    from.includes("noreply") ||
-    from.includes("newsletter") ||
-    from.includes("updates")
-  );
-}
-
 function uniqueIds(ids: string[]): string[] {
   return Array.from(new Set(ids.map((id) => id.trim()).filter(Boolean)));
 }
 
-function toSearchItems(
-  messages: ParsedMessage[],
-  options?: { timeZone?: string },
-): Array<Record<string, unknown>> {
-  return messages.map((message) => {
-    const timestampMs = messageTimestampMs(message);
-    const normalizedDate =
-      timestampMs > 0
-        ? new Date(timestampMs).toISOString()
-        : message.date ?? null;
-    const dateLocal =
-      options?.timeZone && timestampMs > 0
-        ? formatDateTimeForUser(new Date(timestampMs), options.timeZone)
-        : null;
-
-    return {
-      id: message.id,
-      threadId: message.threadId,
-      title: message.subject || "(No Subject)",
-      snippet: message.snippet || message.textPlain?.slice(0, 160) || "",
-      date: normalizedDate,
-      dateLocal,
-      from: message.headers?.from ?? "",
-      to: message.headers?.to ?? "",
-      hasAttachment: Array.isArray(message.attachments) && message.attachments.length > 0,
-      attachmentNames: (message.attachments ?? [])
-        .map((attachment) => attachment.filename)
-        .filter((name) => typeof name === "string" && name.trim().length > 0)
-        .slice(0, 5),
-    };
-  });
-}
-
-function messageTimestampMs(message: ParsedMessage): number {
-  if (typeof message.internalDate === "string" && message.internalDate.trim().length > 0) {
-    const asInt = Number.parseInt(message.internalDate, 10);
-    if (Number.isFinite(asInt) && asInt > 0) return asInt;
-  }
-  if (typeof message.date === "string" && message.date.trim().length > 0) {
-    const parsed = Date.parse(message.date);
-    if (Number.isFinite(parsed) && parsed > 0) return parsed;
-  }
-  return 0;
-}
-
-function normalizeSearchText(value: string | undefined): string {
-  return value?.trim().toLowerCase() ?? "";
-}
-
-const ATTACHMENT_WORD_RE = /\battach(?:ment|ments)\b|\battatch(?:ment|ments)\b/iu;
-const ATTACHMENT_TERM_CAPTURE_RE =
-  /\b(?:containing|with|including|include|contains)\s+["'“”]?([^"'“”,.!?]{2,80}?)["'“”]?\s+att(?:ach|atch)\w*\b/iu;
-const ATTACHMENT_DIRECT_CAPTURE_RE =
-  /\b["'“”]?([^"'“”,.!?]{2,80}?)["'“”]?\s+att(?:ach|atch)\w*\b/iu;
-
-function normalizeAttachmentIntentTerm(raw: string | undefined): string | undefined {
-  if (!raw) return undefined;
-  const normalized = raw
-    .trim()
-    .toLowerCase()
-    .replace(/\b(?:any|all|my|your|the|an?|emails?|messages?|inbox|sent|mail|from|for)\b/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!normalized || normalized.length < 2) return undefined;
-  return normalized;
-}
-
-function inferAttachmentIntentTerm(params: {
-  currentMessage?: string;
-  query?: string;
-  text?: string;
-}): string | undefined {
-  const currentMessage = params.currentMessage?.trim() ?? "";
-  const query = params.query?.trim() ?? "";
-  const text = params.text?.trim() ?? "";
-
-  const candidates = [currentMessage, query].filter((value) => value.length > 0);
-  for (const candidate of candidates) {
-    if (!ATTACHMENT_WORD_RE.test(candidate)) continue;
-    const explicit = candidate.match(ATTACHMENT_TERM_CAPTURE_RE)?.[1];
-    const direct = explicit ? undefined : candidate.match(ATTACHMENT_DIRECT_CAPTURE_RE)?.[1];
-    const normalized = normalizeAttachmentIntentTerm(explicit ?? direct);
-    if (normalized) return normalized;
-  }
-
-  if (text.length > 0) {
-    return normalizeAttachmentIntentTerm(text);
-  }
-
-  return undefined;
-}
-
-function hasMailboxScopeInQuery(query: string): boolean {
-  return /\bin:(inbox|sent|draft|trash|spam|archive)\b/i.test(query);
-}
-
-const EMAIL_LIKE_RE = /[^\s@]+@[^\s@]+\.[^\s@]+/u;
-
-function quoteQueryTerm(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  if (/^[^\s"]+$/u.test(trimmed)) return trimmed;
-  return `"${trimmed.replace(/"/g, "")}"`;
-}
-
-function appendQueryToken(query: string, token: string | undefined): string {
-  const normalizedToken = token?.trim();
-  if (!normalizedToken) return query.trim();
-  const normalizedQuery = query.trim();
-  if (!normalizedQuery) return normalizedToken;
-  if (normalizedQuery.toLowerCase().includes(normalizedToken.toLowerCase())) {
-    return normalizedQuery;
-  }
-  return `${normalizedQuery} ${normalizedToken}`.trim();
-}
-
-function removeSenderScopeTokens(query: string): string {
-  return query.replace(/\bfrom:(?:"[^"]+"|\S+)\b/giu, " ").replace(/\s+/g, " ").trim();
-}
-
-function includesAllTermTokens(
-  haystack: string,
-  term: string,
-): boolean {
-  const normalizedHaystack = normalizeSearchText(haystack);
-  const normalizedTerm = normalizeSearchText(term);
-  if (!normalizedTerm) return false;
-  if (normalizedHaystack.includes(normalizedTerm)) return true;
-  const tokens = normalizedTerm.split(/[^a-z0-9@._-]+/u).filter((token) => token.length > 0);
-  if (tokens.length === 0) return false;
-  return tokens.every((token) => normalizedHaystack.includes(token));
-}
-
-function scoreMentionMatch(message: ParsedMessage, term: string): number {
-  if (!term.trim()) return 0;
-  const subject = message.subject || message.headers?.subject || "";
-  const body = message.textPlain || message.snippet || "";
-  const from = message.headers?.from || "";
-  const to = message.headers?.to || "";
-
-  let score = 0;
-  if (includesAllTermTokens(subject, term)) score += 6;
-  if (includesAllTermTokens(body, term)) score += 4;
-  if (includesAllTermTokens(from, term)) score += 3;
-  if (includesAllTermTokens(to, term)) score += 1;
-  return score;
-}
-
-function sortMentionMatches(messages: ParsedMessage[], term: string): ParsedMessage[] {
-  const uniqueById = new Map<string, ParsedMessage>();
-  for (const message of messages) {
-    if (!message?.id) continue;
-    if (!uniqueById.has(message.id)) uniqueById.set(message.id, message);
-  }
-  return [...uniqueById.values()].sort((left, right) => {
-    const scoreDiff = scoreMentionMatch(right, term) - scoreMentionMatch(left, term);
-    if (scoreDiff !== 0) return scoreDiff;
-    return messageTimestampMs(right) - messageTimestampMs(left);
-  });
-}
-
 function asMetaItemCount(count: number): ToolResult["meta"] {
   return { resource: "email", itemCount: count };
-}
-
-function clampInt(value: number, min: number, max: number): number {
-  return Math.min(Math.max(Math.trunc(value), min), max);
-}
-
-function computeEmailSearchLimit(params: {
-  requestedLimit?: number;
-  fetchAll: boolean;
-  hasDateRange: boolean;
-  query: string;
-  purpose?: "lookup" | "list" | "count";
-}): number {
-  const isAttentionQuery = /\bis:unread\b/i.test(params.query);
-  const purpose = params.purpose ?? "list";
-
-  if (purpose === "lookup") {
-    return clampInt(params.requestedLimit ?? 1, 1, 20);
-  }
-
-  if (purpose === "count") {
-    if (params.fetchAll) {
-      const defaultLimit = params.hasDateRange ? 5000 : 3000;
-      const maxLimit = params.hasDateRange ? 10000 : 5000;
-      return clampInt(params.requestedLimit ?? defaultLimit, 1, maxLimit);
-    }
-    // Count with provider-estimate mode: keep small sample while relying on provider totals.
-    return clampInt(params.requestedLimit ?? 100, 1, 500);
-  }
-
-  if (params.fetchAll) {
-    const defaultLimit = params.hasDateRange ? 1000 : 400;
-    const maxLimit = params.hasDateRange ? 2000 : 1000;
-    return clampInt(params.requestedLimit ?? defaultLimit, 1, maxLimit);
-  }
-
-  if (params.hasDateRange) {
-    const defaultLimit = isAttentionQuery ? 100 : 60;
-    return clampInt(params.requestedLimit ?? defaultLimit, 1, 200);
-  }
-
-  const defaultLimit = isAttentionQuery ? 60 : 20;
-  return clampInt(params.requestedLimit ?? defaultLimit, 1, 100);
 }
 
 async function coerceToMessageIds(
@@ -403,19 +173,6 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       });
     }
     return defaultTimeZonePromise;
-  };
-
-  const resolveEffectiveTimeZone = async (
-    requestedTimeZone?: string,
-  ): Promise<{ timeZone: string } | { error: string }> => {
-    const defaultTimeZone = await getDefaultTimeZone();
-    if ("error" in defaultTimeZone) return defaultTimeZone;
-    const resolved = resolveCalendarTimeZoneForRequest({
-      requestedTimeZone,
-      defaultTimeZone: defaultTimeZone.timeZone,
-    });
-    if ("error" in resolved) return { error: resolved.error };
-    return resolved;
   };
 
   const unifiedSearch = createUnifiedSearchService({
@@ -552,253 +309,6 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
     }
   };
 
-  const runSearchThreads = async (
-    filter: Record<string, unknown>,
-  ): Promise<ToolResult> => {
-    try {
-      const validatedFilter = validateEmailSearchFilter(filter);
-      if (!validatedFilter.ok) {
-        return {
-          success: false,
-          error: validatedFilter.error,
-          message: validatedFilter.message,
-          clarification: {
-            kind: "invalid_fields",
-            prompt: validatedFilter.prompt,
-            missingFields: validatedFilter.fields,
-          },
-        };
-      }
-      const requestFilter = validatedFilter.filter;
-
-      const dateRange =
-        requestFilter && typeof requestFilter.dateRange === "object"
-          ? (requestFilter.dateRange as Record<string, unknown>)
-          : undefined;
-      const requestedTimeZone =
-        (typeof requestFilter.timeZone === "string" ? requestFilter.timeZone : undefined) ??
-        (typeof requestFilter.timezone === "string" ? requestFilter.timezone : undefined) ??
-        (typeof dateRange?.timeZone === "string" ? dateRange.timeZone : undefined) ??
-        (typeof dateRange?.timezone === "string" ? dateRange.timezone : undefined);
-
-      const resolvedTimeZone = await resolveEffectiveTimeZone(requestedTimeZone);
-      if ("error" in resolvedTimeZone) {
-        return {
-          success: false,
-          error: "invalid_time_zone",
-          message: resolvedTimeZone.error,
-          clarification: {
-            kind: "invalid_fields",
-            prompt: "Please provide a valid IANA timezone, like America/Los_Angeles.",
-            missingFields: ["timeZone"],
-          },
-        };
-      }
-      const displayTimeZone = resolvedTimeZone.timeZone;
-
-      let before: Date | undefined;
-      let after: Date | undefined;
-      if (typeof dateRange?.before === "string") {
-        before = parseDateBoundInTimeZone(
-          dateRange.before,
-          displayTimeZone,
-          "end",
-        ) ?? undefined;
-        if (!before) {
-          return {
-            success: false,
-            error: "invalid_date_range_before",
-            message:
-              "Invalid dateRange.before. Use ISO-8601 or local date/datetime.",
-            clarification: {
-              kind: "invalid_fields",
-              prompt: "I need a valid end date for that email search.",
-              missingFields: ["dateRange.before"],
-            },
-          };
-        }
-      }
-
-      if (typeof dateRange?.after === "string") {
-        after = parseDateBoundInTimeZone(
-          dateRange.after,
-          displayTimeZone,
-          "start",
-        ) ?? undefined;
-        if (!after) {
-          return {
-            success: false,
-            error: "invalid_date_range_after",
-            message:
-              "Invalid dateRange.after. Use ISO-8601 or local date/datetime.",
-            clarification: {
-              kind: "invalid_fields",
-              prompt: "I need a valid start date for that email search.",
-              missingFields: ["dateRange.after"],
-            },
-          };
-        }
-      }
-
-      const requestedLimit =
-        typeof requestFilter.limit === "number" && Number.isFinite(requestFilter.limit)
-          ? Math.floor(requestFilter.limit)
-          : undefined;
-      const fetchAll = Boolean(requestFilter.fetchAll);
-      const purposeRaw =
-        typeof requestFilter.purpose === "string" ? requestFilter.purpose : undefined;
-      const purpose: "lookup" | "list" | "count" | undefined =
-        purposeRaw === "lookup" || purposeRaw === "list" || purposeRaw === "count"
-          ? purposeRaw
-          : undefined;
-      const hasDateRange = Boolean(before || after);
-      const rawQuery = typeof requestFilter.query === "string" ? requestFilter.query : "";
-      const query =
-        requestFilter.sentByMe === true && !hasMailboxScopeInQuery(rawQuery)
-          ? `in:sent ${rawQuery}`.trim()
-          : rawQuery;
-      const fromFilter =
-        typeof requestFilter.from === "string" && requestFilter.from.trim().length > 0
-          ? requestFilter.from.trim()
-          : undefined;
-      const strictSenderOnly = requestFilter.strictSenderOnly === true;
-      let senderScopeQueryTerm: string | undefined;
-      if (fromFilter && !strictSenderOnly) {
-        if (EMAIL_LIKE_RE.test(fromFilter)) {
-          senderScopeQueryTerm = fromFilter;
-        } else {
-          try {
-            const contacts = await provider.searchContacts(fromFilter);
-            const bestContact = contacts.find(
-              (contact) =>
-                typeof contact.email === "string" &&
-                contact.email.trim().length > 0 &&
-                includesAllTermTokens(
-                  `${contact.name ?? ""} ${contact.email ?? ""}`,
-                  fromFilter,
-                ),
-            );
-            const fallbackContact = contacts.find(
-              (contact) =>
-                typeof contact.email === "string" && contact.email.trim().length > 0,
-            );
-            senderScopeQueryTerm =
-              bestContact?.email?.trim() ??
-              fallbackContact?.email?.trim() ??
-              fromFilter;
-          } catch {
-            senderScopeQueryTerm = fromFilter;
-          }
-        }
-      }
-      const providerQuery = senderScopeQueryTerm
-        ? appendQueryToken(query, `from:${quoteQueryTerm(senderScopeQueryTerm)}`)
-        : query;
-      const normalizedLimit = computeEmailSearchLimit({
-        requestedLimit,
-        fetchAll,
-        hasDateRange,
-        query: providerQuery,
-        purpose,
-      });
-      const attachmentIntentTerm =
-        typeof requestFilter.hasAttachment === "boolean" && requestFilter.hasAttachment
-          ? inferAttachmentIntentTerm({
-              currentMessage: capEnv.toolContext.currentMessage,
-              query: providerQuery,
-              text: typeof requestFilter.text === "string" ? requestFilter.text : undefined,
-            })
-          : undefined;
-
-      const baseSearch = {
-        query: providerQuery,
-        limit: normalizedLimit,
-        fetchAll,
-        includeNonPrimary: Boolean(requestFilter.subscriptionsOnly),
-        before,
-        after,
-        subjectContains:
-          typeof requestFilter.subjectContains === "string"
-            ? requestFilter.subjectContains
-            : undefined,
-        bodyContains:
-          typeof requestFilter.bodyContains === "string"
-            ? requestFilter.bodyContains
-            : undefined,
-        text: typeof requestFilter.text === "string" ? requestFilter.text : undefined,
-        from: strictSenderOnly ? fromFilter : undefined,
-        to: typeof requestFilter.to === "string" ? requestFilter.to : undefined,
-        hasAttachment:
-          typeof requestFilter.hasAttachment === "boolean"
-            ? requestFilter.hasAttachment
-            : undefined,
-        attachmentIntentTerm,
-        sentByMe:
-          typeof requestFilter.sentByMe === "boolean"
-            ? requestFilter.sentByMe
-            : undefined,
-        receivedByMe:
-          typeof requestFilter.receivedByMe === "boolean"
-            ? requestFilter.receivedByMe
-            : undefined,
-      };
-
-      const result = await searchEmailThreads(provider, baseSearch);
-
-      let effectiveResult = result;
-      let messages = Boolean(requestFilter.subscriptionsOnly)
-        ? result.messages.filter(isLikelySubscription)
-        : result.messages;
-      let usedMentionFallback = false;
-
-      if (fromFilter && !strictSenderOnly && messages.length === 0) {
-        const fallbackSubjectContains =
-          typeof requestFilter.subjectContains === "string" &&
-          requestFilter.subjectContains.trim().length > 0
-            ? requestFilter.subjectContains
-            : fromFilter;
-        const fallbackQuery = removeSenderScopeTokens(baseSearch.query);
-        const fallbackResult = await searchEmailThreads(provider, {
-          ...baseSearch,
-          query: fallbackQuery,
-          from: undefined,
-          text: fromFilter,
-          subjectContains: fallbackSubjectContains,
-        });
-        effectiveResult = fallbackResult;
-        messages = Boolean(requestFilter.subscriptionsOnly)
-          ? fallbackResult.messages.filter(isLikelySubscription)
-          : fallbackResult.messages;
-        usedMentionFallback = messages.length > 0;
-      }
-
-      const sortedMessages = usedMentionFallback
-        ? sortMentionMatches(messages, fromFilter ?? "")
-        : [...messages].sort((a, b) => messageTimestampMs(b) - messageTimestampMs(a));
-      const data = toSearchItems(sortedMessages, { timeZone: displayTimeZone });
-      return {
-        success: true,
-        data,
-        message:
-          data.length === 0
-            ? "No matching emails found."
-            : effectiveResult.nextPageToken
-              ? `Found at least ${data.length} matching email${data.length === 1 ? "" : "s"}.`
-              : `Found ${data.length} matching email${data.length === 1 ? "" : "s"}.`,
-        truncated: Boolean(effectiveResult.nextPageToken),
-        paging: {
-          nextPageToken: effectiveResult.nextPageToken ?? null,
-          totalEstimate: effectiveResult.totalEstimate ?? null,
-        },
-        meta: asMetaItemCount(data.length),
-      };
-    } catch (error) {
-      return capabilityFailureResult(error, "I couldn't search your inbox right now.", {
-        resource: "email",
-      });
-    }
-  };
-
   const runUnreadCount = async (
     filter?: Record<string, unknown>,
   ): Promise<ToolResult> => {
@@ -835,12 +345,11 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         meta: asMetaItemCount(1),
       };
     } catch (error) {
-      const fallback = await runSearchThreads({
+      const fallback = await runUnifiedSearchThreads({
         query: "is:unread",
-        purpose: "count",
         limit: 100,
         fetchAll: false,
-      });
+      }, "inbox");
       if (!fallback.success) {
         return capabilityFailureResult(error, "I couldn't count unread emails right now.", {
           resource: "email",
@@ -880,12 +389,11 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
   const runBulkIds = async (
     filter: Record<string, unknown>,
   ): Promise<string[]> => {
-    const search = await runSearchThreads({
+    const search = await runUnifiedSearchThreads({
       ...filter,
       subscriptionsOnly: Boolean(filter.subscriptionsOnly),
       limit: typeof filter.limit === "number" ? filter.limit : 1000,
       fetchAll: true,
-      strictSenderOnly: true,
     });
 
     const items = Array.isArray(search.data) ? search.data : [];
