@@ -225,6 +225,61 @@ export interface SearchBehaviorScoreRow {
   score: number;
 }
 
+export async function lookupSearchDocumentIds(params: {
+  userId: string;
+  emailAccountId?: string;
+  connector?: string;
+  sourceIds?: string[];
+  sourceParentIds?: string[];
+  limit?: number;
+}): Promise<string[]> {
+  const sourceIds = Array.from(
+    new Set(
+      (params.sourceIds ?? [])
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0),
+    ),
+  );
+  const sourceParentIds = Array.from(
+    new Set(
+      (params.sourceParentIds ?? [])
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0),
+    ),
+  );
+  if (sourceIds.length === 0 && sourceParentIds.length === 0) return [];
+
+  const rows = await prisma.searchDocument.findMany({
+    where: {
+      userId: params.userId,
+      isDeleted: false,
+      ...(params.emailAccountId
+        ? {
+            OR: [{ emailAccountId: params.emailAccountId }, { emailAccountId: null }],
+          }
+        : {}),
+      ...(params.connector ? { connector: params.connector } : {}),
+      AND: [
+        {
+          OR: [
+            ...(sourceIds.length > 0
+              ? [{ sourceId: { in: sourceIds } }]
+              : []),
+            ...(sourceParentIds.length > 0
+              ? [{ sourceParentId: { in: sourceParentIds } }]
+              : []),
+          ],
+        },
+      ],
+    },
+    orderBy: [{ updatedSourceAt: "desc" }, { updatedAt: "desc" }],
+    take: Math.max(1, Math.min(params.limit ?? 200, 1000)),
+    select: { id: true },
+  });
+
+  return rows.map((row) => row.id);
+}
+
 export async function searchIndexedDocuments(params: {
   userId: string;
   emailAccountId?: string;
@@ -662,7 +717,16 @@ export async function getSearchBehaviorScores(params: {
         LEAST(
           1,
           SUM(
-            s."signalValue" * EXP(
+            (
+              CASE
+                WHEN s."signalType" = 'result_action' THEN s."signalValue" * 1.35
+                WHEN s."signalType" = 'result_open' THEN s."signalValue" * 1.1
+                WHEN s."signalType" = 'result_impression' THEN s."signalValue" * 0.2
+                WHEN s."signalType" = 'query_hit' THEN s."signalValue" * 0.15
+                WHEN s."signalType" = 'dismiss' THEN s."signalValue" * -0.6
+                ELSE s."signalValue"
+              END
+            ) * EXP(
               -EXTRACT(EPOCH FROM (NOW() - s."occurredAt")) / ${(days * 24 * 60 * 60)}
             )
           )

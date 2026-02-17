@@ -4,6 +4,7 @@ import type {
   UnifiedSearchIntentHints,
   UnifiedSearchRankingFeatures,
 } from "@/server/features/search/unified/types";
+import { resolveRuntimeUnifiedRankingWeights } from "@/server/features/search/unified/weights";
 
 const MAX_SEMANTIC_DOCS = 80;
 const MIN_TOKEN_LENGTH = 2;
@@ -186,6 +187,7 @@ export async function rankDocuments(params: {
   });
 
   const hasSemantic = semanticById.size > 0;
+  const weights = resolveRuntimeUnifiedRankingWeights();
 
   const ranked = lexicalSorted.map((entry) => {
     const semantic = semanticById.get(entry.doc.id);
@@ -200,16 +202,18 @@ export async function rankDocuments(params: {
     const behavior = clampUnit(entry.behaviorMeta ?? 0);
     const graph = clampUnit(entry.graphMeta ?? 0);
 
-    const lexicalWeight = hasSemantic ? 0.34 : 0.52;
-    const semanticWeight = hasSemantic ? 0.30 : 0;
+    const lexicalWeight = hasSemantic
+      ? weights.lexicalWithSemantic
+      : weights.lexicalWithoutSemantic;
+    const semanticWeight = hasSemantic ? weights.semantic : 0;
     const score =
       entry.lexicalScore * lexicalWeight +
       (semantic ?? 0) * semanticWeight +
-      freshness * 0.14 +
-      authority * 0.06 +
-      intentSurface * 0.08 +
-      behavior * 0.05 +
-      graph * 0.03;
+      freshness * weights.freshness +
+      authority * weights.authority +
+      intentSurface * weights.intentSurface +
+      behavior * weights.behavior +
+      graph * weights.graphProximity;
 
     const features: UnifiedSearchRankingFeatures = {
       lexical: entry.lexicalScore,

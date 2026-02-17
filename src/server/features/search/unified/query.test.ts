@@ -60,4 +60,18 @@ describe("unified search query planner", () => {
     expect(plan.aliasExpansions).toContain("danny.wang@example.com");
     expect(plan.queryVariants.join(" ")).toContain("danny.wang@example.com");
   });
+
+  it("adds nickname/canonical term expansions to query variants", async () => {
+    const plan = await planUnifiedSearchQuery({
+      userId: "user_1",
+      emailAccountId: "acct_1",
+      request: {
+        query: "email from danny",
+      },
+    });
+
+    expect(plan.terms).toContain("danny");
+    expect(plan.terms).toContain("daniel");
+    expect(plan.queryVariants.join(" ")).toContain("daniel");
+  });
 });

@@ -107,6 +107,7 @@ function isGmailAuthError(err: unknown): boolean {
 
 // Tool-Specific Interface (Adapter)
 export interface EmailProvider {
+    readonly name: "google" | "microsoft";
     // Core (Original)
     getUnreadCount(options?: { scope?: "inbox" }): Promise<{
         count: number;
@@ -435,6 +436,7 @@ export async function createEmailProvider(
         });
 
     return {
+        name: service.name,
         getUnreadCount: async (options?: { scope?: "inbox" }) => runThrottled("getUnreadCount", async () => {
             try {
                 return await service.getUnreadCount(options);

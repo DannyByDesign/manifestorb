@@ -1,14 +1,10 @@
 import {
-  searchConversationHistory,
-  searchKnowledge,
-  searchMemoryFacts,
-} from "@/features/memory/embeddings/search";
-import {
   getSearchBehaviorScores,
   listRecentIndexedDocuments,
   recordSearchSignals,
   searchIndexedDocuments,
 } from "@/server/features/search/index/repository";
+import { enqueueEmailDocumentForIndexing } from "@/server/features/search/index/ingestors/email";
 import { planUnifiedSearchQuery } from "@/server/features/search/unified/query";
 import { rankDocuments } from "@/server/features/search/unified/ranking";
 import type {
@@ -64,6 +60,18 @@ function toIsoTimestamp(dateValue: Date | string | undefined): string | undefine
   const parsed = Date.parse(dateValue);
   if (!Number.isFinite(parsed)) return undefined;
   return new Date(parsed).toISOString();
+}
+
+function computeFreshnessScore(timestamp: string | undefined): number {
+  if (!timestamp) return 0;
+  const ts = Date.parse(timestamp);
+  if (!Number.isFinite(ts)) return 0;
+  const days = Math.max(0, (Date.now() - ts) / DAY_MS);
+  if (days <= 1) return 1;
+  if (days <= 7) return 0.8;
+  if (days <= 30) return 0.55;
+  if (days <= 90) return 0.3;
+  return 0.1;
 }
 
 function toSurfaceId(row: {
@@ -281,82 +289,105 @@ async function searchIndexedSurface(params: {
   return Array.from(docsById.values());
 }
 
-async function searchMemorySurface(params: {
+async function searchEmailProviderFallback(params: {
   env: UnifiedSearchEnvironment;
+  request: UnifiedSearchRequest;
   query: string;
+  mailbox: UnifiedSearchMailbox | undefined;
   limit: number;
 }): Promise<RankingDocument[]> {
-  if (!params.query) return [];
+  if (!params.query.trim()) return [];
 
-  const perSourceLimit = clampInt(Math.max(3, Math.ceil(params.limit / 2)), 3, 40);
-  const [facts, knowledge, conversation] = await Promise.all([
-    searchMemoryFacts({
-      userId: params.env.userId,
-      query: params.query,
-      limit: perSourceLimit,
-    }),
-    searchKnowledge({
-      userId: params.env.userId,
-      query: params.query,
-      limit: Math.min(20, perSourceLimit),
-    }),
-    searchConversationHistory({
-      userId: params.env.userId,
-      query: params.query,
-      limit: perSourceLimit,
-    }),
-  ]);
+  const after = parseDate(params.request.dateRange?.after);
+  const before = parseDate(params.request.dateRange?.before);
+  const searchResult = await params.env.providers.email.search({
+    query: params.query,
+    text: params.request.text ?? params.query,
+    from: params.request.from,
+    to: params.request.to,
+    sentByMe: params.mailbox === "sent" ? true : undefined,
+    receivedByMe: params.mailbox === "inbox" ? true : undefined,
+    before,
+    after,
+    limit: clampInt(Math.max(params.limit * 3, 60), 60, 300),
+    fetchAll: Boolean(params.request.fetchAll),
+  });
+  const messages = Array.isArray(searchResult.messages)
+    ? searchResult.messages
+    : [];
+  if (messages.length === 0) return [];
 
-  const docs: RankingDocument[] = [];
+  const providerName =
+    params.env.providers.email.name === "microsoft" ? "microsoft" : "google";
 
-  for (const fact of facts) {
-    docs.push({
-      id: `memory-fact:${fact.item.id}`,
-      surface: "memory",
-      title: fact.item.key,
-      snippet: fact.item.value,
-      timestamp: fact.item.updatedAt.toISOString(),
+  await Promise.all(
+    messages.map((message) =>
+      enqueueEmailDocumentForIndexing({
+        userId: params.env.userId,
+        emailAccountId: params.env.emailAccountId,
+        provider: providerName,
+        message,
+        logger: params.env.logger,
+      }),
+    ),
+  );
+
+  return messages.map((message) => {
+    const timestamp = toIsoTimestamp(message.date as Date | string | undefined);
+    const labelIds = Array.isArray(message.labelIds) ? message.labelIds : [];
+    const isSent = labelIds.includes("SENT");
+    const isInbox = labelIds.includes("INBOX");
+    const isDraft = labelIds.includes("DRAFT");
+    const isSpam = labelIds.includes("SPAM");
+    const isTrash = labelIds.includes("TRASH");
+
+    let mailbox = "all";
+    if (isSent) mailbox = "sent";
+    else if (isInbox) mailbox = "inbox";
+    else if (isDraft) mailbox = "draft";
+    else if (isSpam) mailbox = "spam";
+    else if (isTrash) mailbox = "trash";
+
+    return {
+      id: `email:${message.id}`,
+      surface: "email",
+      title:
+        message.subject ||
+        message.headers?.subject ||
+        "(No Subject)",
+      snippet:
+        message.snippet ||
+        message.textPlain ||
+        message.textHtml ||
+        "",
+      timestamp,
       metadata: {
-        source: "memory_fact",
-        factId: fact.item.id,
-        confidence: fact.item.confidence,
-        matchType: fact.matchType,
+        connector: "email",
+        sourceType: "message",
+        sourceId: message.id,
+        sourceParentId: message.threadId,
+        threadId: message.threadId,
+        messageId: message.id,
+        from: message.headers?.from ?? "",
+        to: message.headers?.to ?? "",
+        cc: message.headers?.cc ?? "",
+        bcc: message.headers?.bcc ?? "",
+        labelIds,
+        mailbox,
+        hasAttachment:
+          Array.isArray(message.attachments) &&
+          message.attachments.length > 0,
+        attachmentCount: message.attachments?.length ?? 0,
+        isSent,
+        isInbox,
+        isDraft,
+        isSpam,
+        isTrash,
+        freshnessScore: computeFreshnessScore(timestamp),
+        authorityScore: 0.5,
       },
-    });
-  }
-
-  for (const item of knowledge) {
-    docs.push({
-      id: `knowledge:${item.item.id}`,
-      surface: "memory",
-      title: item.item.title,
-      snippet: item.item.content.slice(0, 500),
-      timestamp: toIsoTimestamp(item.item.updatedAt),
-      metadata: {
-        source: "knowledge",
-        knowledgeId: item.item.id,
-        matchType: item.matchType,
-      },
-    });
-  }
-
-  for (const item of conversation) {
-    docs.push({
-      id: `conversation:${item.item.id}`,
-      surface: "memory",
-      title: `Conversation (${item.item.role})`,
-      snippet: item.item.content.slice(0, 500),
-      timestamp: item.item.createdAt.toISOString(),
-      metadata: {
-        source: "conversation",
-        conversationId: item.item.conversationId,
-        role: item.item.role,
-        matchType: item.matchType,
-      },
-    });
-  }
-
-  return docs;
+    } satisfies RankingDocument;
+  });
 }
 
 function toUnifiedItem(entry: Awaited<ReturnType<typeof rankDocuments>>[number]): UnifiedSearchItem {
@@ -443,13 +474,36 @@ export function createUnifiedSearchService(env: UnifiedSearchEnvironment): Unifi
         };
       }
 
-      if (scopes.includes("memory")) {
-        const memoryDocs = await searchMemorySurface({
+      const hasEmailCandidate = Array.from(docsById.values()).some(
+        (doc) => doc.surface === "email",
+      );
+      const shouldRunEmailFallback =
+        scopes.includes("email") &&
+        !hasEmailCandidate &&
+        rankingQuery.length > 0;
+
+      if (shouldRunEmailFallback) {
+        const fallbackDocs = await searchEmailProviderFallback({
           env,
+          request,
           query: rankingQuery,
+          mailbox,
           limit,
         });
-        for (const doc of memoryDocs) {
+        const filteredFallbackDocs = fallbackDocs.filter((doc) =>
+          matchesRequest(doc, request, mailbox),
+        );
+        for (const doc of filteredFallbackDocs) {
+          const metadata = asObject(doc.metadata);
+          const graphScore = computeGraphProximityScore(doc, [
+            ...queryPlan.terms,
+            ...queryPlan.aliasExpansions.map((value) => value.toLowerCase()),
+          ]);
+          doc.metadata = {
+            ...metadata,
+            behaviorScore: 0,
+            graphScore,
+          };
           if (!docsById.has(doc.id)) {
             docsById.set(doc.id, doc);
           }
@@ -493,18 +547,32 @@ export function createUnifiedSearchService(env: UnifiedSearchEnvironment): Unifi
         .filter((id): id is string => Boolean(id));
 
       if (topSearchDocumentIds.length > 0) {
-        void recordSearchSignals({
-          userId: env.userId,
-          emailAccountId: env.emailAccountId,
-          signalType: "query_hit",
-          signalValue: 1,
-          documentIds: topSearchDocumentIds,
-          metadata: {
-            query: rankingQuery,
-            scopes,
-            mailbox: mailbox ?? null,
-          },
-        }).catch((error) => {
+        void Promise.all([
+          recordSearchSignals({
+            userId: env.userId,
+            emailAccountId: env.emailAccountId,
+            signalType: "query_hit",
+            signalValue: 1,
+            documentIds: topSearchDocumentIds,
+            metadata: {
+              query: rankingQuery,
+              scopes,
+              mailbox: mailbox ?? null,
+            },
+          }),
+          recordSearchSignals({
+            userId: env.userId,
+            emailAccountId: env.emailAccountId,
+            signalType: "result_impression",
+            signalValue: 1,
+            documentIds: topSearchDocumentIds,
+            metadata: {
+              query: rankingQuery,
+              scopes,
+              mailbox: mailbox ?? null,
+            },
+          }),
+        ]).catch((error) => {
           env.logger.warn("Failed to record unified search signals", {
             userId: env.userId,
             emailAccountId: env.emailAccountId,
@@ -520,6 +588,12 @@ export function createUnifiedSearchService(env: UnifiedSearchEnvironment): Unifi
         scopes,
         mailbox,
         totalCandidates: docs.length,
+        candidateCounts: {
+          email: docs.filter((doc) => doc.surface === "email").length,
+          calendar: docs.filter((doc) => doc.surface === "calendar").length,
+          rule: docs.filter((doc) => doc.surface === "rule").length,
+          memory: docs.filter((doc) => doc.surface === "memory").length,
+        },
         totalRanked: total,
         topCount: top.length,
         zeroResult: top.length === 0,

@@ -20,6 +20,7 @@ const SEARCH_STOPWORDS = new Set([
   "find",
   "for",
   "from",
+  "folder",
   "i",
   "in",
   "is",
@@ -32,6 +33,7 @@ const SEARCH_STOPWORDS = new Set([
   "search",
   "sent",
   "show",
+  "mailbox",
   "that",
   "the",
   "to",
@@ -39,6 +41,26 @@ const SEARCH_STOPWORDS = new Set([
   "with",
   "you",
 ]);
+
+const NICKNAME_EQUIVALENTS: Record<string, string[]> = {
+  alex: ["alexander", "alexandra"],
+  andy: ["andrew"],
+  ben: ["benjamin"],
+  danny: ["daniel"],
+  dave: ["david"],
+  jenny: ["jennifer"],
+  jon: ["john", "jonathan"],
+  kate: ["katherine", "kathryn"],
+  liz: ["elizabeth"],
+  matt: ["matthew"],
+  mike: ["michael"],
+  nick: ["nicholas"],
+  rob: ["robert"],
+  sam: ["samuel", "samantha"],
+  steve: ["steven", "stephen"],
+  tom: ["thomas"],
+  will: ["william"],
+};
 
 const SURFACE_HINTS: Record<UnifiedSearchSurface, RegExp[]> = {
   email: [/\b(email|emails|inbox|sent|draft|message|messages|mail)\b/iu],
@@ -57,6 +79,16 @@ function tokenize(value: string): string[] {
     .split(/[^a-z0-9@._-]+/u)
     .map((token) => token.trim())
     .filter((token) => token.length > 1);
+}
+
+function singularize(token: string): string {
+  if (token.endsWith("ies") && token.length > 4) {
+    return `${token.slice(0, -3)}y`;
+  }
+  if (token.endsWith("s") && !token.endsWith("ss") && token.length > 3) {
+    return token.slice(0, -1);
+  }
+  return token;
 }
 
 function stripQuotes(value: string): string {
@@ -115,6 +147,21 @@ function compactSearchTerms(query: string): string {
   return terms.join(" ").trim();
 }
 
+function expandTermVariants(terms: string[]): string[] {
+  const expanded = new Set<string>();
+  for (const term of terms) {
+    if (!term || term.length <= 1) continue;
+    expanded.add(term);
+    expanded.add(singularize(term));
+    if (term in NICKNAME_EQUIVALENTS) {
+      for (const value of NICKNAME_EQUIVALENTS[term] ?? []) {
+        expanded.add(value);
+      }
+    }
+  }
+  return [...expanded];
+}
+
 function dedupe(values: string[]): string[] {
   const set = new Set<string>();
   for (const value of values) {
@@ -155,11 +202,12 @@ export async function planUnifiedSearchQuery(params: {
     ...tokenize(normalize(params.request.to)),
     ...tokenize(normalize(params.request.attendeeEmail)),
   ]);
+  const expandedTerms = expandTermVariants(terms);
 
   const aliasRows = await lookupSearchAliasExpansions({
     userId: params.userId,
     emailAccountId: params.emailAccountId,
-    terms,
+    terms: expandedTerms,
   });
 
   const aliasExpansions = dedupe(aliasRows.map((row) => row.canonicalValue).filter(Boolean));
@@ -169,8 +217,10 @@ export async function planUnifiedSearchQuery(params: {
     instructionObject,
     compacted,
     quotedPhrase ?? "",
+    expandedTerms.join(" "),
     aliasExpansions.join(" "),
     dedupe([...terms, ...aliasExpansions]).join(" "),
+    dedupe([...expandedTerms, ...aliasExpansions]).join(" "),
   ]);
 
   return {
@@ -180,6 +230,6 @@ export async function planUnifiedSearchQuery(params: {
     scopes,
     mailbox,
     aliasExpansions,
-    terms,
+    terms: expandedTerms,
   };
 }

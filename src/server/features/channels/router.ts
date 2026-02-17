@@ -19,6 +19,7 @@ import {
 } from "./conversation-key";
 import { runSerializedConversationTurn } from "./runtime";
 import { enqueueConversationMessageEmbedding } from "@/features/memory/embeddings/conversation-ingestion";
+import { enqueueConversationMessageForIndexing } from "@/server/features/search/index/ingestors/memory";
 import {
     preferredProviderAccountId,
     resolveSurfaceAccount,
@@ -473,6 +474,11 @@ export class ChannelRouter {
                                 logger,
                             }).catch((error) => {
                                 logger.warn("Failed to enqueue inbound conversation embedding", { error });
+                            });
+                            void enqueueConversationMessageForIndexing({
+                                userId: user.id,
+                                message: persisted,
+                                logger,
                             });
                         }
                     } catch (err) {

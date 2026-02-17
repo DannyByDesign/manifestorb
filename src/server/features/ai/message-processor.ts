@@ -18,6 +18,7 @@ import { executeApprovalRequest } from "@/features/approvals/execute";
 import { resolveScheduleProposalRequestById } from "@/features/calendar/schedule-proposal";
 import { resolveAmbiguousTimeRequestById } from "@/features/calendar/ambiguous-time";
 import { enqueueConversationMessageEmbedding } from "@/features/memory/embeddings/conversation-ingestion";
+import { enqueueConversationMessageForIndexing } from "@/server/features/search/index/ingestors/memory";
 import type { ToolExecutionSummary } from "@/server/features/ai/tools/fabric/types";
 
 export interface ProcessorContext {
@@ -891,6 +892,11 @@ async function persistAssistantMessage(
       logger,
     }).catch((error) => {
       logger.warn("Failed to enqueue assistant conversation embedding", { error });
+    });
+    void enqueueConversationMessageForIndexing({
+      userId,
+      message: persisted,
+      logger,
     });
   } catch (e) {
     logger.error("Failed to persist assistant response", { error: e });

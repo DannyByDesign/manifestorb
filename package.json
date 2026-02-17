@@ -27,6 +27,7 @@
     "eval:taxonomy:ci": "bun run scripts/taxonomy-eval.ts --ci --min-full=190 --write-report",
     "eval:memory-recall": "bun run src/server/scripts/memory-recall-eval.ts",
     "eval:memory-recall:ci": "bun run src/server/scripts/memory-recall-eval.ts --ci",
+    "eval:search-calibrate": "bun run src/server/scripts/search-ranking-calibrate.ts",
     "ci:taxonomy-gate": "bun run scripts/taxonomy-eval.ts --ci --min-full=190 --write-report && bun test-ai src/server/features/ai/tools/task-ownership.test.ts src/server/features/ai/tools/workflow.test.ts src/server/features/ai/tools/security.test.ts src/server/features/approvals/service.test.ts src/server/features/approvals/execute.test.ts tests/evals/taxonomy-eval.test.ts",
     "ci:memory-gate": "bun run src/server/scripts/memory-recall-eval.ts --ci"
   },

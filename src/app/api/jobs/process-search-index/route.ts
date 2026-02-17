@@ -6,6 +6,8 @@ import {
   listSearchFreshnessByConnector,
   listSearchIngestionLag,
 } from "@/server/features/search/index/repository";
+import { runSearchBackfill } from "@/server/features/search/index/backfill";
+import type { SearchConnector } from "@/server/features/search/index/types";
 
 const logger = createScopedLogger("jobs/process-search-index");
 
@@ -56,8 +58,15 @@ export async function POST(request: Request) {
 
   try {
     const body = (await request.json().catch(() => ({}))) as {
-      action?: "process" | "retry_failed" | "health";
+      action?: "process" | "retry_failed" | "health" | "backfill_user";
       maxJobs?: number;
+      userId?: string;
+      emailAccountId?: string;
+      connectors?: SearchConnector[];
+      emailMaxMessages?: number;
+      calendarMaxEvents?: number;
+      ruleMaxRules?: number;
+      memoryMaxItems?: number;
     };
     const action = body.action ?? "process";
     const maxJobs =
@@ -69,8 +78,40 @@ export async function POST(request: Request) {
     let processed = 0;
     let retried = 0;
 
+    let backfill:
+      | {
+          connectors: SearchConnector[];
+          queued: number;
+          byConnector: Record<SearchConnector, number>;
+        }
+      | undefined;
+
     if (action === "retry_failed") {
       retried = await SearchIndexQueue.retryFailed();
+      recovered = await SearchIndexQueue.recoverStale();
+      processed = await SearchIndexQueue.processAll(maxJobs);
+    } else if (action === "backfill_user") {
+      if (!body.userId || typeof body.userId !== "string") {
+        return NextResponse.json(
+          { success: false, error: "backfill_user_requires_userId" },
+          { status: 400 },
+        );
+      }
+      backfill = await runSearchBackfill({
+        userId: body.userId,
+        emailAccountId:
+          typeof body.emailAccountId === "string" ? body.emailAccountId : undefined,
+        connectors: Array.isArray(body.connectors) ? body.connectors : undefined,
+        emailMaxMessages:
+          typeof body.emailMaxMessages === "number" ? body.emailMaxMessages : undefined,
+        calendarMaxEvents:
+          typeof body.calendarMaxEvents === "number" ? body.calendarMaxEvents : undefined,
+        ruleMaxRules:
+          typeof body.ruleMaxRules === "number" ? body.ruleMaxRules : undefined,
+        memoryMaxItems:
+          typeof body.memoryMaxItems === "number" ? body.memoryMaxItems : undefined,
+        logger,
+      });
       recovered = await SearchIndexQueue.recoverStale();
       processed = await SearchIndexQueue.processAll(maxJobs);
     } else if (action === "process") {
@@ -93,6 +134,7 @@ export async function POST(request: Request) {
       recovered,
       processed,
       retried,
+      backfill,
       ...snapshot,
     });
   } catch (error) {

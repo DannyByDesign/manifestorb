@@ -5,6 +5,10 @@ import { capabilityFailureResult } from "@/server/features/ai/tools/runtime/capa
 import { EmbeddingQueue } from "@/features/memory/embeddings/queue";
 import { EmbeddingService } from "@/features/memory/embeddings/service";
 import { orchestrateMemoryRetrieval } from "@/server/features/memory/retrieval/orchestrator";
+import {
+  enqueueMemoryDeleteForIndexing,
+  enqueueMemoryFactForIndexing,
+} from "@/server/features/search/index/ingestors/memory";
 
 const BLOCKED_PATTERNS = [
   /^(test|asdf|xxx|placeholder|example|sample)/i,
@@ -117,6 +121,12 @@ export function createMemoryCapabilities(env: CapabilityEnvironment): MemoryCapa
           });
         }
 
+        void enqueueMemoryFactForIndexing({
+          userId: env.runtime.userId,
+          fact,
+          logger: env.runtime.logger,
+        });
+
         return {
           success: true,
           message: `I will remember that (${key}).`,
@@ -207,6 +217,13 @@ export function createMemoryCapabilities(env: CapabilityEnvironment): MemoryCapa
       }
 
       try {
+        const existingFacts = await prisma.memoryFact.findMany({
+          where: {
+            userId: env.runtime.userId,
+            OR: [{ key: keyInput }, { key }],
+          },
+          select: { id: true },
+        });
         const result = await prisma.memoryFact.updateMany({
           where: {
             userId: env.runtime.userId,
@@ -224,6 +241,18 @@ export function createMemoryCapabilities(env: CapabilityEnvironment): MemoryCapa
             error: "memory_not_found",
             message: `I couldn't find memory key ${keyInput}.`,
           };
+        }
+
+        for (const fact of existingFacts) {
+          void enqueueMemoryDeleteForIndexing({
+            identity: {
+              userId: env.runtime.userId,
+              connector: "memory",
+              sourceType: "memory_fact",
+              sourceId: fact.id,
+            },
+            logger: env.runtime.logger,
+          });
         }
 
         return {
