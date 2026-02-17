@@ -80,26 +80,6 @@ BEGIN
     FROM information_schema.columns
     WHERE table_schema = 'public'
       AND table_name = 'Knowledge'
-      AND column_name = 'createdAt'
-  ) THEN
-    RAISE EXCEPTION 'missing required column: Knowledge.createdAt';
-  END IF;
-
-  IF NOT EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'Knowledge'
-      AND column_name = 'updatedAt'
-  ) THEN
-    RAISE EXCEPTION 'missing required column: Knowledge.updatedAt';
-  END IF;
-
-  IF NOT EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'Knowledge'
       AND column_name = 'title'
   ) THEN
     RAISE EXCEPTION 'missing required column: Knowledge.title';
@@ -125,15 +105,6 @@ BEGIN
     RAISE EXCEPTION 'missing required column: Knowledge.userId';
   END IF;
 
-  IF NOT EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'Knowledge'
-      AND column_name = 'emailAccountId'
-  ) THEN
-    RAISE EXCEPTION 'missing required column: Knowledge.emailAccountId';
-  END IF;
 END
 $$;
 SQL

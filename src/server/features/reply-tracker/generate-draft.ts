@@ -9,6 +9,7 @@ import { getWritingStyle } from "@/server/lib/user/get";
 import type { EmailAccountWithAI } from "@/server/lib/llms/types";
 import type { Logger } from "@/server/lib/logger";
 import prisma from "@/server/db/client";
+import { Prisma, type Knowledge } from "@/generated/prisma/client";
 import { aiExtractRelevantKnowledge } from "@/features/knowledge/ai/extract";
 import { stringifyEmail } from "@/server/lib/stringify-email";
 import { aiExtractFromEmailHistory } from "@/features/knowledge/ai/extract-from-email-history";
@@ -19,6 +20,77 @@ import {
   getMeetingContext,
   formatMeetingContextForPrompt,
 } from "@/features/meeting-briefs/recipient-context";
+
+const KNOWLEDGE_REQUIRED_COLUMNS = ["id", "title", "content", "userId"] as const;
+
+function buildKnowledgeProjection(columns: Set<string>): Prisma.Sql {
+  const createdAtExpr = columns.has("createdAt")
+    ? Prisma.sql`k."createdAt"`
+    : Prisma.sql`NOW()`;
+  const updatedAtExpr = columns.has("updatedAt")
+    ? Prisma.sql`k."updatedAt"`
+    : columns.has("createdAt")
+      ? Prisma.sql`k."createdAt"`
+      : Prisma.sql`NOW()`;
+  const emailAccountIdExpr = columns.has("emailAccountId")
+    ? Prisma.sql`k."emailAccountId"`
+    : Prisma.sql`NULL::text`;
+
+  return Prisma.sql`
+    k.id,
+    k.title,
+    k.content,
+    k."userId",
+    ${createdAtExpr} AS "createdAt",
+    ${updatedAtExpr} AS "updatedAt",
+    ${emailAccountIdExpr} AS "emailAccountId"
+  `;
+}
+
+async function loadKnowledgeBaseForDraft(params: {
+  userId: string;
+  logger: Logger;
+}): Promise<Knowledge[]> {
+  try {
+    const columns = await prisma.$queryRaw<Array<{ column_name: string }>>`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'Knowledge'
+    `;
+    const columnSet = new Set(
+      columns
+        .map((row) => row.column_name)
+        .filter((column): column is string => typeof column === "string" && column.length > 0),
+    );
+    const missingRequired = KNOWLEDGE_REQUIRED_COLUMNS.filter(
+      (column) => !columnSet.has(column),
+    );
+    if (missingRequired.length > 0) {
+      params.logger.warn("Draft generation knowledge lookup disabled: required columns missing", {
+        missingRequired,
+      });
+      return [];
+    }
+
+    const projection = buildKnowledgeProjection(columnSet);
+    const orderByClause = columnSet.has("updatedAt")
+      ? Prisma.sql`ORDER BY k."updatedAt" DESC`
+      : Prisma.sql`ORDER BY k.id DESC`;
+
+    return await prisma.$queryRaw<Array<Knowledge>>(Prisma.sql`
+      SELECT ${projection}
+      FROM "Knowledge" k
+      WHERE k."userId" = ${params.userId}
+      ${orderByClause}
+    `);
+  } catch (error) {
+    params.logger.warn("Draft generation knowledge lookup failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return [];
+  }
+}
 
 /**
  * Fetches thread messages and generates draft content in one step
@@ -122,9 +194,9 @@ async function generateDraftContent(
   }));
 
   // 1. Get knowledge base entries
-  const knowledgeBase = await prisma.knowledge.findMany({
-    where: { userId: emailAccount.userId },
-    orderBy: { updatedAt: "desc" },
+  const knowledgeBase = await loadKnowledgeBaseForDraft({
+    userId: emailAccount.userId,
+    logger,
   });
 
   // If we have knowledge base entries, extract relevant knowledge and draft with it
