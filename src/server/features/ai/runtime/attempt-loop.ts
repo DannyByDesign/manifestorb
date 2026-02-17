@@ -84,8 +84,50 @@ function toPlatform(provider: string): Platform {
   return "web";
 }
 
+function extractMessageTextContent(content: ModelMessage["content"]): string {
+  if (typeof content === "string") return content.trim();
+  if (!Array.isArray(content)) return "";
+
+  return content
+    .map((part) => {
+      if (!part || typeof part !== "object" || !("type" in part)) return "";
+      if (part.type !== "text") return "";
+      return "text" in part && typeof part.text === "string" ? part.text : "";
+    })
+    .join(" ")
+    .trim();
+}
+
+function normalizeRuntimeHistoryForProvider(history: ModelMessage[]): ModelMessage[] {
+  const normalized: ModelMessage[] = [];
+
+  for (const message of history) {
+    if (message.role !== "system") {
+      normalized.push(message);
+      continue;
+    }
+
+    const systemText = extractMessageTextContent(message.content);
+    if (!systemText) continue;
+
+    if (normalized.length === 0) {
+      normalized.push({ role: "system", content: systemText });
+      continue;
+    }
+
+    normalized.push({
+      role: "assistant",
+      content: `Context note: ${systemText}`,
+    });
+  }
+
+  return normalized;
+}
+
 export function buildRuntimeMessages(session: RuntimeSession): ModelMessage[] {
-  const history = Array.isArray(session.input.messages) ? session.input.messages : [];
+  const history = Array.isArray(session.input.messages)
+    ? normalizeRuntimeHistoryForProvider(session.input.messages)
+    : [];
   if (history.length === 0) {
     return [{ role: "user", content: session.input.message }];
   }

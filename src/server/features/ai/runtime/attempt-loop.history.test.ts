@@ -43,4 +43,22 @@ describe("buildRuntimeMessages", () => {
     expect(messages).toHaveLength(2);
     expect(messages[1]).toEqual({ role: "user", content: "try again" });
   });
+
+  it("normalizes non-leading system messages for provider compatibility", () => {
+    const session = makeSession({
+      message: "show unread",
+      messages: [
+        { role: "user", content: "hello" },
+        { role: "system", content: "Last turn tool evidence: []" },
+      ],
+    });
+
+    const messages = buildRuntimeMessages(session);
+    expect(messages).toHaveLength(3);
+    expect(messages[1]).toEqual({
+      role: "assistant",
+      content: "Context note: Last turn tool evidence: []",
+    });
+    expect(messages[2]).toEqual({ role: "user", content: "show unread" });
+  });
 });

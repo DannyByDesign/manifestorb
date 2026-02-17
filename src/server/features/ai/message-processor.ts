@@ -837,7 +837,7 @@ async function loadConversationHistoryMessages(params: {
       const evidencePrompt = renderToolEvidencePrompt(row.toolCalls);
       if (evidencePrompt) {
         mapped.push({
-          role: "system",
+          role: "assistant",
           content: evidencePrompt,
         });
       }

@@ -81,12 +81,36 @@ const compilerSchema = z
         ]),
         reason: z.string().min(1).max(120),
         confidence: z.number().min(0).max(1),
-        args: z.record(z.string(), z.unknown()).default({}),
+        args: z
+          .object({
+            scope: z.enum(["inbox", "sent"]).optional(),
+            query: z.string().min(1).max(500).optional(),
+            text: z.string().min(1).max(500).optional(),
+            from: z.string().min(1).max(320).optional(),
+            to: z.string().min(1).max(320).optional(),
+            hasAttachment: z.boolean().optional(),
+            purpose: z.enum(["lookup", "list", "count"]).optional(),
+            limit: z.number().min(1).max(5000).optional(),
+            fetchAll: z.boolean().optional(),
+            sentByMe: z.boolean().optional(),
+            receivedByMe: z.boolean().optional(),
+            attachmentIntentTerm: z.string().min(1).max(120).optional(),
+            dateRange: z
+              .object({
+                after: z.string().min(4).max(40),
+                before: z.string().min(4).max(40),
+              })
+              .optional(),
+          })
+          .strict()
+          .default({}),
         onFailureText: z.string().min(1).max(300).optional(),
       })
       .optional(),
   })
   .strict();
+
+export const runtimeTurnCompilerModelSchema = compilerSchema;
 
 type CompilerModelResult = z.infer<typeof compilerSchema>;
 

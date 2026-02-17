@@ -1,11 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { compileRuntimeTurn } from "@/server/features/ai/runtime/turn-compiler";
+import {
+  compileRuntimeTurn,
+  runtimeTurnCompilerModelSchema,
+} from "@/server/features/ai/runtime/turn-compiler";
 import { resolveDefaultCalendarTimeZone } from "@/server/features/ai/tools/calendar-time";
 import type { Logger } from "@/server/lib/logger";
+import { assertProviderFacingSchemaSafety } from "@/server/lib/llms/schema-safety";
 
 vi.mock("@/server/features/ai/tools/calendar-time", () => ({
   resolveDefaultCalendarTimeZone: vi.fn(),
 }));
+
+const mockResolveDefaultCalendarTimeZone =
+  resolveDefaultCalendarTimeZone as unknown as {
+    mockResolvedValue: (value: { timeZone: string; source: string }) => void;
+  };
 
 function testLogger() {
   return {
@@ -24,7 +33,7 @@ function testLogger() {
 describe("runtime turn compiler", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.mocked(resolveDefaultCalendarTimeZone).mockResolvedValue({
+    mockResolveDefaultCalendarTimeZone.mockResolvedValue({
       timeZone: "America/Los_Angeles",
       source: "integration",
     });
@@ -58,5 +67,14 @@ describe("runtime turn compiler", () => {
 
     expect(turn.routeHint).toBe("conversation_only");
     expect(turn.singleToolCall).toBeUndefined();
+  });
+
+  it("keeps model schema provider-safe for structured output", () => {
+    expect(() =>
+      assertProviderFacingSchemaSafety({
+        schema: runtimeTurnCompilerModelSchema,
+        label: "openworld-turn-compiler",
+      }),
+    ).not.toThrow();
   });
 });
