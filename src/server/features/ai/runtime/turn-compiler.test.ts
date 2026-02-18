@@ -33,6 +33,7 @@ function testLogger() {
 describe("runtime turn compiler", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.unstubAllEnvs();
     mockResolveDefaultCalendarTimeZone.mockResolvedValue({
       timeZone: "America/Los_Angeles",
       source: "integration",
@@ -108,7 +109,7 @@ describe("runtime turn compiler", () => {
     );
   });
 
-  it("routes indirect time-sensitive web lookups to single_tool:web.search", async () => {
+  it("does not auto-route indirect recency questions to web.search", async () => {
     const turn = await compileRuntimeTurn({
       message: "What's the latest on Nvidia earnings?",
       userId: "user-1",
@@ -117,11 +118,7 @@ describe("runtime turn compiler", () => {
       logger: testLogger(),
     });
 
-    expect(turn.routeHint).toBe("single_tool");
-    expect(turn.singleToolCall?.toolName).toBe("web.search");
-    expect(turn.singleToolCall?.args).toEqual(
-      expect.objectContaining({ query: "What's the latest on Nvidia earnings?" }),
-    );
+    expect(turn.singleToolCall?.toolName).not.toBe("web.search");
   });
 
   it("does not mis-route inbox searches to web.search", async () => {

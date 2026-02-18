@@ -44,8 +44,6 @@ const ATTACHMENT_RE = /\battach(?:ment|ments|ed)?\b|\battatch(?:ment|ments|ed)?\
 
 const WEB_DIRECT_SIGNAL_RE =
   /\b(search\s+(?:the\s+)?(?:web|internet)|search\s+online|google|look\s+up\s+(?:online|on\s+(?:the\s+)?(?:web|internet))|browse\s+the\s+web)\b/u;
-const WEB_RECENCY_SIGNAL_RE =
-  /\b(latest|most\s+recent|current|as\s+of|today|right\s+now|this\s+week|newest)\b/u;
 const INTERNAL_SURFACE_SIGNAL_RE =
   /\b(inbox|email|emails|calendar|meeting|meetings|event|events|schedule|draft|reply|label|archive|trash|unsubscribe|block|rule|policy|memory|remember|recall)\b/u;
 
@@ -362,7 +360,6 @@ function shouldSingleToolWebSearch(message: string): boolean {
   if (CONVERSATION_ONLY_SIGNAL_RE.test(normalized)) return false;
   if (INTERNAL_SURFACE_SIGNAL_RE.test(normalized)) return false;
   if (WEB_DIRECT_SIGNAL_RE.test(normalized)) return true;
-  if (WEB_RECENCY_SIGNAL_RE.test(normalized)) return true;
   return false;
 }
 
