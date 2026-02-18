@@ -665,6 +665,8 @@ model EmailMessage {
   @@index([emailAccountId, date])
   @@index([emailAccountId, from])
   @@index([emailAccountId, fromName])
+  // Supports "unrepliedToSent" query: last sent per thread + anti-join on inbound replies after last sent.
+  @@index([emailAccountId, sent, threadId, date])
 }
 
 model ResponseTime {

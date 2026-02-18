@@ -5,6 +5,9 @@
 
 The DB query relies on `DISTINCT ON (threadId)` and an anti-join against inbound messages after the last sent message in-range.
 
+## Status
+- 2026-02-18: Implemented composite DB index + added regression tests covering unreplied semantics and missing date range clarification.
+
 ## Why This Issue Exists
 The logic is correct, but at large scale (high message volume per account) we should harden:
 - Query performance (indexing/plan stability).
@@ -20,4 +23,3 @@ The logic is correct, but at large scale (high message volume per account) we sh
   - Thread with only sent messages -> included.
 - Keep user-visible follow-up text out of tool layer:
   - Clarification should remain `clarification.prompt` keys only.
-

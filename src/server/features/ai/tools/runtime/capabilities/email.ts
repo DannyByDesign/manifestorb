@@ -398,29 +398,29 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         : undefined;
 
     if (inferredUnrepliedToSent) {
-      try {
-        const beforeRaw =
-          dateRange && typeof dateRange.before === "string"
-            ? dateRange.before
-            : undefined;
-        const afterRaw =
-          dateRange && typeof dateRange.after === "string"
-            ? dateRange.after
-            : undefined;
-        const before = beforeRaw ? new Date(beforeRaw) : undefined;
-        const after = afterRaw ? new Date(afterRaw) : undefined;
-        if (!after || !before || !Number.isFinite(after.getTime()) || !Number.isFinite(before.getTime())) {
-          return {
-            success: false,
-            error: "missing_date_range",
-            clarification: {
-              kind: "missing_fields",
-              prompt: "email_unreplied_date_range_required",
-              missingFields: ["dateRange.after", "dateRange.before"],
-            },
-          };
-        }
+      const beforeRaw =
+        dateRange && typeof dateRange.before === "string"
+          ? dateRange.before
+          : undefined;
+      const afterRaw =
+        dateRange && typeof dateRange.after === "string"
+          ? dateRange.after
+          : undefined;
+      const before = beforeRaw ? new Date(beforeRaw) : undefined;
+      const after = afterRaw ? new Date(afterRaw) : undefined;
+      if (!after || !before || !Number.isFinite(after.getTime()) || !Number.isFinite(before.getTime())) {
+        return {
+          success: false,
+          error: "missing_date_range",
+          clarification: {
+            kind: "missing_fields",
+            prompt: "email_unreplied_date_range_required",
+            missingFields: ["dateRange.after", "dateRange.before"],
+          },
+        };
+      }
 
+      try {
         const limit =
           typeof requestFilter.limit === "number" && Number.isFinite(requestFilter.limit)
             ? Math.min(500, Math.max(1, Math.trunc(requestFilter.limit)))
