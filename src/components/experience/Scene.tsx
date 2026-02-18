@@ -1,60 +1,166 @@
 "use client";
 
-import { useEffect } from "react";
+import { Suspense, useEffect, useMemo } from "react";
 import * as THREE from "three";
-import { Canvas, useThree } from "@react-three/fiber";
-import { useQualityStore, useDPRClamp } from "@/lib/stores/qualityStore";
+import { Canvas } from "@react-three/fiber";
+import { Bloom, EffectComposer } from "@react-three/postprocessing";
 
-import { Orb } from "@/components/experience/Orb";
-import { Sparkles } from "@/components/experience/Sparkles";
-import { Effects } from "@/components/experience/Effects";
+import { useDPRClamp, useQualityStore } from "@/lib/stores/qualityStore";
+import { ExternalSparkles2D } from "@/components/experience/orbReference/ExternalSparkles";
+import { FBOParticles } from "@/components/experience/orbReference/FboParticles";
+import { RimSparkleSphere } from "@/components/experience/orbReference/Sphere";
+import {
+  simulationFragmentShader,
+  simulationVertexShader,
+} from "@/components/experience/orbReference/shaders";
 
-function ShaderWarmup() {
-  const { gl, scene, camera } = useThree();
+type ThemePalette = {
+  baseLilac: string;
+  coolLavender: string;
+  softMauve: string;
+  plumMagenta: string;
+  cyanSheen: string;
+};
 
-  useEffect(() => {
-    let cancelled = false;
+const DEFAULT_PALETTE: ThemePalette = {
+  baseLilac: "#EDE8F2",
+  coolLavender: "#887DAD",
+  softMauve: "#C69BBB",
+  plumMagenta: "#B86698",
+  cyanSheen: "#E0EEF1",
+};
 
-    const warm = async () => {
-      try {
-        const renderer = gl as THREE.WebGLRenderer & {
-          compileAsync?: (scene: THREE.Scene, camera: THREE.Camera) => Promise<void>;
-        };
+const readCssVar = (name: string, fallback: string): string => {
+  if (typeof window === "undefined") return fallback;
+  const value = getComputedStyle(document.body).getPropertyValue(name).trim();
+  return value || fallback;
+};
 
-        if (renderer.compileAsync) {
-          await renderer.compileAsync(scene, camera);
-        } else {
-          renderer.compile(scene, camera);
-        }
-      } catch {
-        // Warmup is best-effort; rendering can continue without it.
-      }
+const mixHex = (a: string, b: string, t: number): string => {
+  const c = new THREE.Color(a).lerp(new THREE.Color(b), t);
+  return `#${c.getHexString()}`;
+};
 
-      if (cancelled) return;
+function SceneContent({ palette }: { palette: ThemePalette }) {
+  const sphereScale = 3.2;
+
+  const derived = useMemo(() => {
+    const deepViolet = mixHex(palette.coolLavender, palette.plumMagenta, 0.3);
+    const midLavender = mixHex(palette.coolLavender, palette.softMauve, 0.45);
+    const paleLilac = mixHex(palette.baseLilac, palette.softMauve, 0.25);
+    const iceLavender = mixHex(palette.baseLilac, palette.cyanSheen, 0.35);
+    const whiteBloom = mixHex("#ffffff", palette.baseLilac, 0.35);
+
+    return {
+      deepViolet,
+      midLavender,
+      paleLilac,
+      iceLavender,
+      whiteBloom,
     };
+  }, [palette]);
 
-    void warm();
+  const particleConfigs = useMemo(
+    () => [
+      {
+        size: 456,
+        pointSize: 16.9,
+        frequency: 0.45,
+        colors: [derived.deepViolet, palette.coolLavender, palette.softMauve, palette.plumMagenta],
+      },
+      {
+        size: 296,
+        pointSize: 17.5,
+        frequency: 0.48,
+        colors: [palette.coolLavender, palette.softMauve, derived.midLavender, derived.paleLilac],
+      },
+      {
+        size: 158,
+        pointSize: 17.0,
+        frequency: 0.56,
+        colors: [derived.midLavender, derived.paleLilac, palette.baseLilac, palette.coolLavender],
+      },
+      {
+        size: 96,
+        pointSize: 17.5,
+        frequency: 1.65,
+        colors: [derived.paleLilac, derived.iceLavender, palette.cyanSheen, palette.softMauve],
+      },
+      {
+        size: 94,
+        pointSize: 17.0,
+        frequency: 0.7,
+        colors: [palette.softMauve, derived.midLavender, derived.paleLilac, derived.iceLavender],
+      },
+      {
+        size: 88,
+        pointSize: 17.5,
+        frequency: 2.3,
+        colors: [derived.iceLavender, palette.cyanSheen, derived.whiteBloom, derived.paleLilac],
+      },
+      {
+        size: 28,
+        pointSize: 15.0,
+        frequency: 2.8,
+        colors: [derived.whiteBloom, "#FFFFFF", derived.iceLavender, palette.baseLilac],
+      },
+    ],
+    [derived, palette]
+  );
 
-    return () => {
-      cancelled = true;
-    };
-  }, [gl, scene, camera]);
-
-  return null;
-}
-
-function SceneContent() {
-  // Reference parity checklist (kept concise near scene wiring):
-  // 1) Stationary centered orb
-  // 2) Cohesive multi-speed particle motion (dust/body/glint)
-  // 3) High-intent highlights via selective bloom
-  // 4) No background palette changes
   return (
     <>
-      <ShaderWarmup />
-      <Orb />
-      <Sparkles />
-      <Effects />
+      <ambientLight intensity={0.8} />
+      <pointLight position={[5, 5, 7]} intensity={0.8} />
+      <pointLight position={[-6, 4, 6]} intensity={0.6} color={derived.paleLilac} />
+      <pointLight position={[0, -5, 5]} intensity={0.4} />
+      <pointLight position={[3, -2, 8]} intensity={0.3} color={derived.iceLavender} />
+      <directionalLight position={[-8, 5, 5]} intensity={0.7} color={palette.coolLavender} />
+
+      <group position={[0, 0, 0]} scale={sphereScale}>
+        <RimSparkleSphere
+          position={[0, 0, 0]}
+          colorA={derived.paleLilac}
+          colorB={palette.softMauve}
+          colorC={derived.deepViolet}
+        />
+
+        {particleConfigs.map((config) => (
+          <FBOParticles
+            key={`${config.size}-${config.frequency}`}
+            size={config.size}
+            pointSize={config.pointSize}
+            frequency={config.frequency}
+            color1={config.colors[0]}
+            color2={config.colors[1]}
+            color3={config.colors[2]}
+            color4={config.colors[3]}
+            blending={THREE.NormalBlending}
+            simVertShader={simulationVertexShader}
+            simFragShader={simulationFragmentShader}
+          />
+        ))}
+
+        <ExternalSparkles2D
+          count={3500}
+          color1={derived.whiteBloom}
+          color2="#FFFFFF"
+          color3={derived.iceLavender}
+          circleRadius={1.4}
+          mouseInfluenceRadius={0.5}
+          mouseRepelStrength={0.25}
+          returnSpeed={0.18}
+        />
+      </group>
+
+      <EffectComposer>
+        <Bloom
+          intensity={0.4}
+          luminanceThreshold={0.15}
+          luminanceSmoothing={0.4}
+          radius={0.5}
+        />
+      </EffectComposer>
     </>
   );
 }
@@ -62,6 +168,16 @@ function SceneContent() {
 export function Scene() {
   const initialize = useQualityStore((state) => state.initialize);
   const dprClamp = useDPRClamp();
+  const palette = useMemo<ThemePalette>(
+    () => ({
+      baseLilac: readCssVar("--base-lilac", DEFAULT_PALETTE.baseLilac),
+      coolLavender: readCssVar("--cool-lavender", DEFAULT_PALETTE.coolLavender),
+      softMauve: readCssVar("--soft-mauve", DEFAULT_PALETTE.softMauve),
+      plumMagenta: readCssVar("--plum-magenta", DEFAULT_PALETTE.plumMagenta),
+      cyanSheen: readCssVar("--cyan-sheen", DEFAULT_PALETTE.cyanSheen),
+    }),
+    []
+  );
 
   useEffect(() => {
     initialize();
@@ -70,11 +186,20 @@ export function Scene() {
   return (
     <div className="h-full w-full">
       <Canvas
-        dpr={[1, dprClamp]}
-        gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
-        camera={{ position: [0, 0, 3], fov: 45 }}
+        camera={{ position: [0, 0, 15], fov: 35, near: 0.1, far: 50 }}
+        dpr={[1, Math.min(2, dprClamp)]}
+        gl={{
+          antialias: true,
+          alpha: true,
+          powerPreference: "high-performance",
+          preserveDrawingBuffer: true,
+          depth: true,
+        }}
+        style={{ width: "100%", height: "100%" }}
       >
-        <SceneContent />
+        <Suspense fallback={null}>
+          <SceneContent palette={palette} />
+        </Suspense>
       </Canvas>
     </div>
   );
