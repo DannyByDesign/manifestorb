@@ -15,6 +15,13 @@ export type UnifiedSearchMailbox =
 
 export type UnifiedSearchSort = "relevance" | "newest" | "oldest";
 
+export type UnifiedSearchEmailCategory =
+  | "primary"
+  | "promotions"
+  | "social"
+  | "updates"
+  | "forums";
+
 export interface UnifiedSearchDateRange {
   after?: string;
   before?: string;
@@ -31,7 +38,19 @@ export interface UnifiedSearchRequest {
   hasAttachment?: boolean;
   from?: string;
   to?: string;
+  cc?: string;
+  fromEmails?: string[];
+  fromDomains?: string[];
+  toEmails?: string[];
+  toDomains?: string[];
+  ccEmails?: string[];
+  ccDomains?: string[];
+  category?: UnifiedSearchEmailCategory;
   attendeeEmail?: string;
+  calendarIds?: string[];
+  locationContains?: string;
+  attachmentMimeTypes?: string[];
+  attachmentFilenameContains?: string;
   dateRange?: UnifiedSearchDateRange;
   limit?: number;
   fetchAll?: boolean;
@@ -75,6 +94,8 @@ export interface UnifiedSearchResult {
     sort?: UnifiedSearchSort;
     unread?: boolean;
     hasAttachment?: boolean;
+    category?: UnifiedSearchEmailCategory;
+    dateRange?: UnifiedSearchDateRange;
     inferredLimit?: number;
     needsClarification?: boolean;
     clarificationPrompt?: string;

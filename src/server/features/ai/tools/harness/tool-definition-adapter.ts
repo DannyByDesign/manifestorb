@@ -45,7 +45,7 @@ function timeoutResult(toolName: string): ToolResult {
   return {
     success: false,
     error: "tool_timeout",
-    message: `Tool ${toolName} took too long to respond. Please try again.`,
+    message: "tool_timeout",
   };
 }
 
@@ -61,14 +61,18 @@ function sanitizeResult(result: ToolResult): ToolResult {
   };
 }
 
-function blockedResult(message: string, code: string): ToolResult {
+function blockedResult(params: { policyMessage: string; reasonCode: string; kind: "block" | "require_approval" }): ToolResult {
   return {
     success: false,
-    error: code,
-    message,
+    error: params.reasonCode,
+    message: "tool_blocked",
     clarification: {
       kind: "permissions",
-      prompt: message,
+      prompt: params.kind === "require_approval" ? "tool_approval_required" : "tool_blocked",
+    },
+    data: {
+      reasonCode: params.reasonCode,
+      policyMessage: params.policyMessage,
     },
   };
 }
@@ -81,11 +85,14 @@ function invalidToolArgsResult(
   return {
     success: false,
     error: "invalid_tool_arguments",
-    message: `Tool ${definition.toolName} received invalid arguments.`,
+    message: "invalid_tool_arguments",
     clarification: {
       kind: "invalid_fields",
-      prompt: `I need valid arguments to run ${definition.toolName}.`,
+      prompt: "tool_invalid_arguments",
       missingFields: fields,
+    },
+    data: {
+      toolName: definition.toolName,
     },
   };
 }
@@ -113,7 +120,7 @@ function buildToolExecutor(params: {
     });
 
     if (policy.kind === "block") {
-      const result = blockedResult(policy.message, policy.reasonCode);
+      const result = blockedResult({ policyMessage: policy.message, reasonCode: policy.reasonCode, kind: "block" });
       summaries.push({
         toolName: definition.toolName,
         outcome: "blocked",
@@ -125,7 +132,7 @@ function buildToolExecutor(params: {
 
     if (policy.kind === "require_approval") {
       artifacts.approvals.push(policy.approval);
-      const result = blockedResult(policy.message, policy.reasonCode);
+      const result = blockedResult({ policyMessage: policy.message, reasonCode: policy.reasonCode, kind: "require_approval" });
       summaries.push({
         toolName: definition.toolName,
         outcome: "blocked",

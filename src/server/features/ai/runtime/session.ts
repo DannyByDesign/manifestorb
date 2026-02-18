@@ -9,6 +9,7 @@ import {
 import { toToolDefinitions } from "@/server/features/ai/tools/harness/tool-definition-adapter";
 import { splitSdkTools } from "@/server/features/ai/tools/harness/tool-split";
 import { classifyRuntimeTurnContract } from "@/server/features/ai/runtime/turn-contract";
+import type { RuntimeTurnContract } from "@/server/features/ai/runtime/turn-contract";
 import { resolveEffectiveToolPolicy } from "@/server/features/ai/tools/policy/policy-resolver";
 import {
   expandPolicyWithPluginGroups,
@@ -19,6 +20,15 @@ import { getModel } from "@/server/lib/llms/model";
 import prisma from "@/server/db/client";
 import type { RuntimeSession, OpenWorldTurnInput } from "@/server/features/ai/runtime/types";
 import type { ToolExecutionSummary } from "@/server/features/ai/tools/fabric/types";
+
+export function resolveRuntimeToolCatalogMaxTools(turn: RuntimeTurnContract): number | undefined {
+  // The planner lane can require multi-step orchestration across inbox/calendar/rules. If we prune the
+  // runtime tool catalog too aggressively, deterministic execution can fail simply because required
+  // tools were ranked out. This does not bypass allow/deny policies; it only avoids accidental ranking
+  // drops for planner turns.
+  if (turn.routeHint === "planner") return 96;
+  return undefined;
+}
 
 export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<RuntimeSession> {
   const isSubagentSession = Boolean(
@@ -169,6 +179,7 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
     includeDangerous: turn.riskLevel === "high" && turn.requestedOperation !== "read",
     message: input.message,
     turn,
+    maxTools: resolveRuntimeToolCatalogMaxTools(turn),
     layeredPolicies,
     additionalGroups: registryContext.additionalGroups,
   });

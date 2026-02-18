@@ -8,4 +8,8 @@ export const taskToolExecutors: RuntimeToolExecutorMap = {
       taskTitle: asString(args.taskTitle) ?? asString(args.title) ?? asString(args.query),
       changes: asObject(args.changes),
     }),
+  "task.list": async ({ args, capabilities }) =>
+    capabilities.task.list(asObject(args)),
+  "task.bulkReschedule": async ({ args, capabilities }) =>
+    capabilities.task.bulkReschedule(asObject(args)),
 };

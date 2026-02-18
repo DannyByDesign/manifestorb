@@ -1,6 +1,6 @@
 # Inbox + Calendar + Rules AI Capability Test Question Bank
 
-Last updated: 2026-02-15
+Last updated: 2026-02-18
 Owner: AI Runtime / Inbox-Calendar Agent
 
 ## Purpose
@@ -162,8 +162,8 @@ Format:
 
 ### A. Inbox Read / Retrieval
 
-1. `IR-001` | "Show me my 10 most recent unread emails." | `email.searchThreads` | D3,D2
-2. `IR-002` | "How many unread emails do I have right now?" | `email.searchThreads` | D3,D2
+1. `IR-001` | "Show me my 10 most recent unread emails." | `email.searchInbox` | D3,D2
+2. `IR-002` | "How many unread emails do I have right now?" | `email.getUnreadCount` | D3,D2
 3. `IR-003` | "Find emails from Haseeb in the last 7 days." | `email.searchThreadsAdvanced` | D3
 4. `IR-004` | "Search my sent emails for 'portfolio update'." | `email.searchSent` | D3
 5. `IR-005` | "Search my inbox for 'Build failed' notifications." | `email.searchInbox` | D3
@@ -180,8 +180,12 @@ Format:
 16. `IR-016` | "Pull the latest message body in thread <thread-id>." | `email.getLatestMessage` | D3
 17. `IR-017` | "Fetch message payloads for IDs <id1,id2,id3>." | `email.getMessagesBatch` | D3
 18. `IR-018` | "Find emails I sent but didn't get a reply to (last 14 days)." | `email.searchSent` + planner logic | D3,D2
-19. `IR-019` | "List unread emails from recruiters only." | `email.searchThreadsAdvanced` | D3
+19. `IR-019` | "List unread emails from recruiters only." | `email.searchThreadsAdvanced (fromConcept clarification)` | D3
 20. `IR-020` | "Show all unread emails older than 14 days." | `email.searchThreadsAdvanced` | D3
+21. `IR-021` | "Show me the 10 oldest unread emails in my inbox." | `email.searchInbox` | D3,D2
+22. `IR-022` | "Show me the 10 most recent unread emails with attachments." | `email.searchInbox` | D3,D2
+23. `IR-023` | "Find the most recent email in my inbox with a PDF attachment and summarize it." | `email.searchInbox` + `email.getLatestMessage` | D3,D2
+24. `IR-024` | "Search my inbox for unread emails from Stripe, newest first." | `email.searchInbox` | D3,D2
 
 ### B. Inbox Mutations / Controls
 
@@ -292,6 +296,33 @@ Format:
 5. `XP-005` | "Reschedule my tasks to tomorrow where I have free space." | `task.reschedule` + availability | D2,D8,D6
 
 ---
+
+### H. Unified Search (All Surfaces)
+
+These validate the unified search layer and its ability to respect hard constraints (mailbox/unread/sort/attachments),
+while routing follow-up questions through the runtime response writer (no hardcoded clarification phrasing).
+
+1. `US-001` | "Search everything for 'portfolio review'." | `search.query` | D2
+2. `US-002` | "Search my inbox + calendar for 'portfolio review'." | `search.query` | D2
+3. `US-003` | "Search my sent email for 'portfolio review'." | `search.query` | D2,D3
+4. `US-004` | "Search my inbox for unread emails, newest first." | `search.query` | D2,D3
+5. `US-005` | "Search my inbox for unread emails with attachments, newest first." | `search.query` | D2,D3
+6. `US-006` | "Search my calendar for 'portfolio review' and show the next matching event." | `search.query` | D2,D6
+7. `US-007` | "Search my rules for 'approval'." | `search.query` | D2,D10
+8. `US-008` | "Search everything for emails from alex@company.com about invoices." | `search.query` | D2,D3
+9. `US-009` | "Search everything for meetings with sam@company.com next week." | `search.query` | D2,D6
+10. `US-010` | "Search everything for 'build failed' and show the 10 newest results regardless of surface." | `search.query` | D2
+
+### I. Clarification-First Retrieval (No Guessing)
+
+These are intentionally underspecified. Expected behavior is: the agent should ask one targeted follow-up question
+(in assistant voice via response writer), not execute a broken/over-broad action.
+
+1. `CL-001` | "Search my sent emails." | `search.query` | D2,D3
+2. `CL-002` | "Show me my unread emails." | `email.searchInbox` | D2,D3
+3. `CL-003` | "Find that email I sent about the portfolio." | `email.searchSent` | D2,D3
+4. `CL-004` | "What did I promise last week?" | `search.query` | D2
+5. `CL-005` | "Move that meeting to next week." | `calendar.rescheduleEvent` | D2,D7
 
 ## Multi-Step Agentic Workflow Test Questions
 
@@ -441,10 +472,11 @@ Use this to ensure 100% expected capability coverage.
 
 ### Email capabilities
 
-1. `email.searchThreads` -> IR-001, IR-006, IR-011
+1. `email.searchThreads` -> IR-006, IR-011
 2. `email.searchThreadsAdvanced` -> IR-003, IR-008, IR-013, IM-018
 3. `email.searchSent` -> IR-004, IR-009, IC-013
-4. `email.searchInbox` -> IR-005, IR-010, IR-015
+4. `email.searchInbox` -> IR-001, IR-005, IR-010, IR-015, IR-021, IR-022, IR-023, IR-024
+5. `email.getUnreadCount` -> IR-002
 5. `email.getThreadMessages` -> IR-007, IR-015
 6. `email.getMessagesBatch` -> IR-017
 7. `email.getLatestMessage` -> IR-006, IR-016
@@ -474,6 +506,10 @@ Use this to ensure 100% expected capability coverage.
 31. `email.reply` -> IC-008, IC-011, IC-014
 32. `email.forward` -> IC-009, IC-015
 33. `email.scheduleSend` -> IC-010
+
+### Unified search capabilities
+
+1. `search.query` -> US-001..US-010, CL-001, CL-004
 
 ### Calendar + task capabilities
 
@@ -537,4 +573,3 @@ Mark `FAIL` for any:
 3. **Reschedule Truth Pack:** CM-006, CM-007, CM-015..020, W8.
 4. **Policy Enforcement Pack:** RP-001..015, W5, W12.
 5. **Full Agentic Pack:** XP-001..005, W1..W12.
-

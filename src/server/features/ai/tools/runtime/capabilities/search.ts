@@ -39,6 +39,12 @@ function asStringArray(value: unknown): string[] {
     : [];
 }
 
+function asTrimmedStringArray(value: unknown): string[] {
+  return asStringArray(value)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
 function toScopes(value: unknown): UnifiedSearchSurface[] | undefined {
   const values = asStringArray(value)
     .map((scope) => scope.trim().toLowerCase())
@@ -54,6 +60,34 @@ function toMailbox(value: unknown): UnifiedSearchMailbox | undefined {
   return MAILBOXES.includes(normalized as UnifiedSearchMailbox)
     ? (normalized as UnifiedSearchMailbox)
     : undefined;
+}
+
+function toEmailCategory(value: unknown):
+  | "primary"
+  | "promotions"
+  | "social"
+  | "updates"
+  | "forums"
+  | undefined {
+  const normalized = asString(value)?.toLowerCase();
+  if (!normalized) return undefined;
+  return normalized === "primary" ||
+    normalized === "promotions" ||
+    normalized === "social" ||
+    normalized === "updates" ||
+    normalized === "forums"
+    ? normalized
+    : undefined;
+}
+
+function toCalendarIds(input: Record<string, unknown>): string[] | undefined {
+  const ids = Array.from(
+    new Set([
+      ...asTrimmedStringArray(input.calendarIds),
+      ...(asString(input.calendarId) ? [asString(input.calendarId)!] : []),
+    ]),
+  ).filter(Boolean);
+  return ids.length > 0 ? ids.slice(0, 50) : undefined;
 }
 
 function toRequest(input: Record<string, unknown>): UnifiedSearchRequest {
@@ -77,7 +111,40 @@ function toRequest(input: Record<string, unknown>): UnifiedSearchRequest {
     hasAttachment: asBoolean(input.hasAttachment),
     from: asString(input.from),
     to: asString(input.to),
+    cc: asString(input.cc),
+    fromEmails: (() => {
+      const values = asTrimmedStringArray(input.fromEmails).slice(0, 50);
+      return values.length > 0 ? values : undefined;
+    })(),
+    fromDomains: (() => {
+      const values = asTrimmedStringArray(input.fromDomains).slice(0, 50);
+      return values.length > 0 ? values : undefined;
+    })(),
+    toEmails: (() => {
+      const values = asTrimmedStringArray(input.toEmails).slice(0, 50);
+      return values.length > 0 ? values : undefined;
+    })(),
+    toDomains: (() => {
+      const values = asTrimmedStringArray(input.toDomains).slice(0, 50);
+      return values.length > 0 ? values : undefined;
+    })(),
+    ccEmails: (() => {
+      const values = asTrimmedStringArray(input.ccEmails).slice(0, 50);
+      return values.length > 0 ? values : undefined;
+    })(),
+    ccDomains: (() => {
+      const values = asTrimmedStringArray(input.ccDomains).slice(0, 50);
+      return values.length > 0 ? values : undefined;
+    })(),
+    category: toEmailCategory(input.category),
     attendeeEmail: asString(input.attendeeEmail) ?? asString(input.attendee),
+    calendarIds: toCalendarIds(input),
+    locationContains: asString(input.locationContains),
+    attachmentMimeTypes: (() => {
+      const values = asTrimmedStringArray(input.attachmentMimeTypes);
+      return values.length > 0 ? values : undefined;
+    })(),
+    attachmentFilenameContains: asString(input.attachmentFilenameContains),
     dateRange:
       dateRangeRaw || asString(input.after) || asString(input.before)
         ? {
@@ -107,16 +174,52 @@ export function createSearchCapabilities(env: CapabilityEnvironment): SearchCapa
   return {
     async query(input) {
       const request = toRequest(input);
-      const hasQuery = Boolean(request.query || request.text || request.from || request.to || request.attendeeEmail);
+      const hasQuery = Boolean(
+        request.query ||
+          request.text ||
+          request.from ||
+          request.to ||
+          request.cc ||
+          (request.fromEmails?.length ?? 0) > 0 ||
+          (request.fromDomains?.length ?? 0) > 0 ||
+          (request.toEmails?.length ?? 0) > 0 ||
+          (request.toDomains?.length ?? 0) > 0 ||
+          (request.ccEmails?.length ?? 0) > 0 ||
+          (request.ccDomains?.length ?? 0) > 0 ||
+          request.attendeeEmail ||
+          request.locationContains,
+      );
+      const hasStructuredConstraints = Boolean(
+        request.dateRange ||
+          typeof request.unread === "boolean" ||
+          typeof request.hasAttachment === "boolean" ||
+          request.calendarIds?.length ||
+          request.category ||
+          (request.attachmentMimeTypes?.length ?? 0) > 0 ||
+          request.attachmentFilenameContains,
+      );
       const hasScopeOrMailbox = Boolean(request.scopes || request.mailbox);
 
-      if (!hasQuery && !hasScopeOrMailbox) {
+      if (!hasQuery && !hasStructuredConstraints && !hasScopeOrMailbox) {
         return {
           success: false,
           error: "search_query_required",
           clarification: {
             kind: "missing_fields",
             prompt: "search_target_required",
+            missingFields: ["query"],
+          },
+        };
+      }
+
+      // Clarification-first: mailbox/scopes alone is underspecified and should not return "recent items".
+      if (!hasQuery && !hasStructuredConstraints && hasScopeOrMailbox) {
+        return {
+          success: false,
+          error: "clarification_required",
+          clarification: {
+            kind: "missing_fields",
+            prompt: "search_target_unclear",
             missingFields: ["query"],
           },
         };

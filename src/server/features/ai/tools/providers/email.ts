@@ -16,6 +16,7 @@ import {
     withRetries,
 } from "@/server/features/ai/tools/common/retry";
 import { withToolThrottle } from "@/server/features/ai/tools/common/throttle";
+import { extractEmailAddress } from "@/server/lib/email";
 import {
     type DraftParams,
     type EmailChanges,
@@ -126,8 +127,18 @@ export interface EmailProvider {
         text?: string;
         from?: string;
         to?: string;
+        cc?: string;
+        fromEmails?: string[];
+        fromDomains?: string[];
+        toEmails?: string[];
+        toDomains?: string[];
+        ccEmails?: string[];
+        ccDomains?: string[];
+        category?: "primary" | "promotions" | "social" | "updates" | "forums";
         hasAttachment?: boolean;
         attachmentIntentTerm?: string;
+        attachmentMimeTypes?: string[];
+        attachmentFilenameContains?: string;
         sentByMe?: boolean;
         receivedByMe?: boolean;
     }): Promise<{
@@ -260,8 +271,18 @@ export async function createEmailProvider(
             text?: string;
             from?: string;
             to?: string;
+            cc?: string;
+            fromEmails?: string[];
+            fromDomains?: string[];
+            toEmails?: string[];
+            toDomains?: string[];
+            ccEmails?: string[];
+            ccDomains?: string[];
+            category?: "primary" | "promotions" | "social" | "updates" | "forums";
             hasAttachment?: boolean;
             attachmentIntentTerm?: string;
+            attachmentMimeTypes?: string[];
+            attachmentFilenameContains?: string;
             sentByMe?: boolean;
             receivedByMe?: boolean;
         },
@@ -282,15 +303,71 @@ export async function createEmailProvider(
             const to = message.headers?.to || "";
             const cc = message.headers?.cc || "";
             const bcc = message.headers?.bcc || "";
+            const labelIds = Array.isArray(message.labelIds) ? message.labelIds : [];
 
             if (!includesLooseTerm(subject, options.subjectContains)) return false;
             if (!includesLooseTerm(body, options.bodyContains)) return false;
             if (!includesLooseTerm(from, options.from)) return false;
             if (!includesLooseTerm(to, options.to)) return false;
+            if (!includesLooseTerm(cc, options.cc)) return false;
+
+            const normalizedFromAddress = normalizeText(extractEmailAddress(from));
+            if (Array.isArray(options.fromEmails) && options.fromEmails.length > 0) {
+                const wanted = new Set(options.fromEmails.map((v) => normalizeText(v)));
+                if (!normalizedFromAddress || !wanted.has(normalizedFromAddress)) return false;
+            }
+            if (Array.isArray(options.fromDomains) && options.fromDomains.length > 0) {
+                const wanted = options.fromDomains.map((v) => normalizeText(v.replace(/^@/u, "")));
+                const domain = normalizedFromAddress.split("@")[1] ?? "";
+                if (!domain || !wanted.some((needle) => domain === needle || domain.endsWith(`.${needle}`))) return false;
+            }
+
+            if (Array.isArray(options.toEmails) && options.toEmails.length > 0) {
+                const wanted = options.toEmails.map((v) => normalizeText(v));
+                const normalizedTo = normalizeText(to);
+                if (!wanted.some((needle) => normalizedTo.includes(needle))) return false;
+            }
+            if (Array.isArray(options.toDomains) && options.toDomains.length > 0) {
+                const wanted = options.toDomains.map((v) => normalizeText(v.replace(/^@/u, "")));
+                const normalizedTo = normalizeText(to);
+                if (!wanted.some((needle) => normalizedTo.includes(needle))) return false;
+            }
+            if (Array.isArray(options.ccEmails) && options.ccEmails.length > 0) {
+                const wanted = options.ccEmails.map((v) => normalizeText(v));
+                const normalizedCc = normalizeText(cc);
+                if (!wanted.some((needle) => normalizedCc.includes(needle))) return false;
+            }
+            if (Array.isArray(options.ccDomains) && options.ccDomains.length > 0) {
+                const wanted = options.ccDomains.map((v) => normalizeText(v.replace(/^@/u, "")));
+                const normalizedCc = normalizeText(cc);
+                if (!wanted.some((needle) => normalizedCc.includes(needle))) return false;
+            }
 
             if (options.hasAttachment !== undefined) {
                 const hasAttachment = Array.isArray(message.attachments) && message.attachments.length > 0;
                 if (options.hasAttachment !== hasAttachment) return false;
+            }
+
+            if (options.category) {
+                const wanted = options.category.toLowerCase();
+                const labelSet = new Set(labelIds.map((id) => String(id).toUpperCase()));
+                const match = (() => {
+                    switch (wanted) {
+                        case "primary":
+                            return labelSet.has("CATEGORY_PERSONAL");
+                        case "promotions":
+                            return labelSet.has("CATEGORY_PROMOTIONS");
+                        case "social":
+                            return labelSet.has("CATEGORY_SOCIAL");
+                        case "updates":
+                            return labelSet.has("CATEGORY_UPDATES");
+                        case "forums":
+                            return labelSet.has("CATEGORY_FORUMS");
+                        default:
+                            return false;
+                    }
+                })();
+                if (!match) return false;
             }
 
             if (shouldCheckText) {
@@ -306,6 +383,26 @@ export async function createEmailProvider(
                 const attachmentMatches = includesLooseTerm(attachmentBlob, attachmentIntentTerm);
                 // For "<term> attachment" requests, avoid body-only matches that create false positives.
                 if (!subjectMatches && !attachmentMatches) return false;
+            }
+
+            if (Array.isArray(options.attachmentMimeTypes) && options.attachmentMimeTypes.length > 0) {
+                const wanted = options.attachmentMimeTypes
+                    .map((value) => normalizeText(value))
+                    .filter((value) => value.length > 0);
+                if (wanted.length > 0) {
+                    const available = (message.attachments ?? [])
+                        .map((att) => normalizeText(att.mimeType))
+                        .filter((v) => v.length > 0);
+                    if (available.length === 0) return false;
+                    if (!wanted.some((needle) => available.some((mt) => mt.includes(needle)))) return false;
+                }
+            }
+
+            if (normalizeText(options.attachmentFilenameContains).length > 0) {
+                const needle = normalizeText(options.attachmentFilenameContains);
+                const names = (message.attachments ?? []).map((att) => normalizeText(att.filename));
+                if (names.length === 0) return false;
+                if (!names.some((name) => name.includes(needle))) return false;
             }
 
             if (options.sentByMe !== undefined) {
@@ -331,8 +428,18 @@ export async function createEmailProvider(
         text?: string;
         from?: string;
         to?: string;
+        cc?: string;
+        fromEmails?: string[];
+        fromDomains?: string[];
+        toEmails?: string[];
+        toDomains?: string[];
+        ccEmails?: string[];
+        ccDomains?: string[];
+        category?: "primary" | "promotions" | "social" | "updates" | "forums";
         hasAttachment?: boolean;
         attachmentIntentTerm?: string;
+        attachmentMimeTypes?: string[];
+        attachmentFilenameContains?: string;
         sentByMe?: boolean;
         receivedByMe?: boolean;
     }): boolean =>
@@ -342,8 +449,18 @@ export async function createEmailProvider(
             normalizeText(options.text) ||
             normalizeText(options.from) ||
             normalizeText(options.to) ||
+            normalizeText(options.cc) ||
+            (Array.isArray(options.fromEmails) && options.fromEmails.length > 0) ||
+            (Array.isArray(options.fromDomains) && options.fromDomains.length > 0) ||
+            (Array.isArray(options.toEmails) && options.toEmails.length > 0) ||
+            (Array.isArray(options.toDomains) && options.toDomains.length > 0) ||
+            (Array.isArray(options.ccEmails) && options.ccEmails.length > 0) ||
+            (Array.isArray(options.ccDomains) && options.ccDomains.length > 0) ||
+            normalizeText(options.category) ||
             normalizeText(options.attachmentIntentTerm) ||
             options.hasAttachment !== undefined ||
+            (Array.isArray(options.attachmentMimeTypes) && options.attachmentMimeTypes.length > 0) ||
+            normalizeText(options.attachmentFilenameContains) ||
             options.sentByMe !== undefined ||
             options.receivedByMe !== undefined,
         );
@@ -374,6 +491,14 @@ export async function createEmailProvider(
             text?: string;
             from?: string;
             to?: string;
+            cc?: string;
+            fromEmails?: string[];
+            fromDomains?: string[];
+            toEmails?: string[];
+            toDomains?: string[];
+            ccEmails?: string[];
+            ccDomains?: string[];
+            category?: "primary" | "promotions" | "social" | "updates" | "forums";
             hasAttachment?: boolean;
             attachmentIntentTerm?: string;
             sentByMe?: boolean;
@@ -383,11 +508,43 @@ export async function createEmailProvider(
         let query = params.baseQuery.trim();
         const { filters } = params;
 
+        const buildOrGroup = (field: "from" | "to" | "cc", values: string[]): string => {
+            const cleaned = values
+                .map((v) => v.trim())
+                .filter((v) => v.length > 0)
+                .map((v) => v.replace(/^@/u, ""));
+            if (cleaned.length === 0) return "";
+            const unique = Array.from(new Set(cleaned));
+            if (unique.length === 1) return `${field}:${quoteQueryValue(unique[0]!)}`;
+            return `${field}:(${unique.map((v) => quoteQueryValue(v)).join(" OR ")})`;
+        };
+
+        const fromGroup = buildOrGroup("from", [
+            ...(Array.isArray(filters.fromEmails) ? filters.fromEmails : []),
+            ...(Array.isArray(filters.fromDomains) ? filters.fromDomains : []),
+        ]);
+        if (fromGroup) query = appendQueryToken(query, fromGroup);
+
+        const toGroup = buildOrGroup("to", [
+            ...(Array.isArray(filters.toEmails) ? filters.toEmails : []),
+            ...(Array.isArray(filters.toDomains) ? filters.toDomains : []),
+        ]);
+        if (toGroup) query = appendQueryToken(query, toGroup);
+
+        const ccGroup = buildOrGroup("cc", [
+            ...(Array.isArray(filters.ccEmails) ? filters.ccEmails : []),
+            ...(Array.isArray(filters.ccDomains) ? filters.ccDomains : []),
+        ]);
+        if (ccGroup) query = appendQueryToken(query, ccGroup);
+
         const from = filters.from?.trim();
-        if (from) query = appendQueryToken(query, `from:${quoteQueryValue(from)}`);
+        if (from && !fromGroup) query = appendQueryToken(query, `from:${quoteQueryValue(from)}`);
 
         const to = filters.to?.trim();
-        if (to) query = appendQueryToken(query, `to:${quoteQueryValue(to)}`);
+        if (to && !toGroup) query = appendQueryToken(query, `to:${quoteQueryValue(to)}`);
+
+        const cc = filters.cc?.trim();
+        if (cc && !ccGroup) query = appendQueryToken(query, `cc:${quoteQueryValue(cc)}`);
 
         const subjectContains = filters.subjectContains?.trim();
         if (subjectContains) {
@@ -407,6 +564,10 @@ export async function createEmailProvider(
 
         if (filters.hasAttachment === true) {
             query = appendQueryToken(query, "has:attachment");
+        }
+
+        if (filters.category) {
+            query = appendQueryToken(query, `category:${filters.category}`);
         }
 
         if (filters.sentByMe === true) {
@@ -461,8 +622,18 @@ export async function createEmailProvider(
             text,
             from,
             to,
+            cc,
+            fromEmails,
+            fromDomains,
+            toEmails,
+            toDomains,
+            ccEmails,
+            ccDomains,
+            category,
             hasAttachment,
             attachmentIntentTerm,
+            attachmentMimeTypes,
+            attachmentFilenameContains,
             sentByMe,
             receivedByMe,
         }) => runThrottled("search", async () => {
@@ -499,8 +670,18 @@ export async function createEmailProvider(
                     text,
                     from,
                     to,
+                    cc,
+                    fromEmails,
+                    fromDomains,
+                    toEmails,
+                    toDomains,
+                    ccEmails,
+                    ccDomains,
+                    category,
                     hasAttachment,
                     attachmentIntentTerm,
+                    attachmentMimeTypes,
+                    attachmentFilenameContains,
                     sentByMe,
                     receivedByMe,
                 };
@@ -768,6 +949,8 @@ export async function createEmailProvider(
             if (params.type === "new") {
                 const res = await service.createDraft({
                     to: params.to?.join(", ") || "",
+                    cc: params.cc?.join(", "),
+                    bcc: params.bcc?.join(", "),
                     subject: params.subject || "",
                     messageHtml: params.body || "",
                 });
@@ -775,6 +958,8 @@ export async function createEmailProvider(
             } else if (params.type === "reply" && params.parentId) {
                 const res = await service.createDraft({
                     to: params.to?.join(", ") || "",
+                    cc: params.cc?.join(", "),
+                    bcc: params.bcc?.join(", "),
                     subject: params.subject || "",
                     messageHtml: params.body || "",
                     replyToMessageId: params.parentId
@@ -783,6 +968,8 @@ export async function createEmailProvider(
             } else if (params.type === "forward" && params.parentId) {
                 const res = await service.createDraft({
                     to: params.to?.join(", ") || "",
+                    cc: params.cc?.join(", "),
+                    bcc: params.bcc?.join(", "),
                     subject: params.subject || "",
                     messageHtml: params.body || "",
                 });

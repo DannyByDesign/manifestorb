@@ -23,24 +23,28 @@ import {
 } from "@/server/features/ai/tools/email/primitives";
 import {
   lookupSearchDocumentIds,
+  lookupSearchAliasExpansions,
   recordSearchSignals,
 } from "@/server/features/search/index/repository";
+import { extractEmailAddresses } from "@/server/lib/email";
+import prisma from "@/server/db/client";
 
 export interface EmailCapabilities {
   getUnreadCount(filter?: Record<string, unknown>): Promise<ToolResult>;
   searchThreads(filter: Record<string, unknown>): Promise<ToolResult>;
   searchThreadsAdvanced(filter: Record<string, unknown>): Promise<ToolResult>;
+  facetThreads(input: { filter?: Record<string, unknown>; maxFacets?: number; scanLimit?: number }): Promise<ToolResult>;
   searchSent(filter: Record<string, unknown>): Promise<ToolResult>;
   searchInbox(filter: Record<string, unknown>): Promise<ToolResult>;
   getThreadMessages(threadId: string): Promise<ToolResult>;
   getMessagesBatch(ids: string[]): Promise<ToolResult>;
   getLatestMessage(threadId: string): Promise<ToolResult>;
-  batchArchive(ids: string[]): Promise<ToolResult>;
-  batchTrash(ids: string[]): Promise<ToolResult>;
-  markReadUnread(ids: string[], read: boolean): Promise<ToolResult>;
-  applyLabels(ids: string[], labelIds: string[]): Promise<ToolResult>;
-  removeLabels(ids: string[], labelIds: string[]): Promise<ToolResult>;
-  moveThread(ids: string[], folderName: string): Promise<ToolResult>;
+  batchArchive(input: { ids?: string[]; filter?: Record<string, unknown>; limit?: number }): Promise<ToolResult>;
+  batchTrash(input: { ids?: string[]; filter?: Record<string, unknown>; limit?: number }): Promise<ToolResult>;
+  markReadUnread(input: { ids?: string[]; filter?: Record<string, unknown>; limit?: number; read: boolean }): Promise<ToolResult>;
+  applyLabels(input: { ids?: string[]; filter?: Record<string, unknown>; limit?: number; labelIds: string[] }): Promise<ToolResult>;
+  removeLabels(input: { ids?: string[]; filter?: Record<string, unknown>; limit?: number; labelIds: string[] }): Promise<ToolResult>;
+  moveThread(input: { ids?: string[]; filter?: Record<string, unknown>; limit?: number; folderName: string }): Promise<ToolResult>;
   markSpam(ids: string[]): Promise<ToolResult>;
   unsubscribeSender(filterOrIds: {
     ids?: string[];
@@ -91,6 +95,8 @@ export interface EmailCapabilities {
     parentId: string;
     body: string;
     subject?: string;
+    mode?: "send" | "draft";
+    replyAll?: boolean;
   }): Promise<ToolResult>;
   forward(input: {
     parentId: string;
@@ -241,10 +247,13 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         error: validatedFilter.error,
         message: validatedFilter.message,
         clarification: {
-          kind: "invalid_fields",
+          kind: validatedFilter.clarificationKind ?? "invalid_fields",
           prompt: validatedFilter.prompt,
           missingFields: validatedFilter.fields,
         },
+        data: validatedFilter.concept
+          ? { concept: validatedFilter.concept }
+          : undefined,
       };
     }
 
@@ -254,10 +263,274 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         ? (requestFilter.dateRange as Record<string, unknown>)
         : undefined;
 
+    const currentMessage = capEnv.toolContext.currentMessage ?? "";
+    const queryText = [
+      typeof requestFilter.query === "string" ? requestFilter.query : "",
+      typeof requestFilter.text === "string" ? requestFilter.text : "",
+      currentMessage,
+    ]
+      .join(" ")
+      .trim();
+    const lowerQueryText = queryText.toLowerCase();
+
+    const inferredUnrepliedToSent =
+      requestFilter.unrepliedToSent === true ||
+      /\b(no reply|no response|didn'?t get a reply|haven'?t heard back|unanswered)\b/u.test(
+        lowerQueryText,
+      );
+    const inferredPdfOnly =
+      /\bpdf\b/u.test(lowerQueryText) &&
+      (requestFilter.hasAttachment === true ||
+        /\battach(?:ment|ments)\b/u.test(lowerQueryText));
+    const inferredCc =
+      typeof requestFilter.cc === "string" && requestFilter.cc.trim().length > 0
+        ? requestFilter.cc.trim()
+        : (() => {
+            const match = lowerQueryText.match(
+              /\bcc['’]?(?:d)?\s*(?:by|from)?\s*([^\s,<>()]+@[^\s,<>()]+\.[^\s,<>()]+)/u,
+            );
+            return match?.[1]?.trim();
+          })();
+
     const mailbox =
       mailboxOverride ??
       (typeof requestFilter.mailbox === "string" ? requestFilter.mailbox : undefined) ??
       (requestFilter.sentByMe === true ? "sent" : undefined);
+
+    const fromConcept =
+      typeof requestFilter.fromConcept === "string" ? requestFilter.fromConcept.trim() : "";
+    if (fromConcept) {
+      return {
+        success: false,
+        error: "concept_definition_required",
+        clarification: {
+          kind: "concept_definition_required",
+          prompt: "email_identity_concept_requires_definition",
+        },
+        data: {
+          concept: { field: "from", value: fromConcept },
+        },
+      };
+    }
+    const toConcept =
+      typeof requestFilter.toConcept === "string" ? requestFilter.toConcept.trim() : "";
+    if (toConcept) {
+      return {
+        success: false,
+        error: "concept_definition_required",
+        clarification: {
+          kind: "concept_definition_required",
+          prompt: "email_identity_concept_requires_definition",
+        },
+        data: {
+          concept: { field: "to", value: toConcept },
+        },
+      };
+    }
+    const ccConcept =
+      typeof requestFilter.ccConcept === "string" ? requestFilter.ccConcept.trim() : "";
+    if (ccConcept) {
+      return {
+        success: false,
+        error: "concept_definition_required",
+        clarification: {
+          kind: "concept_definition_required",
+          prompt: "email_identity_concept_requires_definition",
+        },
+        data: {
+          concept: { field: "cc", value: ccConcept },
+        },
+      };
+    }
+
+    const requestFrom = typeof requestFilter.from === "string" ? requestFilter.from : undefined;
+    const requestTo = typeof requestFilter.to === "string" ? requestFilter.to : undefined;
+    const requestCc =
+      typeof requestFilter.cc === "string" ? requestFilter.cc : inferredCc;
+
+    const tryResolveSingleEmail = async (value: string | undefined): Promise<string[] | undefined> => {
+      const raw = (value ?? "").trim();
+      if (!raw) return undefined;
+      if (raw.includes("@")) return undefined;
+      if (/^[^\s@]+\.[^\s@]+$/u.test(raw)) return undefined;
+      try {
+        const aliasRows = await lookupSearchAliasExpansions({
+          userId: capEnv.runtime.userId,
+          emailAccountId: capEnv.runtime.emailAccountId,
+          terms: [raw],
+          limit: 40,
+        });
+        const candidates = Array.from(
+          new Set(
+            aliasRows
+              .filter((row) => row.entityType === "person")
+              .map((row) => row.canonicalValue)
+              .filter((v) => typeof v === "string" && v.includes("@")),
+          ),
+        );
+        return candidates.length === 1 ? candidates.slice(0, 1) : undefined;
+      } catch {
+        return undefined;
+      }
+    };
+
+    const fromEmails =
+      (Array.isArray(requestFilter.fromEmails) && requestFilter.fromEmails.length > 0
+        ? (requestFilter.fromEmails as string[])
+        : undefined) ?? (await tryResolveSingleEmail(requestFrom));
+    const fromDomains =
+      Array.isArray(requestFilter.fromDomains) && requestFilter.fromDomains.length > 0
+        ? (requestFilter.fromDomains as string[])
+        : undefined;
+    const toEmails =
+      (Array.isArray(requestFilter.toEmails) && requestFilter.toEmails.length > 0
+        ? (requestFilter.toEmails as string[])
+        : undefined) ?? (await tryResolveSingleEmail(requestTo));
+    const toDomains =
+      Array.isArray(requestFilter.toDomains) && requestFilter.toDomains.length > 0
+        ? (requestFilter.toDomains as string[])
+        : undefined;
+    const ccEmails =
+      (Array.isArray(requestFilter.ccEmails) && requestFilter.ccEmails.length > 0
+        ? (requestFilter.ccEmails as string[])
+        : undefined) ?? (await tryResolveSingleEmail(requestCc));
+    const ccDomains =
+      Array.isArray(requestFilter.ccDomains) && requestFilter.ccDomains.length > 0
+        ? (requestFilter.ccDomains as string[])
+        : undefined;
+
+    if (inferredUnrepliedToSent) {
+      try {
+        const beforeRaw =
+          dateRange && typeof dateRange.before === "string"
+            ? dateRange.before
+            : undefined;
+        const afterRaw =
+          dateRange && typeof dateRange.after === "string"
+            ? dateRange.after
+            : undefined;
+        const before = beforeRaw ? new Date(beforeRaw) : undefined;
+        const after = afterRaw ? new Date(afterRaw) : undefined;
+
+        const baseQuery =
+          typeof requestFilter.query === "string" && requestFilter.query.trim()
+            ? requestFilter.query.trim()
+            : "in:sent";
+
+        const search = await provider.search({
+          query: baseQuery,
+          text: typeof requestFilter.text === "string" ? requestFilter.text : undefined,
+          from: requestFrom,
+          fromEmails,
+          fromDomains,
+          to: requestTo,
+          toEmails,
+          toDomains,
+          cc: requestCc,
+          ccEmails,
+          ccDomains,
+          category:
+            requestFilter.category === "primary" ||
+            requestFilter.category === "promotions" ||
+            requestFilter.category === "social" ||
+            requestFilter.category === "updates" ||
+            requestFilter.category === "forums"
+              ? requestFilter.category
+              : undefined,
+          hasAttachment:
+            typeof requestFilter.hasAttachment === "boolean"
+              ? requestFilter.hasAttachment
+              : undefined,
+          attachmentMimeTypes: inferredPdfOnly
+            ? ["application/pdf", "pdf"]
+            : Array.isArray(requestFilter.attachmentMimeTypes)
+              ? (requestFilter.attachmentMimeTypes as string[])
+              : undefined,
+          attachmentFilenameContains:
+            typeof requestFilter.attachmentFilenameContains === "string"
+              ? requestFilter.attachmentFilenameContains
+              : undefined,
+          sentByMe: true,
+          before,
+          after,
+          limit:
+            typeof requestFilter.limit === "number" && Number.isFinite(requestFilter.limit)
+              ? Math.min(250, Math.trunc(requestFilter.limit))
+              : 150,
+          fetchAll: false,
+        });
+
+        const ownerEmail = (capEnv.runtime.email ?? "").trim().toLowerCase();
+        const candidates = Array.isArray(search.messages) ? search.messages : [];
+        const threadIds = Array.from(new Set(candidates.map((m) => m.threadId).filter(Boolean)));
+
+        const unrepliedThreads: Array<{
+          threadId: string;
+          messageId: string;
+          subject: string;
+          date: string;
+          to: string;
+          cc: string;
+        }> = [];
+
+        for (const threadId of threadIds.slice(0, 120)) {
+          try {
+            const thread = await provider.getThread(threadId);
+            const messages = Array.isArray(thread.messages) ? thread.messages : [];
+            if (messages.length === 0) continue;
+
+            const sorted = [...messages].sort((a, b) => {
+              const aTs = Date.parse(a.internalDate ?? a.date ?? "");
+              const bTs = Date.parse(b.internalDate ?? b.date ?? "");
+              return (Number.isFinite(aTs) ? aTs : 0) - (Number.isFinite(bTs) ? bTs : 0);
+            });
+
+            const sent = sorted.filter((m) => {
+              const fromHeader = (m.headers?.from ?? "").toLowerCase();
+              return ownerEmail.length > 0 && fromHeader.includes(ownerEmail);
+            });
+            const lastSent = sent[sent.length - 1];
+            if (!lastSent) continue;
+
+            const lastSentTs = Date.parse(lastSent.internalDate ?? lastSent.date ?? "");
+            if (!Number.isFinite(lastSentTs)) continue;
+
+            const hasReply = sorted.some((m) => {
+              const ts = Date.parse(m.internalDate ?? m.date ?? "");
+              if (!Number.isFinite(ts) || ts <= lastSentTs) return false;
+              const fromHeader = (m.headers?.from ?? "").toLowerCase();
+              return ownerEmail.length === 0 || !fromHeader.includes(ownerEmail);
+            });
+            if (hasReply) continue;
+
+            unrepliedThreads.push({
+              threadId,
+              messageId: lastSent.id,
+              subject: lastSent.subject || lastSent.headers?.subject || "(No subject)",
+              date: lastSent.internalDate ?? lastSent.date ?? "",
+              to: lastSent.headers?.to ?? "",
+              cc: lastSent.headers?.cc ?? "",
+            });
+          } catch {
+            continue;
+          }
+        }
+
+        return {
+          success: true,
+          data: unrepliedThreads,
+          message:
+            unrepliedThreads.length === 0
+              ? "No unreplied sent threads found in that window."
+              : `Found ${unrepliedThreads.length} sent thread${unrepliedThreads.length === 1 ? "" : "s"} without a reply.`,
+          meta: asMetaItemCount(unrepliedThreads.length),
+        };
+      } catch (error) {
+        return capabilityFailureResult(error, "I couldn't find unreplied sent threads right now.", {
+          resource: "email",
+        });
+      }
+    }
 
     try {
       const result = await unifiedSearch.query({
@@ -274,13 +547,22 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           typeof requestFilter.text === "string"
             ? requestFilter.text
             : undefined,
-        from:
-          typeof requestFilter.from === "string"
-            ? requestFilter.from
-            : undefined,
-        to:
-          typeof requestFilter.to === "string"
-            ? requestFilter.to
+        from: requestFrom,
+        to: requestTo,
+        cc: requestCc,
+        fromEmails,
+        fromDomains,
+        toEmails,
+        toDomains,
+        ccEmails,
+        ccDomains,
+        category:
+          requestFilter.category === "primary" ||
+          requestFilter.category === "promotions" ||
+          requestFilter.category === "social" ||
+          requestFilter.category === "updates" ||
+          requestFilter.category === "forums"
+            ? requestFilter.category
             : undefined,
         unread:
           typeof requestFilter.unread === "boolean"
@@ -289,6 +571,15 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         hasAttachment:
           typeof requestFilter.hasAttachment === "boolean"
             ? requestFilter.hasAttachment
+            : undefined,
+        attachmentMimeTypes: inferredPdfOnly
+          ? ["application/pdf", "pdf"]
+          : Array.isArray(requestFilter.attachmentMimeTypes)
+            ? (requestFilter.attachmentMimeTypes as string[])
+            : undefined,
+        attachmentFilenameContains:
+          typeof requestFilter.attachmentFilenameContains === "string"
+            ? requestFilter.attachmentFilenameContains
             : undefined,
         sort:
           requestFilter.sort === "relevance" ||
@@ -356,7 +647,9 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
               typeof metadata.from === "string" ? metadata.from : "",
             to: typeof metadata.to === "string" ? metadata.to : "",
             hasAttachment: metadata.hasAttachment === true,
-            attachmentNames: [],
+            attachmentNames: Array.isArray(metadata.attachmentNames)
+              ? metadata.attachmentNames
+              : [],
             score: item.score,
           };
         });
@@ -396,7 +689,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         message: "Unread count currently supports inbox scope only.",
         clarification: {
           kind: "invalid_fields",
-          prompt: "Try asking for unread inbox emails.",
+          prompt: "email_unread_count_scope_invalid",
           missingFields: ["scope"],
         },
       };
@@ -481,6 +774,78 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       .filter((id): id is string => typeof id === "string" && id.length > 0);
   };
 
+  const resolveMutationTargets = async (input: {
+    ids?: unknown;
+    filter?: unknown;
+    limit?: unknown;
+  }): Promise<{ ok: true; ids: string[] } | { ok: false; result: ToolResult }> => {
+    const rawIds = Array.isArray(input.ids)
+      ? input.ids.filter((id): id is string => typeof id === "string")
+      : [];
+
+    if (rawIds.length > 0) {
+      const ids = uniqueIds(rawIds);
+      if (ids.length === 0) {
+        return {
+          ok: false,
+          result: {
+            success: false,
+            error: "invalid_input:no ids",
+            clarification: {
+              kind: "missing_fields",
+              prompt: "email_bulk_target_required",
+              missingFields: ["ids"],
+            },
+          },
+        };
+      }
+      return { ok: true, ids };
+    }
+
+    const filter =
+      input.filter && typeof input.filter === "object" && !Array.isArray(input.filter)
+        ? (input.filter as Record<string, unknown>)
+        : null;
+    if (!filter) {
+      return {
+        ok: false,
+        result: {
+          success: false,
+          error: "invalid_input:missing_ids_or_filter",
+          clarification: {
+            kind: "missing_fields",
+            prompt: "email_bulk_target_required",
+            missingFields: ["ids_or_filter"],
+          },
+        },
+      };
+    }
+
+    const limit =
+      typeof input.limit === "number" && Number.isFinite(input.limit)
+        ? Math.max(1, Math.trunc(input.limit))
+        : undefined;
+
+    const ids = await runBulkIds({
+      ...filter,
+      ...(limit ? { limit } : {}),
+    });
+
+    if (ids.length === 0) {
+      return {
+        ok: false,
+        result: {
+          success: false,
+          error: "no_matching_emails",
+          message: "No matching emails found for that request.",
+          meta: asMetaItemCount(0),
+        },
+      };
+    }
+
+    return { ok: true, ids };
+  };
+
   return {
     async getUnreadCount(filter) {
       return runUnreadCount(filter);
@@ -492,6 +857,154 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
 
     async searchThreadsAdvanced(filter) {
       return runUnifiedSearchThreads(filter);
+    },
+
+    async facetThreads(input) {
+      const rawFilter =
+        input.filter && typeof input.filter === "object" && !Array.isArray(input.filter)
+          ? (input.filter as Record<string, unknown>)
+          : {};
+
+      const validatedFilter = validateEmailSearchFilter(rawFilter);
+      if (!validatedFilter.ok) {
+        return {
+          success: false,
+          error: validatedFilter.error,
+          message: validatedFilter.message,
+          clarification: {
+            kind: validatedFilter.clarificationKind ?? "invalid_fields",
+            prompt: validatedFilter.prompt,
+            missingFields: validatedFilter.fields,
+          },
+          data: validatedFilter.concept ? { concept: validatedFilter.concept } : undefined,
+        };
+      }
+
+      const filter = validatedFilter.filter;
+      const hasAnyConstraint = Boolean(
+        (typeof filter.query === "string" && filter.query.trim()) ||
+          (typeof filter.text === "string" && filter.text.trim()) ||
+          (typeof filter.from === "string" && filter.from.trim()) ||
+          (typeof filter.to === "string" && filter.to.trim()) ||
+          (typeof filter.cc === "string" && filter.cc.trim()) ||
+          (Array.isArray(filter.fromEmails) && filter.fromEmails.length > 0) ||
+          (Array.isArray(filter.fromDomains) && filter.fromDomains.length > 0) ||
+          (Array.isArray(filter.toEmails) && filter.toEmails.length > 0) ||
+          (Array.isArray(filter.toDomains) && filter.toDomains.length > 0) ||
+          (Array.isArray(filter.ccEmails) && filter.ccEmails.length > 0) ||
+          (Array.isArray(filter.ccDomains) && filter.ccDomains.length > 0) ||
+          (filter.dateRange && typeof filter.dateRange === "object") ||
+          typeof filter.unread === "boolean" ||
+          typeof filter.hasAttachment === "boolean" ||
+          typeof filter.category === "string",
+      );
+
+      if (!hasAnyConstraint) {
+        return {
+          success: false,
+          error: "clarification_required",
+          clarification: {
+            kind: "missing_fields",
+            prompt: "email_facet_target_required",
+            missingFields: ["filter"],
+          },
+        };
+      }
+
+      const dateRange =
+        filter.dateRange && typeof filter.dateRange === "object"
+          ? (filter.dateRange as Record<string, unknown>)
+          : undefined;
+      const before =
+        dateRange && typeof dateRange.before === "string" ? new Date(dateRange.before) : undefined;
+      const after =
+        dateRange && typeof dateRange.after === "string" ? new Date(dateRange.after) : undefined;
+
+      const scanLimit =
+        typeof input.scanLimit === "number" && Number.isFinite(input.scanLimit)
+          ? Math.max(20, Math.min(800, Math.trunc(input.scanLimit)))
+          : 250;
+
+      const search = await provider.search({
+        query: typeof filter.query === "string" ? filter.query : "",
+        text: typeof filter.text === "string" ? filter.text : undefined,
+        from: typeof filter.from === "string" ? filter.from : undefined,
+        to: typeof filter.to === "string" ? filter.to : undefined,
+        cc: typeof filter.cc === "string" ? filter.cc : undefined,
+        fromEmails: Array.isArray(filter.fromEmails) ? (filter.fromEmails as string[]) : undefined,
+        fromDomains: Array.isArray(filter.fromDomains) ? (filter.fromDomains as string[]) : undefined,
+        toEmails: Array.isArray(filter.toEmails) ? (filter.toEmails as string[]) : undefined,
+        toDomains: Array.isArray(filter.toDomains) ? (filter.toDomains as string[]) : undefined,
+        ccEmails: Array.isArray(filter.ccEmails) ? (filter.ccEmails as string[]) : undefined,
+        ccDomains: Array.isArray(filter.ccDomains) ? (filter.ccDomains as string[]) : undefined,
+        category:
+          filter.category === "primary" ||
+          filter.category === "promotions" ||
+          filter.category === "social" ||
+          filter.category === "updates" ||
+          filter.category === "forums"
+            ? (filter.category as any)
+            : undefined,
+        hasAttachment: typeof filter.hasAttachment === "boolean" ? (filter.hasAttachment as boolean) : undefined,
+        attachmentMimeTypes: Array.isArray(filter.attachmentMimeTypes) ? (filter.attachmentMimeTypes as string[]) : undefined,
+        attachmentFilenameContains: typeof filter.attachmentFilenameContains === "string" ? filter.attachmentFilenameContains : undefined,
+        before,
+        after,
+        limit: scanLimit,
+        fetchAll: false,
+      });
+
+      const messages = Array.isArray(search.messages) ? search.messages : [];
+      const maxFacets =
+        typeof input.maxFacets === "number" && Number.isFinite(input.maxFacets)
+          ? Math.max(3, Math.min(25, Math.trunc(input.maxFacets)))
+          : 10;
+
+      const senderCounts = new Map<string, { count: number; sampleThreadIds: string[] }>();
+      const domainCounts = new Map<string, { count: number; sampleThreadIds: string[] }>();
+
+      for (const message of messages) {
+        const fromHeader = message.headers?.from ?? "";
+        const emails = extractEmailAddresses(fromHeader).map((e) => e.toLowerCase());
+        const threadId = message.threadId ?? "";
+        for (const email of emails.slice(0, 1)) {
+          const current = senderCounts.get(email) ?? { count: 0, sampleThreadIds: [] };
+          current.count += 1;
+          if (threadId && current.sampleThreadIds.length < 5 && !current.sampleThreadIds.includes(threadId)) {
+            current.sampleThreadIds.push(threadId);
+          }
+          senderCounts.set(email, current);
+
+          const domain = email.split("@")[1] ?? "";
+          if (domain) {
+            const domCurrent = domainCounts.get(domain) ?? { count: 0, sampleThreadIds: [] };
+            domCurrent.count += 1;
+            if (threadId && domCurrent.sampleThreadIds.length < 5 && !domCurrent.sampleThreadIds.includes(threadId)) {
+              domCurrent.sampleThreadIds.push(threadId);
+            }
+            domainCounts.set(domain, domCurrent);
+          }
+        }
+      }
+
+      const topSenders = Array.from(senderCounts.entries())
+        .sort((a, b) => b[1].count - a[1].count)
+        .slice(0, maxFacets)
+        .map(([email, stats]) => ({ email, count: stats.count, sampleThreadIds: stats.sampleThreadIds }));
+      const topDomains = Array.from(domainCounts.entries())
+        .sort((a, b) => b[1].count - a[1].count)
+        .slice(0, maxFacets)
+        .map(([domain, stats]) => ({ domain, count: stats.count, sampleThreadIds: stats.sampleThreadIds }));
+
+      return {
+        success: true,
+        data: {
+          scannedMessages: messages.length,
+          topSenders,
+          topDomains,
+        },
+        meta: asMetaItemCount(topSenders.length + topDomains.length),
+      };
     },
 
     async searchSent(filter) {
@@ -536,7 +1049,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           message: "I need at least one message id.",
           clarification: {
             kind: "missing_fields",
-            prompt: "Which email should I inspect?",
+            prompt: "email_message_id_required",
             missingFields: ["message_ids"],
           },
         };
@@ -598,15 +1111,17 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       }
     },
 
-    async batchArchive(ids) {
-      const messageIds = await coerceToMessageIds(capEnv, ids);
+    async batchArchive(input) {
+      const resolved = await resolveMutationTargets(input);
+      if (!resolved.ok) return resolved.result;
+      const messageIds = await coerceToMessageIds(capEnv, resolved.ids);
       if (messageIds.length === 0) {
         return {
           success: false,
           error: "invalid_input:no message ids",
           clarification: {
             kind: "missing_fields",
-            prompt: "I need at least one email or thread to archive.",
+            prompt: "email_archive_target_required",
             missingFields: ["thread_ids"],
           },
         };
@@ -634,15 +1149,17 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       }
     },
 
-    async batchTrash(ids) {
-      const messageIds = await coerceToMessageIds(capEnv, ids);
+    async batchTrash(input) {
+      const resolved = await resolveMutationTargets(input);
+      if (!resolved.ok) return resolved.result;
+      const messageIds = await coerceToMessageIds(capEnv, resolved.ids);
       if (messageIds.length === 0) {
         return {
           success: false,
           error: "invalid_input:no message ids",
           clarification: {
             kind: "missing_fields",
-            prompt: "I need at least one email or thread to trash.",
+            prompt: "email_trash_target_required",
             missingFields: ["thread_ids"],
           },
         };
@@ -670,15 +1187,18 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       }
     },
 
-    async markReadUnread(ids, read) {
-      const messageIds = await coerceToMessageIds(capEnv, ids);
+    async markReadUnread(input) {
+      const resolved = await resolveMutationTargets(input);
+      if (!resolved.ok) return resolved.result;
+      const messageIds = await coerceToMessageIds(capEnv, resolved.ids);
+      const read = Boolean(input.read);
       if (messageIds.length === 0) {
         return {
           success: false,
           error: "invalid_input:no message ids",
           clarification: {
             kind: "missing_fields",
-            prompt: "I need at least one email or thread for read/unread changes.",
+            prompt: "email_mark_read_target_required",
             missingFields: ["thread_ids"],
           },
         };
@@ -709,16 +1229,18 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       }
     },
 
-    async applyLabels(ids, labelIds) {
-      const messageIds = await coerceToMessageIds(capEnv, ids);
-      const normalizedLabels = uniqueIds(labelIds);
+    async applyLabels(input) {
+      const resolved = await resolveMutationTargets(input);
+      if (!resolved.ok) return resolved.result;
+      const messageIds = await coerceToMessageIds(capEnv, resolved.ids);
+      const normalizedLabels = uniqueIds(Array.isArray(input.labelIds) ? input.labelIds : []);
       if (messageIds.length === 0 || normalizedLabels.length === 0) {
         return {
           success: false,
           error: "invalid_input:missing ids or labels",
           clarification: {
             kind: "missing_fields",
-            prompt: "I need target emails and at least one label.",
+            prompt: "email_apply_labels_target_required",
             missingFields: ["thread_ids", "label_ids"],
           },
         };
@@ -740,16 +1262,18 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       }
     },
 
-    async removeLabels(ids, labelIds) {
-      const messageIds = await coerceToMessageIds(capEnv, ids);
-      const normalizedLabels = uniqueIds(labelIds);
+    async removeLabels(input) {
+      const resolved = await resolveMutationTargets(input);
+      if (!resolved.ok) return resolved.result;
+      const messageIds = await coerceToMessageIds(capEnv, resolved.ids);
+      const normalizedLabels = uniqueIds(Array.isArray(input.labelIds) ? input.labelIds : []);
       if (messageIds.length === 0 || normalizedLabels.length === 0) {
         return {
           success: false,
           error: "invalid_input:missing ids or labels",
           clarification: {
             kind: "missing_fields",
-            prompt: "I need target emails and labels to remove.",
+            prompt: "email_remove_labels_target_required",
             missingFields: ["thread_ids", "label_ids"],
           },
         };
@@ -771,15 +1295,18 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       }
     },
 
-    async moveThread(ids, folderName) {
-      const threadIds = await coerceToThreadIds(capEnv, ids);
+    async moveThread(input) {
+      const resolved = await resolveMutationTargets(input);
+      if (!resolved.ok) return resolved.result;
+      const threadIds = await coerceToThreadIds(capEnv, resolved.ids);
+      const folderName = String(input.folderName ?? "");
       if (threadIds.length === 0 || !folderName.trim()) {
         return {
           success: false,
           error: "invalid_input:missing thread or folder",
           clarification: {
             kind: "missing_fields",
-            prompt: "I need target emails and a destination folder.",
+            prompt: "email_move_thread_target_required",
             missingFields: ["thread_ids", "folder_name"],
           },
         };
@@ -809,7 +1336,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           error: "invalid_input:no thread ids",
           clarification: {
             kind: "missing_fields",
-            prompt: "I need at least one email thread to mark as spam.",
+            prompt: "email_spam_target_required",
             missingFields: ["thread_ids"],
           },
         };
@@ -850,8 +1377,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
             error: "invalid_input:no matching ids",
             clarification: {
               kind: "missing_fields",
-              prompt:
-                "I couldn't find matching subscription emails. Which sender should I target?",
+              prompt: "email_unsubscribe_target_required",
               missingFields: ["sender_or_domain"],
             },
           };
@@ -887,7 +1413,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           error: "invalid_input:no message ids",
           clarification: {
             kind: "missing_fields",
-            prompt: "I need at least one sender email thread to block.",
+            prompt: "email_block_sender_target_required",
             missingFields: ["thread_ids"],
           },
         };
@@ -993,7 +1519,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           error: "invalid_input:no ids",
           clarification: {
             kind: "missing_fields",
-            prompt: "I need the target thread(s) to defer.",
+            prompt: "email_snooze_target_required",
             missingFields: ["thread_ids"],
           },
         };
@@ -1004,7 +1530,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           error: "invalid_input:missing defer-until",
           clarification: {
             kind: "missing_fields",
-            prompt: "What time should I defer these to?",
+            prompt: "email_snooze_time_required",
             missingFields: ["defer_until"],
           },
         };
@@ -1055,7 +1581,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           error: "invalid_input:missing sender",
           clarification: {
             kind: "missing_fields",
-            prompt: "Which sender/domain should this filter target?",
+            prompt: "email_filter_sender_required",
             missingFields: ["from"],
           },
         };
@@ -1100,7 +1626,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           error: "invalid_input:missing filter id",
           clarification: {
             kind: "missing_fields",
-            prompt: "Which filter should I delete?",
+            prompt: "email_filter_id_required",
             missingFields: ["filter_id"],
           },
         };
@@ -1147,7 +1673,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           error: "invalid_input:missing draft id",
           clarification: {
             kind: "missing_fields",
-            prompt: "Which draft should I inspect?",
+            prompt: "email_draft_id_required",
             missingFields: ["draft_id"],
           },
         };
@@ -1179,13 +1705,13 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           return {
             success: false,
             error: "recipient_missing",
-            clarification: {
-              kind: "missing_fields",
-              prompt: "Who should this email be sent to?",
-              missingFields: ["recipient"],
-            },
-          };
-        }
+          clarification: {
+            kind: "missing_fields",
+            prompt: "email_send_now_recipients_required",
+            missingFields: ["recipient"],
+          },
+        };
+      }
 
         const result = await provider.createDraft({
           type: draftType,
@@ -1227,7 +1753,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           error: "invalid_input:missing draft id",
           clarification: {
             kind: "missing_fields",
-            prompt: "Which draft should I update?",
+            prompt: "email_draft_id_required",
             missingFields: ["draft_id"],
           },
         };
@@ -1239,7 +1765,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           error: "invalid_input:no update fields",
           clarification: {
             kind: "missing_fields",
-            prompt: "What should I change in this draft?",
+            prompt: "email_draft_update_changes_required",
             missingFields: ["subject_or_body"],
           },
         };
@@ -1271,7 +1797,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           error: "invalid_input:missing draft id",
           clarification: {
             kind: "missing_fields",
-            prompt: "Which draft should I delete?",
+            prompt: "email_draft_id_required",
             missingFields: ["draft_id"],
           },
         };
@@ -1299,7 +1825,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           error: "invalid_input:missing draft id",
           clarification: {
             kind: "missing_fields",
-            prompt: "Which draft should I send?",
+            prompt: "email_draft_id_required",
             missingFields: ["draft_id"],
           },
         };
@@ -1342,7 +1868,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           error: "invalid_input:missing send fields",
           clarification: {
             kind: "missing_fields",
-            prompt: "I need recipients and a message body to send now.",
+            prompt: "email_send_now_missing_fields",
             missingFields: ["recipient", "body"],
           },
         };
@@ -1372,13 +1898,129 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
     },
 
     async reply(input) {
+      const parent = String(input.parentId ?? "").trim();
+      if (!parent) {
+        return {
+          success: false,
+          error: "invalid_input:missing_parent_id",
+          clarification: {
+            kind: "missing_fields",
+            prompt: "email_reply_parent_required",
+            missingFields: ["parentId"],
+          },
+        };
+      }
+      const body = String(input.body ?? "").trim();
+      if (!body) {
+        return {
+          success: false,
+          error: "invalid_input:missing_body",
+          clarification: {
+            kind: "missing_fields",
+            prompt: "email_reply_body_required",
+            missingFields: ["body"],
+          },
+        };
+      }
+
+      const mode: "send" | "draft" = input.mode === "draft" ? "draft" : "send";
+      const replyAll = input.replyAll === true;
+
+      let parentMessage: any = null;
+      try {
+        const byId = await provider.get([parent]);
+        parentMessage = Array.isArray(byId) && byId.length > 0 ? byId[0] : null;
+      } catch {
+        parentMessage = null;
+      }
+
+      if (!parentMessage) {
+        try {
+          const thread = await provider.getThread(parent);
+          const messages = Array.isArray(thread.messages) ? thread.messages : [];
+          parentMessage =
+            messages.length > 0
+              ? [...messages].sort((a, b) => {
+                  const aMs = Date.parse(a.internalDate ?? a.date ?? "");
+                  const bMs = Date.parse(b.internalDate ?? b.date ?? "");
+                  return (Number.isFinite(bMs) ? bMs : 0) - (Number.isFinite(aMs) ? aMs : 0);
+                })[0]
+              : null;
+        } catch {
+          parentMessage = null;
+        }
+      }
+
+      if (!parentMessage?.id) {
+        return {
+          success: false,
+          error: "parent_not_found",
+          message: "I couldn't find the email/thread to reply to.",
+        };
+      }
+
+      const ownerEmail = (capEnv.runtime.email ?? "").trim().toLowerCase();
+      const fromEmails = extractEmailAddresses(parentMessage.headers?.from ?? "");
+      const replyToEmails = extractEmailAddresses(parentMessage.headers?.["reply-to"] ?? "");
+      const primaryRecipient = (replyToEmails[0] ?? fromEmails[0] ?? "").trim();
+
+      const toAddresses = replyAll
+        ? (() => {
+            const candidates = [
+              primaryRecipient,
+              ...extractEmailAddresses(parentMessage.headers?.to ?? ""),
+            ]
+              .map((v) => v.trim())
+              .filter(Boolean);
+            const set = new Set(
+              candidates.filter((email) => email.toLowerCase() !== ownerEmail),
+            );
+            return Array.from(set);
+          })()
+        : primaryRecipient
+          ? [primaryRecipient]
+          : [];
+
+      const ccAddresses = replyAll
+        ? (() => {
+            const candidates = [
+              ...extractEmailAddresses(parentMessage.headers?.cc ?? ""),
+              ...extractEmailAddresses(parentMessage.headers?.to ?? ""),
+            ]
+              .map((v) => v.trim())
+              .filter(Boolean);
+            const excluded = new Set(
+              [ownerEmail, ...toAddresses.map((v) => v.toLowerCase())].filter(Boolean),
+            );
+            const set = new Set(
+              candidates.filter((email) => !excluded.has(email.toLowerCase())),
+            );
+            return Array.from(set);
+          })()
+        : [];
+
       try {
         const draft = await provider.createDraft({
           type: "reply",
-          parentId: input.parentId,
+          parentId: parentMessage.id,
+          ...(toAddresses.length > 0 ? { to: toAddresses } : {}),
+          ...(ccAddresses.length > 0 ? { cc: ccAddresses } : {}),
           subject: input.subject,
-          body: input.body,
+          body,
         });
+
+        if (mode === "draft") {
+          return {
+            success: true,
+            data: {
+              draftId: draft.draftId,
+              preview: draft.preview,
+            },
+            message: "Draft reply created.",
+            meta: asMetaItemCount(1),
+          };
+        }
+
         const sendResult = await provider.sendDraft(draft.draftId);
         return {
           success: true,
@@ -1394,10 +2036,56 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
     },
 
     async forward(input) {
+      const parent = String(input.parentId ?? "").trim();
+      if (!parent) {
+        return {
+          success: false,
+          error: "parent_id_missing",
+          clarification: {
+            kind: "missing_fields",
+            prompt: "email_forward_parent_required",
+            missingFields: ["parentId"],
+          },
+        };
+      }
+
+      let parentMessage: any = null;
+      try {
+        const byId = await provider.get([parent]);
+        parentMessage = Array.isArray(byId) && byId.length > 0 ? byId[0] : null;
+      } catch {
+        parentMessage = null;
+      }
+
+      if (!parentMessage) {
+        try {
+          const thread = await provider.getThread(parent);
+          const messages = Array.isArray(thread.messages) ? thread.messages : [];
+          parentMessage =
+            messages.length > 0
+              ? [...messages].sort((a, b) => {
+                  const aMs = Date.parse(a.internalDate ?? a.date ?? "");
+                  const bMs = Date.parse(b.internalDate ?? b.date ?? "");
+                  return (Number.isFinite(bMs) ? bMs : 0) - (Number.isFinite(aMs) ? aMs : 0);
+                })[0]
+              : null;
+        } catch {
+          parentMessage = null;
+        }
+      }
+
+      if (!parentMessage?.id) {
+        return {
+          success: false,
+          error: "parent_not_found",
+          message: "I couldn't find the email/thread to forward.",
+        };
+      }
+
       try {
         const draft = await provider.createDraft({
           type: "forward",
-          parentId: input.parentId,
+          parentId: parentMessage.id,
           to: input.to,
           subject: input.subject,
           body: input.body ?? "",
@@ -1433,7 +2121,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           message: resolvedTimeZone.error,
           clarification: {
             kind: "invalid_fields",
-            prompt: "Please set a valid integration timezone before scheduling send.",
+            prompt: "email_schedule_send_timezone_required",
             missingFields: ["timeZone"],
           },
         };
@@ -1459,17 +2147,6 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         };
       }
 
-      if (!appEnv.QSTASH_TOKEN) {
-        return {
-          success: false,
-          error: "unsupported:qstash_not_configured",
-          message:
-            "Scheduled send requires QStash configuration in this environment.",
-        };
-      }
-
-      const client = new Client({ token: appEnv.QSTASH_TOKEN });
-      const url = `${getInternalApiUrl()}/api/drafts/schedule-send/execute`;
       const notBefore = Math.floor(sendAt.getTime() / 1000);
       const deduplicationId = createCapabilityIdempotencyKey({
         scope: "message",
@@ -1481,28 +2158,67 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       });
 
       try {
-        const response = await client.publishJSON({
-          url,
-          body: {
-            emailAccountId: capEnv.runtime.emailAccountId,
-            draftId,
-          },
-          notBefore,
-          deduplicationId,
-          contentBasedDeduplication: false,
-          headers: getCronSecretHeader(),
-          retries: 3,
-        });
+        const scheduledDraftSend = await (async () => {
+          try {
+            return await prisma.scheduledDraftSend.create({
+              data: {
+                userId: capEnv.runtime.userId,
+                emailAccountId: capEnv.runtime.emailAccountId,
+                draftId,
+                sendAt,
+                idempotencyKey: deduplicationId,
+                status: "PENDING",
+                ...(capEnv.runtime.conversationId
+                  ? { sourceConversationId: capEnv.runtime.conversationId }
+                  : {}),
+              },
+            });
+          } catch (error: any) {
+            // If we already scheduled this draft+timestamp, return the existing row deterministically.
+            if (typeof error?.code === "string" && error.code === "P2002") {
+              const existing = await prisma.scheduledDraftSend.findUnique({
+                where: { idempotencyKey: deduplicationId },
+              });
+              if (existing) return existing;
+            }
+            throw error;
+          }
+        })();
 
-        const scheduledId =
-          response && typeof response === "object" && "messageId" in response
-            ? (response.messageId as string | undefined)
-            : undefined;
+        let qstashMessageId: string | null = null;
+        if (appEnv.QSTASH_TOKEN) {
+          const client = new Client({ token: appEnv.QSTASH_TOKEN });
+          const url = `${getInternalApiUrl()}/api/drafts/schedule-send/execute`;
+          const response = await client.publishJSON({
+            url,
+            body: {
+              emailAccountId: capEnv.runtime.emailAccountId,
+              draftId,
+            },
+            notBefore,
+            deduplicationId,
+            contentBasedDeduplication: false,
+            headers: getCronSecretHeader(),
+            retries: 3,
+          });
+          qstashMessageId =
+            response && typeof response === "object" && "messageId" in response
+              ? (response.messageId as string | undefined) ?? null
+              : null;
+
+          if (qstashMessageId) {
+            await prisma.scheduledDraftSend.update({
+              where: { id: scheduledDraftSend.id },
+              data: { scheduledId: qstashMessageId },
+            });
+          }
+        }
 
         return {
           success: true,
           data: {
-            scheduledId: scheduledId ?? null,
+            scheduleId: scheduledDraftSend.id,
+            scheduledId: qstashMessageId,
             sendAt: sendAt.toISOString(),
             idempotencyKey: deduplicationId,
           },

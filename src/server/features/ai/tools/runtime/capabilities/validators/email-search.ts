@@ -62,6 +62,31 @@ function sanitizeSort(
   return value;
 }
 
+function sanitizeCategory(
+  value: unknown,
+): "primary" | "promotions" | "social" | "updates" | "forums" | undefined {
+  if (
+    value !== "primary" &&
+    value !== "promotions" &&
+    value !== "social" &&
+    value !== "updates" &&
+    value !== "forums"
+  ) {
+    return undefined;
+  }
+  return value;
+}
+
+function sanitizeStringArray(value: unknown, max = 20): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out = value
+    .filter((entry): entry is string => typeof entry === "string")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+    .slice(0, max);
+  return out.length > 0 ? out : undefined;
+}
+
 export type EmailSearchFilterValidationResult =
   | {
       ok: true;
@@ -72,7 +97,12 @@ export type EmailSearchFilterValidationResult =
       error: string;
       message: string;
       prompt: string;
-      fields: string[];
+      fields?: string[];
+      clarificationKind?: "invalid_fields" | "concept_definition_required";
+      concept?: {
+        field: "from" | "to" | "cc";
+        value: string;
+      };
     };
 
 export function validateEmailSearchFilter(
@@ -119,6 +149,83 @@ export function validateEmailSearchFilter(
     delete sanitized.to;
   }
 
+  const cc = normalizeStringValue(filter.cc);
+  if (cc) {
+    sanitized.cc = cc;
+  } else {
+    delete sanitized.cc;
+  }
+
+  const fromConcept = normalizeStringValue(filter.fromConcept);
+  if (fromConcept) {
+    sanitized.fromConcept = fromConcept;
+  } else {
+    delete sanitized.fromConcept;
+  }
+
+  const toConcept = normalizeStringValue(filter.toConcept);
+  if (toConcept) {
+    sanitized.toConcept = toConcept;
+  } else {
+    delete sanitized.toConcept;
+  }
+
+  const ccConcept = normalizeStringValue(filter.ccConcept);
+  if (ccConcept) {
+    sanitized.ccConcept = ccConcept;
+  } else {
+    delete sanitized.ccConcept;
+  }
+
+  const fromEmails = sanitizeStringArray(filter.fromEmails, 50);
+  if (fromEmails) {
+    sanitized.fromEmails = fromEmails;
+  } else {
+    delete sanitized.fromEmails;
+  }
+
+  const fromDomains = sanitizeStringArray(filter.fromDomains, 50);
+  if (fromDomains) {
+    sanitized.fromDomains = fromDomains;
+  } else {
+    delete sanitized.fromDomains;
+  }
+
+  const toEmails = sanitizeStringArray(filter.toEmails, 50);
+  if (toEmails) {
+    sanitized.toEmails = toEmails;
+  } else {
+    delete sanitized.toEmails;
+  }
+
+  const toDomains = sanitizeStringArray(filter.toDomains, 50);
+  if (toDomains) {
+    sanitized.toDomains = toDomains;
+  } else {
+    delete sanitized.toDomains;
+  }
+
+  const ccEmails = sanitizeStringArray(filter.ccEmails, 50);
+  if (ccEmails) {
+    sanitized.ccEmails = ccEmails;
+  } else {
+    delete sanitized.ccEmails;
+  }
+
+  const ccDomains = sanitizeStringArray(filter.ccDomains, 50);
+  if (ccDomains) {
+    sanitized.ccDomains = ccDomains;
+  } else {
+    delete sanitized.ccDomains;
+  }
+
+  const category = sanitizeCategory(filter.category);
+  if (category) {
+    sanitized.category = category;
+  } else {
+    delete sanitized.category;
+  }
+
   const dateRange = sanitizeDateRange(filter.dateRange);
   if (dateRange) {
     sanitized.dateRange = dateRange;
@@ -145,6 +252,27 @@ export function validateEmailSearchFilter(
     sanitized.sort = sort;
   } else {
     delete sanitized.sort;
+  }
+
+  const attachmentMimeTypes = sanitizeStringArray(filter.attachmentMimeTypes, 20);
+  if (attachmentMimeTypes) {
+    sanitized.attachmentMimeTypes = attachmentMimeTypes;
+  } else {
+    delete sanitized.attachmentMimeTypes;
+  }
+
+  const attachmentFilenameContains = normalizeStringValue(filter.attachmentFilenameContains);
+  if (attachmentFilenameContains) {
+    sanitized.attachmentFilenameContains = attachmentFilenameContains;
+  } else {
+    delete sanitized.attachmentFilenameContains;
+  }
+
+  const unrepliedToSent = sanitizeBoolean(filter.unrepliedToSent);
+  if (typeof unrepliedToSent === "boolean") {
+    sanitized.unrepliedToSent = unrepliedToSent;
+  } else {
+    delete sanitized.unrepliedToSent;
   }
 
   return {

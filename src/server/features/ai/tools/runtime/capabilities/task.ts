@@ -19,6 +19,8 @@ import {
 
 export interface TaskCapabilities {
   reschedule(input: Record<string, unknown>): Promise<ToolResult>;
+  list(input: Record<string, unknown>): Promise<ToolResult>;
+  bulkReschedule(input: Record<string, unknown>): Promise<ToolResult>;
 }
 
 type ResolveTaskResult =
@@ -87,7 +89,7 @@ export function createTaskCapabilities(env: CapabilityEnvironment): TaskCapabili
           error: "task_missing",
           clarification: {
             kind: "missing_fields",
-            prompt: "Which task should I reschedule?",
+            prompt: "task_reschedule_target_required",
             missingFields: ["taskId or taskTitle"],
           },
         } as ToolResult,
@@ -152,6 +154,171 @@ export function createTaskCapabilities(env: CapabilityEnvironment): TaskCapabili
   };
 
   return {
+    async list(input) {
+      try {
+        const defaultTimeZone = await resolveDefaultCalendarTimeZone({
+          userId: env.runtime.userId,
+          emailAccountId: env.runtime.emailAccountId,
+        });
+        const timeZone = "error" in defaultTimeZone ? "UTC" : defaultTimeZone.timeZone;
+
+        const limitRaw = typeof input.limit === "number" ? input.limit : undefined;
+        const limit = typeof limitRaw === "number" && Number.isFinite(limitRaw)
+          ? Math.min(100, Math.max(1, Math.trunc(limitRaw)))
+          : 25;
+
+        const dueRange =
+          input.dueDateRange && typeof input.dueDateRange === "object" && !Array.isArray(input.dueDateRange)
+            ? (input.dueDateRange as Record<string, unknown>)
+            : input.dateRange && typeof input.dateRange === "object" && !Array.isArray(input.dateRange)
+              ? (input.dateRange as Record<string, unknown>)
+              : undefined;
+
+        const afterRaw = safeString(dueRange?.after) ?? safeString(input.after);
+        const beforeRaw = safeString(dueRange?.before) ?? safeString(input.before);
+        const after = afterRaw ? parseDateBoundInTimeZone(afterRaw, timeZone, "start") : undefined;
+        const before = beforeRaw ? parseDateBoundInTimeZone(beforeRaw, timeZone, "end") : undefined;
+
+        const tasks = await prisma.task.findMany({
+          where: {
+            userId: env.runtime.userId,
+            status: { notIn: ["COMPLETED", "CANCELLED"] },
+            ...(after || before
+              ? {
+                  dueDate: {
+                    ...(after ? { gte: after } : {}),
+                    ...(before ? { lte: before } : {}),
+                  },
+                }
+              : {}),
+          },
+          orderBy: [{ dueDate: "asc" }, { updatedAt: "desc" }],
+          take: limit,
+        });
+
+        return {
+          success: true,
+          data: tasks.map((task) => ({
+            id: task.id,
+            title: task.title,
+            status: task.status,
+            priority: task.priority,
+            durationMinutes: task.durationMinutes,
+            dueDate: task.dueDate?.toISOString() ?? null,
+            scheduledStart: task.scheduledStart?.toISOString() ?? null,
+            scheduledEnd: task.scheduledEnd?.toISOString() ?? null,
+          })),
+          message:
+            tasks.length === 0
+              ? "No matching tasks found."
+              : `Found ${tasks.length} task${tasks.length === 1 ? "" : "s"}.`,
+          meta: { resource: "task", itemCount: tasks.length },
+        };
+      } catch (error) {
+        return taskFailure(error, "I couldn't list tasks right now.");
+      }
+    },
+
+    async bulkReschedule(input) {
+      try {
+        const limitRaw = typeof input.limit === "number" ? input.limit : undefined;
+        const limit = typeof limitRaw === "number" && Number.isFinite(limitRaw)
+          ? Math.min(50, Math.max(1, Math.trunc(limitRaw)))
+          : 20;
+
+        const dueRange =
+          input.dueDateRange && typeof input.dueDateRange === "object" && !Array.isArray(input.dueDateRange)
+            ? (input.dueDateRange as Record<string, unknown>)
+            : input.dateRange && typeof input.dateRange === "object" && !Array.isArray(input.dateRange)
+              ? (input.dateRange as Record<string, unknown>)
+              : undefined;
+
+        const defaultTimeZone = await resolveDefaultCalendarTimeZone({
+          userId: env.runtime.userId,
+          emailAccountId: env.runtime.emailAccountId,
+        });
+        const timeZone = "error" in defaultTimeZone ? "UTC" : defaultTimeZone.timeZone;
+
+        const afterRaw = safeString(dueRange?.after) ?? safeString(input.after);
+        const beforeRaw = safeString(dueRange?.before) ?? safeString(input.before);
+        const after = afterRaw ? parseDateBoundInTimeZone(afterRaw, timeZone, "start") : undefined;
+        const before = beforeRaw ? parseDateBoundInTimeZone(beforeRaw, timeZone, "end") : undefined;
+
+        const tasks = await prisma.task.findMany({
+          where: {
+            userId: env.runtime.userId,
+            status: { notIn: ["COMPLETED", "CANCELLED"] },
+            ...(after || before
+              ? {
+                  dueDate: {
+                    ...(after ? { gte: after } : {}),
+                    ...(before ? { lte: before } : {}),
+                  },
+                }
+              : {}),
+          },
+          orderBy: [{ dueDate: "asc" }, { updatedAt: "desc" }],
+          take: limit,
+        });
+
+        if (tasks.length === 0) {
+          return {
+            success: true,
+            data: { rescheduled: 0, attempted: 0, results: [] },
+            message: "No tasks matched that request.",
+            meta: { resource: "task", itemCount: 0 },
+          };
+        }
+
+        const windowStart = safeString(input.windowStart) ?? safeString(input.after) ?? safeString(input.start);
+        const windowEnd = safeString(input.windowEnd) ?? safeString(input.before) ?? safeString(input.end);
+
+        const results: Array<{ taskId: string; ok: boolean; error?: string; calendarEventId?: string | null }> = [];
+        let rescheduled = 0;
+
+        for (const task of tasks) {
+          const result = await this.reschedule({
+            taskId: task.id,
+            changes: {
+              ...(windowStart ? { after: windowStart } : {}),
+              ...(windowEnd ? { before: windowEnd } : {}),
+              updateCalendarEvent: true,
+              createCalendarEvent: true,
+              timeZone,
+            },
+          });
+          if (result.success) {
+            const data = result.data && typeof result.data === "object" ? (result.data as Record<string, unknown>) : {};
+            results.push({
+              taskId: task.id,
+              ok: true,
+              calendarEventId: typeof data.calendarEventId === "string" ? data.calendarEventId : null,
+            });
+            rescheduled += 1;
+          } else {
+            results.push({
+              taskId: task.id,
+              ok: false,
+              error: typeof result.error === "string" ? result.error : result.message,
+            });
+          }
+        }
+
+        return {
+          success: rescheduled === tasks.length,
+          data: {
+            attempted: tasks.length,
+            rescheduled,
+            results,
+          },
+          message: `Rescheduled ${rescheduled} of ${tasks.length} task${tasks.length === 1 ? "" : "s"}.`,
+          meta: { resource: "task", itemCount: rescheduled },
+        };
+      } catch (error) {
+        return taskFailure(error, "I couldn't bulk reschedule tasks right now.");
+      }
+    },
+
     async reschedule(input) {
       try {
         const taskResult = await resolveTask(input);
@@ -188,7 +355,7 @@ export function createTaskCapabilities(env: CapabilityEnvironment): TaskCapabili
             message: resolvedTimeZone.error,
             clarification: {
               kind: "invalid_fields",
-              prompt: "Please provide a valid IANA timezone, like America/Los_Angeles.",
+              prompt: "time_zone_invalid",
               missingFields: ["timeZone"],
             },
           };
@@ -218,7 +385,18 @@ export function createTaskCapabilities(env: CapabilityEnvironment): TaskCapabili
           };
         }
 
-        const durationMinutes = Math.max(5, task.durationMinutes ?? 30);
+        const requestedDurationRaw =
+          typeof changes.durationMinutes === "number"
+            ? changes.durationMinutes
+            : typeof changes.duration === "number"
+              ? changes.duration
+              : undefined;
+        const requestedDurationMinutes =
+          typeof requestedDurationRaw === "number" && Number.isFinite(requestedDurationRaw)
+            ? Math.max(5, Math.min(24 * 60, Math.trunc(requestedDurationRaw)))
+            : undefined;
+
+        const durationMinutes = Math.max(5, requestedDurationMinutes ?? task.durationMinutes ?? 30);
         let start = explicitStart;
         let end = explicitEnd;
 
@@ -302,6 +480,7 @@ export function createTaskCapabilities(env: CapabilityEnvironment): TaskCapabili
             scheduledEnd: end,
             isAutoScheduled: true,
             lastScheduled: new Date(),
+            ...(requestedDurationMinutes !== undefined ? { durationMinutes: requestedDurationMinutes } : {}),
           },
         });
 

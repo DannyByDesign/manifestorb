@@ -20,12 +20,19 @@ import {
   updateCalendarEvent,
 } from "@/server/features/ai/tools/calendar/primitives";
 import { createUnifiedSearchService } from "@/server/features/search/unified/service";
+import {
+  ensureCalendarSelectionInvariant,
+  isLikelyNoisyCalendar,
+} from "@/server/features/calendar/selection-invariant";
 
 export interface CalendarCapabilities {
   findAvailability(filter: Record<string, unknown>): Promise<ToolResult>;
   listEvents(filter: Record<string, unknown>): Promise<ToolResult>;
   searchEventsByAttendee(filter: Record<string, unknown>): Promise<ToolResult>;
   getEvent(input: { eventId: string; calendarId?: string }): Promise<ToolResult>;
+  listCalendars(): Promise<ToolResult>;
+  setEnabledCalendars(input: Record<string, unknown>): Promise<ToolResult>;
+  setSelectedCalendars(input: Record<string, unknown>): Promise<ToolResult>;
   createEvent(data: Record<string, unknown>): Promise<ToolResult>;
   updateEvent(input: {
     eventId: string;
@@ -49,7 +56,11 @@ export interface CalendarCapabilities {
     mode: "single" | "series";
     changes?: Record<string, unknown>;
   }): Promise<ToolResult>;
-  rescheduleEvent(eventIds: string[], changes: Record<string, unknown>): Promise<ToolResult>;
+  rescheduleEvent(input: {
+    eventIds?: string[];
+    filter?: Record<string, unknown>;
+    changes?: Record<string, unknown>;
+  }): Promise<ToolResult>;
   setWorkingHours(changes: Record<string, unknown>): Promise<ToolResult>;
   setWorkingLocation(changes: Record<string, unknown>): Promise<ToolResult>;
   setOutOfOffice(data: Record<string, unknown>): Promise<ToolResult>;
@@ -187,7 +198,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           message: resolvedWindow.error,
           clarification: {
             kind: "invalid_fields",
-            prompt: "Please provide a valid calendar date range.",
+            prompt: "calendar_date_range_invalid",
             missingFields: ["dateRange.after", "dateRange.before"],
           },
         },
@@ -227,7 +238,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
             message: startResult.error,
             clarification: {
               kind: "invalid_fields",
-              prompt: "I need a valid start datetime for availability checks.",
+              prompt: "calendar_availability_start_invalid",
               missingFields: ["start"],
             },
           };
@@ -244,7 +255,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
             message: endResult.error,
             clarification: {
               kind: "invalid_fields",
-              prompt: "I need a valid end datetime for availability checks.",
+              prompt: "calendar_availability_end_invalid",
               missingFields: ["end"],
             },
           };
@@ -278,6 +289,13 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
         const resolvedDateRange = await resolveUnifiedCalendarDateRange(filterRecord);
         if ("errorResult" in resolvedDateRange) return resolvedDateRange.errorResult;
 
+        const calendarIds = Array.from(
+          new Set([
+            ...toStringArray(filterRecord.calendarIds),
+            ...(safeString(filterRecord.calendarId) ? [safeString(filterRecord.calendarId)!] : []),
+          ]),
+        ).filter(Boolean);
+
         const result = await unifiedSearch.query({
           scopes: ["calendar"],
           query:
@@ -285,6 +303,11 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
             safeString(filterRecord.titleContains),
           text: safeString(filterRecord.text),
           attendeeEmail: safeString(filterRecord.attendeeEmail),
+          calendarIds: calendarIds.length > 0 ? calendarIds : undefined,
+          locationContains:
+            safeString(filterRecord.locationContains) ??
+            safeString(filterRecord.location) ??
+            undefined,
           dateRange: resolvedDateRange.dateRange,
           limit:
             typeof filterRecord.limit === "number" && Number.isFinite(filterRecord.limit)
@@ -325,6 +348,12 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
               attendees: Array.isArray(metadata.attendees)
                 ? metadata.attendees
                 : [],
+              organizerEmail:
+                typeof metadata.authorIdentity === "string"
+                  ? metadata.authorIdentity
+                  : null,
+              calendarId:
+                typeof metadata.calendarId === "string" ? metadata.calendarId : null,
               location:
                 typeof metadata.location === "string"
                   ? metadata.location
@@ -366,6 +395,19 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
             safeString(filterRecord.titleContains),
           text: safeString(filterRecord.text),
           attendeeEmail,
+          calendarIds: (() => {
+            const ids = Array.from(
+              new Set([
+                ...toStringArray(filterRecord.calendarIds),
+                ...(safeString(filterRecord.calendarId) ? [safeString(filterRecord.calendarId)!] : []),
+              ]),
+            ).filter(Boolean);
+            return ids.length > 0 ? ids : undefined;
+          })(),
+          locationContains:
+            safeString(filterRecord.locationContains) ??
+            safeString(filterRecord.location) ??
+            undefined,
           dateRange: resolvedDateRange.dateRange,
           limit:
             typeof filterRecord.limit === "number" && Number.isFinite(filterRecord.limit)
@@ -437,7 +479,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           error: "event_id_missing",
           clarification: {
             kind: "missing_fields",
-            prompt: "Which event should I inspect?",
+            prompt: "calendar_event_id_required",
             missingFields: ["event_id"],
           },
         };
@@ -458,6 +500,193 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
       }
     },
 
+    async listCalendars() {
+      try {
+        const connections = await prisma.calendarConnection.findMany({
+          where: {
+            emailAccountId: env.runtime.emailAccountId,
+            isConnected: true,
+            emailAccount: { userId: env.runtime.userId },
+          },
+          select: {
+            provider: true,
+            email: true,
+            calendars: {
+              select: {
+                calendarId: true,
+                name: true,
+                description: true,
+                primary: true,
+                isEnabled: true,
+                createdAt: true,
+              },
+            },
+          },
+        });
+
+        const calendars = connections.flatMap((connection) =>
+          connection.calendars.map((calendar) => ({
+            calendarId: calendar.calendarId,
+            name: calendar.name,
+            description: calendar.description,
+            provider: connection.provider,
+            connectionEmail: connection.email,
+            primary: calendar.primary,
+            isEnabled: calendar.isEnabled,
+            isLikelyNoisy: isLikelyNoisyCalendar({
+              calendarId: calendar.calendarId,
+              name: calendar.name,
+              description: calendar.description,
+              provider: connection.provider,
+            }),
+            createdAt: calendar.createdAt.toISOString(),
+          })),
+        );
+
+        const enabledCount = calendars.filter((c) => c.isEnabled).length;
+        return {
+          success: true,
+          data: calendars,
+          meta: { resource: "calendar", itemCount: calendars.length },
+          message:
+            calendars.length === 0
+              ? "No connected calendars found."
+              : `Found ${calendars.length} calendar${calendars.length === 1 ? "" : "s"} (${enabledCount} enabled).`,
+        };
+      } catch (error) {
+        return calendarFailure(error, "I couldn't list your calendars right now.");
+      }
+    },
+
+    async setEnabledCalendars(input) {
+      const enableOnlyIds = toStringArray(input.enableOnlyIds);
+      const enableIds = toStringArray(input.enableIds);
+      const disableIds = toStringArray(input.disableIds);
+      const enablePrimaryNonNoisy = input.enablePrimaryNonNoisy === true;
+
+      try {
+        let enabledAdded = 0;
+        let enabledRemoved = 0;
+
+        if (enableOnlyIds.length > 0) {
+          const disableAll = await prisma.calendar.updateMany({
+            where: {
+              connection: {
+                emailAccountId: env.runtime.emailAccountId,
+                isConnected: true,
+              },
+              isEnabled: true,
+              calendarId: { notIn: enableOnlyIds },
+            },
+            data: { isEnabled: false },
+          });
+          enabledRemoved += disableAll.count;
+
+          const enableSome = await prisma.calendar.updateMany({
+            where: {
+              connection: {
+                emailAccountId: env.runtime.emailAccountId,
+                isConnected: true,
+              },
+              calendarId: { in: enableOnlyIds },
+              isEnabled: false,
+            },
+            data: { isEnabled: true },
+          });
+          enabledAdded += enableSome.count;
+        } else {
+          if (disableIds.length > 0) {
+            const res = await prisma.calendar.updateMany({
+              where: {
+                connection: {
+                  emailAccountId: env.runtime.emailAccountId,
+                  isConnected: true,
+                },
+                calendarId: { in: disableIds },
+                isEnabled: true,
+              },
+              data: { isEnabled: false },
+            });
+            enabledRemoved += res.count;
+          }
+          if (enableIds.length > 0) {
+            const res = await prisma.calendar.updateMany({
+              where: {
+                connection: {
+                  emailAccountId: env.runtime.emailAccountId,
+                  isConnected: true,
+                },
+                calendarId: { in: enableIds },
+                isEnabled: false,
+              },
+              data: { isEnabled: true },
+            });
+            enabledAdded += res.count;
+          }
+        }
+
+        const invariant = enablePrimaryNonNoisy
+          ? await ensureCalendarSelectionInvariant({
+              userId: env.runtime.userId,
+              emailAccountId: env.runtime.emailAccountId,
+              logger: env.runtime.logger,
+              source: "calendar.setEnabledCalendars",
+            })
+          : null;
+
+        return {
+          success: true,
+          data: {
+            enabledAdded,
+            enabledRemoved,
+            ...(invariant ? { invariant } : {}),
+          },
+          message: enablePrimaryNonNoisy
+            ? "Updated enabled calendars and re-applied selection invariant."
+            : "Updated enabled calendars.",
+          meta: { resource: "preferences", itemCount: 1 },
+        };
+      } catch (error) {
+        return calendarFailure(error, "I couldn't update enabled calendars right now.");
+      }
+    },
+
+    async setSelectedCalendars(input) {
+      const selected = Array.from(new Set(toStringArray(input.selectedCalendarIds)));
+      if (selected.length === 0) {
+        return {
+          success: false,
+          error: "selected_calendars_missing",
+          clarification: {
+            kind: "missing_fields",
+            prompt: "calendar_selection_required",
+            missingFields: ["selectedCalendarIds"],
+          },
+        };
+      }
+      try {
+        const updated = await prisma.taskPreference.upsert({
+          where: { userId: env.runtime.userId },
+          create: {
+            userId: env.runtime.userId,
+            selectedCalendarIds: selected,
+          },
+          update: {
+            selectedCalendarIds: selected,
+          },
+        });
+
+        return {
+          success: true,
+          data: { selectedCalendarIds: updated.selectedCalendarIds },
+          message: "Selected calendars updated.",
+          meta: { resource: "preferences", itemCount: 1 },
+        };
+      } catch (error) {
+        return calendarFailure(error, "I couldn't update selected calendars right now.");
+      }
+    },
+
     async createEvent(data) {
       const title = safeString(data.title) ?? "New event";
       const requestedTimeZone = resolveRequestedTimeZone(data);
@@ -469,7 +698,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           message: resolvedTimeZone.error,
           clarification: {
             kind: "invalid_fields",
-            prompt: "Please provide a valid IANA timezone, like America/Los_Angeles.",
+            prompt: "calendar_timezone_invalid",
             missingFields: ["timeZone"],
           },
         };
@@ -490,7 +719,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           error: "invalid_event_time",
           clarification: {
             kind: "missing_fields",
-            prompt: "I need a valid start and end time to create that event.",
+            prompt: "calendar_event_time_required",
             missingFields: ["start", "end"],
           },
         };
@@ -546,7 +775,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           error: "event_id_missing",
           clarification: {
             kind: "missing_fields",
-            prompt: "Which event should I update?",
+            prompt: "calendar_event_id_required",
             missingFields: ["event_id"],
           },
         };
@@ -567,7 +796,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
             message: resolvedTimeZone.error,
             clarification: {
               kind: "invalid_fields",
-              prompt: "Please provide a valid IANA timezone, like America/Los_Angeles.",
+              prompt: "calendar_timezone_invalid",
               missingFields: ["changes.timeZone"],
             },
           };
@@ -588,7 +817,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
             error: "invalid_event_time",
             clarification: {
               kind: "invalid_fields",
-              prompt: "I need valid start/end date values for that update.",
+              prompt: "calendar_event_time_invalid",
               missingFields: ["changes.start", "changes.end"],
             },
           };
@@ -649,7 +878,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           error: "event_id_missing",
           clarification: {
             kind: "missing_fields",
-            prompt: "Which event should I delete?",
+            prompt: "calendar_event_id_required",
             missingFields: ["event_id"],
           },
         };
@@ -682,7 +911,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           error: "event_id_missing",
           clarification: {
             kind: "missing_fields",
-            prompt: "Which event should I update attendees for?",
+            prompt: "calendar_event_id_required",
             missingFields: ["event_id"],
           },
         };
@@ -694,7 +923,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           error: "attendees_missing",
           clarification: {
             kind: "missing_fields",
-            prompt: "Who should be on this event?",
+            prompt: "calendar_event_attendees_required",
             missingFields: ["attendees"],
           },
         };
@@ -732,7 +961,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           error: "event_id_missing",
           clarification: {
             kind: "missing_fields",
-            prompt: "Which recurring event should I update?",
+            prompt: "calendar_event_id_required",
             missingFields: ["event_id"],
           },
         };
@@ -776,22 +1005,122 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
       }
     },
 
-    async rescheduleEvent(eventIds, changes) {
-      const targetEventId = eventIds.find((id) => id.trim().length > 0);
-      if (!targetEventId) {
-        return {
-          success: false,
-          error: "event_id_missing",
-          clarification: {
-            kind: "missing_fields",
-            prompt: "Which event should I reschedule?",
-            missingFields: ["event_id"],
-          },
-        };
-      }
+    async rescheduleEvent(input) {
+      const changes =
+        input.changes && typeof input.changes === "object" && !Array.isArray(input.changes)
+          ? (input.changes as Record<string, unknown>)
+          : {};
 
-      try {
-        const requestedTimeZone = resolveRequestedTimeZone(changes as Record<string, unknown>);
+      const explicitIds = Array.isArray(input.eventIds)
+        ? input.eventIds.map((id) => id.trim()).filter(Boolean)
+        : [];
+
+      const resolveTargets = async (): Promise<
+        | { ok: true; eventIds: string[] }
+        | { ok: false; result: ToolResult }
+      > => {
+        if (explicitIds.length > 0) return { ok: true, eventIds: explicitIds };
+
+        const filter = input.filter ?? {};
+        const query = safeString(filter.query) ?? safeString(filter.titleContains) ?? safeString(filter.text);
+        const attendeeEmail = safeString(filter.attendeeEmail);
+        const calendarIds = Array.from(
+          new Set([
+            ...toStringArray(filter.calendarIds),
+            ...(safeString(filter.calendarId) ? [safeString(filter.calendarId)!] : []),
+          ]),
+        ).filter(Boolean);
+        const dateRange =
+          filter.dateRange && typeof filter.dateRange === "object" && !Array.isArray(filter.dateRange)
+            ? (filter.dateRange as Record<string, unknown>)
+            : {
+                after: safeString(filter.after),
+                before: safeString(filter.before),
+                timeZone: safeString(filter.timeZone) ?? safeString(changes.timeZone) ?? safeString(changes.timezone),
+              };
+        const limitRaw = typeof filter.limit === "number" ? filter.limit : undefined;
+        const limit = typeof limitRaw === "number" && Number.isFinite(limitRaw)
+          ? Math.min(10, Math.max(1, Math.trunc(limitRaw)))
+          : 5;
+
+        const results = await unifiedSearch.query({
+          scopes: ["calendar"],
+          query: query ?? undefined,
+          attendeeEmail,
+          calendarIds: calendarIds.length > 0 ? calendarIds : undefined,
+          dateRange: {
+            ...(safeString(dateRange.after) ? { after: safeString(dateRange.after) } : {}),
+            ...(safeString(dateRange.before) ? { before: safeString(dateRange.before) } : {}),
+            ...(safeString(dateRange.timeZone) ? { timeZone: safeString(dateRange.timeZone) } : {}),
+          },
+          limit,
+        });
+
+        const candidates = results.items
+          .filter((item) => item.surface === "calendar")
+          .map((item) => {
+            const metadata =
+              item.metadata && typeof item.metadata === "object"
+                ? (item.metadata as Record<string, unknown>)
+                : {};
+            const eventId =
+              typeof metadata.eventId === "string"
+                ? metadata.eventId
+                : typeof metadata.sourceId === "string"
+                  ? metadata.sourceId
+                  : item.id.includes(":")
+                    ? item.id.split(":").slice(1).join(":")
+                    : item.id;
+            return {
+              eventId,
+              title: item.title,
+              start: typeof metadata.start === "string" ? metadata.start : item.timestamp ?? null,
+              end: typeof metadata.end === "string" ? metadata.end : null,
+              organizerEmail: typeof metadata.authorIdentity === "string" ? metadata.authorIdentity : null,
+            };
+          });
+
+        if (candidates.length === 0) {
+          return {
+            ok: false,
+            result: {
+              success: false,
+              error: "event_not_found",
+              message: "I couldn't find a matching event to reschedule.",
+              clarification: {
+                kind: "missing_fields",
+                prompt: "calendar_reschedule_target_required",
+                missingFields: ["eventIds or filter"],
+              },
+            },
+          };
+        }
+
+        if (candidates.length > 1) {
+          return {
+            ok: false,
+            result: {
+              success: false,
+              error: "event_ambiguous",
+              message: "I found multiple matching events.",
+              clarification: {
+                kind: "resource",
+                prompt: "calendar_reschedule_target_ambiguous",
+                missingFields: ["eventIds"],
+              },
+              data: { candidates: candidates.slice(0, 5) },
+            },
+          };
+        }
+
+        return { ok: true, eventIds: [candidates[0]!.eventId] };
+      };
+
+      const targets = await resolveTargets();
+      if (!targets.ok) return targets.result;
+
+      const rescheduleOne = async (targetEventId: string): Promise<ToolResult> => {
+        const requestedTimeZone = resolveRequestedTimeZone(changes);
         const resolvedTimeZone = await resolveEffectiveTimeZone(requestedTimeZone);
         if ("error" in resolvedTimeZone) {
           return {
@@ -800,7 +1129,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
             message: resolvedTimeZone.error,
             clarification: {
               kind: "invalid_fields",
-              prompt: "Please provide a valid IANA timezone, like America/Los_Angeles.",
+              prompt: "calendar_timezone_invalid",
               missingFields: ["timeZone"],
             },
           };
@@ -810,11 +1139,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
         const explicitEndRaw = safeString(changes.end);
         const explicitStart =
           explicitStartRaw != null
-            ? parseDateBoundInTimeZone(
-                explicitStartRaw,
-                resolvedTimeZone.timeZone,
-                "start",
-              )
+            ? parseDateBoundInTimeZone(explicitStartRaw, resolvedTimeZone.timeZone, "start")
             : undefined;
         const explicitEnd =
           explicitEndRaw != null
@@ -825,15 +1150,19 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           return {
             success: false,
             error: "invalid_reschedule_window",
-            message:
-              "I need valid start/end values to reschedule. Use ISO-8601 or local datetime.",
+            message: "I need valid start/end values to reschedule. Use ISO-8601 or local datetime.",
           };
         }
 
         const current = await getCalendarEvent(provider, { eventId: targetEventId });
-        if (!current) return { success: false, error: "event_not_found", message: "I couldn't find that event." };
+        if (!current) {
+          return { success: false, error: "event_not_found", message: "I couldn't find that event." };
+        }
 
-        const durationMs = Math.max(15 * 60 * 1000, current.endTime.getTime() - current.startTime.getTime());
+        const durationMs = Math.max(
+          15 * 60 * 1000,
+          current.endTime.getTime() - current.startTime.getTime(),
+        );
 
         let start = explicitStart;
         let end = explicitEnd;
@@ -845,11 +1174,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           const windowEndRaw = safeString(changes.before) ?? safeString(changes.windowEnd);
           const parsedWindowStart =
             windowStartRaw != null
-              ? parseDateBoundInTimeZone(
-                  windowStartRaw,
-                  resolvedTimeZone.timeZone,
-                  "start",
-                )
+              ? parseDateBoundInTimeZone(windowStartRaw, resolvedTimeZone.timeZone, "start")
               : undefined;
           const parsedWindowEnd =
             windowEndRaw != null
@@ -860,15 +1185,12 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
             return {
               success: false,
               error: "invalid_reschedule_window",
-              message:
-                "I couldn't parse the reschedule window. Use ISO-8601 or local datetime values.",
+              message: "I couldn't parse the reschedule window. Use ISO-8601 or local datetime values.",
             };
           }
 
           const windowStart = parsedWindowStart ?? new Date(current.endTime.getTime() + 60 * 1000);
-          const windowEnd =
-            parsedWindowEnd ??
-            new Date(windowStart.getTime() + rescheduleWindowDurationMs);
+          const windowEnd = parsedWindowEnd ?? new Date(windowStart.getTime() + rescheduleWindowDurationMs);
           const durationMinutes = Math.max(1, Math.round(durationMs / 60_000));
           const slots = await findCalendarAvailability(provider, {
             durationMinutes,
@@ -890,7 +1212,11 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
         }
 
         if (!start || !end || start.getTime() >= end.getTime()) {
-          return { success: false, error: "invalid_reschedule_window", message: "I couldn't determine a valid new time." };
+          return {
+            success: false,
+            error: "invalid_reschedule_window",
+            message: "I couldn't determine a valid new time.",
+          };
         }
 
         const updateInput: CalendarEventUpdateInput = {
@@ -902,6 +1228,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           eventId: targetEventId,
           event: updateInput,
         });
+
         return {
           success: true,
           data: {
@@ -910,25 +1237,33 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
             previousEnd: current.endTime.toISOString(),
             newStart: updated.startTime.toISOString(),
             newEnd: updated.endTime.toISOString(),
-            previousStartLocal: formatDateTimeForUser(
-              current.startTime,
-              resolvedTimeZone.timeZone,
-            ),
-            previousEndLocal: formatDateTimeForUser(
-              current.endTime,
-              resolvedTimeZone.timeZone,
-            ),
-            newStartLocal: formatDateTimeForUser(
-              updated.startTime,
-              resolvedTimeZone.timeZone,
-            ),
-            newEndLocal: formatDateTimeForUser(
-              updated.endTime,
-              resolvedTimeZone.timeZone,
-            ),
+            previousStartLocal: formatDateTimeForUser(current.startTime, resolvedTimeZone.timeZone),
+            previousEndLocal: formatDateTimeForUser(current.endTime, resolvedTimeZone.timeZone),
+            newStartLocal: formatDateTimeForUser(updated.startTime, resolvedTimeZone.timeZone),
+            newEndLocal: formatDateTimeForUser(updated.endTime, resolvedTimeZone.timeZone),
           },
           message: "Event rescheduled.",
           meta: { resource: "calendar", itemCount: 1 },
+        };
+      };
+
+      try {
+        const results: Array<{ eventId: string; ok: boolean; data?: unknown; error?: string }> = [];
+        let okCount = 0;
+        for (const eventId of targets.eventIds) {
+          const result = await rescheduleOne(eventId);
+          if (result.success) {
+            okCount += 1;
+            results.push({ eventId, ok: true, data: result.data });
+          } else {
+            results.push({ eventId, ok: false, error: result.error ?? result.message ?? "failed" });
+          }
+        }
+        return {
+          success: okCount === targets.eventIds.length,
+          data: { attempted: targets.eventIds.length, rescheduled: okCount, results },
+          message: `Rescheduled ${okCount} of ${targets.eventIds.length} event${targets.eventIds.length === 1 ? "" : "s"}.`,
+          meta: { resource: "calendar", itemCount: okCount },
         };
       } catch (error) {
         return calendarFailure(error, "I couldn't reschedule that event right now.");
@@ -987,19 +1322,82 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           error: "working_location_missing",
           clarification: {
             kind: "missing_fields",
-            prompt: "What working location should I set?",
+            prompt: "calendar_working_location_required",
             missingFields: ["working_location"],
           },
         };
       }
 
-      // Placeholder until provider-specific working-location support is added.
-      return {
-        success: false,
-        error: "unsupported_working_location",
-        message:
-          "Working location updates are not yet supported by this environment. I can create a calendar event note as a fallback.",
-      };
+      const requestedTimeZone = resolveRequestedTimeZone(changes);
+      const resolvedTimeZone = await resolveEffectiveTimeZone(requestedTimeZone);
+      if ("error" in resolvedTimeZone) {
+        return {
+          success: false,
+          error: "invalid_time_zone",
+          message: resolvedTimeZone.error,
+          clarification: {
+            kind: "invalid_fields",
+            prompt: "calendar_timezone_invalid",
+            missingFields: ["timeZone"],
+          },
+        };
+      }
+
+      const startRaw =
+        safeString(changes.start) ??
+        safeString(changes.date) ??
+        (env.toolContext.currentMessage?.toLowerCase().includes("tomorrow")
+          ? "tomorrow"
+          : env.toolContext.currentMessage?.toLowerCase().includes("today")
+            ? "today"
+            : undefined);
+      const endRaw =
+        safeString(changes.end) ??
+        safeString(changes.date) ??
+        (startRaw ? startRaw : undefined);
+
+      const start = parseDateBoundInTimeZone(startRaw, resolvedTimeZone.timeZone, "start");
+      const end = parseDateBoundInTimeZone(endRaw, resolvedTimeZone.timeZone, "end");
+      if (!start || !end || start.getTime() >= end.getTime()) {
+        return {
+          success: false,
+          error: "invalid_working_location_window",
+          clarification: {
+            kind: "missing_fields",
+            prompt: "calendar_working_location_time_invalid",
+            missingFields: ["date_or_window"],
+          },
+        };
+      }
+
+      try {
+        const event = await createCalendarEvent(provider, {
+          event: {
+            title: `Working from ${location}`,
+            location,
+            start,
+            end,
+            allDay: true,
+            timeZone: resolvedTimeZone.timeZone,
+          },
+        });
+        return {
+          success: true,
+          data: {
+            id: event.id,
+            start: event.startTime.toISOString(),
+            end: event.endTime.toISOString(),
+            startLocal: formatDateTimeForUser(event.startTime, resolvedTimeZone.timeZone),
+            endLocal: formatDateTimeForUser(event.endTime, resolvedTimeZone.timeZone),
+            location,
+            timeZone: resolvedTimeZone.timeZone,
+          },
+          message: "Working location saved as a calendar block.",
+          meta: { resource: "calendar", itemCount: 1 },
+        };
+      } catch (error) {
+        return calendarFailure(error, "I couldn't set working location right now.");
+      }
     },
 
     async setOutOfOffice(data) {
@@ -1012,7 +1410,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           message: resolvedTimeZone.error,
           clarification: {
             kind: "invalid_fields",
-            prompt: "Please provide a valid IANA timezone, like America/Los_Angeles.",
+            prompt: "calendar_timezone_invalid",
             missingFields: ["timeZone"],
           },
         };
@@ -1033,7 +1431,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           error: "invalid_ooo_window",
           clarification: {
             kind: "missing_fields",
-            prompt: "I need a valid out-of-office start and end time.",
+            prompt: "calendar_out_of_office_time_required",
             missingFields: ["ooo_window.start", "ooo_window.end"],
           },
         };
@@ -1081,7 +1479,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           message: resolvedTimeZone.error,
           clarification: {
             kind: "invalid_fields",
-            prompt: "Please provide a valid IANA timezone, like America/Los_Angeles.",
+            prompt: "calendar_timezone_invalid",
             missingFields: ["timeZone"],
           },
         };
@@ -1102,7 +1500,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           error: "invalid_focus_window",
           clarification: {
             kind: "missing_fields",
-            prompt: "I need a valid focus-time start and end window.",
+            prompt: "calendar_focus_block_time_required",
             missingFields: ["focus_block_window.start", "focus_block_window.end"],
           },
         };
@@ -1148,24 +1546,64 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
             ? String((data as Record<string, unknown>).booking_link)
             : null;
 
-      if (!bookingLink || bookingLink.trim().length === 0) {
-        return {
-          success: false,
-          error: "missing_booking_link",
-          message: "I need a booking link to set up your booking page.",
-          clarification: { kind: "missing_fields", prompt: "What is your booking link URL?", missingFields: ["booking_link"] },
-        };
-      }
-
       try {
-        await prisma.emailAccount.update({
-          where: { id: env.runtime.emailAccountId },
-          data: { calendarBookingLink: bookingLink.trim() },
-        });
+        const durationMinutesRaw =
+          typeof (data as Record<string, unknown>).durationMinutes === "number"
+            ? (data as Record<string, unknown>).durationMinutes
+            : typeof (data as Record<string, unknown>).meetingDurationMin === "number"
+              ? (data as Record<string, unknown>).meetingDurationMin
+              : undefined;
+        const durationMinutes =
+          typeof durationMinutesRaw === "number" && Number.isFinite(durationMinutesRaw)
+            ? Math.max(5, Math.min(240, Math.trunc(durationMinutesRaw)))
+            : undefined;
+        const slotCountRaw =
+          typeof (data as Record<string, unknown>).slotCount === "number"
+            ? (data as Record<string, unknown>).slotCount
+            : undefined;
+        const slotCount =
+          typeof slotCountRaw === "number" && Number.isFinite(slotCountRaw)
+            ? Math.max(1, Math.min(10, Math.trunc(slotCountRaw)))
+            : undefined;
+
+        const timeZone = safeString((data as Record<string, unknown>).timeZone);
+
+        const [accountUpdated, prefUpdated] = await prisma.$transaction([
+          bookingLink && bookingLink.trim().length > 0
+            ? prisma.emailAccount.update({
+                where: { id: env.runtime.emailAccountId },
+                data: { calendarBookingLink: bookingLink.trim() },
+              })
+            : prisma.emailAccount.findUniqueOrThrow({
+                where: { id: env.runtime.emailAccountId },
+              }),
+          prisma.taskPreference.upsert({
+            where: { userId: env.runtime.userId },
+            create: {
+              userId: env.runtime.userId,
+              ...(durationMinutes !== undefined ? { defaultMeetingDurationMin: durationMinutes } : {}),
+              ...(slotCount !== undefined ? { meetingSlotCount: slotCount } : {}),
+              ...(timeZone ? { timeZone } : {}),
+            },
+            update: {
+              ...(durationMinutes !== undefined ? { defaultMeetingDurationMin: durationMinutes } : {}),
+              ...(slotCount !== undefined ? { meetingSlotCount: slotCount } : {}),
+              ...(timeZone ? { timeZone } : {}),
+            },
+          }),
+        ]);
         return {
           success: true,
-          data: { bookingLink: bookingLink.trim() },
-          message: "Booking link saved.",
+          data: {
+            calendarBookingLink: accountUpdated.calendarBookingLink ?? null,
+            defaultMeetingDurationMin: prefUpdated.defaultMeetingDurationMin,
+            meetingSlotCount: prefUpdated.meetingSlotCount,
+            timeZone: prefUpdated.timeZone,
+          },
+          message:
+            bookingLink && bookingLink.trim().length > 0
+              ? "Booking link and meeting slot preferences saved."
+              : "Meeting slot preferences saved. If you have a booking link, you can also provide it to save it.",
         };
       } catch (error) {
         return calendarFailure(error, "I couldn't save your booking link right now.");

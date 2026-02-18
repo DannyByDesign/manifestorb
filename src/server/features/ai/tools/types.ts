@@ -90,7 +90,14 @@ export interface ToolResult {
     error?: string;
     message?: string;
     clarification?: {
-        kind: "resource" | "missing_fields" | "invalid_fields" | "permissions" | "rate_limit" | "other";
+        kind:
+            | "resource"
+            | "missing_fields"
+            | "invalid_fields"
+            | "permissions"
+            | "rate_limit"
+            | "concept_definition_required"
+            | "other";
         prompt: string;
         missingFields?: string[];
     };

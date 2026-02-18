@@ -7,6 +7,10 @@ export const plannerToolExecutors: RuntimeToolExecutorMap = {
       topEmailItems: Array.isArray(args.topEmailItems) ? args.topEmailItems : [],
       calendarItems: Array.isArray(args.calendarItems) ? args.calendarItems : [],
       focusSuggestions: asStringArray(args.focusSuggestions),
+      request: typeof args.request === "string" ? args.request : undefined,
+      day: typeof args.day === "string" ? args.day : undefined,
+      start: typeof args.start === "string" ? args.start : undefined,
+      end: typeof args.end === "string" ? args.end : undefined,
     }),
   "planner.compileMultiActionPlan": async ({ args, capabilities }) =>
     capabilities.planner.compileMultiActionPlan({
@@ -17,5 +21,6 @@ export const plannerToolExecutors: RuntimeToolExecutorMap = {
           )
         : [],
       constraints: args.constraints ? asObject(args.constraints) : undefined,
+      request: typeof args.request === "string" ? args.request : undefined,
     }),
 };

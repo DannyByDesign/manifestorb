@@ -57,6 +57,14 @@ function formatEvidence(results: RuntimeToolResult[]): string {
   return JSON.stringify(payload);
 }
 
+function latestClarificationResult(results: RuntimeToolResult[]): RuntimeToolResult | null {
+  for (let i = results.length - 1; i >= 0; i -= 1) {
+    const result = results[i];
+    if (result?.clarification) return result;
+  }
+  return null;
+}
+
 export async function generateRuntimeUserReply(params: {
   session: RuntimeSession;
   request: string;
@@ -120,6 +128,7 @@ export async function generateRuntimeUserReply(params: {
       "- If there are more than 10 items, state the total and that you're showing the first 10.",
       "- Never present raw UTC offsets to the user unless they asked for UTC explicitly.",
       "- If mode is clarification, ask one concrete follow-up question.",
+      "- Clarification prompts from tools are keys, not user-facing strings; use tool evidence to form a natural assistant follow-up question.",
       "- If mode is approval_pending, clearly say approval is needed and what happens next.",
       "- Never claim success unless evidence confirms it.",
     ].join("\n"),
@@ -136,6 +145,14 @@ export async function generateRuntimeUserReply(params: {
       `Approvals count: ${approvalsCount}`,
       "Executed tool evidence JSON:",
       formatEvidence(results),
+      mode === "clarification"
+        ? [
+            "Clarification guidance:",
+            "- Ask exactly one follow-up question.",
+            "- If evidence includes candidates/options, present them briefly and ask the user to pick (by number is fine).",
+            "- If evidence includes a concept/term (like a role/category), ask the user to define it using concrete criteria (emails/domains/labels/time range).",
+          ].join("\n")
+        : "",
       `Fallback guidance (use only if evidence is weak): ${fallbackText}`,
       'Return: {"responseText":"..."}',
     ].join("\n\n"),

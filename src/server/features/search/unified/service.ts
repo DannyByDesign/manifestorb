@@ -7,6 +7,7 @@ import {
 import { enqueueEmailDocumentForIndexing } from "@/server/features/search/index/ingestors/email";
 import { planUnifiedSearchQuery } from "@/server/features/search/unified/query";
 import { rankDocuments } from "@/server/features/search/unified/ranking";
+import { extractEmailAddresses } from "@/server/lib/email";
 import type {
   RankingDocument,
   UnifiedSearchEnvironment,
@@ -126,6 +127,26 @@ function normalizeLabelIds(value: unknown): string[] {
     .filter((item) => item.length > 0);
 }
 
+function normalizeEmailCategory(category: unknown): string | undefined {
+  const value = typeof category === "string" ? category.trim().toLowerCase() : "";
+  if (!value) return undefined;
+  switch (value) {
+    case "primary":
+      // Gmail "Primary" tab is typically CATEGORY_PERSONAL.
+      return "CATEGORY_PERSONAL";
+    case "promotions":
+      return "CATEGORY_PROMOTIONS";
+    case "social":
+      return "CATEGORY_SOCIAL";
+    case "updates":
+      return "CATEGORY_UPDATES";
+    case "forums":
+      return "CATEGORY_FORUMS";
+    default:
+      return undefined;
+  }
+}
+
 function inferEmailUnreadState(metadata: Record<string, unknown>): boolean | undefined {
   if (typeof metadata.isUnread === "boolean") return metadata.isUnread;
   const labelIds = normalizeLabelIds(metadata.labelIds);
@@ -216,6 +237,82 @@ function matchesRequest(doc: RankingDocument, request: UnifiedSearchRequest, mai
       const hasAttachment = metadata.hasAttachment === true;
       if (hasAttachment !== request.hasAttachment) return false;
     }
+    const ccNeedle = normalizeString(request.cc);
+    if (ccNeedle) {
+      const sourceCc = metadata.cc ?? "";
+      if (!includesNeedle(sourceCc, ccNeedle)) return false;
+    }
+
+    const normalizeList = (value: unknown): string[] =>
+      Array.isArray(value)
+        ? value.map((v) => String(v).trim().toLowerCase()).filter(Boolean)
+        : [];
+
+    const matchesAnyEmail = (headerValue: unknown, wanted: string[]): boolean => {
+      if (wanted.length === 0) return true;
+      const emails = extractEmailAddresses(String(headerValue ?? "")).map((e) => e.toLowerCase());
+      if (emails.length === 0) return false;
+      const set = new Set(emails);
+      return wanted.some((w) => set.has(w));
+    };
+
+    const matchesAnyDomain = (headerValue: unknown, wantedDomains: string[]): boolean => {
+      if (wantedDomains.length === 0) return true;
+      const emails = extractEmailAddresses(String(headerValue ?? "")).map((e) => e.toLowerCase());
+      if (emails.length === 0) return false;
+      const domains = emails
+        .map((email) => email.split("@")[1] ?? "")
+        .filter((d) => d.length > 0);
+      if (domains.length === 0) return false;
+      return wantedDomains.some((needleRaw) => {
+        const needle = needleRaw.replace(/^@/u, "").toLowerCase();
+        if (!needle) return false;
+        return domains.some((d) => d === needle || d.endsWith(`.${needle}`));
+      });
+    };
+
+    const fromEmails = normalizeList(request.fromEmails);
+    const fromDomains = normalizeList(request.fromDomains);
+    const fromHeader = metadata.from ?? metadata.authorIdentity ?? "";
+    if (!matchesAnyEmail(fromHeader, fromEmails)) return false;
+    if (!matchesAnyDomain(fromHeader, fromDomains)) return false;
+
+    const toEmails = normalizeList(request.toEmails);
+    const toDomains = normalizeList(request.toDomains);
+    const toHeader = metadata.to ?? "";
+    if (!matchesAnyEmail(toHeader, toEmails)) return false;
+    if (!matchesAnyDomain(toHeader, toDomains)) return false;
+
+    const ccEmails = normalizeList(request.ccEmails);
+    const ccDomains = normalizeList(request.ccDomains);
+    const ccHeader = metadata.cc ?? "";
+    if (!matchesAnyEmail(ccHeader, ccEmails)) return false;
+    if (!matchesAnyDomain(ccHeader, ccDomains)) return false;
+    const categoryLabel = normalizeEmailCategory(request.category);
+    if (categoryLabel) {
+      const labelIds = normalizeLabelIds(metadata.labelIds);
+      if (!labelIds.includes(categoryLabel)) return false;
+    }
+    const mimeTypes = Array.isArray(request.attachmentMimeTypes)
+      ? request.attachmentMimeTypes.map((value) => String(value).toLowerCase())
+      : [];
+    if (mimeTypes.length > 0) {
+      const available = Array.isArray(metadata.attachmentMimeTypes)
+        ? metadata.attachmentMimeTypes.map((value) => String(value).toLowerCase())
+        : [];
+      if (available.length === 0) return false;
+      if (!mimeTypes.some((needle) => available.some((mt) => mt.includes(needle)))) {
+        return false;
+      }
+    }
+    const filenameNeedle = normalizeString(request.attachmentFilenameContains);
+    if (filenameNeedle) {
+      const names = Array.isArray(metadata.attachmentNames)
+        ? metadata.attachmentNames.map((value) => String(value))
+        : [];
+      if (names.length === 0) return false;
+      if (!names.some((name) => includesNeedle(name, filenameNeedle))) return false;
+    }
   }
 
   const from = normalizeString(request.from);
@@ -233,6 +330,22 @@ function matchesRequest(doc: RankingDocument, request: UnifiedSearchRequest, mai
   const attendeeEmail = normalizeString(request.attendeeEmail);
   if (attendeeEmail && doc.surface === "calendar") {
     if (!includesNeedle(metadata.attendees, attendeeEmail)) return false;
+  }
+
+  if (doc.surface === "calendar") {
+    const calendarIds = Array.isArray(request.calendarIds)
+      ? request.calendarIds.map((id) => String(id))
+      : [];
+    if (calendarIds.length > 0) {
+      const docCalendarId = typeof metadata.calendarId === "string" ? metadata.calendarId : "";
+      if (!calendarIds.includes(docCalendarId)) return false;
+    }
+
+    const locationNeedle = normalizeString(request.locationContains);
+    if (locationNeedle) {
+      const location = typeof metadata.location === "string" ? metadata.location : "";
+      if (!includesNeedle(location, locationNeedle)) return false;
+    }
   }
 
   return true;
@@ -339,8 +452,26 @@ async function searchEmailProviderFallback(params: {
   if (params.request.hasAttachment === true) {
     queryHints.push("has:attachment");
   }
+  const categoryLabel = normalizeEmailCategory(params.request.category);
+  if (categoryLabel) {
+    const lower = categoryLabel.toLowerCase();
+    if (lower === "category_personal") queryHints.push("category:primary");
+    else if (lower === "category_promotions") queryHints.push("category:promotions");
+    else if (lower === "category_social") queryHints.push("category:social");
+    else if (lower === "category_updates") queryHints.push("category:updates");
+    else if (lower === "category_forums") queryHints.push("category:forums");
+  }
   const providerQuery = [params.query.trim(), ...queryHints].join(" ").trim();
-  if (!providerQuery) return [];
+  const hasIdentityArrays =
+    (Array.isArray(params.request.fromEmails) && params.request.fromEmails.length > 0) ||
+    (Array.isArray(params.request.fromDomains) && params.request.fromDomains.length > 0) ||
+    (Array.isArray(params.request.toEmails) && params.request.toEmails.length > 0) ||
+    (Array.isArray(params.request.toDomains) && params.request.toDomains.length > 0) ||
+    (Array.isArray(params.request.ccEmails) && params.request.ccEmails.length > 0) ||
+    (Array.isArray(params.request.ccDomains) && params.request.ccDomains.length > 0);
+  if (!providerQuery && !params.request.from && !params.request.to && !params.request.cc && !hasIdentityArrays) {
+    return [];
+  }
 
   const after = parseDate(params.request.dateRange?.after);
   const before = parseDate(params.request.dateRange?.before);
@@ -349,6 +480,16 @@ async function searchEmailProviderFallback(params: {
     text: params.request.text ?? params.query ?? providerQuery,
     from: params.request.from,
     to: params.request.to,
+    cc: params.request.cc,
+    fromEmails: params.request.fromEmails,
+    fromDomains: params.request.fromDomains,
+    toEmails: params.request.toEmails,
+    toDomains: params.request.toDomains,
+    ccEmails: params.request.ccEmails,
+    ccDomains: params.request.ccDomains,
+    category: params.request.category,
+    attachmentMimeTypes: params.request.attachmentMimeTypes,
+    attachmentFilenameContains: params.request.attachmentFilenameContains,
     sentByMe: params.mailbox === "sent" ? true : undefined,
     receivedByMe: params.mailbox === "inbox" ? true : undefined,
     before,
@@ -510,6 +651,8 @@ export function createUnifiedSearchService(env: UnifiedSearchEnvironment): Unifi
           typeof request.hasAttachment === "boolean"
             ? request.hasAttachment
             : queryPlan.hasAttachment,
+        category: request.category ?? queryPlan.category,
+        dateRange: request.dateRange ?? queryPlan.dateRange,
         limit: request.limit ?? queryPlan.inferredLimit,
       };
 
@@ -546,6 +689,8 @@ export function createUnifiedSearchService(env: UnifiedSearchEnvironment): Unifi
             sort,
             unread: effectiveRequest.unread,
             hasAttachment: effectiveRequest.hasAttachment,
+            category: effectiveRequest.category,
+            dateRange: effectiveRequest.dateRange,
             inferredLimit: queryPlan.inferredLimit,
             needsClarification: true,
             clarificationPrompt: queryPlan.clarificationPrompt,
@@ -612,7 +757,12 @@ export function createUnifiedSearchService(env: UnifiedSearchEnvironment): Unifi
       );
       const hasHardEmailConstraints =
         typeof effectiveRequest.unread === "boolean" ||
-        typeof effectiveRequest.hasAttachment === "boolean";
+        typeof effectiveRequest.hasAttachment === "boolean" ||
+        Boolean(effectiveRequest.cc?.trim()) ||
+        Boolean(effectiveRequest.category) ||
+        (Array.isArray(effectiveRequest.attachmentMimeTypes) &&
+          effectiveRequest.attachmentMimeTypes.length > 0) ||
+        Boolean(effectiveRequest.attachmentFilenameContains?.trim());
       const emailCandidateCount = Array.from(docsById.values()).filter(
         (doc) => doc.surface === "email",
       ).length;
@@ -758,6 +908,8 @@ export function createUnifiedSearchService(env: UnifiedSearchEnvironment): Unifi
           sort,
           unread: effectiveRequest.unread,
           hasAttachment: effectiveRequest.hasAttachment,
+          category: effectiveRequest.category,
+          dateRange: effectiveRequest.dateRange,
           inferredLimit: queryPlan.inferredLimit,
           needsClarification: queryPlan.needsClarification,
           clarificationPrompt: queryPlan.clarificationPrompt,

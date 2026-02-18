@@ -7,8 +7,6 @@ import {
   disableRulePlaneRule,
   removeRulePlaneRule,
 } from "@/server/features/policy-plane/service";
-import { createGenerateObject } from "@/server/lib/llms";
-import { getModel } from "@/server/lib/llms/model";
 
 vi.mock("@/server/features/policy-plane/service", () => ({
   compileAndActivateRulePlaneRule: vi.fn(),
@@ -18,14 +16,6 @@ vi.mock("@/server/features/policy-plane/service", () => ({
   listRulePlaneRulesByType: vi.fn(),
   removeRulePlaneRule: vi.fn(),
   updateRulePlaneRule: vi.fn(),
-}));
-
-vi.mock("@/server/lib/llms", () => ({
-  createGenerateObject: vi.fn(),
-}));
-
-vi.mock("@/server/lib/llms/model", () => ({
-  getModel: vi.fn(),
 }));
 
 function makeRule(id: string, name: string): CanonicalRule {
@@ -69,21 +59,6 @@ function buildCapabilities() {
 describe("policy capability target selection", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(getModel).mockReturnValue({
-      provider: "google",
-      model: {} as never,
-      modelName: "gemini-2.5-flash",
-    });
-    vi.mocked(createGenerateObject).mockReturnValue(
-      vi.fn(async () => ({
-        object: {
-          decision: "resolved",
-          selectedRuleId: "rule-2",
-          candidateRuleIds: ["rule-2"],
-          confidence: 0.9,
-        },
-      })) as never,
-    );
   });
 
   it("uses explicit id without model selection", async () => {
@@ -102,7 +77,6 @@ describe("policy capability target selection", () => {
       patch: { enabled: false },
     });
     expect(listRulePlaneRulesByType).not.toHaveBeenCalled();
-    expect(createGenerateObject).not.toHaveBeenCalled();
   });
 
   it("resolves rule id from plain-English target and mutates", async () => {
@@ -130,15 +104,6 @@ describe("policy capability target selection", () => {
       makeRule("rule-1", "Archive marketing newsletters"),
       makeRule("rule-2", "Archive product newsletters"),
     ]);
-    vi.mocked(createGenerateObject).mockReturnValue(
-      vi.fn(async () => ({
-        object: {
-          decision: "ambiguous",
-          candidateRuleIds: ["rule-1", "rule-2"],
-          confidence: 0.55,
-        },
-      })) as never,
-    );
 
     const capabilities = buildCapabilities();
     const result = await capabilities.deleteRule({
@@ -147,7 +112,7 @@ describe("policy capability target selection", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toBe("ambiguous_rule_target");
-    expect(result.clarification?.prompt.toLowerCase()).toContain("multiple possible rules");
+    expect(result.clarification?.prompt).toBe("policy_rule_target_ambiguous");
     expect(removeRulePlaneRule).not.toHaveBeenCalled();
   });
 
@@ -155,15 +120,6 @@ describe("policy capability target selection", () => {
     vi.mocked(listRulePlaneRulesByType).mockResolvedValue([
       makeRule("rule-1", "Archive newsletters"),
     ]);
-    vi.mocked(createGenerateObject).mockReturnValue(
-      vi.fn(async () => ({
-        object: {
-          decision: "not_found",
-          candidateRuleIds: [],
-          confidence: 0.4,
-        },
-      })) as never,
-    );
 
     const capabilities = buildCapabilities();
     const result = await capabilities.updateRule({
@@ -173,7 +129,7 @@ describe("policy capability target selection", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toBe("rule_not_found");
-    expect(result.clarification?.prompt.toLowerCase()).toContain("couldn't find");
+    expect(result.clarification?.prompt).toBe("policy_rule_target_not_found");
     expect(updateRulePlaneRule).not.toHaveBeenCalled();
   });
 });
