@@ -10,6 +10,9 @@ function baseTurn(overrides: Partial<RuntimeTurnContract> = {}): RuntimeTurnCont
     complexity: "simple",
     routeProfile: "fast",
     routeHint: "conversation_only",
+    toolChoice: "none",
+    knowledgeSource: "either",
+    freshness: "low",
     riskLevel: "low",
     confidence: 0.9,
     toolHints: [],
@@ -32,4 +35,3 @@ describe("resolveRuntimeToolCatalogMaxTools", () => {
     expect(resolveRuntimeToolCatalogMaxTools(baseTurn({ routeHint: "conversation_only" }))).toBeUndefined();
   });
 });
-

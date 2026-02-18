@@ -4,6 +4,8 @@ import { createGenerateObject } from "@/server/lib/llms";
 import { getModel } from "@/server/lib/llms/model";
 import { resolveDefaultCalendarTimeZone } from "@/server/features/ai/tools/calendar-time";
 import type { Logger } from "@/server/lib/logger";
+import type { ContextPack } from "@/server/features/memory/context-manager";
+import { renderCompilerContextSlice } from "@/server/features/ai/runtime/compiler-context";
 
 export type RuntimeTurnRouteHint = "conversation_only" | "single_tool" | "planner";
 export type RuntimeToolChoice = "none" | "auto";
@@ -532,6 +534,7 @@ async function compileWithModel(params: {
   email: string;
   emailAccountId: string;
   logger: Logger;
+  contextPack?: ContextPack;
 }): Promise<CompilerModelResult | null> {
   if (!shouldUseModelCompiler()) return null;
 
@@ -569,6 +572,10 @@ async function compileWithModel(params: {
     ].join("\n"),
     prompt: [
       `Current UTC date: ${new Date().toISOString().slice(0, 10)}`,
+      (() => {
+        const slice = renderCompilerContextSlice(params.contextPack);
+        return slice ? `Context for follow-ups (recent history + pending state):\n${slice}` : "";
+      })(),
       `User turn: ${params.message}`,
     ].join("\n"),
   });
@@ -597,6 +604,7 @@ export async function compileRuntimeTurn(params: {
   email: string;
   emailAccountId: string;
   logger: Logger;
+  contextPack?: ContextPack;
 }): Promise<RuntimeCompiledTurn> {
   const message = params.message.trim();
   const normalized = message.toLowerCase();

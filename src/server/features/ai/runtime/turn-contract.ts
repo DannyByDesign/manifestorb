@@ -113,6 +113,7 @@ export async function classifyRuntimeTurnContract(params: {
   userId: string;
   email: string;
   emailAccountId: string;
+  contextPack?: import("@/server/features/memory/context-manager").ContextPack;
   logger?: Logger;
 }): Promise<RuntimeTurnContract> {
   const message = params.message.trim();
@@ -146,6 +147,7 @@ export async function classifyRuntimeTurnContract(params: {
     email: params.email,
     emailAccountId: params.emailAccountId,
     logger,
+    contextPack: params.contextPack,
   });
 
   const domain = inferDomainFromTaskClauses(compiled.taskClauses) as RuntimeTurnDomain;

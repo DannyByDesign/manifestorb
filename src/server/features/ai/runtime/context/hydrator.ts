@@ -66,6 +66,7 @@ function contextStatsFromPack(contextPack: ContextPack) {
 
 export async function hydrateRuntimeContext(
   input: OpenWorldTurnInput,
+  options?: { purpose?: "compiler" | "runtime" },
 ): Promise<RuntimeHydratedContext> {
   const message = input.message.trim();
   const issues: string[] = [];
@@ -127,6 +128,7 @@ export async function hydrateRuntimeContext(
       };
     }
 
+    const purpose = options?.purpose ?? "runtime";
     const contextPack = await withTimeout({
       timeoutMs: CONTEXT_HYDRATION_TIMEOUT_MS,
       run: async () =>
@@ -135,10 +137,12 @@ export async function hydrateRuntimeContext(
           emailAccount,
           messageContent: message,
           options: {
-            contextTier: 3,
+            // Compiler hydration only needs enough to resolve follow-ups:
+            // recent history, summary, and pending state. Avoid semantic searches and domain scans.
+            contextTier: purpose === "compiler" ? 1 : 3,
             includePendingState: true,
-            includeDomainData: true,
-            includeAttentionItems: true,
+            includeDomainData: purpose !== "compiler",
+            includeAttentionItems: purpose !== "compiler",
           },
         }),
     });

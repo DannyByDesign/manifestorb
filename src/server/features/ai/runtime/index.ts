@@ -31,12 +31,18 @@ export async function runOpenWorldRuntimeTurn(
       };
     }
 
+    // Hydrate a lightweight context pack first so the turn compiler can resolve follow-ups
+    // like "the second one", "do it", etc. This reuses the same ContextPack sources and
+    // avoids a separate "compiler memory" system.
+    const compilerHydrated = await hydrateRuntimeContext(input, { purpose: "compiler" });
+
     const runtimeTurnContract = await classifyRuntimeTurnContract({
       message: input.message,
       userId: input.userId,
       email: input.email,
       emailAccountId: input.emailAccountId,
       logger: input.logger,
+      contextPack: compilerHydrated.contextPack,
     });
 
     const hydrated = await hydrateRuntimeContext({

@@ -77,7 +77,7 @@ describe("runtime context hydrator", () => {
       email: "u@example.com",
       message: "  remind me what we discussed with sam  ",
       logger: testLogger(),
-    });
+    }, { purpose: "runtime" });
 
     expect(result.message).toBe("remind me what we discussed with sam");
     expect(result.contextStatus).toBe("ready");
@@ -100,7 +100,7 @@ describe("runtime context hydrator", () => {
       email: "u@example.com",
       message: "hello",
       logger: testLogger(),
-    });
+    }, { purpose: "runtime" });
 
     expect(result.contextStatus).toBe("missing");
     expect(result.contextIssues).toContain("email_account_not_found");
@@ -127,7 +127,7 @@ describe("runtime context hydrator", () => {
       email: "u@example.com",
       message: "hello",
       logger,
-    });
+    }, { purpose: "runtime" });
 
     expect(result.contextStatus).toBe("degraded");
     expect(result.contextIssues).toContain("context_hydration_failed");
@@ -175,6 +175,9 @@ describe("runtime context hydrator", () => {
         complexity: "simple",
         routeProfile: "fast",
         routeHint: "single_tool",
+        toolChoice: "auto",
+        knowledgeSource: "internal",
+        freshness: "low",
         riskLevel: "low",
         confidence: 0.8,
         toolHints: ["group:inbox_read"],
@@ -184,7 +187,7 @@ describe("runtime context hydrator", () => {
         metaConstraints: [],
         needsClarification: false,
       },
-    });
+    }, { purpose: "runtime" });
 
     expect(buildProgressiveRuntimeContext).toHaveBeenCalledTimes(1);
     expect(result.contextStatus).toBe("ready");
