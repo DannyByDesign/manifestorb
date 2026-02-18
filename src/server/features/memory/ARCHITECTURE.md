@@ -148,6 +148,8 @@ const pack = await ContextManager.buildContextPack({
 **Key Change:** History and summary are fetched by `userId`, not `conversationId`,
 so the assistant has the same context regardless of which platform the user is on.
 
+This same `ContextPack` is also reused by the AI runtime turn compiler (in a clipped form) to resolve follow-up turns without introducing a separate "compiler memory" system.
+
 **Context Budget:**
 
 | Component | Max Characters | Purpose |

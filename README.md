@@ -66,7 +66,8 @@ bun run test:evals
 Notes:
 - WorkOS AuthKit is the auth system for the web app (`src/server/auth`).
 - The main assistant model defaults to Google Gemini (see `DEFAULT_LLM_*` in `src/env.ts`).
-- Embeddings use OpenAI (`text-embedding-3-small`), so `OPENAI_API_KEY` is required for semantic search/memory.
+- Embeddings use OpenAI (`text-embedding-3-small`). `OPENAI_API_KEY` is required for memory/knowledge semantic search and for runtime semantic tool ranking when enabled.
+- Web search tools are optional. Enable/configure via `TOOL_WEB_SEARCH_*` in `src/env.ts` and provide a provider key (for example `BRAVE_API_KEY` or `PERPLEXITY_API_KEY`).
 
 ## Where To Look
 
@@ -75,4 +76,3 @@ Notes:
 - Backend organization: `src/server/README.md`
 - Sidecar (surfaces) details: `surfaces/README.md`
 - E2E test harness: `tests/e2e/README.md`
-

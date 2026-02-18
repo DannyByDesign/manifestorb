@@ -27,6 +27,9 @@ Primary user turn flow:
 2. `src/server/features/channels/executor.ts`
 3. `src/server/features/ai/message-processor.ts`
 4. `src/server/features/ai/runtime/*`
+   - context-aware turn compilation: `src/server/features/ai/runtime/turn-contract.ts`, `src/server/features/ai/runtime/turn-compiler.ts`
+   - compiler context slice (small ContextPack excerpt): `src/server/features/ai/runtime/compiler-context.ts`
+   - tool admission/pruning + session wiring: `src/server/features/ai/runtime/session.ts`
 5. Tool execution via `src/server/features/ai/tools/*`
    - metadata registry: `src/server/features/ai/tools/runtime/capabilities/registry.ts`
    - tool executors: `src/server/features/ai/tools/runtime/capabilities/executors/*`
