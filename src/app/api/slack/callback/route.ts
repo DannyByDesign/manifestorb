@@ -132,7 +132,7 @@ export const GET = async (request: NextRequest) => {
       });
     }
 
-    // Tell the surfaces sidecar to DM the user (and open the DM channel).
+    // Tell the surfaces worker to DM the user (and open the DM channel).
     const linkedResult = await sendSurfaceOnboardingLinked({
       provider: "slack",
       providerAccountId,

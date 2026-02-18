@@ -4,6 +4,7 @@ import { isDefined } from "@/server/lib/types";
 import { createScopedLogger } from "@/server/lib/logger";
 import { env } from "@/env";
 import prisma from "@/server/db/client";
+import { getSurfacesBaseUrl } from "@/server/lib/surfaces-url";
 
 const logger = createScopedLogger("redis/clean");
 
@@ -83,9 +84,10 @@ export async function publishThread({
   // Store the data with expiration
   await redis.set(key, thread, { ex: EXPIRATION });
 
-  // Forward pub/sub to sidecar (main app remains Upstash-only)
-  if (env.SURFACES_API_URL && env.SURFACES_SHARED_SECRET) {
-    fetch(`${env.SURFACES_API_URL}/pubsub/clean`, {
+  // Forward pub/sub to surfaces worker.
+  const surfacesBaseUrl = getSurfacesBaseUrl();
+  if (surfacesBaseUrl && env.SURFACES_SHARED_SECRET) {
+    fetch(`${surfacesBaseUrl}/pubsub/clean`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -93,7 +95,7 @@ export async function publishThread({
       },
       body: JSON.stringify({ channel: key, payload: thread }),
     }).catch((error) =>
-      logger.warn("Failed to forward clean update to sidecar", { error, key }),
+      logger.warn("Failed to forward clean update to surfaces worker", { error, key }),
     );
   }
 }

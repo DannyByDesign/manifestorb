@@ -14,6 +14,7 @@
 import prisma from "@/server/db/client";
 import { env } from "@/env";
 import { createScopedLogger } from "@/server/lib/logger";
+import { getSurfacesBaseUrl } from "@/server/lib/surfaces-url";
 
 const logger = createScopedLogger("MemoryRecordingService");
 
@@ -121,8 +122,7 @@ export class MemoryRecordingService {
      * 
      * UNIFIED: Records at the user level, not conversation level.
      * 
-     * Posts to the surfaces sidecar for processing (no timeout risk).
-     * Falls back to Vercel API if sidecar URL is not configured.
+     * Posts to the co-located surfaces worker for processing.
      */
     static async enqueueMemoryRecording(userId: string, email: string) {
         const secret = env.JOBS_SHARED_SECRET;
@@ -132,15 +132,18 @@ export class MemoryRecordingService {
             return;
         }
 
-        // Prefer sidecar (no timeout), fallback to Vercel API
-        const sidecarUrl = env.SIDECAR_URL;
-        const endpoint = sidecarUrl 
-            ? `${sidecarUrl}/jobs/recording`
-            : `${env.NEXT_PUBLIC_BASE_URL}/api/jobs/record-memory`;
+        const surfacesBaseUrl = getSurfacesBaseUrl();
+        if (!surfacesBaseUrl) {
+            logger.warn("Skipping memory recording enqueue: surfaces worker URL unavailable", {
+                userId,
+            });
+            return;
+        }
+        const endpoint = `${surfacesBaseUrl}/jobs/recording`;
 
         logger.info("Triggering memory recording", { 
             userId, 
-            target: sidecarUrl ? 'sidecar' : 'vercel'
+            target: endpoint,
         });
 
         // Fire and forget

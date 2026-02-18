@@ -28,11 +28,11 @@ export function buildAgentSystemPrompt(options: SystemPromptOptions): string {
   const conversationCategories = options.userConfig?.conversationCategories?.filter(
     (value) => value.trim().length > 0,
   );
-  const sidecarFormatting =
+  const surfaceFormatting =
     platform === "web"
       ? ""
       : `
-Sidecar formatting:
+Surface formatting:
 - Plain text only.
 - Keep responses concise (1-3 short paragraphs).
 - Use numbered lists when needed.`;
@@ -58,7 +58,7 @@ Tool usage notes (email concepts):
 - If the user asks for emails "from X" where X is a role/concept (not a specific person/email/domain), do not guess.
 - Use fromConcept/toConcept/ccConcept in email.searchThreadsAdvanced and ask a follow-up question to define X in concrete terms (sender emails, sender domains, labels/categories, and a time window).
 - If helpful, you can call email.facetThreads to surface top senders/domains the user can pick from.
-${sidecarFormatting}
+${surfaceFormatting}
 ${approvalInstructions ? `\nApproval policy notes:\n${approvalInstructions}` : ""}
 ${conversationCategories && conversationCategories.length > 0 ? `\nConversation categories:\n${conversationCategories.map((category) => `- ${category}`).join("\n")}` : ""}
 

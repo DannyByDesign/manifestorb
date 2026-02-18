@@ -91,3 +91,8 @@ export async function acknowledgeSidecarDelivery(params: {
     throw new Error(`ack_http_${response.status}`);
   }
 }
+
+// Back-compat aliases while callers are migrated.
+export const hasSurfacesWorkerResponseBeenDelivered = hasSidecarResponseBeenDelivered;
+export const markSurfacesWorkerResponseDelivered = markSidecarResponseDelivered;
+export const acknowledgeSurfacesWorkerDelivery = acknowledgeSidecarDelivery;

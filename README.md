@@ -2,7 +2,7 @@
 
 Product: an AI assistant for email and calendar workflows (drafting, scheduling, triage, automation) with explicit approval gates for sensitive actions.
 
-Repo: a Next.js app in `src/` plus an optional long-running sidecar in `surfaces/` for chat platforms (Slack/Discord/Telegram) and background jobs that do not fit serverless constraints.
+Repo: a Next.js app in `src/` plus co-located long-running workers in `src/server/workers/` for chat platforms (Slack/Discord/Telegram) and background jobs.
 
 ## Quick Start (Local Dev)
 
@@ -34,7 +34,7 @@ Prereqs:
    bun run dev
    ```
 
-Optional: run web app + sidecar together:
+Optional: run web app + worker together:
 ```bash
 bun run dev:stack
 ```
@@ -45,6 +45,8 @@ bun run dev:stack
 # Build / run
 bun run build
 bun run start
+bun run start:all
+bun run worker
 
 # Lint
 bun run lint
@@ -61,7 +63,7 @@ bun run test:evals
 
 - Environment variable schema: `src/env.ts`
 - Main app template: `/.env.example`
-- Sidecar template: `/surfaces/.env.example`
+- Worker internals: `src/server/workers/README.md`
 
 Notes:
 - WorkOS AuthKit is the auth system for the web app (`src/server/auth`).
@@ -74,5 +76,5 @@ Notes:
 - Source map / entrypoints: `src/ARCHITECTURE_MAP.md`
 - Architecture overview: `ARCHITECTURE.md`
 - Backend organization: `src/server/README.md`
-- Sidecar (surfaces) details: `surfaces/README.md`
+- Surfaces worker details: `src/server/workers/surfaces/README.md`
 - E2E test harness: `tests/e2e/README.md`

@@ -13,7 +13,7 @@ const mockEnv = vi.hoisted(() => ({
   CORE_BASE_URL: "http://localhost:3000",
 }));
 
-vi.mock("../env", () => ({ env: mockEnv }));
+vi.mock("../../env", () => ({ env: mockEnv }));
 
 describe("discord sendDiscordMessage", () => {
   it("does not throw when discord client not initialized", async () => {

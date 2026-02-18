@@ -16,8 +16,8 @@ const bodySchema = z.object({
 });
 
 /**
- * Sidecar-only: get a link URL for proactive onboarding.
- * Called by the sidecar when a user opens a DM (im_open) or when sending a welcome to a user.
+ * Surfaces-worker-only: get a link URL for proactive onboarding.
+ * Called by the worker when a user opens a DM (im_open) or when sending a welcome to a user.
  */
 export async function POST(req: NextRequest) {
   const authHeader = req.headers.get("x-surfaces-secret");
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
     const baseUrl = env.NEXT_PUBLIC_BASE_URL;
     const linkUrl = `${baseUrl}/link?token=${rawToken}`;
 
-    logger.info("Link token created for sidecar onboarding", {
+    logger.info("Link token created for surfaces worker onboarding", {
       provider,
       providerAccountId: providerAccountId.slice(0, 8) + "...",
     });

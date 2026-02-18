@@ -8,7 +8,7 @@ This directory contains shared helper logic and cross-cutting utilities used by 
 -   **`auth.ts`**: Session validation helpers.
 -   **`error.ts`**: Standardized error classes (`SafeError`).
 -   **`encryption.ts`**: AES-256 helpers for sensitive tokens.
--   **`cron.ts`**: Vercel Cron verification.
+-   **`cron.ts`**: Scheduled-job token verification helpers.
 
 ## Major Submodules
 -   **`llms/`**: LLM provider abstraction and AI helpers.

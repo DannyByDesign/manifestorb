@@ -89,10 +89,9 @@ function run(): void {
     scenarioCount: scenarios.length,
     scenarios,
     instructions:
-      "Replay each message through /api/chat or sidecar ingress and compare observed skill/outcome with expectation.",
+      "Replay each message through /api/chat or surfaces ingress and compare observed skill/outcome with expectation.",
   };
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 }
 
 run();
-

@@ -1,9 +1,9 @@
 import { config } from "dotenv";
 import { timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { startSlack, stopSlack } from "./slack";
-import { startDiscord } from "./discord";
-import { startTelegram } from "./telegram";
+import { startSlack, stopSlack } from "./connectors/slack";
+import { startDiscord } from "./connectors/discord";
+import { startTelegram } from "./connectors/telegram";
 import { startScheduler, triggerEmbeddingJob, triggerDecayJob } from "./jobs/scheduler";
 import { getQueueStats } from "./jobs/embedding-worker";
 import { getDecayStats } from "./jobs/decay-worker";
@@ -14,9 +14,9 @@ import { prisma } from "./db/prisma";
 import { redis } from "./db/redis";
 import { getPlatformStatuses, setPlatformError, type PlatformName } from "./platform-status";
 import {
-    acknowledgeSidecarDelivery,
-    hasSidecarResponseBeenDelivered,
-    markSidecarResponseDelivered,
+    acknowledgeSurfacesWorkerDelivery,
+    hasSurfacesWorkerResponseBeenDelivered,
+    markSurfacesWorkerResponseDelivered,
 } from "./delivery";
 
 config();
@@ -89,11 +89,11 @@ async function writeNodeResponse(res: ServerResponse, response: Response): Promi
     res.end(payload);
 }
 
-type SidecarServer = {
+type SurfacesWorkerServer = {
     stop: () => Promise<void>;
 };
 
-function startHttpServer(port: number): SidecarServer {
+function startHttpServer(port: number): SurfacesWorkerServer {
     const bunRuntime = (globalThis as {
         Bun?: {
             serve: (options: {
@@ -208,32 +208,32 @@ export async function handleRequest(req: Request) {
             if (
                 typeof responseId === "string" &&
                 responseId.length > 0 &&
-                await hasSidecarResponseBeenDelivered({ provider: platform, responseId })
+                await hasSurfacesWorkerResponseBeenDelivered({ provider: platform, responseId })
             ) {
                 return new Response("Notification already delivered", { status: 200 });
             }
 
             let providerMessageId: string | undefined;
             if (platform === "slack") {
-                const { sendSlackMessage } = await import("./slack");
+                const { sendSlackMessage } = await import("./connectors/slack");
                 providerMessageId = await sendSlackMessage(channelId, content, undefined, threadId);
             } else if (platform === "discord") {
-                const { sendDiscordMessage } = await import("./discord");
+                const { sendDiscordMessage } = await import("./connectors/discord");
                 providerMessageId = await sendDiscordMessage(channelId, content);
             } else if (platform === "telegram") {
-                const { sendTelegramMessage } = await import("./telegram");
+                const { sendTelegramMessage } = await import("./connectors/telegram");
                 providerMessageId = await sendTelegramMessage(channelId, content);
             } else {
                 return new Response("Unsupported platform", { status: 400 });
             }
 
             if (typeof responseId === "string" && responseId.length > 0 && providerMessageId) {
-                await markSidecarResponseDelivered({
+                await markSurfacesWorkerResponseDelivered({
                     provider: platform,
                     responseId,
                 });
                 try {
-                    await acknowledgeSidecarDelivery({
+                    await acknowledgeSurfacesWorkerDelivery({
                         responseId,
                         provider: platform,
                         providerMessageId,
@@ -288,7 +288,7 @@ export async function handleRequest(req: Request) {
             }
 
             if (provider === "slack") {
-                const { sendLinkedToSlackUser } = await import("./slack");
+                const { sendLinkedToSlackUser } = await import("./connectors/slack");
                 const result = await sendLinkedToSlackUser(providerAccountId);
                 return new Response(JSON.stringify(result), {
                     status: result.ok ? 200 : 500,
@@ -297,7 +297,7 @@ export async function handleRequest(req: Request) {
             }
 
             if (provider === "discord") {
-                const { sendLinkedToDiscordUser } = await import("./discord");
+                const { sendLinkedToDiscordUser } = await import("./connectors/discord");
                 const result = await sendLinkedToDiscordUser(providerAccountId);
                 return new Response(JSON.stringify(result), {
                     status: result.ok ? 200 : 500,
@@ -305,7 +305,7 @@ export async function handleRequest(req: Request) {
                 });
             }
 
-            const { sendLinkedToTelegramUser } = await import("./telegram");
+            const { sendLinkedToTelegramUser } = await import("./connectors/telegram");
             const result = await sendLinkedToTelegramUser(providerAccountId);
             return new Response(JSON.stringify(result), {
                 status: result.ok ? 200 : 500,
@@ -517,7 +517,7 @@ export async function handleRequest(req: Request) {
     return new Response("Not Found", { status: 404 });
 }
 
-export async function startSidecar() {
+export async function startSurfacesWorker() {
     const startConnectorSafely = async (
         name: PlatformName,
         starter: () => void | Promise<void>
@@ -538,18 +538,17 @@ export async function startSidecar() {
         console.error("[Surfaces] Uncaught exception", { error });
     });
 
-    const resolvedPort = Number.parseInt(process.env.PORT ?? "3000", 10);
-    const port = Number.isFinite(resolvedPort) ? resolvedPort : 3000;
+    const port = env.SURFACES_WORKER_PORT;
     console.log("[Surfaces] Boot config", {
         nodeEnv: process.env.NODE_ENV ?? "unknown",
-        portFromEnv: process.env.PORT ?? null,
+        portFromEnv: process.env.SURFACES_WORKER_PORT ?? String(env.SURFACES_WORKER_PORT),
         resolvedPort: port,
     });
     const server = startHttpServer(port);
 
     console.log(`🔔 HTTP Server listening on port ${port}`);
     console.log("   - POST /notify - Send notifications to platforms");
-    console.log("   - POST /onboarding/linked - Notify a user their sidecar account is linked");
+    console.log("   - POST /onboarding/linked - Notify a user their surfaces worker account is linked");
     console.log("   - GET  /jobs/status - Get job queue status");
     console.log("   - POST /jobs/embeddings - Trigger embedding processing");
     console.log("   - POST /jobs/decay - Trigger memory decay");
@@ -577,7 +576,7 @@ export async function startSidecar() {
         console.error("[Surfaces] Failed to start scheduler", { error });
     }
 
-    console.log("🚀 Surfaces Sidecar fully initialized");
+    console.log("🚀 Surfaces worker fully initialized");
     const shutdown = async (signal: string) => {
         console.log(`[Surfaces] Received ${signal}. Shutting down...`);
         try {
@@ -623,8 +622,4 @@ export async function startSidecar() {
 
     process.on("SIGINT", () => shutdown("SIGINT"));
     process.on("SIGTERM", () => shutdown("SIGTERM"));
-}
-
-if (process.env.NODE_ENV !== "test") {
-    void startSidecar();
 }

@@ -402,7 +402,7 @@ export function AuthConnectionPanel() {
           </div>
 
           <div className="rounded-lg border border-white/20 bg-white/5 p-2">
-            <div className="font-medium">Sidecars</div>
+            <div className="font-medium">Chat Connectors</div>
             <p>
               Slack:{" "}
               {status?.sidecars?.slack?.linked ? "Linked" : "Not linked"}
@@ -440,7 +440,7 @@ export function AuthConnectionPanel() {
               </div>
             )}
             <p className="mt-2 text-white/70">
-              Tip: DM the Amodel bot in your sidecar app. If you are not linked yet, it will send a one-time connect link.
+              Tip: DM the Amodel bot in Slack/Discord/Telegram. If you are not linked yet, it will send a one-time connect link.
             </p>
           </div>
 

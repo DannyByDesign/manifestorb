@@ -4,7 +4,7 @@ This document is the source of truth for how the codebase is organized and how r
 
 At a high level:
 - The **main app** is a Next.js server in `src/`.
-- The optional **surfaces sidecar** is a long-running service in `surfaces/` that connects Slack/Discord/Telegram and runs background jobs that do not fit serverless constraints.
+- The **surfaces worker** is a long-running runtime in `src/server/workers/surfaces/` that connects Slack/Discord/Telegram and runs background jobs.
 
 For a fast "where do I start reading code" map, see `src/ARCHITECTURE_MAP.md`.
 
@@ -21,13 +21,13 @@ The backend is organized into:
 - `src/server/integrations/` provider clients (Google/Microsoft/Slack/QStash)
 - `src/server/lib/` shared infrastructure utilities (logging, encryption, redis, queue, llms)
 
-### Surfaces Sidecar (Optional)
+### Surfaces Worker
 
-`surfaces/` hosts:
+`src/server/workers/surfaces/` hosts:
 - chat platform connectors (Slack Socket Mode, Discord gateway, Telegram polling)
 - background workers (memory recording, embeddings, decay) and a scheduler
 
-The sidecar forwards inbound platform messages to the main app via `POST /api/surfaces/inbound`.
+The worker forwards inbound platform messages to the main app via `POST /api/surfaces/inbound`.
 
 ### Data Stores
 
@@ -61,8 +61,8 @@ Conversation-only turns are handled as native generation with tools disabled (no
 
 ### Surfaces (Slack/Discord/Telegram) Turn
 
-1. Sidecar receives a platform message (`surfaces/src/*`)
-2. Sidecar forwards to main app: `POST src/app/api/surfaces/inbound/route.ts`
+1. Worker receives a platform message (`src/server/workers/surfaces/*`)
+2. Worker forwards to main app: `POST src/app/api/surfaces/inbound/route.ts`
 3. Main app runs the same AI runtime as web turns (via `features/channels/*` and `features/ai/*`)
 4. Main app may return `InteractivePayload`s (draft previews, approval prompts) for platform-specific rendering
 
@@ -85,17 +85,17 @@ The AI runtime treats `send` (email) as DANGEROUS and requires explicit approval
 
 Notifications are persisted to the DB and delivered through two paths:
 - In-app: fetched by the web client
-- Fallback push: scheduled via QStash; if still unclaimed it is pushed to the sidecar surfaces
+- Fallback push: scheduled via QStash; if still unclaimed it is pushed to surfaces connectors via the worker
 
 See `src/server/features/notifications/README.md`.
 
 ### Memory Recording + Embeddings
 
 - Memory recording trigger logic: `src/server/features/memory/service.ts`
-- Recording work is executed in the sidecar when configured: `surfaces/src/jobs/recording-worker.ts`
+- Recording work is executed in worker jobs: `src/server/workers/surfaces/jobs/recording-worker.ts`
 - Embedding generation: `src/server/features/memory/embeddings/*` (OpenAI embeddings)
 
-See `src/server/features/memory/ARCHITECTURE.md` and `surfaces/src/jobs/README.md`.
+See `src/server/features/memory/ARCHITECTURE.md` and `src/server/workers/surfaces/jobs/README.md`.
 
 ## Conventions
 

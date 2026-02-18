@@ -71,7 +71,7 @@ describe("ChannelRouter", () => {
     prisma.conversationMessage.upsert.mockResolvedValue({ id: "cm-1" } as never);
   });
 
-  it("uses exact conversation key lookup and forwards sidecar history", async () => {
+  it("uses exact conversation key lookup and forwards surfaces history", async () => {
     prisma.conversation.findFirst
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(null);

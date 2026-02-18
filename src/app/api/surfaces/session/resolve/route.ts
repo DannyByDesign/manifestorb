@@ -116,7 +116,7 @@ export async function POST(req: NextRequest) {
       canonicalChannelId: conversation?.channelId ?? channelId,
     });
   } catch (error) {
-    logger.error("Failed to resolve sidecar session", {
+    logger.error("Failed to resolve surfaces session", {
       error: error instanceof Error ? error.message : String(error),
     });
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

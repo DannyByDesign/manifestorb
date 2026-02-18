@@ -6,15 +6,15 @@ vi.mock("./db/redis", () => ({
 vi.mock("./db/prisma", () => ({
   prisma: { $queryRaw: vi.fn() },
 }));
-vi.mock("./slack", () => ({
+vi.mock("./connectors/slack", () => ({
   sendSlackMessage: vi.fn(),
 }));
-vi.mock("./discord", () => ({
+vi.mock("./connectors/discord", () => ({
   sendDiscordMessage: vi.fn(),
 }));
 
 const setEnv = () => {
-  (process.env as any).NODE_ENV = "test";
+  process.env.NODE_ENV = "test";
   process.env.DATABASE_URL = "postgresql://test:test@localhost:5432/amodel";
   process.env.REDIS_URL = "redis://localhost:6379";
   process.env.OPENAI_API_KEY = "test-openai";
@@ -55,7 +55,7 @@ describe("surfaces handleRequest", () => {
 
   it("sends slack notification", async () => {
     const { handleRequest } = await import("./index");
-    const { sendSlackMessage } = await import("./slack");
+    const { sendSlackMessage } = await import("./connectors/slack");
 
     const res = await handleRequest(
       new Request("http://localhost/notify", {

@@ -5,7 +5,7 @@
  * 1. Marks stale memories as inactive (soft delete)
  * 2. Permanently deletes old inactive memories (hard delete)
  * 
- * This worker runs in the surfaces sidecar with no timeout constraints.
+ * This worker runs in the surfaces worker with no timeout constraints.
  */
 import { prisma } from '../db/prisma';
 

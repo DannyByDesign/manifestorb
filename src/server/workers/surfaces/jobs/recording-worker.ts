@@ -2,7 +2,7 @@
  * Memory Recording Worker
  * 
  * Processes memory recording jobs for USER-LEVEL summarization and fact extraction.
- * Runs in the sidecar with no timeout constraints.
+ * Runs in the worker with no timeout constraints.
  * 
  * UNIFIED MEMORY: Processes all user messages across ALL platforms/conversations.
  * Updates UserSummary for cross-platform continuity.
@@ -81,7 +81,8 @@ export async function processMemoryRecording(
     userId: string,
     email: string
 ): Promise<RecordingResult> {
-    console.log(`[Recording] Starting for user ${userId}`);
+    const emailTag = email ? `${email.split("@")[0] ?? "unknown"}@...` : "unknown";
+    console.log(`[Recording] Starting for user ${userId} (${emailTag})`);
 
     try {
         // 1. Fetch user
@@ -147,7 +148,7 @@ export async function processMemoryRecording(
             if (!parsedResult.extractedFacts) {
                 parsedResult.extractedFacts = [];
             }
-        } catch (e) {
+        } catch {
             console.warn('[Recording] Failed to parse AI response, using fallback');
             parsedResult = {
                 summary: { compressed: aiResponse.slice(0, 500) },

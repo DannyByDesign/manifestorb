@@ -13,14 +13,14 @@ const mockEnv = vi.hoisted(() => ({
   CORE_BASE_URL: "http://localhost:3000",
 }));
 
-vi.mock("../env", () => ({ env: mockEnv }));
+vi.mock("../../env", () => ({ env: mockEnv }));
 
-describe("discord sendDiscordMessage", () => {
-  it("does not throw when discord client not initialized", async () => {
+describe("slack sendSlackMessage", () => {
+  it("does not throw when slack app not initialized", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const { sendDiscordMessage } = await import("./index");
-    await expect(sendDiscordMessage("channel", "hello")).resolves.toBeUndefined();
-    expect(errorSpy).toHaveBeenCalledWith("Discord client not initialized");
+    const { sendSlackMessage } = await import("./index");
+    await expect(sendSlackMessage("channel", "hello")).resolves.toBeUndefined();
+    expect(errorSpy).toHaveBeenCalledWith("Slack app not initialized");
     errorSpy.mockRestore();
   });
 });

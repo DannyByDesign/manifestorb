@@ -25,6 +25,7 @@ import {
     resolveSurfaceAccount,
 } from "./surface-account";
 import { createDeterministicIdempotencyKey } from "@/server/lib/idempotency";
+import { getSurfacesBaseUrl } from "@/server/lib/surfaces-url";
 
 const logger = createScopedLogger("ChannelRouter");
 
@@ -612,7 +613,7 @@ export class ChannelRouter {
      */
     async pushMessage(userId: string, content: string): Promise<boolean> {
         try {
-            // Prefer the most recent sidecar message metadata for precise channel/thread routing.
+            // Prefer the most recent surfaces message metadata for precise channel/thread routing.
             const recentMessage = await prisma.conversationMessage.findFirst({
                 where: {
                     userId: userId,
@@ -656,11 +657,11 @@ export class ChannelRouter {
                 return false;
             }
 
-            const surfaceUrl = env.SURFACES_API_URL;
+            const surfaceUrl = getSurfacesBaseUrl();
             const surfacesSecret = env.SURFACES_SHARED_SECRET;
 
             if (!surfaceUrl) {
-                logger.warn("SURFACES_API_URL not set; skipping notify", { userId });
+                logger.warn("Surfaces worker URL unavailable; skipping notify", { userId });
                 return false;
             }
 

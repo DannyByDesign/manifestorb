@@ -116,7 +116,7 @@ export async function POST(req: NextRequest) {
             canonicalChannelId: conversation?.channelId ?? channelId,
         });
     } catch (error) {
-        logger.error("Failed to resolve canonical sidecar context", {
+        logger.error("Failed to resolve canonical surfaces context", {
             error: error instanceof Error ? error.message : String(error),
         });
         return NextResponse.json(

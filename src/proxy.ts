@@ -10,17 +10,17 @@ function shouldBypassAuth(req: NextRequest): boolean {
   if (pathname.startsWith("/api/health")) return true;
   if (pathname.startsWith("/api/surfaces/")) return true;
 
-  // Sidecar/system approval flows.
+  // Surfaces worker/system approval flows.
   if (method === "POST" && pathname === "/api/approvals") return true;
   if (method === "POST" && /^\/api\/approvals\/[^/]+\/(approve|deny)$/.test(pathname)) {
     return true;
   }
 
-  // Sidecar draft actions.
+  // Surfaces worker draft actions.
   if (method === "POST" && /^\/api\/drafts\/[^/]+\/send$/.test(pathname)) return true;
   if (method === "DELETE" && /^\/api\/drafts\/[^/]+$/.test(pathname)) return true;
 
-  // Sidecar interactive resolutions.
+  // Surfaces worker interactive resolutions.
   if (method === "POST" && /^\/api\/ambiguous-time\/[^/]+\/resolve$/.test(pathname)) {
     return true;
   }

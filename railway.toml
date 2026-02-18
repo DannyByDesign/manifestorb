@@ -4,7 +4,7 @@ buildCommand = "bun run build"
 
 [deploy]
 preDeployCommand = "bun run prisma:migrate:predeploy"
-startCommand = "bun run start"
+startCommand = "bun run start:all"
 healthcheckPath = "/api/health/liveness"
 healthcheckTimeout = 45
 restartPolicyType = "ON_FAILURE"

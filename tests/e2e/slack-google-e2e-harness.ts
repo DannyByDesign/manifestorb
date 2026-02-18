@@ -43,22 +43,10 @@ function getSlackPostToken(): string {
   if (!_warnedPostingAsBot) {
     _warnedPostingAsBot = true;
     console.warn(
-      "[Slack E2E] Posting as bot. To have test messages appear as you, set TEST_SLACK_USER_TOKEN in .env.test.local or surfaces/.env.local (user OAuth token starting with xoxp-, scope chat:write:user). See tests/e2e/README.md.",
+      "[Slack E2E] Posting as bot. To have test messages appear as you, set TEST_SLACK_USER_TOKEN in .env.test.local or .env.local (user OAuth token starting with xoxp-, scope chat:write:user). See tests/e2e/README.md.",
     );
   }
   return getSlackToken();
-}
-
-function getSlackChannelId(): string {
-  const id = process.env.TEST_SLACK_CHANNEL_ID;
-  if (!id) throw new Error("TEST_SLACK_CHANNEL_ID required for Slack E2E");
-  return id;
-}
-
-function getSlackUserId(): string {
-  const id = process.env.TEST_SLACK_USER_ID;
-  if (!id) throw new Error("TEST_SLACK_USER_ID required for Slack E2E");
-  return id;
 }
 
 /**
@@ -231,8 +219,8 @@ export async function waitForSlackChannelResponse(params: {
 }
 
 /**
- * Simulate sidecar forwarding a message to the main app (POST /api/surfaces/inbound).
- * Use when real Slack + sidecar are not running. Returns responses from the main app.
+ * Simulate worker forwarding a message to the main app (POST /api/surfaces/inbound).
+ * Use when real Slack + worker are not running. Returns responses from the main app.
  */
 export async function simulateInboundSlackMessage(params: {
   content: string;

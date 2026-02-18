@@ -98,7 +98,7 @@ export type BrainResponsePayload = {
 
 const CORE_BASE_URL = env.CORE_BASE_URL;
 
-/** Fetch a one-time link URL for onboarding (Slack/Discord/Telegram). Sidecar-only. */
+/** Fetch a one-time link URL for onboarding (Slack/Discord/Telegram). Surfaces-worker-only. */
 export async function fetchOnboardingLinkUrl(
     provider: "slack" | "discord" | "telegram",
     providerAccountId: string,
@@ -233,7 +233,7 @@ export async function resolveSurfaceSession(params: {
                 : {}),
         };
     } catch (error) {
-        console.error("[Surfaces] Failed to resolve sidecar session", {
+        console.error("[Surfaces] Failed to resolve surfaces session", {
             provider: params.provider,
             error: error instanceof Error ? error.message : String(error),
         });
@@ -315,10 +315,10 @@ export async function submitSurfaceAction(params: {
 }
 
 /**
- * Sidecar channels should render plain conversational text.
+ * Surface channels should render plain conversational text.
  * Strip common markdown syntax so users don't see raw formatting markers.
  */
-export function toPlainSidecarText(input: string): string {
+export function toPlainSurfaceText(input: string): string {
     if (!input) return "";
 
     let text = input.replace(/\r\n/g, "\n");
@@ -362,3 +362,6 @@ export function toPlainSidecarText(input: string): string {
         .trim();
     return text;
 }
+
+// Back-compat alias while connector modules are migrated.
+export const toPlainSidecarText = toPlainSurfaceText;

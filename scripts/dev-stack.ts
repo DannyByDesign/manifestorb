@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 
-type ServiceName = "main" | "sidecar";
+type ServiceName = "main" | "worker";
 
 type ServiceConfig = {
   name: ServiceName;
@@ -24,10 +24,10 @@ const services: ServiceConfig[] = [
     args: ["run", "dev"],
   },
   {
-    name: "sidecar",
-    cwd: `${rootDir}/surfaces`,
+    name: "worker",
+    cwd: rootDir,
     command: "bun",
-    args: ["run", "--watch", "src/index.ts"],
+    args: ["run", "--watch", "src/server/workers/index.ts"],
   },
 ];
 
@@ -90,7 +90,7 @@ function spawnService(config: ServiceConfig, restarts = 0): void {
 async function checkHealth(): Promise<void> {
   const checks = [
     { label: "main", url: "http://localhost:3000/api/health" },
-    { label: "sidecar", url: "http://localhost:3001/health" },
+    { label: "worker", url: "http://localhost:3400/health" },
   ] as const;
 
   for (const check of checks) {
@@ -101,12 +101,12 @@ async function checkHealth(): Promise<void> {
         continue;
       }
 
-      if (check.label === "sidecar") {
+      if (check.label === "worker") {
         const payload = (await response.json()) as {
           status?: string;
           platforms?: { slack?: { started?: boolean; lastError?: string | null } };
         };
-        console.log("[health] sidecar", {
+        console.log("[health] worker", {
           status: payload.status ?? "unknown",
           slackStarted: payload.platforms?.slack?.started ?? false,
           slackLastError: payload.platforms?.slack?.lastError ?? null,

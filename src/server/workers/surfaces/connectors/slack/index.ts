@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { App } from "@slack/bolt";
 import type { Block, KnownBlock } from "@slack/types";
 import { randomUUID } from "node:crypto";
@@ -11,20 +12,20 @@ import {
     type InteractiveAction,
     type InteractivePayload,
     type SurfaceIdentityResult,
-} from "../utils";
+} from "../../utils";
 import {
     setPlatformEnabled,
     setPlatformError,
     setPlatformStarted,
     touchPlatformEvent
-} from "../platform-status";
+} from "../../platform-status";
 import {
     acknowledgeSidecarDelivery,
     hasSidecarResponseBeenDelivered,
     markSidecarResponseDelivered,
-} from "../delivery";
-import { redis } from "../db/redis";
-import { env } from "../env";
+} from "../../delivery";
+import { redis } from "../../db/redis";
+import { env } from "../../env";
 
 const SLACK_LEADER_LOCK_KEY = process.env.SLACK_LEADER_LOCK_KEY || "surfaces:slack:socket-mode:leader";
 const SLACK_LEADER_LOCK_TTL_MS = Number(process.env.SLACK_LEADER_LOCK_TTL_MS || 30000);
@@ -1010,7 +1011,6 @@ export async function startSlack() {
 
                         // Enforce a single long-running thread per user/channel.
                         // We intentionally ignore per-response thread routing to avoid "history tab" UX issues.
-                        const responseThreadTs = replyThreadTs;
                         const plainResponseContent = toPlainSidecarText(
                             typeof resp.content === "string" ? resp.content : "",
                         );

@@ -1,5 +1,5 @@
 /**
- * Redis Client for Surfaces Sidecar
+ * Redis Client for Surfaces Worker
  * 
  * Connects to the same Redis instance as the main app.
  * Used for the embedding job queue.

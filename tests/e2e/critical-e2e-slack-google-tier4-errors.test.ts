@@ -7,7 +7,6 @@ import {
   requireSlackEnv,
   postSlackMessage,
   waitForSlackChannelResponse,
-  getSlackChannelHistory,
   wait,
   SLACK_E2E_PREFIX,
 } from "./slack-google-e2e-harness";
@@ -25,7 +24,7 @@ describeSlackGoogle("Slack–Google E2E Tier 4: Error handling", () => {
 
   it("Handles Slack connection failure gracefully", async () => {
     requireSlackEnv();
-    // Would need to simulate sidecar disconnect; skip for now.
+    // Would need to simulate worker disconnect; skip for now.
   });
 
   it("Handles Google API rate limit and recovers", async () => {

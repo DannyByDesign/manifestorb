@@ -29,6 +29,7 @@ const envSchema = z
     NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
     DATABASE_URL: z.string().min(1),
     REDIS_URL: z.string().optional(),
+    SURFACES_WORKER_PORT: z.coerce.number().int().positive().default(3400),
     OPENAI_API_KEY: z.string().optional(),
     GOOGLE_API_KEY: z.string().optional(),
     JOBS_SHARED_SECRET: z.string().min(1).optional(),
@@ -68,11 +69,27 @@ const envSchema = z
     TELEGRAM_BOT_TOKEN: z.string().optional(),
   });
 
-const parsed = envSchema.safeParse(process.env);
+const appPort = Number.parseInt(process.env.PORT ?? "3000", 10);
+const normalizedAppPort = Number.isFinite(appPort) ? appPort : 3000;
+const defaultCoreBaseUrl = `http://127.0.0.1:${normalizedAppPort}`;
+const defaultBrainApiUrl = `${defaultCoreBaseUrl}/api/surfaces/inbound`;
+
+const mergedEnv = {
+  ...process.env,
+  CORE_BASE_URL: process.env.CORE_BASE_URL ?? defaultCoreBaseUrl,
+  BRAIN_API_URL: process.env.BRAIN_API_URL ?? defaultBrainApiUrl,
+  SURFACES_WORKER_PORT: process.env.SURFACES_WORKER_PORT ?? "3400",
+  REDIS_URL:
+    process.env.REDIS_URL ??
+    process.env.REDIS_PRIVATE_URL ??
+    process.env.REDIS_TLS_URL,
+};
+
+const parsed = envSchema.safeParse(mergedEnv);
 
 if (!parsed.success) {
-  console.error("Invalid sidecar environment variables:", parsed.error.flatten());
-  throw new Error("Invalid sidecar environment variables");
+  console.error("Invalid surfaces worker environment variables:", parsed.error.flatten());
+  throw new Error("Invalid surfaces worker environment variables");
 }
 
 export const env = parsed.data;

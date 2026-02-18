@@ -8,21 +8,21 @@ class MockChannelRouter {
 vi.mock("@/features/channels/router", () => ({
   ChannelRouter: MockChannelRouter,
 }));
-vi.mock("../../../surfaces/src/db/redis", () => ({
+vi.mock("@/server/workers/surfaces/db/redis", () => ({
   redis: null,
 }));
-vi.mock("../../../surfaces/src/db/prisma", () => ({
+vi.mock("@/server/workers/surfaces/db/prisma", () => ({
   prisma: { $queryRaw: vi.fn() },
 }));
-vi.mock("../../../surfaces/src/slack", () => ({
+vi.mock("@/server/workers/surfaces/connectors/slack", () => ({
   sendSlackMessage: vi.fn(),
 }));
-vi.mock("../../../surfaces/src/discord", () => ({
+vi.mock("@/server/workers/surfaces/connectors/discord", () => ({
   sendDiscordMessage: vi.fn(),
 }));
 
-const setSidecarEnv = () => {
-  (process.env as any).NODE_ENV = "test";
+const setSurfacesWorkerEnv = () => {
+  process.env.NODE_ENV = "test";
   process.env.DATABASE_URL = "postgresql://test:test@localhost:5432/amodel";
   process.env.REDIS_URL = "redis://localhost:6379";
   process.env.OPENAI_API_KEY = "test-openai";
@@ -32,11 +32,11 @@ const setSidecarEnv = () => {
   process.env.INTERNAL_API_KEY = "internal";
 };
 
-describe("E2E sidecar inbound + notify", () => {
+describe("E2E surfaces inbound + notify", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.SURFACES_SHARED_SECRET = "secret";
-    setSidecarEnv();
+    setSurfacesWorkerEnv();
   });
 
   it("routes inbound then sends notify", async () => {
@@ -62,7 +62,7 @@ describe("E2E sidecar inbound + notify", () => {
     const inboundJson = await inboundRes.json();
     expect(inboundJson.responses).toHaveLength(1);
 
-    const { handleRequest } = await import("../../../surfaces/src/index");
+    const { handleRequest } = await import("@/server/workers/surfaces/index");
     const notifyRes = await handleRequest(
       new Request("http://localhost/notify", {
         method: "POST",
@@ -78,7 +78,7 @@ describe("E2E sidecar inbound + notify", () => {
   }, 20_000);
 
   it("rejects notify requests with missing content", async () => {
-    const { handleRequest } = await import("../../../surfaces/src/index");
+    const { handleRequest } = await import("@/server/workers/surfaces/index");
     const notifyRes = await handleRequest(
       new Request("http://localhost/notify", {
         method: "POST",

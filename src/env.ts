@@ -55,7 +55,7 @@ export const env = createEnv({
     WORKOS_API_KEY: z.string().min(1),
     WORKOS_CLIENT_ID: z.string().min(1),
     WORKOS_COOKIE_PASSWORD: z.string().min(32),
-    SURFACES_SHARED_SECRET: z.string().optional(), // Shared secret for Surfaces sidecar
+    SURFACES_SHARED_SECRET: z.string().optional(), // Shared secret for surfaces worker calls
     ADMIN_TOKEN: z.string().optional(), // For debug endpoints
     GOOGLE_CLIENT_ID: z.string().min(1),
     GOOGLE_CLIENT_SECRET: z.string().min(1),
@@ -173,9 +173,10 @@ export const env = createEnv({
     USE_BACKUP_MODEL: booleanString.default(false),
     HEALTH_API_KEY: z.string().optional(),
     JOBS_SHARED_SECRET: z.string().optional(),
+    SURFACES_WORKER_ENABLED: booleanString.optional(),
+    SURFACES_WORKER_PORT: z.string().optional(),
     CALENDAR_ACTIONS_DRY_RUN: booleanString.default(false),
-    SIDECAR_URL: optionalUrlish(), // URL of the surfaces sidecar for background jobs
-    SURFACES_API_URL: optionalUrlish(), // URL of the surfaces sidecar for push notifications
+    SURFACES_API_URL: optionalUrlish(), // Optional override for surfaces worker base URL
     OAUTH_PROXY_URL: z
       .preprocess(
         (value) =>

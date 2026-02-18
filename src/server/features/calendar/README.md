@@ -27,12 +27,12 @@ This directory provides event access, scheduling, conflict checks, and watch ren
 - **Conflict resolution**: Webhook detects external calendar changes (deduped); schedule proposal + resolver + verbal selection.
 - **Watch renewal**: Cron `POST /api/google/calendar/watch/renew` (CRON_SECRET). Feature flag: `NEXT_PUBLIC_CALENDAR_SCHEDULING_ENABLED`.
 
-## Internal Reconcile (Sidecar)
-- Sidecar runs a reconciliation job that calls `POST /api/calendar/sync/reconcile`.
+## Internal Reconcile (Worker)
+- Surfaces worker runs a reconciliation job that calls `POST /api/calendar/sync/reconcile`.
 - The main app validates the request using `isValidInternalApiKey` and the `x-api-key` header.
 - Required env vars:
   - Main app: `INTERNAL_API_KEY`
-  - Sidecar: `INTERNAL_API_KEY`, `CORE_BASE_URL`
+  - Worker process: `INTERNAL_API_KEY` (and optional `CORE_BASE_URL` override)
 
 ## Scheduling Account Resolution
 - When scheduling tasks, the system resolves the `emailAccountId` from `TaskPreference.selectedCalendarIds`.

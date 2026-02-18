@@ -8,6 +8,7 @@ This file is the fast orientation map for `src/`.
 src/
 ├── app/          # Next.js pages + API routes (public runtime entrypoints)
 ├── server/       # Backend runtime, domain services, provider integrations
+│   └── workers/  # Long-running connector + job runtimes (non-request workers)
 ├── components/   # UI components (landing + 3D experience)
 ├── lib/          # Client/shared UI helpers
 ├── enterprise/   # Billing/Stripe helpers
@@ -61,3 +62,12 @@ src/
 ## Legacy/Secondary Surface
 
 `src/server/actions` is a legacy next-safe-action surface. It is not on the main runtime path for inbox/calendar assistant execution.
+
+## Worker Ownership
+
+- Worker bootstrap: `src/server/workers/index.ts`
+- Surfaces worker runtime: `src/server/workers/surfaces/index.ts`
+- Connectors:
+  - Slack: `src/server/workers/surfaces/connectors/slack/index.ts`
+  - Discord: `src/server/workers/surfaces/connectors/discord/index.ts`
+  - Telegram: `src/server/workers/surfaces/connectors/telegram/index.ts`

@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "crypto";
 import prisma from "@/server/db/client";
 import { createScopedLogger } from "@/server/lib/logger";
 import { decryptToken, encryptToken } from "@/server/lib/encryption";
+import type { Prisma } from "@/generated/prisma/client";
 
 const logger = createScopedLogger("LinkingUtils");
 
@@ -25,7 +26,7 @@ export async function createLinkToken({
     metadata?: Record<string, unknown>;
 }) {
     // 1. Check for existing active token (Spam Prevention + Better UX)
-    // If we have an active token, reuse it. This prevents rotating tokens on every sidecar message
+    // If we have an active token, reuse it. This prevents rotating tokens on every surfaces message
     // (which would invalidate the link the user just received).
     const activeToken = await prisma.surfaceLinkToken.findFirst({
         where: {
@@ -70,7 +71,7 @@ export async function createLinkToken({
             providerAccountId,
             providerTeamId,
             expiresAt,
-            metadata: mergedMetadata as any,
+            metadata: mergedMetadata as Prisma.InputJsonValue,
         }
     });
 

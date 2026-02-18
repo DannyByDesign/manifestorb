@@ -1,11 +1,11 @@
-# Background Jobs (`surfaces/src/jobs`)
+# Background Jobs (`src/server/workers/surfaces/jobs`)
 
-This directory contains background job workers that run in the surfaces sidecar.
+This directory contains long-running job workers executed by the surfaces worker runtime.
 
-Why the sidecar:
-- Vercel/serverless environments have execution time limits.
-- Slack Socket Mode and other connectors need persistent processes.
-- Some jobs (memory recording, embedding backfills) are safer to run in a long-lived worker with retries.
+Why this worker runtime:
+- Chat connectors (Slack/Discord/Telegram) require persistent process state.
+- Memory and embedding pipelines are safer in retryable long-lived workers.
+- Main app and worker now run in the same Railway service (no separate sidecar deployment).
 
 ## Jobs
 
@@ -20,8 +20,8 @@ Key behaviors:
 - enqueues embeddings for new/updated facts into Redis (LPUSH to an embedding queue key)
 
 Triggered by:
-- main app: `src/server/features/memory/service.ts` enqueues a job to the sidecar (`SIDECAR_URL`) when `JOBS_SHARED_SECRET` is configured
-- sidecar HTTP endpoint: `POST /jobs/recording` (Authorization: `Bearer ${JOBS_SHARED_SECRET}`)
+- main app: `src/server/features/memory/service.ts` enqueues to the co-located surfaces worker when `JOBS_SHARED_SECRET` is configured
+- surfaces worker HTTP endpoint: `POST /jobs/recording` (Authorization: `Bearer ${JOBS_SHARED_SECRET}`)
 
 ### Embedding Worker (`embedding-worker.ts`)
 
@@ -44,7 +44,7 @@ Key behaviors:
 
 Purpose: run periodic jobs and expose manual triggers.
 
-Exposed endpoints (see `surfaces/src/index.ts`):
+Exposed endpoints (see `src/server/workers/surfaces/index.ts`):
 - `GET /health`
 - `GET /jobs/status`
 - `POST /jobs/embeddings` (Bearer `JOBS_SHARED_SECRET`)
@@ -52,10 +52,9 @@ Exposed endpoints (see `surfaces/src/index.ts`):
 
 ## Required Environment
 
-See `surfaces/.env.example` for a dev-friendly template. The important bits:
+See `/.env.example` for the unified template. The important bits:
 - `DATABASE_URL` (same database as the main app)
 - `REDIS_URL`
 - `OPENAI_API_KEY` (embeddings)
 - `GOOGLE_API_KEY` (memory recording)
 - `JOBS_SHARED_SECRET` (auth for job endpoints)
-

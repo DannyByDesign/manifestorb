@@ -6,7 +6,7 @@
  * - Memory decay (daily at 3 AM UTC)
  * - Memory recording backup (every 30 minutes - catches missed triggers)
  * 
- * This runs in the surfaces sidecar with no timeout constraints.
+ * This runs in the surfaces worker with no timeout constraints.
  */
 import { Cron } from 'croner';
 import { processEmbeddingQueue, recoverStaleJobs, getQueueStats } from './embedding-worker';
@@ -84,7 +84,7 @@ export function startScheduler() {
     });
 
     // Every 30 minutes: backup memory recording check
-    // Catches any missed triggers (network issues, sidecar restart, etc.)
+    // Catches any missed triggers (network issues, worker restart, etc.)
     const recordingBackupJob = Cron('*/30 * * * *', async () => {
         if (recordingBackupRunning) {
             console.log('[Scheduler] Recording backup already running, skipping');

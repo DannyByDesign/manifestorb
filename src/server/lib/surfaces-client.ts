@@ -1,5 +1,6 @@
 import { env } from "@/env";
 import { createScopedLogger } from "@/server/lib/logger";
+import { getSurfacesBaseUrl } from "@/server/lib/surfaces-url";
 
 const logger = createScopedLogger("surfaces-client");
 
@@ -12,7 +13,7 @@ export async function sendSurfaceOnboardingLinked(params: {
   providerAccountId: string;
   providerTeamId?: string | null;
 }): Promise<SurfacesOnboardingLinkedResult | null> {
-  const surfacesUrl = env.SURFACES_API_URL;
+  const surfacesUrl = getSurfacesBaseUrl();
   const secret = env.SURFACES_SHARED_SECRET;
   if (!surfacesUrl || !secret) {
     logger.warn("Surfaces not configured; skipping onboarding-linked push", {
@@ -43,10 +44,10 @@ export async function sendSurfaceOnboardingLinked(params: {
       return { ok: false, error: text.slice(0, 500) };
     }
 
-    const json = (await res.json().catch(() => null)) as any;
+    const json: unknown = await res.json().catch(() => null);
     if (!json || typeof json !== "object") return { ok: true };
-    const channelId =
-      typeof json.channelId === "string" ? (json.channelId as string) : null;
+    const channelIdValue = (json as { channelId?: unknown }).channelId;
+    const channelId = typeof channelIdValue === "string" ? channelIdValue : null;
     return { ok: true, channelId };
   } catch (error) {
     logger.warn("Error pushing onboarding-linked to surfaces", {

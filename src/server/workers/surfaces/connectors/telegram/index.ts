@@ -8,19 +8,19 @@ import {
     toPlainSidecarText,
     type InteractiveAction,
     type InteractivePayload
-} from "../utils";
+} from "../../utils";
 import {
     setPlatformEnabled,
     setPlatformError,
     setPlatformStarted,
     touchPlatformEvent
-} from "../platform-status";
+} from "../../platform-status";
 import {
     acknowledgeSidecarDelivery,
     hasSidecarResponseBeenDelivered,
     markSidecarResponseDelivered,
-} from "../delivery";
-import { env } from "../env";
+} from "../../delivery";
+import { env } from "../../env";
 
 let telegramBot: Telegraf | undefined;
 

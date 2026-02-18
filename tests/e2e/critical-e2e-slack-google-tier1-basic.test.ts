@@ -3,7 +3,7 @@
  * Run with: RUN_LIVE_SLACK_GOOGLE_E2E=true vitest run --config vitest.e2e.config.ts tests/e2e/critical-e2e-slack-google-tier1-basic.test.ts
  *
  * Requires: SURFACES_SHARED_SECRET, and for simulated tests the main app must be running (or use in-process).
- * For full round-trip: SLACK_BOT_TOKEN, TEST_SLACK_CHANNEL_ID, TEST_SLACK_USER_ID; main app + sidecar running.
+ * For full round-trip: SLACK_BOT_TOKEN, TEST_SLACK_CHANNEL_ID, TEST_SLACK_USER_ID; main app + worker running.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -11,7 +11,6 @@ import {
   requireSlackEnv,
   postSlackMessage,
   waitForSlackChannelResponse,
-  getSlackThreadReplies,
   getSlackChannelHistory,
   wait,
   SLACK_E2E_PREFIX,
@@ -48,7 +47,7 @@ describeSlackGoogle("Slack–Google E2E Tier 1: Basic communication", () => {
     );
   }, 30_000);
 
-  it("Message round-trip (full): post to Slack, sidecar forwards, response in channel", async () => {
+  it("Message round-trip (full): post to Slack, worker forwards, response in channel", async () => {
     requireSlackEnv();
     const channel = process.env.TEST_SLACK_CHANNEL_ID!;
     const msg = await postSlackMessage({

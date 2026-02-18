@@ -19,10 +19,10 @@ if (process.env.RUN_LIVE_E2E === "true") {
   }
 }
 if (process.env.RUN_LIVE_SLACK_GOOGLE_E2E === "true") {
-  // Load surfaces/.env.local first so TEST_SLACK_USER_TOKEN (and other Slack vars) are available
-  const surfacesEnv = path.resolve(process.cwd(), "surfaces", ".env.local");
-  if (fs.existsSync(surfacesEnv)) {
-    loadEnv({ path: surfacesEnv, override: false });
+  // Load .env.local first so TEST_SLACK_USER_TOKEN (and other Slack vars) are available.
+  const localEnv = path.resolve(process.cwd(), ".env.local");
+  if (fs.existsSync(localEnv)) {
+    loadEnv({ path: localEnv, override: false });
   }
   for (const envFile of envFileCandidates) {
     const envPath = path.resolve(process.cwd(), envFile);

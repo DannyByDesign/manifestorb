@@ -4,7 +4,7 @@
  * Processes pending embedding jobs from the Redis queue.
  * Generates embeddings via OpenAI and stores them in the database.
  * 
- * This worker runs in the surfaces sidecar with no timeout constraints.
+ * This worker runs in the surfaces worker with no timeout constraints.
  */
 import { redis } from '../db/redis';
 import { prisma } from '../db/prisma';
