@@ -97,6 +97,7 @@ model User {
   apiKeys ApiKey[]
 
   emailAccounts EmailAccount[]
+  scheduledDraftSends ScheduledDraftSend[]
 
   // Referral relationships
   referralsMade    Referral[] @relation("ReferrerUser")
@@ -192,6 +193,7 @@ model EmailAccount {
   chats            Chat[]
   digests          Digest[]
   scheduledActions ScheduledAction[]
+  scheduledDraftSends ScheduledDraftSend[]
   responseTimes    ResponseTime[]
 
   members             Member[]
@@ -1378,6 +1380,42 @@ enum SchedulingStatus {
   PENDING
   SCHEDULED
   FAILED
+}
+
+enum ScheduledDraftSendStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+model ScheduledDraftSend {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId         String
+  emailAccountId String
+  draftId        String
+  sendAt         DateTime
+  status         ScheduledDraftSendStatus @default(PENDING)
+
+  idempotencyKey      String  @unique
+  sourceConversationId String?
+  scheduledId          String? // QStash messageId (if scheduled via QStash)
+
+  sentAt    DateTime?
+  messageId String?
+  threadId  String?
+  lastError String?
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emailAccount EmailAccount @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
+
+  @@index([status, sendAt])
+  @@index([emailAccountId, draftId])
+  @@index([userId, emailAccountId])
 }
 
 enum MeetingBriefingStatus {

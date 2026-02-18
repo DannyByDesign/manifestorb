@@ -1,6 +1,3 @@
-import { z } from "zod";
-import { createGenerateObject } from "@/server/lib/llms";
-import { getModel } from "@/server/lib/llms/model";
 import type { ToolResult } from "@/server/features/ai/tools/types";
 import type { CapabilityEnvironment } from "@/server/features/ai/tools/runtime/capabilities/types";
 import {
@@ -12,22 +9,12 @@ import {
   removeRulePlaneRule,
   updateRulePlaneRule,
 } from "@/server/features/policy-plane/service";
-import { createUnifiedSearchService } from "@/server/features/search/unified/service";
+import prisma from "@/server/db/client";
 import type {
   CanonicalRule,
   CanonicalRuleType,
 } from "@/server/features/policy-plane/canonical-schema";
 
-const RULE_TARGET_SELECTOR_SCHEMA = z
-  .object({
-    decision: z.enum(["resolved", "ambiguous", "not_found"]),
-    selectedRuleId: z.string().min(1).optional(),
-    candidateRuleIds: z.array(z.string().min(1)).max(3).default([]),
-    confidence: z.number().min(0).max(1).optional(),
-  })
-  .strict();
-
-const RULE_TARGET_MIN_CONFIDENCE = 0.75;
 const RULE_TARGET_MAX_CANDIDATES = 25;
 
 function failure(message: string, error?: unknown): ToolResult {
@@ -78,29 +65,40 @@ function summarizeRuleForSelection(rule: CanonicalRule): Record<string, unknown>
   };
 }
 
-function buildRuleClarificationPrompt(params: {
-  action: "update" | "disable" | "delete";
-  target: string;
-  candidates: CanonicalRule[];
-  notFound?: boolean;
-}): string {
-  if (params.notFound || params.candidates.length === 0) {
-    return `I couldn't find a matching rule for "${params.target}". Tell me the rule name exactly, or ask me to list your rules first.`;
+function scoreRuleMatch(params: {
+  normalizedTarget: string;
+  targetTokens: Set<string>;
+  rule: CanonicalRule;
+}): number {
+  const text = normalizeText(
+    [
+      params.rule.name ?? "",
+      params.rule.description ?? "",
+      params.rule.source.sourceNl ?? "",
+    ].join(" "),
+  );
+  if (!text) return 0;
+  if (text.includes(params.normalizedTarget)) return 1;
+
+  const tokens = new Set(text.split(" ").filter(Boolean));
+  let hits = 0;
+  for (const token of params.targetTokens) {
+    if (tokens.has(token)) {
+      hits += 1;
+      continue;
+    }
+    // light singular/plural tolerance ("newsletter" vs "newsletters").
+    if (token.endsWith("s") && tokens.has(token.slice(0, -1))) {
+      hits += 1;
+      continue;
+    }
+    if (!token.endsWith("s") && tokens.has(`${token}s`)) {
+      hits += 1;
+      continue;
+    }
   }
-
-  const actionVerb =
-    params.action === "update"
-      ? "update"
-      : params.action === "disable"
-        ? "disable"
-        : "delete";
-
-  const labelList = params.candidates
-    .slice(0, 3)
-    .map((rule) => `"${rule.name ?? rule.description ?? rule.id}"`)
-    .join(", ");
-
-  return `I found multiple possible rules for "${params.target}". Which one should I ${actionVerb}: ${labelList}?`;
+  const denom = Math.max(1, params.targetTokens.size);
+  return hits / denom;
 }
 
 async function selectRuleFromTarget(params: {
@@ -119,7 +117,7 @@ async function selectRuleFromTarget(params: {
         message: "I need a rule name or description to identify it.",
         clarification: {
           kind: "missing_fields",
-          prompt: "Which rule should I use? You can say part of the rule name.",
+          prompt: "policy_rule_target_required",
           missingFields: ["rule_target"],
         },
       },
@@ -131,53 +129,7 @@ async function selectRuleFromTarget(params: {
     emailAccountId: params.env.runtime.emailAccountId,
     type: params.type,
   });
-
-  const unifiedSearch = createUnifiedSearchService({
-    userId: params.env.runtime.userId,
-    emailAccountId: params.env.runtime.emailAccountId,
-    email: params.env.runtime.email,
-    logger: params.env.runtime.logger,
-    providers: params.env.toolContext.providers,
-  });
-
-  let prioritizedRuleIds: string[] = [];
-  try {
-    const unified = await unifiedSearch.query({
-      scopes: ["rule"],
-      query: target,
-      limit: RULE_TARGET_MAX_CANDIDATES,
-    });
-
-    prioritizedRuleIds = unified.items
-      .filter((item) => item.surface === "rule")
-      .map((item) => {
-        const metadata =
-          item.metadata && typeof item.metadata === "object"
-            ? (item.metadata as Record<string, unknown>)
-            : {};
-        return typeof metadata.ruleId === "string"
-          ? metadata.ruleId
-          : typeof metadata.sourceId === "string"
-            ? metadata.sourceId
-            : undefined;
-      })
-      .filter((id): id is string => Boolean(id));
-  } catch (error) {
-    params.env.runtime.logger.warn("Unified search failed for rule target preselection", {
-      action: params.action,
-      target,
-      error,
-    });
-  }
-
-  const rulesById = new Map(allRules.map((rule) => [rule.id, rule]));
-  const prioritizedRules = prioritizedRuleIds
-    .map((id) => rulesById.get(id))
-    .filter((rule): rule is CanonicalRule => Boolean(rule));
-
-  const rules = prioritizedRules.length > 0
-    ? prioritizedRules
-    : allRules;
+  const rules = allRules;
 
   if (rules.length === 0) {
     return {
@@ -188,12 +140,7 @@ async function selectRuleFromTarget(params: {
         message: "You don't have any matching rules yet.",
         clarification: {
           kind: "invalid_fields",
-          prompt: buildRuleClarificationPrompt({
-            action: params.action,
-            target,
-            candidates: [],
-            notFound: true,
-          }),
+          prompt: "policy_rule_target_not_found",
           missingFields: ["rule_target"],
         },
       },
@@ -234,113 +181,89 @@ async function selectRuleFromTarget(params: {
   const candidateById = new Map(candidates.map((rule) => [rule.id, rule]));
   const candidatePayload = candidates.map(summarizeRuleForSelection);
 
-  try {
-    const modelOptions = getModel("economy");
-    const generateObject = createGenerateObject({
-      emailAccount: {
-        id: params.env.runtime.emailAccountId,
-        email: params.env.runtime.email,
-        userId: params.env.runtime.userId,
-      },
-      label: "policy-rule-target-selection",
-      modelOptions,
-      maxLLMRetries: 0,
-    });
+  const STOPWORDS = new Set([
+    "the",
+    "a",
+    "an",
+    "this",
+    "that",
+    "these",
+    "those",
+    "one",
+    "rule",
+    "rules",
+    "please",
+    "my",
+    "your",
+    "it",
+    "to",
+    "for",
+    "of",
+    "and",
+    "or",
+    "in",
+    "on",
+  ]);
+  const targetTokens = new Set(
+    normalizedTarget
+      .split(" ")
+      .map((t) => t.trim())
+      .filter((t) => t.length >= 2 && !STOPWORDS.has(t)),
+  );
+  const scored = candidates
+    .map((rule) => ({
+      rule,
+      score: scoreRuleMatch({ normalizedTarget, targetTokens, rule }),
+    }))
+    .sort((a, b) => b.score - a.score || a.rule.id.localeCompare(b.rule.id));
 
-    const { object } = await generateObject({
-      model: modelOptions.model,
-      schema: RULE_TARGET_SELECTOR_SCHEMA,
-      prompt: [
-        "Select the best matching canonical rule for the requested mutation.",
-        "If one rule is clearly intended, return decision=resolved and selectedRuleId.",
-        "If multiple rules could match, return decision=ambiguous and up to 3 candidateRuleIds.",
-        "If no candidate matches, return decision=not_found.",
-        "Be conservative. Do not guess.",
-        `Action: ${params.action}`,
-        `Target text: ${target}`,
-        `Candidates JSON: ${JSON.stringify(candidatePayload)}`,
-      ].join("\n\n"),
-    });
+  const best = scored[0];
+  const second = scored[1];
+  const bestScore = best?.score ?? 0;
+  const secondScore = second?.score ?? 0;
 
-    if (object.decision === "resolved") {
-      const selectedId = object.selectedRuleId?.trim();
-      const confidence = object.confidence ?? 1;
-      if (
-        selectedId &&
-        candidateById.has(selectedId) &&
-        Number.isFinite(confidence) &&
-        confidence >= RULE_TARGET_MIN_CONFIDENCE
-      ) {
-        return { ok: true, id: selectedId };
-      }
-    }
+  if (best && bestScore >= 0.75 && bestScore - secondScore >= 0.15) {
+    return { ok: true, id: best.rule.id };
+  }
 
-    if (object.decision === "not_found") {
-      return {
-        ok: false,
-        result: {
-          success: false,
-          error: "rule_not_found",
-          message: "I couldn't find a matching rule.",
-          clarification: {
-            kind: "invalid_fields",
-            prompt: buildRuleClarificationPrompt({
-              action: params.action,
-              target,
-              candidates,
-              notFound: true,
-            }),
-            missingFields: ["rule_target"],
-          },
-        },
-      };
-    }
-
-    const shortlisted = object.candidateRuleIds
-      .map((id) => candidateById.get(id))
-      .filter((candidate): candidate is CanonicalRule => Boolean(candidate));
-
+  if (bestScore < 0.35) {
     return {
       ok: false,
       result: {
         success: false,
-        error: "ambiguous_rule_target",
-        message: "I found multiple possible rules.",
+        error: "rule_not_found",
+        message: "I couldn't find a matching rule.",
         clarification: {
           kind: "invalid_fields",
-          prompt: buildRuleClarificationPrompt({
-            action: params.action,
-            target,
-            candidates: shortlisted.length > 0 ? shortlisted : candidates,
-          }),
+          prompt: "policy_rule_target_not_found",
           missingFields: ["rule_target"],
         },
-      },
-    };
-  } catch (error) {
-    params.env.runtime.logger.warn("Policy rule target selection failed", {
-      action: params.action,
-      target,
-      error,
-    });
-    return {
-      ok: false,
-      result: {
-        success: false,
-        error: "rule_target_selection_failed",
-        message: "I couldn't confidently identify the rule.",
-        clarification: {
-          kind: "other",
-          prompt: buildRuleClarificationPrompt({
-            action: params.action,
-            target,
-            candidates,
-          }),
-          missingFields: ["rule_target"],
+        data: {
+          target,
+          candidates: candidatePayload.slice(0, 3),
         },
       },
     };
   }
+
+  const topCandidates = scored.slice(0, 3).map((entry) => entry.rule);
+  return {
+    ok: false,
+    result: {
+      success: false,
+      error: "ambiguous_rule_target",
+      message: "I found multiple possible rules.",
+      clarification: {
+        kind: "invalid_fields",
+        prompt: "policy_rule_target_ambiguous",
+        missingFields: ["rule_target"],
+      },
+      data: {
+        target,
+        candidates: topCandidates.map(summarizeRuleForSelection),
+      },
+    },
+  };
 }
 
 async function resolveRuleIdForMutation(params: {
@@ -364,6 +287,8 @@ export interface PolicyCapabilities {
   listRules(input: { type?: CanonicalRuleType }): Promise<ToolResult>;
   compileRule(input: { input: string }): Promise<ToolResult>;
   createRule(input: { input: string; activate?: boolean }): Promise<ToolResult>;
+  explainLastDecision(input: { limit?: number }): Promise<ToolResult>;
+  dryRunRule(input: { id?: string; target?: string; type?: CanonicalRuleType; limit?: number }): Promise<ToolResult>;
   updateRule(input: {
     id?: string;
     target?: string;
@@ -410,7 +335,7 @@ export function createPolicyCapabilities(env: CapabilityEnvironment): PolicyCapa
           message: "I need the rule text to compile it.",
           clarification: {
             kind: "missing_fields",
-            prompt: "Describe the rule you want to compile.",
+            prompt: "policy_rule_input_required",
             missingFields: ["rule_input"],
           },
         };
@@ -442,7 +367,7 @@ export function createPolicyCapabilities(env: CapabilityEnvironment): PolicyCapa
           message: "I need the rule text to create it.",
           clarification: {
             kind: "missing_fields",
-            prompt: "Describe the rule you want to create.",
+            prompt: "policy_rule_input_required",
             missingFields: ["rule_input"],
           },
         };
@@ -496,6 +421,131 @@ export function createPolicyCapabilities(env: CapabilityEnvironment): PolicyCapa
         };
       } catch (error) {
         return failure("I couldn't create that rule.", error);
+      }
+    },
+    async explainLastDecision(input) {
+      try {
+        const limitRaw = typeof input.limit === "number" ? input.limit : undefined;
+        const limit = typeof limitRaw === "number" && Number.isFinite(limitRaw)
+          ? Math.min(10, Math.max(1, Math.trunc(limitRaw)))
+          : 3;
+
+        const logs = await prisma.policyDecisionLog.findMany({
+          where: {
+            userId: env.runtime.userId,
+            emailAccountId: env.runtime.emailAccountId,
+            ...(env.runtime.conversationId ? { conversationId: env.runtime.conversationId } : {}),
+            decisionKind: { in: ["block", "require_approval"] },
+          },
+          orderBy: { createdAt: "desc" },
+          take: limit,
+          include: {
+            canonicalRule: true,
+          },
+        });
+
+        if (logs.length === 0) {
+          return {
+            success: false,
+            error: "no_recent_policy_decisions",
+            message: "I couldn't find a recent blocked/approval-required action to explain.",
+            meta: { resource: "rule", itemCount: 0 },
+          };
+        }
+
+        const formatted = logs.map((log) => ({
+          id: log.id,
+          createdAt: log.createdAt.toISOString(),
+          toolName: log.toolName,
+          decisionKind: log.decisionKind,
+          reasonCode: log.reasonCode,
+          message: log.message,
+          canonicalRule: log.canonicalRule
+            ? {
+                id: log.canonicalRule.id,
+                type: log.canonicalRule.type,
+                enabled: log.canonicalRule.enabled,
+                name: log.canonicalRule.name ?? null,
+                description: log.canonicalRule.description ?? null,
+                match: log.canonicalRule.match,
+                decision: log.canonicalRule.decision ?? null,
+                sourceNl: log.canonicalRule.source?.sourceNl ?? null,
+              }
+            : null,
+        }));
+
+        return {
+          success: true,
+          data: formatted,
+          message: formatted.length === 1 ? "Here's the most recent policy decision." : "Here are the most recent policy decisions.",
+          meta: { resource: "rule", itemCount: formatted.length },
+        };
+      } catch (error) {
+        return failure("I couldn't explain the last policy decision right now.", error);
+      }
+    },
+
+    async dryRunRule(input) {
+      const resolved = await resolveRuleIdForMutation({
+        env,
+        action: "update",
+        id: input.id,
+        target: input.target,
+        type: input.type,
+      });
+      if (!resolved.ok) return resolved.result;
+
+      try {
+        const rules = await listRulePlaneRulesByType({
+          userId: env.runtime.userId,
+          emailAccountId: env.runtime.emailAccountId,
+          type: input.type,
+        });
+        const rule = rules.find((r) => r.id === resolved.id) ?? null;
+        if (!rule) return failure("Rule not found.");
+
+        const limitRaw = typeof input.limit === "number" ? input.limit : undefined;
+        const limit = typeof limitRaw === "number" && Number.isFinite(limitRaw)
+          ? Math.min(50, Math.max(1, Math.trunc(limitRaw)))
+          : 20;
+
+        const unifiedSearch = createUnifiedSearchService({
+          userId: env.runtime.userId,
+          emailAccountId: env.runtime.emailAccountId,
+          email: env.runtime.email,
+          logger: env.runtime.logger,
+          providers: env.toolContext.providers,
+        });
+
+        // Gmail-only pragmatic dry run: use the rule's natural language source as the query.
+        // This provides a deterministic, inspectable "what would match" preview.
+        const queryText = rule.source?.sourceNl?.trim() || rule.name?.trim() || rule.description?.trim() || "";
+        if (!queryText) {
+          return {
+            success: false,
+            error: "rule_missing_source_text",
+            message: "That rule doesn't have enough source text to dry-run.",
+          };
+        }
+
+        const result = await unifiedSearch.query({
+          scopes: rule.match.resource === "calendar" ? ["calendar"] : rule.match.resource === "email" ? ["email"] : ["email", "calendar"],
+          query: queryText,
+          limit,
+        });
+
+        return {
+          success: true,
+          data: {
+            rule: summarizeRuleForSelection(rule),
+            queryUsed: queryText,
+            result,
+          },
+          message: result.items.length === 0 ? "No current items matched in dry run." : `Dry run found ${result.items.length} matching item${result.items.length === 1 ? "" : "s"}.`,
+          meta: { resource: "rule", itemCount: result.items.length },
+        };
+      } catch (error) {
+        return failure("I couldn't dry-run that rule right now.", error);
       }
     },
     async updateRule(input) {

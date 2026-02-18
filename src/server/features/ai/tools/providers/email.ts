@@ -126,8 +126,12 @@ export interface EmailProvider {
         text?: string;
         from?: string;
         to?: string;
+        cc?: string;
+        category?: "primary" | "promotions" | "social" | "updates" | "forums";
         hasAttachment?: boolean;
         attachmentIntentTerm?: string;
+        attachmentMimeTypes?: string[];
+        attachmentFilenameContains?: string;
         sentByMe?: boolean;
         receivedByMe?: boolean;
     }): Promise<{
@@ -260,8 +264,12 @@ export async function createEmailProvider(
             text?: string;
             from?: string;
             to?: string;
+            cc?: string;
+            category?: "primary" | "promotions" | "social" | "updates" | "forums";
             hasAttachment?: boolean;
             attachmentIntentTerm?: string;
+            attachmentMimeTypes?: string[];
+            attachmentFilenameContains?: string;
             sentByMe?: boolean;
             receivedByMe?: boolean;
         },
@@ -282,15 +290,39 @@ export async function createEmailProvider(
             const to = message.headers?.to || "";
             const cc = message.headers?.cc || "";
             const bcc = message.headers?.bcc || "";
+            const labelIds = Array.isArray(message.labelIds) ? message.labelIds : [];
 
             if (!includesLooseTerm(subject, options.subjectContains)) return false;
             if (!includesLooseTerm(body, options.bodyContains)) return false;
             if (!includesLooseTerm(from, options.from)) return false;
             if (!includesLooseTerm(to, options.to)) return false;
+            if (!includesLooseTerm(cc, options.cc)) return false;
 
             if (options.hasAttachment !== undefined) {
                 const hasAttachment = Array.isArray(message.attachments) && message.attachments.length > 0;
                 if (options.hasAttachment !== hasAttachment) return false;
+            }
+
+            if (options.category) {
+                const wanted = options.category.toLowerCase();
+                const labelSet = new Set(labelIds.map((id) => String(id).toUpperCase()));
+                const match = (() => {
+                    switch (wanted) {
+                        case "primary":
+                            return labelSet.has("CATEGORY_PERSONAL");
+                        case "promotions":
+                            return labelSet.has("CATEGORY_PROMOTIONS");
+                        case "social":
+                            return labelSet.has("CATEGORY_SOCIAL");
+                        case "updates":
+                            return labelSet.has("CATEGORY_UPDATES");
+                        case "forums":
+                            return labelSet.has("CATEGORY_FORUMS");
+                        default:
+                            return false;
+                    }
+                })();
+                if (!match) return false;
             }
 
             if (shouldCheckText) {
@@ -306,6 +338,26 @@ export async function createEmailProvider(
                 const attachmentMatches = includesLooseTerm(attachmentBlob, attachmentIntentTerm);
                 // For "<term> attachment" requests, avoid body-only matches that create false positives.
                 if (!subjectMatches && !attachmentMatches) return false;
+            }
+
+            if (Array.isArray(options.attachmentMimeTypes) && options.attachmentMimeTypes.length > 0) {
+                const wanted = options.attachmentMimeTypes
+                    .map((value) => normalizeText(value))
+                    .filter((value) => value.length > 0);
+                if (wanted.length > 0) {
+                    const available = (message.attachments ?? [])
+                        .map((att) => normalizeText(att.mimeType))
+                        .filter((v) => v.length > 0);
+                    if (available.length === 0) return false;
+                    if (!wanted.some((needle) => available.some((mt) => mt.includes(needle)))) return false;
+                }
+            }
+
+            if (normalizeText(options.attachmentFilenameContains).length > 0) {
+                const needle = normalizeText(options.attachmentFilenameContains);
+                const names = (message.attachments ?? []).map((att) => normalizeText(att.filename));
+                if (names.length === 0) return false;
+                if (!names.some((name) => name.includes(needle))) return false;
             }
 
             if (options.sentByMe !== undefined) {
@@ -331,8 +383,12 @@ export async function createEmailProvider(
         text?: string;
         from?: string;
         to?: string;
+        cc?: string;
+        category?: "primary" | "promotions" | "social" | "updates" | "forums";
         hasAttachment?: boolean;
         attachmentIntentTerm?: string;
+        attachmentMimeTypes?: string[];
+        attachmentFilenameContains?: string;
         sentByMe?: boolean;
         receivedByMe?: boolean;
     }): boolean =>
@@ -342,8 +398,12 @@ export async function createEmailProvider(
             normalizeText(options.text) ||
             normalizeText(options.from) ||
             normalizeText(options.to) ||
+            normalizeText(options.cc) ||
+            normalizeText(options.category) ||
             normalizeText(options.attachmentIntentTerm) ||
             options.hasAttachment !== undefined ||
+            (Array.isArray(options.attachmentMimeTypes) && options.attachmentMimeTypes.length > 0) ||
+            normalizeText(options.attachmentFilenameContains) ||
             options.sentByMe !== undefined ||
             options.receivedByMe !== undefined,
         );
@@ -374,6 +434,8 @@ export async function createEmailProvider(
             text?: string;
             from?: string;
             to?: string;
+            cc?: string;
+            category?: "primary" | "promotions" | "social" | "updates" | "forums";
             hasAttachment?: boolean;
             attachmentIntentTerm?: string;
             sentByMe?: boolean;
@@ -388,6 +450,9 @@ export async function createEmailProvider(
 
         const to = filters.to?.trim();
         if (to) query = appendQueryToken(query, `to:${quoteQueryValue(to)}`);
+
+        const cc = filters.cc?.trim();
+        if (cc) query = appendQueryToken(query, `cc:${quoteQueryValue(cc)}`);
 
         const subjectContains = filters.subjectContains?.trim();
         if (subjectContains) {
@@ -407,6 +472,10 @@ export async function createEmailProvider(
 
         if (filters.hasAttachment === true) {
             query = appendQueryToken(query, "has:attachment");
+        }
+
+        if (filters.category) {
+            query = appendQueryToken(query, `category:${filters.category}`);
         }
 
         if (filters.sentByMe === true) {
@@ -461,8 +530,12 @@ export async function createEmailProvider(
             text,
             from,
             to,
+            cc,
+            category,
             hasAttachment,
             attachmentIntentTerm,
+            attachmentMimeTypes,
+            attachmentFilenameContains,
             sentByMe,
             receivedByMe,
         }) => runThrottled("search", async () => {
@@ -499,8 +572,12 @@ export async function createEmailProvider(
                     text,
                     from,
                     to,
+                    cc,
+                    category,
                     hasAttachment,
                     attachmentIntentTerm,
+                    attachmentMimeTypes,
+                    attachmentFilenameContains,
                     sentByMe,
                     receivedByMe,
                 };
@@ -768,6 +845,8 @@ export async function createEmailProvider(
             if (params.type === "new") {
                 const res = await service.createDraft({
                     to: params.to?.join(", ") || "",
+                    cc: params.cc?.join(", "),
+                    bcc: params.bcc?.join(", "),
                     subject: params.subject || "",
                     messageHtml: params.body || "",
                 });
@@ -775,6 +854,8 @@ export async function createEmailProvider(
             } else if (params.type === "reply" && params.parentId) {
                 const res = await service.createDraft({
                     to: params.to?.join(", ") || "",
+                    cc: params.cc?.join(", "),
+                    bcc: params.bcc?.join(", "),
                     subject: params.subject || "",
                     messageHtml: params.body || "",
                     replyToMessageId: params.parentId
@@ -783,6 +864,8 @@ export async function createEmailProvider(
             } else if (params.type === "forward" && params.parentId) {
                 const res = await service.createDraft({
                     to: params.to?.join(", ") || "",
+                    cc: params.cc?.join(", "),
+                    bcc: params.bcc?.join(", "),
                     subject: params.subject || "",
                     messageHtml: params.body || "",
                 });

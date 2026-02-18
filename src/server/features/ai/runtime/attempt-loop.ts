@@ -15,6 +15,7 @@ import { runRuntimeSessionRunner } from "@/server/features/ai/runtime/harness/se
 import { emitToolLifecycleEvents } from "@/server/features/ai/runtime/harness/tool-events";
 import type { RuntimeToolResult } from "@/server/features/ai/tools/contracts/tool-result";
 import { renderRuntimeContextForPrompt } from "@/server/features/ai/runtime/context/render";
+import { maybeRunDeterministicCrossSurfaceExecutor } from "@/server/features/ai/runtime/deterministic-cross-surface";
 import {
   pruneRuntimeMessages,
   resolveRuntimeMessagePruningConfig,
@@ -490,6 +491,17 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
     emailAccountId: session.input.emailAccountId,
   });
   const userTimeZone = "error" in resolvedTimeZone ? "UTC" : resolvedTimeZone.timeZone;
+
+  if (routingPlan.lane === "planner") {
+    const deterministic = await maybeRunDeterministicCrossSurfaceExecutor({
+      session,
+      context,
+      userTimeZone,
+    });
+    if (deterministic.handled) {
+      return finalizeFromCurrentResults();
+    }
+  }
 
   const budgetBeforeGenerate = remainingBudgetMs(startedAt);
   if (budgetBeforeGenerate <= 0) {

@@ -17,6 +17,12 @@ export const calendarToolExecutors: RuntimeToolExecutorMap = {
       eventId: asString(args.eventId) ?? "",
       calendarId: asString(args.calendarId),
     }),
+  "calendar.listCalendars": async ({ capabilities }) =>
+    capabilities.calendar.listCalendars(),
+  "calendar.setEnabledCalendars": async ({ args, capabilities }) =>
+    capabilities.calendar.setEnabledCalendars(asObject(args)),
+  "calendar.setSelectedCalendars": async ({ args, capabilities }) =>
+    capabilities.calendar.setSelectedCalendars(asObject(args)),
   "calendar.createEvent": async ({ args, capabilities }) =>
     capabilities.calendar.createEvent(asObject(args)),
   "calendar.updateEvent": async ({ args, capabilities }) =>
@@ -48,10 +54,11 @@ export const calendarToolExecutors: RuntimeToolExecutorMap = {
       changes: args.changes ? asObject(args.changes) : undefined,
     }),
   "calendar.rescheduleEvent": async ({ args, capabilities }) =>
-    capabilities.calendar.rescheduleEvent(
-      asStringArray(args.eventIds),
-      asObject(args.changes),
-    ),
+    capabilities.calendar.rescheduleEvent({
+      eventIds: asStringArray(args.eventIds),
+      filter: args.filter ? asObject(args.filter) : undefined,
+      changes: args.changes ? asObject(args.changes) : undefined,
+    }),
   "calendar.setWorkingHours": async ({ args, capabilities }) =>
     capabilities.calendar.setWorkingHours(asObject(args)),
   "calendar.setWorkingLocation": async ({ args, capabilities }) =>

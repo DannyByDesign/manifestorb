@@ -75,6 +75,8 @@ export async function enqueueEmailDocumentForIndexing(params: {
       labelIds: params.message.labelIds ?? [],
       hasAttachment: Array.isArray(params.message.attachments) && params.message.attachments.length > 0,
       attachmentCount: params.message.attachments?.length ?? 0,
+      attachmentNames: (params.message.attachments ?? []).map((att) => att.filename).filter(Boolean),
+      attachmentMimeTypes: (params.message.attachments ?? []).map((att) => att.mimeType).filter(Boolean),
       isDraft: params.message.labelIds?.includes("DRAFT") ?? false,
       isSent: params.message.labelIds?.includes("SENT") ?? false,
       isInbox: params.message.labelIds?.includes("INBOX") ?? false,

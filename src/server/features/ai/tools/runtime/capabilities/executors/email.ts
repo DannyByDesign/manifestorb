@@ -24,29 +24,45 @@ export const emailToolExecutors: RuntimeToolExecutorMap = {
   "email.getLatestMessage": async ({ args, capabilities }) =>
     capabilities.email.getLatestMessage(asString(args.threadId) ?? ""),
   "email.batchArchive": async ({ args, capabilities }) =>
-    capabilities.email.batchArchive(asStringArray(args.ids)),
+    capabilities.email.batchArchive({
+      ids: asStringArray(args.ids),
+      filter: args.filter ? asObject(args.filter) : undefined,
+      limit: typeof args.limit === "number" ? args.limit : undefined,
+    }),
   "email.batchTrash": async ({ args, capabilities }) =>
-    capabilities.email.batchTrash(asStringArray(args.ids)),
+    capabilities.email.batchTrash({
+      ids: asStringArray(args.ids),
+      filter: args.filter ? asObject(args.filter) : undefined,
+      limit: typeof args.limit === "number" ? args.limit : undefined,
+    }),
   "email.markReadUnread": async ({ args, capabilities }) =>
-    capabilities.email.markReadUnread(
-      asStringArray(args.ids),
-      asBoolean(args.read) ?? true,
-    ),
+    capabilities.email.markReadUnread({
+      ids: asStringArray(args.ids),
+      filter: args.filter ? asObject(args.filter) : undefined,
+      limit: typeof args.limit === "number" ? args.limit : undefined,
+      read: asBoolean(args.read) ?? true,
+    }),
   "email.applyLabels": async ({ args, capabilities }) =>
-    capabilities.email.applyLabels(
-      asStringArray(args.ids),
-      asStringArray(args.labelIds),
-    ),
+    capabilities.email.applyLabels({
+      ids: asStringArray(args.ids),
+      filter: args.filter ? asObject(args.filter) : undefined,
+      limit: typeof args.limit === "number" ? args.limit : undefined,
+      labelIds: asStringArray(args.labelIds),
+    }),
   "email.removeLabels": async ({ args, capabilities }) =>
-    capabilities.email.removeLabels(
-      asStringArray(args.ids),
-      asStringArray(args.labelIds),
-    ),
+    capabilities.email.removeLabels({
+      ids: asStringArray(args.ids),
+      filter: args.filter ? asObject(args.filter) : undefined,
+      limit: typeof args.limit === "number" ? args.limit : undefined,
+      labelIds: asStringArray(args.labelIds),
+    }),
   "email.moveThread": async ({ args, capabilities }) =>
-    capabilities.email.moveThread(
-      asStringArray(args.ids),
-      asString(args.folderName) ?? "",
-    ),
+    capabilities.email.moveThread({
+      ids: asStringArray(args.ids),
+      filter: args.filter ? asObject(args.filter) : undefined,
+      limit: typeof args.limit === "number" ? args.limit : undefined,
+      folderName: asString(args.folderName) ?? "",
+    }),
   "email.markSpam": async ({ args, capabilities }) =>
     capabilities.email.markSpam(asStringArray(args.ids)),
   "email.unsubscribeSender": async ({ args, capabilities }) =>
@@ -122,6 +138,8 @@ export const emailToolExecutors: RuntimeToolExecutorMap = {
       parentId: asString(args.parentId) ?? "",
       body: asString(args.body) ?? "",
       subject: asString(args.subject),
+      mode: args.mode === "draft" || args.mode === "send" ? args.mode : undefined,
+      replyAll: asBoolean(args.replyAll),
     }),
   "email.forward": async ({ args, capabilities }) =>
     capabilities.email.forward({

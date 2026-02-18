@@ -57,6 +57,73 @@ function formatEvidence(results: RuntimeToolResult[]): string {
   return JSON.stringify(payload);
 }
 
+function latestClarificationResult(results: RuntimeToolResult[]): RuntimeToolResult | null {
+  for (let i = results.length - 1; i >= 0; i -= 1) {
+    const result = results[i];
+    if (result?.clarification) return result;
+  }
+  return null;
+}
+
+function buildDeterministicClarificationReply(result: RuntimeToolResult | null): string | null {
+  if (!result?.clarification) return null;
+  const prompt = String(result.clarification.prompt ?? "").trim();
+  const missing = Array.isArray(result.clarification.missingFields)
+    ? result.clarification.missingFields.filter((v) => typeof v === "string" && v.trim().length > 0)
+    : [];
+  const dataObj = result.data && typeof result.data === "object" ? (result.data as Record<string, unknown>) : {};
+
+  if (prompt === "calendar_reschedule_target_ambiguous" || prompt === "policy_rule_target_ambiguous") {
+    const candidates = Array.isArray((dataObj as any).candidates) ? ((dataObj as any).candidates as any[]) : [];
+    if (candidates.length > 0) {
+      const lines = candidates.slice(0, 5).map((candidate, idx) => {
+        const obj = candidate && typeof candidate === "object" ? (candidate as Record<string, unknown>) : {};
+        const label =
+          typeof obj.title === "string"
+            ? obj.title
+            : typeof obj.name === "string"
+              ? obj.name
+              : typeof obj.id === "string"
+                ? obj.id
+                : "option";
+        const when =
+          typeof obj.startLocal === "string"
+            ? obj.startLocal
+            : typeof obj.start === "string"
+              ? obj.start
+              : null;
+        return `${idx + 1}. ${label}${when ? ` (${when})` : ""}`;
+      });
+      return `Which one did you mean?\n${lines.join("\n")}\nReply with the number.`;
+    }
+  }
+
+  if (prompt === "email_draft_id_required") {
+    return "Which draft should I use? Reply with the draft id (or tell me to use your most recent draft).";
+  }
+  if (prompt === "email_reply_parent_required" || prompt === "email_forward_parent_required") {
+    return "Which email/thread should I use? Reply with the thread id or message id.";
+  }
+  if (prompt === "email_bulk_target_required") {
+    return "Which emails should I target? Paste the thread/message ids, or describe a search filter (for example: \"unread from Stripe last 7 days\").";
+  }
+  if (prompt === "calendar_event_id_required") {
+    return "Which calendar event should I use? Reply with the event id.";
+  }
+  if (prompt === "calendar_selection_required") {
+    return "Which calendars should I use? Tell me the calendar names (or say \"primary only\").";
+  }
+  if (prompt === "search_target_unclear") {
+    return "What should I search for (keywords/person), and what time range should I use?";
+  }
+
+  if (missing.length > 0) {
+    return `What should I use for ${missing.join(", ")}?`;
+  }
+
+  return "What detail should I use to proceed?";
+}
+
 export async function generateRuntimeUserReply(params: {
   session: RuntimeSession;
   request: string;
@@ -66,6 +133,10 @@ export async function generateRuntimeUserReply(params: {
   fallbackText: string;
 }): Promise<string> {
   const { session, request, results, approvalsCount, mode, fallbackText } = params;
+  if (mode === "clarification") {
+    const deterministic = buildDeterministicClarificationReply(latestClarificationResult(results));
+    if (deterministic) return deterministic;
+  }
   const resolvedTimeZone = await resolveDefaultCalendarTimeZone({
     userId: session.input.userId,
     emailAccountId: session.input.emailAccountId,

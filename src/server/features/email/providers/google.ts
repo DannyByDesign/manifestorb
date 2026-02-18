@@ -730,6 +730,8 @@ export class GmailProvider implements EmailProvider {
 
   async createDraft(params: {
     to: string;
+    cc?: string;
+    bcc?: string;
     subject: string;
     messageHtml: string;
     replyToMessageId?: string;
@@ -741,6 +743,8 @@ export class GmailProvider implements EmailProvider {
     // Build the raw email message
     const headers = [
       `To: ${params.to}`,
+      ...(params.cc ? [`Cc: ${params.cc}`] : []),
+      ...(params.bcc ? [`Bcc: ${params.bcc}`] : []),
       `Subject: ${params.subject}`,
       "Content-Type: text/html; charset=utf-8",
     ];

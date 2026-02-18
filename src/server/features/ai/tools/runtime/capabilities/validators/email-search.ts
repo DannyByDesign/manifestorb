@@ -62,6 +62,31 @@ function sanitizeSort(
   return value;
 }
 
+function sanitizeCategory(
+  value: unknown,
+): "primary" | "promotions" | "social" | "updates" | "forums" | undefined {
+  if (
+    value !== "primary" &&
+    value !== "promotions" &&
+    value !== "social" &&
+    value !== "updates" &&
+    value !== "forums"
+  ) {
+    return undefined;
+  }
+  return value;
+}
+
+function sanitizeStringArray(value: unknown, max = 20): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out = value
+    .filter((entry): entry is string => typeof entry === "string")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+    .slice(0, max);
+  return out.length > 0 ? out : undefined;
+}
+
 export type EmailSearchFilterValidationResult =
   | {
       ok: true;
@@ -119,6 +144,20 @@ export function validateEmailSearchFilter(
     delete sanitized.to;
   }
 
+  const cc = normalizeStringValue(filter.cc);
+  if (cc) {
+    sanitized.cc = cc;
+  } else {
+    delete sanitized.cc;
+  }
+
+  const category = sanitizeCategory(filter.category);
+  if (category) {
+    sanitized.category = category;
+  } else {
+    delete sanitized.category;
+  }
+
   const dateRange = sanitizeDateRange(filter.dateRange);
   if (dateRange) {
     sanitized.dateRange = dateRange;
@@ -145,6 +184,34 @@ export function validateEmailSearchFilter(
     sanitized.sort = sort;
   } else {
     delete sanitized.sort;
+  }
+
+  const attachmentMimeTypes = sanitizeStringArray(filter.attachmentMimeTypes, 20);
+  if (attachmentMimeTypes) {
+    sanitized.attachmentMimeTypes = attachmentMimeTypes;
+  } else {
+    delete sanitized.attachmentMimeTypes;
+  }
+
+  const attachmentFilenameContains = normalizeStringValue(filter.attachmentFilenameContains);
+  if (attachmentFilenameContains) {
+    sanitized.attachmentFilenameContains = attachmentFilenameContains;
+  } else {
+    delete sanitized.attachmentFilenameContains;
+  }
+
+  const recruitersOnly = sanitizeBoolean(filter.recruitersOnly);
+  if (typeof recruitersOnly === "boolean") {
+    sanitized.recruitersOnly = recruitersOnly;
+  } else {
+    delete sanitized.recruitersOnly;
+  }
+
+  const unrepliedToSent = sanitizeBoolean(filter.unrepliedToSent);
+  if (typeof unrepliedToSent === "boolean") {
+    sanitized.unrepliedToSent = unrepliedToSent;
+  } else {
+    delete sanitized.unrepliedToSent;
   }
 
   return {

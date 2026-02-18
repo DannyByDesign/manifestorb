@@ -88,20 +88,51 @@ const emailSearchInputSchema = z.object({
   text: z.string().optional(),
   from: z.string().optional(),
   to: z.string().optional(),
+  cc: z.string().optional(),
+  category: z.enum(["primary", "promotions", "social", "updates", "forums"]).optional(),
   hasAttachment: z.boolean().optional(),
   unread: z.boolean().optional(),
   sort: z.enum(["relevance", "newest", "oldest"]).optional(),
   sentByMe: z.boolean().optional(),
   receivedByMe: z.boolean().optional(),
   strictSenderOnly: z.boolean().optional(),
+  attachmentMimeTypes: z.array(z.string().min(1)).max(20).optional(),
+  attachmentFilenameContains: z.string().optional(),
+  recruitersOnly: z.boolean().optional(),
+  unrepliedToSent: z.boolean().optional(),
 });
 const idListSchema = z.object({ ids: z.array(z.string().min(1)).min(1) }).strict();
 const threadIdSchema = z.object({ threadId: z.string().min(1) }).strict();
-const draftIdSchema = z.object({ draftId: z.string().min(1) }).strict();
+// Allow missing ids so the tool can return a structured clarification instead of failing admission.
+const draftIdSchema = z.object({ draftId: z.string().optional() }).strict();
 const eventIdSchema = z.object({
   eventId: z.string().min(1),
   calendarId: z.string().min(1).optional(),
 }).strict();
+
+const emailBulkTargetBaseSchema = z
+  .object({
+    ids: z.array(z.string().min(1)).min(1).optional(),
+    filter: emailSearchInputSchema.optional(),
+    limit: z.number().int().min(1).max(5000).optional(),
+  })
+  .strict();
+
+function withEmailBulkTargetGuard<T extends z.ZodTypeAny>(schema: T): T {
+  return schema.superRefine((value: unknown, ctx) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return;
+    const record = value as { ids?: string[]; filter?: unknown };
+    if ((!record.ids || record.ids.length === 0) && !record.filter) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Either ids or filter is required.",
+        path: ["ids"],
+      });
+    }
+  }) as T;
+}
+
+const emailBulkTargetSchema = withEmailBulkTargetGuard(emailBulkTargetBaseSchema);
 
 function buildCapabilityDefinitions(): CapabilityDefinition[] {
   return [
@@ -208,7 +239,7 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
     {
       id: "email.batchArchive",
       description: "Archive target messages/threads in bulk.",
-      inputSchema: idListSchema,
+      inputSchema: emailBulkTargetSchema,
       outputSchema: z.unknown(),
       readOnly: false,
       riskLevel: "caution",
@@ -220,7 +251,7 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
     {
       id: "email.batchTrash",
       description: "Move target messages/threads to trash.",
-      inputSchema: idListSchema,
+      inputSchema: emailBulkTargetSchema,
       outputSchema: z.unknown(),
       readOnly: false,
       riskLevel: "dangerous",
@@ -232,7 +263,9 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
     {
       id: "email.markReadUnread",
       description: "Change read state for messages/threads.",
-      inputSchema: z.object({ ids: z.array(z.string().min(1)).min(1), read: z.boolean() }).strict(),
+      inputSchema: withEmailBulkTargetGuard(
+        emailBulkTargetBaseSchema.extend({ read: z.boolean() }).strict(),
+      ),
       outputSchema: z.unknown(),
       readOnly: false,
       riskLevel: "safe",
@@ -244,10 +277,11 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
     {
       id: "email.applyLabels",
       description: "Apply labels to target messages/threads.",
-      inputSchema: z.object({
-        ids: z.array(z.string().min(1)).min(1),
-        labelIds: z.array(z.string().min(1)).min(1),
-      }).strict(),
+      inputSchema: withEmailBulkTargetGuard(
+        emailBulkTargetBaseSchema
+          .extend({ labelIds: z.array(z.string().min(1)).min(1) })
+          .strict(),
+      ),
       outputSchema: z.unknown(),
       readOnly: false,
       riskLevel: "safe",
@@ -259,10 +293,11 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
     {
       id: "email.removeLabels",
       description: "Remove labels from target messages/threads.",
-      inputSchema: z.object({
-        ids: z.array(z.string().min(1)).min(1),
-        labelIds: z.array(z.string().min(1)).min(1),
-      }).strict(),
+      inputSchema: withEmailBulkTargetGuard(
+        emailBulkTargetBaseSchema
+          .extend({ labelIds: z.array(z.string().min(1)).min(1) })
+          .strict(),
+      ),
       outputSchema: z.unknown(),
       readOnly: false,
       riskLevel: "safe",
@@ -274,10 +309,9 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
     {
       id: "email.moveThread",
       description: "Move threads into a destination folder.",
-      inputSchema: z.object({
-        ids: z.array(z.string().min(1)).min(1),
-        folderName: z.string().min(1),
-      }).strict(),
+      inputSchema: withEmailBulkTargetGuard(
+        emailBulkTargetBaseSchema.extend({ folderName: z.string().min(1) }).strict(),
+      ),
       outputSchema: z.unknown(),
       readOnly: false,
       riskLevel: "caution",
@@ -449,6 +483,8 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       description: "Create a new draft or reply draft.",
       inputSchema: z.object({
         to: z.array(z.string().email()).optional(),
+        cc: z.array(z.string().email()).optional(),
+        bcc: z.array(z.string().email()).optional(),
         subject: z.string().optional(),
         body: z.string().min(1),
         type: z.enum(["new", "reply", "forward"]).optional(),
@@ -524,9 +560,11 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       id: "email.reply",
       description: "Reply to an existing email thread/message.",
       inputSchema: z.object({
-        parentId: z.string().min(1),
-        body: z.string().min(1),
+        parentId: z.string().optional(),
+        body: z.string().optional(),
         subject: z.string().optional(),
+        mode: z.enum(["send", "draft"]).optional(),
+        replyAll: z.boolean().optional(),
       }).strict(),
       outputSchema: z.unknown(),
       readOnly: false,
@@ -540,7 +578,7 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       id: "email.forward",
       description: "Forward an email to one or more recipients.",
       inputSchema: z.object({
-        parentId: z.string().min(1),
+        parentId: z.string().optional(),
         to: z.array(z.string().email()).min(1),
         body: z.string().optional(),
         subject: z.string().optional(),
@@ -615,6 +653,49 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       intentFamilies: ["calendar_read", "calendar_mutate"],
       tags: ["calendar", "event", "get"],
       effects: [{ resource: "calendar", mutates: false }],
+    },
+    {
+      id: "calendar.listCalendars",
+      description: "List connected calendars and their enabled/primary state.",
+      inputSchema: z.object({}).strict(),
+      outputSchema: z.unknown(),
+      readOnly: true,
+      riskLevel: "safe",
+      approvalOperation: "query",
+      intentFamilies: ["calendar_read", "calendar_policy"],
+      tags: ["calendar", "list", "calendars", "selection"],
+      effects: [{ resource: "calendar", mutates: false }],
+    },
+    {
+      id: "calendar.setEnabledCalendars",
+      description: "Enable/disable calendars for search and availability calculations.",
+      inputSchema: z.object({
+        enableIds: z.array(z.string().min(1)).optional(),
+        disableIds: z.array(z.string().min(1)).optional(),
+        enableOnlyIds: z.array(z.string().min(1)).optional(),
+        enablePrimaryNonNoisy: z.boolean().optional(),
+      }).strict(),
+      outputSchema: z.unknown(),
+      readOnly: false,
+      riskLevel: "caution",
+      approvalOperation: "update_preferences",
+      intentFamilies: ["calendar_policy"],
+      tags: ["calendar", "selection", "enable", "disable"],
+      effects: [{ resource: "preferences", mutates: true }],
+    },
+    {
+      id: "calendar.setSelectedCalendars",
+      description: "Set the specific calendars used for availability and scheduling.",
+      inputSchema: z.object({
+        selectedCalendarIds: z.array(z.string().min(1)).min(1),
+      }).strict(),
+      outputSchema: z.unknown(),
+      readOnly: false,
+      riskLevel: "caution",
+      approvalOperation: "update_preferences",
+      intentFamilies: ["calendar_policy"],
+      tags: ["calendar", "selection", "preferences"],
+      effects: [{ resource: "preferences", mutates: true }],
     },
     {
       id: "calendar.createEvent",
@@ -706,9 +787,22 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       id: "calendar.rescheduleEvent",
       description: "Reschedule event(s) with constraints.",
       inputSchema: z.object({
-        eventIds: z.array(z.string().min(1)).min(1),
-        changes: unknownObject,
-      }).strict(),
+        eventIds: z.array(z.string().min(1)).optional(),
+        filter: unknownObject.optional(),
+        changes: unknownObject.optional(),
+      })
+        .strict()
+        .superRefine((value, ctx) => {
+          const hasIds = Array.isArray(value.eventIds) && value.eventIds.length > 0;
+          const hasFilter = Boolean(value.filter && typeof value.filter === "object");
+          if (!hasIds && !hasFilter) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Provide eventIds or a filter to identify the event(s) to reschedule.",
+              path: ["eventIds"],
+            });
+          }
+        }),
       outputSchema: z.unknown(),
       readOnly: false,
       riskLevel: "dangerous",
@@ -746,6 +840,30 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       effects: [{ resource: "task", mutates: true }],
     },
     {
+      id: "task.list",
+      description: "List active tasks with optional due-date filters.",
+      inputSchema: unknownObject,
+      outputSchema: z.unknown(),
+      readOnly: true,
+      riskLevel: "safe",
+      approvalOperation: "query",
+      intentFamilies: ["calendar_read", "cross_surface_planning"],
+      tags: ["task", "list", "due"],
+      effects: [{ resource: "task", mutates: false }],
+    },
+    {
+      id: "task.bulkReschedule",
+      description: "Bulk reschedule tasks using a shared window constraint.",
+      inputSchema: unknownObject,
+      outputSchema: z.unknown(),
+      readOnly: false,
+      riskLevel: "caution",
+      approvalOperation: "update_task",
+      intentFamilies: ["calendar_mutate", "cross_surface_planning"],
+      tags: ["task", "bulk", "reschedule", "schedule"],
+      effects: [{ resource: "task", mutates: true }],
+    },
+    {
       id: "calendar.setWorkingHours",
       description: "Update account working-hours preferences.",
       inputSchema: z.object({
@@ -768,14 +886,18 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       inputSchema: z.object({
         location: z.string().optional(),
         workingLocation: z.string().optional(),
+        date: z.string().optional(),
+        start: z.string().optional(),
+        end: z.string().optional(),
+        timeZone: z.string().optional(),
       }).strict(),
       outputSchema: z.unknown(),
       readOnly: false,
       riskLevel: "caution",
-      approvalOperation: "update_preferences",
-      intentFamilies: ["calendar_policy"],
+      approvalOperation: "update_calendar_event",
+      intentFamilies: ["calendar_policy", "calendar_mutate"],
       tags: ["calendar", "policy", "location"],
-      effects: [{ resource: "preferences", mutates: true }],
+      effects: [{ resource: "calendar", mutates: true }],
     },
     {
       id: "calendar.setOutOfOffice",
@@ -817,6 +939,12 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       inputSchema: z.object({
         bookingLink: z.string().url().optional(),
         booking_link: z.string().url().optional(),
+        durationMinutes: z.number().int().min(5).max(240).optional(),
+        meetingDurationMin: z.number().int().min(5).max(240).optional(),
+        slotCount: z.number().int().min(1).max(10).optional(),
+        timeZone: z.string().optional(),
+        start: z.string().optional(),
+        end: z.string().optional(),
       }).strict(),
       outputSchema: z.unknown(),
       readOnly: false,
@@ -898,10 +1026,22 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
           mailbox: z
             .enum(["inbox", "sent", "draft", "trash", "spam", "archive", "all"])
             .optional(),
+          sort: z.enum(["relevance", "newest", "oldest"]).optional(),
+          unread: z.boolean().optional(),
+          hasAttachment: z.boolean().optional(),
           from: z.string().min(1).optional(),
           to: z.string().min(1).optional(),
+          cc: z.string().min(1).optional(),
+          category: z
+            .enum(["primary", "promotions", "social", "updates", "forums"])
+            .optional(),
           attendeeEmail: z.string().min(1).optional(),
           attendee: z.string().min(1).optional(),
+          calendarIds: z.array(z.string().min(1)).max(50).optional(),
+          calendarId: z.string().min(1).optional(),
+          locationContains: z.string().min(1).max(200).optional(),
+          attachmentMimeTypes: z.array(z.string().min(1)).max(20).optional(),
+          attachmentFilenameContains: z.string().min(1).max(120).optional(),
           dateRange: z
             .object({
               after: z.string().optional(),
@@ -982,9 +1122,14 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       id: "planner.composeDayPlan",
       description: "Compose consolidated day plan summary from prioritized items.",
       inputSchema: z.object({
-        topEmailItems: z.array(unknownObject),
-        calendarItems: z.array(unknownObject),
+        topEmailItems: z.array(unknownObject).optional(),
+        calendarItems: z.array(unknownObject).optional(),
         focusSuggestions: z.array(z.string()).optional(),
+        request: z.string().max(2000).optional(),
+        day: z.string().optional(),
+        start: z.string().optional(),
+        end: z.string().optional(),
+        execute: z.boolean().optional(),
       }).strict(),
       outputSchema: z.unknown(),
       readOnly: true,
@@ -1000,6 +1145,8 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       inputSchema: z.object({
         actions: z.array(unknownObject),
         constraints: unknownObject.optional(),
+        request: z.string().max(2000).optional(),
+        execute: z.boolean().optional(),
       }).strict(),
       outputSchema: z.unknown(),
       readOnly: true,
@@ -1125,6 +1272,45 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       intentFamilies: ["inbox_controls", "calendar_policy"],
       tags: ["rule", "policy", "delete", "remove"],
       effects: [{ resource: "rule", mutates: true }],
+    },
+    {
+      id: "policy.explainLastDecision",
+      description: "Explain why a recent tool action was blocked or required approval.",
+      inputSchema: z.object({
+        limit: z.number().int().min(1).max(10).optional(),
+      }).strict(),
+      outputSchema: z.unknown(),
+      readOnly: true,
+      riskLevel: "safe",
+      approvalOperation: "query",
+      intentFamilies: ["inbox_controls", "calendar_policy"],
+      tags: ["rule", "policy", "explain", "blocked", "approval"],
+      effects: [{ resource: "rule", mutates: false }],
+    },
+    {
+      id: "policy.dryRunRule",
+      description: "Dry-run a rule against current inbox/calendar to preview what would match.",
+      inputSchema: z.object({
+        id: z.string().min(1).optional(),
+        target: z.string().min(1).optional(),
+        type: z.enum(["guardrail", "automation", "preference"]).optional(),
+        limit: z.number().int().min(1).max(50).optional(),
+      }).strict().superRefine((value, context) => {
+        if (!value.id && !value.target) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Either id or target is required.",
+            path: ["id"],
+          });
+        }
+      }),
+      outputSchema: z.unknown(),
+      readOnly: true,
+      riskLevel: "safe",
+      approvalOperation: "analyze",
+      intentFamilies: ["inbox_controls", "calendar_policy", "cross_surface_planning"],
+      tags: ["rule", "policy", "dry-run", "preview", "match"],
+      effects: [{ resource: "rule", mutates: false }],
     },
   ];
 }

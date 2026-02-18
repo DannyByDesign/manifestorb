@@ -48,4 +48,18 @@ export const policyToolExecutors: RuntimeToolExecutorMap = {
           ? args.type
           : undefined,
     }),
+  "policy.explainLastDecision": async ({ args, capabilities }) =>
+    capabilities.policy.explainLastDecision({
+      limit: typeof args.limit === "number" ? args.limit : undefined,
+    }),
+  "policy.dryRunRule": async ({ args, capabilities }) =>
+    capabilities.policy.dryRunRule({
+      id: asString(args.id) ?? undefined,
+      target: asString(args.target) ?? undefined,
+      type:
+        args.type === "guardrail" || args.type === "automation" || args.type === "preference"
+          ? args.type
+          : undefined,
+      limit: typeof args.limit === "number" ? args.limit : undefined,
+    }),
 };

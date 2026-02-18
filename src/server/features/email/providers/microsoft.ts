@@ -541,6 +541,8 @@ export class OutlookProvider implements EmailProvider {
 
   async createDraft(params: {
     to: string;
+    cc?: string;
+    bcc?: string;
     subject: string;
     messageHtml: string;
     replyToMessageId?: string;
@@ -570,6 +572,24 @@ export class OutlookProvider implements EmailProvider {
               body: { contentType: "html", content: params.messageHtml },
               subject: params.subject,
               toRecipients: [{ emailAddress: { address: params.to } }],
+              ...(params.cc
+                ? {
+                    ccRecipients: params.cc
+                      .split(",")
+                      .map((v) => v.trim())
+                      .filter(Boolean)
+                      .map((address) => ({ emailAddress: { address } })),
+                  }
+                : {}),
+              ...(params.bcc
+                ? {
+                    bccRecipients: params.bcc
+                      .split(",")
+                      .map((v) => v.trim())
+                      .filter(Boolean)
+                      .map((address) => ({ emailAddress: { address } })),
+                  }
+                : {}),
             }),
         this.logger,
       );
@@ -588,6 +608,24 @@ export class OutlookProvider implements EmailProvider {
             subject: params.subject,
             body: { contentType: "html", content: params.messageHtml },
             toRecipients: [{ emailAddress: { address: params.to } }],
+            ...(params.cc
+              ? {
+                  ccRecipients: params.cc
+                    .split(",")
+                    .map((v) => v.trim())
+                    .filter(Boolean)
+                    .map((address) => ({ emailAddress: { address } })),
+                }
+              : {}),
+            ...(params.bcc
+              ? {
+                  bccRecipients: params.bcc
+                    .split(",")
+                    .map((v) => v.trim())
+                    .filter(Boolean)
+                    .map((address) => ({ emailAddress: { address } })),
+                }
+              : {}),
           }),
       this.logger,
     );

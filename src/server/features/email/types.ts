@@ -177,6 +177,8 @@ export interface EmailProvider {
   sendDraft(draftId: string): Promise<{ messageId: string; threadId: string }>;
   createDraft(params: {
     to: string;
+    cc?: string;
+    bcc?: string;
     subject: string;
     messageHtml: string;
     replyToMessageId?: string; // For proper threading

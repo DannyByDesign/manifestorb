@@ -17,7 +17,7 @@ export async function createCapabilities(runtime: CapabilityRuntimeContext) {
     email: createEmailCapabilities(env),
     calendar: createCalendarCapabilities(env),
     task: createTaskCapabilities(env),
-    planner: createPlannerCapabilities(),
+    planner: createPlannerCapabilities(env),
     policy: createPolicyCapabilities(env),
     memory: createMemoryCapabilities(env),
     web: createWebCapabilities(env),
