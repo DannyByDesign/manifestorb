@@ -85,8 +85,7 @@ export async function validateCalendarMutationSafety(params: {
         error: "This event can't be edited from your account.",
         clarification: {
           kind: "permissions",
-          prompt:
-            "I found the event, but your calendar doesn't allow me to edit it. I can draft a proposed new time to send instead.",
+          prompt: "calendar_event_edit_permission_denied",
         },
       };
     }
@@ -129,8 +128,7 @@ export async function validateCalendarMutationSafety(params: {
         error: "That event is currently marked as fixed and cannot be moved automatically.",
         clarification: {
           kind: "other",
-          prompt:
-            "That meeting is marked as fixed. If you want me to move it, tell me to override this one-time constraint.",
+          prompt: "calendar_event_fixed_override_required",
         },
       };
     }
@@ -141,8 +139,7 @@ export async function validateCalendarMutationSafety(params: {
         error: "Recurring event scope required.",
         clarification: {
           kind: "missing_fields",
-          prompt:
-            "This is a recurring meeting. Should I update just this instance or the entire series?",
+          prompt: "calendar_recurring_scope_required",
           missingFields: ["changes.mode"],
         },
       };
@@ -199,7 +196,7 @@ export async function validateCalendarMutationSafety(params: {
         error: `That time overlaps protected calendar time${overlapEvent.title ? ` (${overlapEvent.title})` : ""}.`,
         clarification: {
           kind: "other",
-          prompt: "That slot conflicts with protected time. I can suggest the next safe slot instead.",
+          prompt: "calendar_protected_time_conflict",
         },
       };
     }

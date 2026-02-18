@@ -16,6 +16,7 @@ import {
     withRetries,
 } from "@/server/features/ai/tools/common/retry";
 import { withToolThrottle } from "@/server/features/ai/tools/common/throttle";
+import { extractEmailAddress } from "@/server/lib/email";
 import {
     type DraftParams,
     type EmailChanges,
@@ -127,6 +128,12 @@ export interface EmailProvider {
         from?: string;
         to?: string;
         cc?: string;
+        fromEmails?: string[];
+        fromDomains?: string[];
+        toEmails?: string[];
+        toDomains?: string[];
+        ccEmails?: string[];
+        ccDomains?: string[];
         category?: "primary" | "promotions" | "social" | "updates" | "forums";
         hasAttachment?: boolean;
         attachmentIntentTerm?: string;
@@ -265,6 +272,12 @@ export async function createEmailProvider(
             from?: string;
             to?: string;
             cc?: string;
+            fromEmails?: string[];
+            fromDomains?: string[];
+            toEmails?: string[];
+            toDomains?: string[];
+            ccEmails?: string[];
+            ccDomains?: string[];
             category?: "primary" | "promotions" | "social" | "updates" | "forums";
             hasAttachment?: boolean;
             attachmentIntentTerm?: string;
@@ -297,6 +310,38 @@ export async function createEmailProvider(
             if (!includesLooseTerm(from, options.from)) return false;
             if (!includesLooseTerm(to, options.to)) return false;
             if (!includesLooseTerm(cc, options.cc)) return false;
+
+            const normalizedFromAddress = normalizeText(extractEmailAddress(from));
+            if (Array.isArray(options.fromEmails) && options.fromEmails.length > 0) {
+                const wanted = new Set(options.fromEmails.map((v) => normalizeText(v)));
+                if (!normalizedFromAddress || !wanted.has(normalizedFromAddress)) return false;
+            }
+            if (Array.isArray(options.fromDomains) && options.fromDomains.length > 0) {
+                const wanted = options.fromDomains.map((v) => normalizeText(v.replace(/^@/u, "")));
+                const domain = normalizedFromAddress.split("@")[1] ?? "";
+                if (!domain || !wanted.some((needle) => domain === needle || domain.endsWith(`.${needle}`))) return false;
+            }
+
+            if (Array.isArray(options.toEmails) && options.toEmails.length > 0) {
+                const wanted = options.toEmails.map((v) => normalizeText(v));
+                const normalizedTo = normalizeText(to);
+                if (!wanted.some((needle) => normalizedTo.includes(needle))) return false;
+            }
+            if (Array.isArray(options.toDomains) && options.toDomains.length > 0) {
+                const wanted = options.toDomains.map((v) => normalizeText(v.replace(/^@/u, "")));
+                const normalizedTo = normalizeText(to);
+                if (!wanted.some((needle) => normalizedTo.includes(needle))) return false;
+            }
+            if (Array.isArray(options.ccEmails) && options.ccEmails.length > 0) {
+                const wanted = options.ccEmails.map((v) => normalizeText(v));
+                const normalizedCc = normalizeText(cc);
+                if (!wanted.some((needle) => normalizedCc.includes(needle))) return false;
+            }
+            if (Array.isArray(options.ccDomains) && options.ccDomains.length > 0) {
+                const wanted = options.ccDomains.map((v) => normalizeText(v.replace(/^@/u, "")));
+                const normalizedCc = normalizeText(cc);
+                if (!wanted.some((needle) => normalizedCc.includes(needle))) return false;
+            }
 
             if (options.hasAttachment !== undefined) {
                 const hasAttachment = Array.isArray(message.attachments) && message.attachments.length > 0;
@@ -384,6 +429,12 @@ export async function createEmailProvider(
         from?: string;
         to?: string;
         cc?: string;
+        fromEmails?: string[];
+        fromDomains?: string[];
+        toEmails?: string[];
+        toDomains?: string[];
+        ccEmails?: string[];
+        ccDomains?: string[];
         category?: "primary" | "promotions" | "social" | "updates" | "forums";
         hasAttachment?: boolean;
         attachmentIntentTerm?: string;
@@ -399,6 +450,12 @@ export async function createEmailProvider(
             normalizeText(options.from) ||
             normalizeText(options.to) ||
             normalizeText(options.cc) ||
+            (Array.isArray(options.fromEmails) && options.fromEmails.length > 0) ||
+            (Array.isArray(options.fromDomains) && options.fromDomains.length > 0) ||
+            (Array.isArray(options.toEmails) && options.toEmails.length > 0) ||
+            (Array.isArray(options.toDomains) && options.toDomains.length > 0) ||
+            (Array.isArray(options.ccEmails) && options.ccEmails.length > 0) ||
+            (Array.isArray(options.ccDomains) && options.ccDomains.length > 0) ||
             normalizeText(options.category) ||
             normalizeText(options.attachmentIntentTerm) ||
             options.hasAttachment !== undefined ||
@@ -435,6 +492,12 @@ export async function createEmailProvider(
             from?: string;
             to?: string;
             cc?: string;
+            fromEmails?: string[];
+            fromDomains?: string[];
+            toEmails?: string[];
+            toDomains?: string[];
+            ccEmails?: string[];
+            ccDomains?: string[];
             category?: "primary" | "promotions" | "social" | "updates" | "forums";
             hasAttachment?: boolean;
             attachmentIntentTerm?: string;
@@ -445,14 +508,43 @@ export async function createEmailProvider(
         let query = params.baseQuery.trim();
         const { filters } = params;
 
+        const buildOrGroup = (field: "from" | "to" | "cc", values: string[]): string => {
+            const cleaned = values
+                .map((v) => v.trim())
+                .filter((v) => v.length > 0)
+                .map((v) => v.replace(/^@/u, ""));
+            if (cleaned.length === 0) return "";
+            const unique = Array.from(new Set(cleaned));
+            if (unique.length === 1) return `${field}:${quoteQueryValue(unique[0]!)}`;
+            return `${field}:(${unique.map((v) => quoteQueryValue(v)).join(" OR ")})`;
+        };
+
+        const fromGroup = buildOrGroup("from", [
+            ...(Array.isArray(filters.fromEmails) ? filters.fromEmails : []),
+            ...(Array.isArray(filters.fromDomains) ? filters.fromDomains : []),
+        ]);
+        if (fromGroup) query = appendQueryToken(query, fromGroup);
+
+        const toGroup = buildOrGroup("to", [
+            ...(Array.isArray(filters.toEmails) ? filters.toEmails : []),
+            ...(Array.isArray(filters.toDomains) ? filters.toDomains : []),
+        ]);
+        if (toGroup) query = appendQueryToken(query, toGroup);
+
+        const ccGroup = buildOrGroup("cc", [
+            ...(Array.isArray(filters.ccEmails) ? filters.ccEmails : []),
+            ...(Array.isArray(filters.ccDomains) ? filters.ccDomains : []),
+        ]);
+        if (ccGroup) query = appendQueryToken(query, ccGroup);
+
         const from = filters.from?.trim();
-        if (from) query = appendQueryToken(query, `from:${quoteQueryValue(from)}`);
+        if (from && !fromGroup) query = appendQueryToken(query, `from:${quoteQueryValue(from)}`);
 
         const to = filters.to?.trim();
-        if (to) query = appendQueryToken(query, `to:${quoteQueryValue(to)}`);
+        if (to && !toGroup) query = appendQueryToken(query, `to:${quoteQueryValue(to)}`);
 
         const cc = filters.cc?.trim();
-        if (cc) query = appendQueryToken(query, `cc:${quoteQueryValue(cc)}`);
+        if (cc && !ccGroup) query = appendQueryToken(query, `cc:${quoteQueryValue(cc)}`);
 
         const subjectContains = filters.subjectContains?.trim();
         if (subjectContains) {
@@ -531,6 +623,12 @@ export async function createEmailProvider(
             from,
             to,
             cc,
+            fromEmails,
+            fromDomains,
+            toEmails,
+            toDomains,
+            ccEmails,
+            ccDomains,
             category,
             hasAttachment,
             attachmentIntentTerm,
@@ -573,6 +671,12 @@ export async function createEmailProvider(
                     from,
                     to,
                     cc,
+                    fromEmails,
+                    fromDomains,
+                    toEmails,
+                    toDomains,
+                    ccEmails,
+                    ccDomains,
                     category,
                     hasAttachment,
                     attachmentIntentTerm,

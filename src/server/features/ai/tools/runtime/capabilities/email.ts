@@ -23,6 +23,7 @@ import {
 } from "@/server/features/ai/tools/email/primitives";
 import {
   lookupSearchDocumentIds,
+  lookupSearchAliasExpansions,
   recordSearchSignals,
 } from "@/server/features/search/index/repository";
 import { extractEmailAddresses } from "@/server/lib/email";
@@ -32,6 +33,7 @@ export interface EmailCapabilities {
   getUnreadCount(filter?: Record<string, unknown>): Promise<ToolResult>;
   searchThreads(filter: Record<string, unknown>): Promise<ToolResult>;
   searchThreadsAdvanced(filter: Record<string, unknown>): Promise<ToolResult>;
+  facetThreads(input: { filter?: Record<string, unknown>; maxFacets?: number; scanLimit?: number }): Promise<ToolResult>;
   searchSent(filter: Record<string, unknown>): Promise<ToolResult>;
   searchInbox(filter: Record<string, unknown>): Promise<ToolResult>;
   getThreadMessages(threadId: string): Promise<ToolResult>;
@@ -245,10 +247,13 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         error: validatedFilter.error,
         message: validatedFilter.message,
         clarification: {
-          kind: "invalid_fields",
+          kind: validatedFilter.clarificationKind ?? "invalid_fields",
           prompt: validatedFilter.prompt,
           missingFields: validatedFilter.fields,
         },
+        data: validatedFilter.concept
+          ? { concept: validatedFilter.concept }
+          : undefined,
       };
     }
 
@@ -273,9 +278,6 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       /\b(no reply|no response|didn'?t get a reply|haven'?t heard back|unanswered)\b/u.test(
         lowerQueryText,
       );
-    const inferredRecruitersOnly =
-      requestFilter.recruitersOnly === true ||
-      /\brecruiter(s)?\b/u.test(lowerQueryText);
     const inferredPdfOnly =
       /\bpdf\b/u.test(lowerQueryText) &&
       (requestFilter.hasAttachment === true ||
@@ -294,6 +296,108 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       mailboxOverride ??
       (typeof requestFilter.mailbox === "string" ? requestFilter.mailbox : undefined) ??
       (requestFilter.sentByMe === true ? "sent" : undefined);
+
+    const fromConcept =
+      typeof requestFilter.fromConcept === "string" ? requestFilter.fromConcept.trim() : "";
+    if (fromConcept) {
+      return {
+        success: false,
+        error: "concept_definition_required",
+        clarification: {
+          kind: "concept_definition_required",
+          prompt: "email_identity_concept_requires_definition",
+        },
+        data: {
+          concept: { field: "from", value: fromConcept },
+        },
+      };
+    }
+    const toConcept =
+      typeof requestFilter.toConcept === "string" ? requestFilter.toConcept.trim() : "";
+    if (toConcept) {
+      return {
+        success: false,
+        error: "concept_definition_required",
+        clarification: {
+          kind: "concept_definition_required",
+          prompt: "email_identity_concept_requires_definition",
+        },
+        data: {
+          concept: { field: "to", value: toConcept },
+        },
+      };
+    }
+    const ccConcept =
+      typeof requestFilter.ccConcept === "string" ? requestFilter.ccConcept.trim() : "";
+    if (ccConcept) {
+      return {
+        success: false,
+        error: "concept_definition_required",
+        clarification: {
+          kind: "concept_definition_required",
+          prompt: "email_identity_concept_requires_definition",
+        },
+        data: {
+          concept: { field: "cc", value: ccConcept },
+        },
+      };
+    }
+
+    const requestFrom = typeof requestFilter.from === "string" ? requestFilter.from : undefined;
+    const requestTo = typeof requestFilter.to === "string" ? requestFilter.to : undefined;
+    const requestCc =
+      typeof requestFilter.cc === "string" ? requestFilter.cc : inferredCc;
+
+    const tryResolveSingleEmail = async (value: string | undefined): Promise<string[] | undefined> => {
+      const raw = (value ?? "").trim();
+      if (!raw) return undefined;
+      if (raw.includes("@")) return undefined;
+      if (/^[^\s@]+\.[^\s@]+$/u.test(raw)) return undefined;
+      try {
+        const aliasRows = await lookupSearchAliasExpansions({
+          userId: capEnv.runtime.userId,
+          emailAccountId: capEnv.runtime.emailAccountId,
+          terms: [raw],
+          limit: 40,
+        });
+        const candidates = Array.from(
+          new Set(
+            aliasRows
+              .filter((row) => row.entityType === "person")
+              .map((row) => row.canonicalValue)
+              .filter((v) => typeof v === "string" && v.includes("@")),
+          ),
+        );
+        return candidates.length === 1 ? candidates.slice(0, 1) : undefined;
+      } catch {
+        return undefined;
+      }
+    };
+
+    const fromEmails =
+      (Array.isArray(requestFilter.fromEmails) && requestFilter.fromEmails.length > 0
+        ? (requestFilter.fromEmails as string[])
+        : undefined) ?? (await tryResolveSingleEmail(requestFrom));
+    const fromDomains =
+      Array.isArray(requestFilter.fromDomains) && requestFilter.fromDomains.length > 0
+        ? (requestFilter.fromDomains as string[])
+        : undefined;
+    const toEmails =
+      (Array.isArray(requestFilter.toEmails) && requestFilter.toEmails.length > 0
+        ? (requestFilter.toEmails as string[])
+        : undefined) ?? (await tryResolveSingleEmail(requestTo));
+    const toDomains =
+      Array.isArray(requestFilter.toDomains) && requestFilter.toDomains.length > 0
+        ? (requestFilter.toDomains as string[])
+        : undefined;
+    const ccEmails =
+      (Array.isArray(requestFilter.ccEmails) && requestFilter.ccEmails.length > 0
+        ? (requestFilter.ccEmails as string[])
+        : undefined) ?? (await tryResolveSingleEmail(requestCc));
+    const ccDomains =
+      Array.isArray(requestFilter.ccDomains) && requestFilter.ccDomains.length > 0
+        ? (requestFilter.ccDomains as string[])
+        : undefined;
 
     if (inferredUnrepliedToSent) {
       try {
@@ -316,9 +420,15 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         const search = await provider.search({
           query: baseQuery,
           text: typeof requestFilter.text === "string" ? requestFilter.text : undefined,
-          from: typeof requestFilter.from === "string" ? requestFilter.from : undefined,
-          to: typeof requestFilter.to === "string" ? requestFilter.to : undefined,
-          cc: typeof requestFilter.cc === "string" ? requestFilter.cc : undefined,
+          from: requestFrom,
+          fromEmails,
+          fromDomains,
+          to: requestTo,
+          toEmails,
+          toDomains,
+          cc: requestCc,
+          ccEmails,
+          ccDomains,
           category:
             requestFilter.category === "primary" ||
             requestFilter.category === "promotions" ||
@@ -437,16 +547,15 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           typeof requestFilter.text === "string"
             ? requestFilter.text
             : undefined,
-        from:
-          typeof requestFilter.from === "string"
-            ? requestFilter.from
-            : undefined,
-        to:
-          typeof requestFilter.to === "string"
-            ? requestFilter.to
-            : undefined,
-        cc:
-          inferredCc,
+        from: requestFrom,
+        to: requestTo,
+        cc: requestCc,
+        fromEmails,
+        fromDomains,
+        toEmails,
+        toDomains,
+        ccEmails,
+        ccDomains,
         category:
           requestFilter.category === "primary" ||
           requestFilter.category === "promotions" ||
@@ -545,39 +654,19 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           };
         });
 
-      const filteredData = inferredRecruitersOnly
-        ? (() => {
-            const needles = [
-              "recruit",
-              "recruiting",
-              "talent",
-              "sourc",
-              "people team",
-              "greenhouse",
-              "lever",
-              "ashby",
-            ];
-            return data.filter((item) => {
-              const fromEmails = extractEmailAddresses(item.from ?? "").join(" ");
-              const blob = `${item.title ?? ""} ${item.snippet ?? ""} ${item.from ?? ""} ${fromEmails}`.toLowerCase();
-              return needles.some((needle) => blob.includes(needle));
-            });
-          })()
-        : data;
-
       return {
         success: true,
-        data: filteredData,
+        data,
         message:
-          filteredData.length === 0
+          data.length === 0
             ? "No matching emails found."
-            : `Found ${filteredData.length} matching email${filteredData.length === 1 ? "" : "s"}.`,
+            : `Found ${data.length} matching email${data.length === 1 ? "" : "s"}.`,
         truncated: result.truncated,
         paging: {
           nextPageToken: null,
           totalEstimate: result.total,
         },
-        meta: asMetaItemCount(filteredData.length),
+        meta: asMetaItemCount(data.length),
       };
     } catch (error) {
       return capabilityFailureResult(error, "I couldn't search your inbox right now.", {
@@ -768,6 +857,154 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
 
     async searchThreadsAdvanced(filter) {
       return runUnifiedSearchThreads(filter);
+    },
+
+    async facetThreads(input) {
+      const rawFilter =
+        input.filter && typeof input.filter === "object" && !Array.isArray(input.filter)
+          ? (input.filter as Record<string, unknown>)
+          : {};
+
+      const validatedFilter = validateEmailSearchFilter(rawFilter);
+      if (!validatedFilter.ok) {
+        return {
+          success: false,
+          error: validatedFilter.error,
+          message: validatedFilter.message,
+          clarification: {
+            kind: validatedFilter.clarificationKind ?? "invalid_fields",
+            prompt: validatedFilter.prompt,
+            missingFields: validatedFilter.fields,
+          },
+          data: validatedFilter.concept ? { concept: validatedFilter.concept } : undefined,
+        };
+      }
+
+      const filter = validatedFilter.filter;
+      const hasAnyConstraint = Boolean(
+        (typeof filter.query === "string" && filter.query.trim()) ||
+          (typeof filter.text === "string" && filter.text.trim()) ||
+          (typeof filter.from === "string" && filter.from.trim()) ||
+          (typeof filter.to === "string" && filter.to.trim()) ||
+          (typeof filter.cc === "string" && filter.cc.trim()) ||
+          (Array.isArray(filter.fromEmails) && filter.fromEmails.length > 0) ||
+          (Array.isArray(filter.fromDomains) && filter.fromDomains.length > 0) ||
+          (Array.isArray(filter.toEmails) && filter.toEmails.length > 0) ||
+          (Array.isArray(filter.toDomains) && filter.toDomains.length > 0) ||
+          (Array.isArray(filter.ccEmails) && filter.ccEmails.length > 0) ||
+          (Array.isArray(filter.ccDomains) && filter.ccDomains.length > 0) ||
+          (filter.dateRange && typeof filter.dateRange === "object") ||
+          typeof filter.unread === "boolean" ||
+          typeof filter.hasAttachment === "boolean" ||
+          typeof filter.category === "string",
+      );
+
+      if (!hasAnyConstraint) {
+        return {
+          success: false,
+          error: "clarification_required",
+          clarification: {
+            kind: "missing_fields",
+            prompt: "email_facet_target_required",
+            missingFields: ["filter"],
+          },
+        };
+      }
+
+      const dateRange =
+        filter.dateRange && typeof filter.dateRange === "object"
+          ? (filter.dateRange as Record<string, unknown>)
+          : undefined;
+      const before =
+        dateRange && typeof dateRange.before === "string" ? new Date(dateRange.before) : undefined;
+      const after =
+        dateRange && typeof dateRange.after === "string" ? new Date(dateRange.after) : undefined;
+
+      const scanLimit =
+        typeof input.scanLimit === "number" && Number.isFinite(input.scanLimit)
+          ? Math.max(20, Math.min(800, Math.trunc(input.scanLimit)))
+          : 250;
+
+      const search = await provider.search({
+        query: typeof filter.query === "string" ? filter.query : "",
+        text: typeof filter.text === "string" ? filter.text : undefined,
+        from: typeof filter.from === "string" ? filter.from : undefined,
+        to: typeof filter.to === "string" ? filter.to : undefined,
+        cc: typeof filter.cc === "string" ? filter.cc : undefined,
+        fromEmails: Array.isArray(filter.fromEmails) ? (filter.fromEmails as string[]) : undefined,
+        fromDomains: Array.isArray(filter.fromDomains) ? (filter.fromDomains as string[]) : undefined,
+        toEmails: Array.isArray(filter.toEmails) ? (filter.toEmails as string[]) : undefined,
+        toDomains: Array.isArray(filter.toDomains) ? (filter.toDomains as string[]) : undefined,
+        ccEmails: Array.isArray(filter.ccEmails) ? (filter.ccEmails as string[]) : undefined,
+        ccDomains: Array.isArray(filter.ccDomains) ? (filter.ccDomains as string[]) : undefined,
+        category:
+          filter.category === "primary" ||
+          filter.category === "promotions" ||
+          filter.category === "social" ||
+          filter.category === "updates" ||
+          filter.category === "forums"
+            ? (filter.category as any)
+            : undefined,
+        hasAttachment: typeof filter.hasAttachment === "boolean" ? (filter.hasAttachment as boolean) : undefined,
+        attachmentMimeTypes: Array.isArray(filter.attachmentMimeTypes) ? (filter.attachmentMimeTypes as string[]) : undefined,
+        attachmentFilenameContains: typeof filter.attachmentFilenameContains === "string" ? filter.attachmentFilenameContains : undefined,
+        before,
+        after,
+        limit: scanLimit,
+        fetchAll: false,
+      });
+
+      const messages = Array.isArray(search.messages) ? search.messages : [];
+      const maxFacets =
+        typeof input.maxFacets === "number" && Number.isFinite(input.maxFacets)
+          ? Math.max(3, Math.min(25, Math.trunc(input.maxFacets)))
+          : 10;
+
+      const senderCounts = new Map<string, { count: number; sampleThreadIds: string[] }>();
+      const domainCounts = new Map<string, { count: number; sampleThreadIds: string[] }>();
+
+      for (const message of messages) {
+        const fromHeader = message.headers?.from ?? "";
+        const emails = extractEmailAddresses(fromHeader).map((e) => e.toLowerCase());
+        const threadId = message.threadId ?? "";
+        for (const email of emails.slice(0, 1)) {
+          const current = senderCounts.get(email) ?? { count: 0, sampleThreadIds: [] };
+          current.count += 1;
+          if (threadId && current.sampleThreadIds.length < 5 && !current.sampleThreadIds.includes(threadId)) {
+            current.sampleThreadIds.push(threadId);
+          }
+          senderCounts.set(email, current);
+
+          const domain = email.split("@")[1] ?? "";
+          if (domain) {
+            const domCurrent = domainCounts.get(domain) ?? { count: 0, sampleThreadIds: [] };
+            domCurrent.count += 1;
+            if (threadId && domCurrent.sampleThreadIds.length < 5 && !domCurrent.sampleThreadIds.includes(threadId)) {
+              domCurrent.sampleThreadIds.push(threadId);
+            }
+            domainCounts.set(domain, domCurrent);
+          }
+        }
+      }
+
+      const topSenders = Array.from(senderCounts.entries())
+        .sort((a, b) => b[1].count - a[1].count)
+        .slice(0, maxFacets)
+        .map(([email, stats]) => ({ email, count: stats.count, sampleThreadIds: stats.sampleThreadIds }));
+      const topDomains = Array.from(domainCounts.entries())
+        .sort((a, b) => b[1].count - a[1].count)
+        .slice(0, maxFacets)
+        .map(([domain, stats]) => ({ domain, count: stats.count, sampleThreadIds: stats.sampleThreadIds }));
+
+      return {
+        success: true,
+        data: {
+          scannedMessages: messages.length,
+          topSenders,
+          topDomains,
+        },
+        meta: asMetaItemCount(topSenders.length + topDomains.length),
+      };
     },
 
     async searchSent(filter) {
@@ -1140,8 +1377,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
             error: "invalid_input:no matching ids",
             clarification: {
               kind: "missing_fields",
-              prompt:
-                "I couldn't find matching subscription emails. Which sender should I target?",
+              prompt: "email_unsubscribe_target_required",
               missingFields: ["sender_or_domain"],
             },
           };

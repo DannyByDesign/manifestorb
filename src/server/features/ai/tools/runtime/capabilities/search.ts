@@ -112,6 +112,30 @@ function toRequest(input: Record<string, unknown>): UnifiedSearchRequest {
     from: asString(input.from),
     to: asString(input.to),
     cc: asString(input.cc),
+    fromEmails: (() => {
+      const values = asTrimmedStringArray(input.fromEmails).slice(0, 50);
+      return values.length > 0 ? values : undefined;
+    })(),
+    fromDomains: (() => {
+      const values = asTrimmedStringArray(input.fromDomains).slice(0, 50);
+      return values.length > 0 ? values : undefined;
+    })(),
+    toEmails: (() => {
+      const values = asTrimmedStringArray(input.toEmails).slice(0, 50);
+      return values.length > 0 ? values : undefined;
+    })(),
+    toDomains: (() => {
+      const values = asTrimmedStringArray(input.toDomains).slice(0, 50);
+      return values.length > 0 ? values : undefined;
+    })(),
+    ccEmails: (() => {
+      const values = asTrimmedStringArray(input.ccEmails).slice(0, 50);
+      return values.length > 0 ? values : undefined;
+    })(),
+    ccDomains: (() => {
+      const values = asTrimmedStringArray(input.ccDomains).slice(0, 50);
+      return values.length > 0 ? values : undefined;
+    })(),
     category: toEmailCategory(input.category),
     attendeeEmail: asString(input.attendeeEmail) ?? asString(input.attendee),
     calendarIds: toCalendarIds(input),
@@ -156,6 +180,12 @@ export function createSearchCapabilities(env: CapabilityEnvironment): SearchCapa
           request.from ||
           request.to ||
           request.cc ||
+          (request.fromEmails?.length ?? 0) > 0 ||
+          (request.fromDomains?.length ?? 0) > 0 ||
+          (request.toEmails?.length ?? 0) > 0 ||
+          (request.toDomains?.length ?? 0) > 0 ||
+          (request.ccEmails?.length ?? 0) > 0 ||
+          (request.ccDomains?.length ?? 0) > 0 ||
           request.attendeeEmail ||
           request.locationContains,
       );
@@ -189,7 +219,7 @@ export function createSearchCapabilities(env: CapabilityEnvironment): SearchCapa
           error: "clarification_required",
           clarification: {
             kind: "missing_fields",
-            prompt: "What should I search for (keywords, person, or a date range)?",
+            prompt: "search_target_unclear",
             missingFields: ["query"],
           },
         };

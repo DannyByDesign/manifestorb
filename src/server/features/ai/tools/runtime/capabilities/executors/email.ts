@@ -13,6 +13,12 @@ export const emailToolExecutors: RuntimeToolExecutorMap = {
     capabilities.email.searchThreads(asObject(args)),
   "email.searchThreadsAdvanced": async ({ args, capabilities }) =>
     capabilities.email.searchThreadsAdvanced(asObject(args)),
+  "email.facetThreads": async ({ args, capabilities }) =>
+    capabilities.email.facetThreads({
+      filter: args.filter ? asObject(args.filter) : undefined,
+      scanLimit: typeof args.scanLimit === "number" ? args.scanLimit : undefined,
+      maxFacets: typeof args.maxFacets === "number" ? args.maxFacets : undefined,
+    }),
   "email.searchSent": async ({ args, capabilities }) =>
     capabilities.email.searchSent(asObject(args)),
   "email.searchInbox": async ({ args, capabilities }) =>

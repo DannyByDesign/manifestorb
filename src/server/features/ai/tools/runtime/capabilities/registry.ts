@@ -89,6 +89,15 @@ const emailSearchInputSchema = z.object({
   from: z.string().optional(),
   to: z.string().optional(),
   cc: z.string().optional(),
+  fromConcept: z.string().optional(),
+  toConcept: z.string().optional(),
+  ccConcept: z.string().optional(),
+  fromEmails: z.array(z.string().min(1)).max(50).optional(),
+  fromDomains: z.array(z.string().min(1)).max(50).optional(),
+  toEmails: z.array(z.string().min(1)).max(50).optional(),
+  toDomains: z.array(z.string().min(1)).max(50).optional(),
+  ccEmails: z.array(z.string().min(1)).max(50).optional(),
+  ccDomains: z.array(z.string().min(1)).max(50).optional(),
   category: z.enum(["primary", "promotions", "social", "updates", "forums"]).optional(),
   hasAttachment: z.boolean().optional(),
   unread: z.boolean().optional(),
@@ -98,7 +107,6 @@ const emailSearchInputSchema = z.object({
   strictSenderOnly: z.boolean().optional(),
   attachmentMimeTypes: z.array(z.string().min(1)).max(20).optional(),
   attachmentFilenameContains: z.string().optional(),
-  recruitersOnly: z.boolean().optional(),
   unrepliedToSent: z.boolean().optional(),
 });
 const idListSchema = z.object({ ids: z.array(z.string().min(1)).min(1) }).strict();
@@ -133,6 +141,13 @@ function withEmailBulkTargetGuard<T extends z.ZodTypeAny>(schema: T): T {
 }
 
 const emailBulkTargetSchema = withEmailBulkTargetGuard(emailBulkTargetBaseSchema);
+const emailFacetInputSchema = z
+  .object({
+    filter: emailSearchInputSchema.optional(),
+    scanLimit: z.number().int().min(20).max(800).optional(),
+    maxFacets: z.number().int().min(3).max(25).optional(),
+  })
+  .strict();
 
 function buildCapabilityDefinitions(): CapabilityDefinition[] {
   return [
@@ -174,6 +189,19 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       approvalOperation: "query",
       intentFamilies: ["inbox_read", "cross_surface_planning"],
       tags: ["email", "search", "advanced"],
+      effects: [{ resource: "email", mutates: false }],
+    },
+    {
+      id: "email.facetThreads",
+      description:
+        "Aggregate matching threads by top senders/domains to help with clarification (no guessing).",
+      inputSchema: emailFacetInputSchema,
+      outputSchema: z.unknown(),
+      readOnly: true,
+      riskLevel: "safe",
+      approvalOperation: "query",
+      intentFamilies: ["inbox_read", "cross_surface_planning"],
+      tags: ["email", "search", "facets", "clarification"],
       effects: [{ resource: "email", mutates: false }],
     },
     {
@@ -1032,6 +1060,12 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
           from: z.string().min(1).optional(),
           to: z.string().min(1).optional(),
           cc: z.string().min(1).optional(),
+          fromEmails: z.array(z.string().min(1)).max(50).optional(),
+          fromDomains: z.array(z.string().min(1)).max(50).optional(),
+          toEmails: z.array(z.string().min(1)).max(50).optional(),
+          toDomains: z.array(z.string().min(1)).max(50).optional(),
+          ccEmails: z.array(z.string().min(1)).max(50).optional(),
+          ccDomains: z.array(z.string().min(1)).max(50).optional(),
           category: z
             .enum(["primary", "promotions", "social", "updates", "forums"])
             .optional(),

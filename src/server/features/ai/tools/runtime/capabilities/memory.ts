@@ -154,7 +154,7 @@ export function createMemoryCapabilities(env: CapabilityEnvironment): MemoryCapa
           error: "memory_query_required",
           clarification: {
             kind: "missing_fields",
-            prompt: "What should I search for in memory?",
+            prompt: "memory_query_required",
             missingFields: ["query"],
           },
         };
@@ -210,7 +210,7 @@ export function createMemoryCapabilities(env: CapabilityEnvironment): MemoryCapa
           error: "memory_key_required",
           clarification: {
             kind: "missing_fields",
-            prompt: "Which memory key should I forget?",
+            prompt: "memory_key_required",
             missingFields: ["key"],
           },
         };

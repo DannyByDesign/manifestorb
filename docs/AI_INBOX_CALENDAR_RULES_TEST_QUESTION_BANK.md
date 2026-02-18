@@ -180,7 +180,7 @@ Format:
 16. `IR-016` | "Pull the latest message body in thread <thread-id>." | `email.getLatestMessage` | D3
 17. `IR-017` | "Fetch message payloads for IDs <id1,id2,id3>." | `email.getMessagesBatch` | D3
 18. `IR-018` | "Find emails I sent but didn't get a reply to (last 14 days)." | `email.searchSent` + planner logic | D3,D2
-19. `IR-019` | "List unread emails from recruiters only." | `email.searchThreadsAdvanced` | D3
+19. `IR-019` | "List unread emails from recruiters only." | `email.searchThreadsAdvanced (fromConcept clarification)` | D3
 20. `IR-020` | "Show all unread emails older than 14 days." | `email.searchThreadsAdvanced` | D3
 21. `IR-021` | "Show me the 10 oldest unread emails in my inbox." | `email.searchInbox` | D3,D2
 22. `IR-022` | "Show me the 10 most recent unread emails with attachments." | `email.searchInbox` | D3,D2

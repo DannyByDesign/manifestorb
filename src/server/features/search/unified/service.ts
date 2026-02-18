@@ -7,6 +7,7 @@ import {
 import { enqueueEmailDocumentForIndexing } from "@/server/features/search/index/ingestors/email";
 import { planUnifiedSearchQuery } from "@/server/features/search/unified/query";
 import { rankDocuments } from "@/server/features/search/unified/ranking";
+import { extractEmailAddresses } from "@/server/lib/email";
 import type {
   RankingDocument,
   UnifiedSearchEnvironment,
@@ -241,6 +242,52 @@ function matchesRequest(doc: RankingDocument, request: UnifiedSearchRequest, mai
       const sourceCc = metadata.cc ?? "";
       if (!includesNeedle(sourceCc, ccNeedle)) return false;
     }
+
+    const normalizeList = (value: unknown): string[] =>
+      Array.isArray(value)
+        ? value.map((v) => String(v).trim().toLowerCase()).filter(Boolean)
+        : [];
+
+    const matchesAnyEmail = (headerValue: unknown, wanted: string[]): boolean => {
+      if (wanted.length === 0) return true;
+      const emails = extractEmailAddresses(String(headerValue ?? "")).map((e) => e.toLowerCase());
+      if (emails.length === 0) return false;
+      const set = new Set(emails);
+      return wanted.some((w) => set.has(w));
+    };
+
+    const matchesAnyDomain = (headerValue: unknown, wantedDomains: string[]): boolean => {
+      if (wantedDomains.length === 0) return true;
+      const emails = extractEmailAddresses(String(headerValue ?? "")).map((e) => e.toLowerCase());
+      if (emails.length === 0) return false;
+      const domains = emails
+        .map((email) => email.split("@")[1] ?? "")
+        .filter((d) => d.length > 0);
+      if (domains.length === 0) return false;
+      return wantedDomains.some((needleRaw) => {
+        const needle = needleRaw.replace(/^@/u, "").toLowerCase();
+        if (!needle) return false;
+        return domains.some((d) => d === needle || d.endsWith(`.${needle}`));
+      });
+    };
+
+    const fromEmails = normalizeList(request.fromEmails);
+    const fromDomains = normalizeList(request.fromDomains);
+    const fromHeader = metadata.from ?? metadata.authorIdentity ?? "";
+    if (!matchesAnyEmail(fromHeader, fromEmails)) return false;
+    if (!matchesAnyDomain(fromHeader, fromDomains)) return false;
+
+    const toEmails = normalizeList(request.toEmails);
+    const toDomains = normalizeList(request.toDomains);
+    const toHeader = metadata.to ?? "";
+    if (!matchesAnyEmail(toHeader, toEmails)) return false;
+    if (!matchesAnyDomain(toHeader, toDomains)) return false;
+
+    const ccEmails = normalizeList(request.ccEmails);
+    const ccDomains = normalizeList(request.ccDomains);
+    const ccHeader = metadata.cc ?? "";
+    if (!matchesAnyEmail(ccHeader, ccEmails)) return false;
+    if (!matchesAnyDomain(ccHeader, ccDomains)) return false;
     const categoryLabel = normalizeEmailCategory(request.category);
     if (categoryLabel) {
       const labelIds = normalizeLabelIds(metadata.labelIds);
@@ -415,7 +462,16 @@ async function searchEmailProviderFallback(params: {
     else if (lower === "category_forums") queryHints.push("category:forums");
   }
   const providerQuery = [params.query.trim(), ...queryHints].join(" ").trim();
-  if (!providerQuery && !params.request.from && !params.request.to && !params.request.cc) return [];
+  const hasIdentityArrays =
+    (Array.isArray(params.request.fromEmails) && params.request.fromEmails.length > 0) ||
+    (Array.isArray(params.request.fromDomains) && params.request.fromDomains.length > 0) ||
+    (Array.isArray(params.request.toEmails) && params.request.toEmails.length > 0) ||
+    (Array.isArray(params.request.toDomains) && params.request.toDomains.length > 0) ||
+    (Array.isArray(params.request.ccEmails) && params.request.ccEmails.length > 0) ||
+    (Array.isArray(params.request.ccDomains) && params.request.ccDomains.length > 0);
+  if (!providerQuery && !params.request.from && !params.request.to && !params.request.cc && !hasIdentityArrays) {
+    return [];
+  }
 
   const after = parseDate(params.request.dateRange?.after);
   const before = parseDate(params.request.dateRange?.before);
@@ -425,6 +481,12 @@ async function searchEmailProviderFallback(params: {
     from: params.request.from,
     to: params.request.to,
     cc: params.request.cc,
+    fromEmails: params.request.fromEmails,
+    fromDomains: params.request.fromDomains,
+    toEmails: params.request.toEmails,
+    toDomains: params.request.toDomains,
+    ccEmails: params.request.ccEmails,
+    ccDomains: params.request.ccDomains,
     category: params.request.category,
     attachmentMimeTypes: params.request.attachmentMimeTypes,
     attachmentFilenameContains: params.request.attachmentFilenameContains,

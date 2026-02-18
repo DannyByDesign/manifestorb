@@ -89,7 +89,7 @@ export function createTaskCapabilities(env: CapabilityEnvironment): TaskCapabili
           error: "task_missing",
           clarification: {
             kind: "missing_fields",
-            prompt: "Which task should I reschedule?",
+            prompt: "task_reschedule_target_required",
             missingFields: ["taskId or taskTitle"],
           },
         } as ToolResult,
@@ -355,7 +355,7 @@ export function createTaskCapabilities(env: CapabilityEnvironment): TaskCapabili
             message: resolvedTimeZone.error,
             clarification: {
               kind: "invalid_fields",
-              prompt: "Please provide a valid IANA timezone, like America/Los_Angeles.",
+              prompt: "time_zone_invalid",
               missingFields: ["timeZone"],
             },
           };

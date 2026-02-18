@@ -39,6 +39,12 @@ export interface UnifiedSearchRequest {
   from?: string;
   to?: string;
   cc?: string;
+  fromEmails?: string[];
+  fromDomains?: string[];
+  toEmails?: string[];
+  toDomains?: string[];
+  ccEmails?: string[];
+  ccDomains?: string[];
   category?: UnifiedSearchEmailCategory;
   attendeeEmail?: string;
   calendarIds?: string[];
