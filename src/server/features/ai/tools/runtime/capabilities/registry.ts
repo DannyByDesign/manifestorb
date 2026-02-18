@@ -89,6 +89,8 @@ const emailSearchInputSchema = z.object({
   from: z.string().optional(),
   to: z.string().optional(),
   hasAttachment: z.boolean().optional(),
+  unread: z.boolean().optional(),
+  sort: z.enum(["relevance", "newest", "oldest"]).optional(),
   sentByMe: z.boolean().optional(),
   receivedByMe: z.boolean().optional(),
   strictSenderOnly: z.boolean().optional(),

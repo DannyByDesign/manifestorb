@@ -13,6 +13,8 @@ export type UnifiedSearchMailbox =
   | "archive"
   | "all";
 
+export type UnifiedSearchSort = "relevance" | "newest" | "oldest";
+
 export interface UnifiedSearchDateRange {
   after?: string;
   before?: string;
@@ -24,6 +26,9 @@ export interface UnifiedSearchRequest {
   text?: string;
   scopes?: UnifiedSearchSurface[];
   mailbox?: UnifiedSearchMailbox;
+  sort?: UnifiedSearchSort;
+  unread?: boolean;
+  hasAttachment?: boolean;
   from?: string;
   to?: string;
   attendeeEmail?: string;
@@ -67,6 +72,12 @@ export interface UnifiedSearchResult {
     queryVariants: string[];
     scopes: UnifiedSearchSurface[];
     mailbox?: UnifiedSearchMailbox;
+    sort?: UnifiedSearchSort;
+    unread?: boolean;
+    hasAttachment?: boolean;
+    inferredLimit?: number;
+    needsClarification?: boolean;
+    clarificationPrompt?: string;
     aliasExpansions: string[];
   };
 }
@@ -94,4 +105,5 @@ export interface RankingDocument {
 export interface UnifiedSearchIntentHints {
   requestedSurfaces: Set<UnifiedSearchSurface>;
   mailbox?: UnifiedSearchMailbox;
+  sort?: UnifiedSearchSort;
 }

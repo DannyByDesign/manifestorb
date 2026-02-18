@@ -38,6 +38,8 @@ const CAPABILITIES_RE =
   /\b(what can you do|capabilit(?:y|ies)|how can you help|what do you do|help me understand)\b/u;
 const TASK_SIGNAL_RE =
   /\b(email|emails|inbox|calendar|meeting|meetings|event|events|schedule|find|search|list|show|check|create|update|delete|send|reply|archive|move|label|count|unread)\b/u;
+const CONVERSATION_ONLY_SIGNAL_RE =
+  /\b(thought partner|brainstorm|challenge my assumptions|help me think|just thinking out loud|talk through|reflect)\b/u;
 const ATTACHMENT_RE = /\battach(?:ment|ments|ed)?\b|\battatch(?:ment|ments|ed)?\b/u;
 
 const META_CONSTRAINT_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
@@ -89,6 +91,8 @@ const compilerSchema = z
             from: z.string().min(1).max(320).optional(),
             to: z.string().min(1).max(320).optional(),
             hasAttachment: z.boolean().optional(),
+            unread: z.boolean().optional(),
+            sort: z.enum(["relevance", "newest", "oldest"]).optional(),
             purpose: z.enum(["lookup", "list", "count"]).optional(),
             limit: z.number().min(1).max(5000).optional(),
             fetchAll: z.boolean().optional(),
@@ -278,6 +282,14 @@ function sanitizePurpose(value: unknown): "lookup" | "list" | "count" | undefine
   return value === "lookup" || value === "list" || value === "count" ? value : undefined;
 }
 
+function sanitizeSort(
+  value: unknown,
+): "relevance" | "newest" | "oldest" | undefined {
+  return value === "relevance" || value === "newest" || value === "oldest"
+    ? value
+    : undefined;
+}
+
 function sanitizeLimit(value: unknown): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
   return Math.max(1, Math.min(5000, Math.trunc(value)));
@@ -370,6 +382,8 @@ async function buildSingleToolCallFromCandidate(params: {
   const from = sanitizeSenderValue(candidate.args.from);
   const to = normalizeScopeValue(candidate.args.to);
   const hasAttachment = sanitizeBoolean(candidate.args.hasAttachment);
+  const unread = sanitizeBoolean(candidate.args.unread);
+  const sort = sanitizeSort(candidate.args.sort);
   const purpose = sanitizePurpose(candidate.args.purpose) ?? "list";
   const explicitDateRange = sanitizeDateRange(candidate.args.dateRange);
   const dateRange = explicitDateRange ?? inferDateRangeFromMessage(params.message, timeZone);
@@ -388,6 +402,8 @@ async function buildSingleToolCallFromCandidate(params: {
   if (from) args.from = from;
   if (to) args.to = to;
   if (typeof hasAttachment === "boolean") args.hasAttachment = hasAttachment;
+  if (typeof unread === "boolean") args.unread = unread;
+  if (sort) args.sort = sort;
   if (attachmentIntentTerm) args.text = attachmentIntentTerm;
 
   if (candidate.toolName === "email.searchSent") {
@@ -492,6 +508,7 @@ export async function compileRuntimeTurn(params: {
 }): Promise<RuntimeCompiledTurn> {
   const message = params.message.trim();
   const normalized = message.toLowerCase();
+  const hasTaskSignal = TASK_SIGNAL_RE.test(normalized);
   const metaConstraints = extractMetaConstraints(normalized);
 
   if (GREETING_RE.test(normalized)) {
@@ -559,7 +576,10 @@ export async function compileRuntimeTurn(params: {
       modelResult.taskClauses.length === 0 &&
       !modelResult.needsClarification;
 
-    if (modelConversationOnly) {
+    const forceClarificationForTaskLikeConversationOnly =
+      modelConversationOnly && hasTaskSignal;
+
+    if (modelConversationOnly && !hasTaskSignal) {
       return {
         routeHint: "conversation_only",
         conversationClauses:
@@ -582,13 +602,23 @@ export async function compileRuntimeTurn(params: {
           ? modelResult.taskClauses
           : [{ domain: "general", action: "read", confidence: 0.55 }],
       metaConstraints: mergedMeta,
-      needsClarification: modelResult.needsClarification,
-      confidence: Number(modelResult.confidence.toFixed(4)),
+      needsClarification:
+        forceClarificationForTaskLikeConversationOnly || modelResult.needsClarification,
+      confidence: Number(
+        (forceClarificationForTaskLikeConversationOnly
+          ? Math.min(modelResult.confidence, 0.65)
+          : modelResult.confidence
+        ).toFixed(4),
+      ),
       source: "compiler_model",
     };
   }
 
-  if (!TASK_SIGNAL_RE.test(normalized)) {
+  const explicitlyConversational =
+    CONVERSATION_ONLY_SIGNAL_RE.test(normalized) &&
+    !TASK_SIGNAL_RE.test(normalized);
+
+  if (explicitlyConversational) {
     return {
       routeHint: "conversation_only",
       conversationClauses: [message],
@@ -605,8 +635,8 @@ export async function compileRuntimeTurn(params: {
     conversationClauses: [],
     taskClauses: [{ domain: "general", action: "read", confidence: 0.5 }],
     metaConstraints,
-    needsClarification: false,
-    confidence: 0.5,
+    needsClarification: !hasTaskSignal,
+    confidence: hasTaskSignal ? 0.5 : 0.45,
     source: "compiler_fallback",
   };
 }

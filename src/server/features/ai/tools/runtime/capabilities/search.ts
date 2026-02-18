@@ -67,6 +67,14 @@ function toRequest(input: Record<string, unknown>): UnifiedSearchRequest {
     text: asString(input.text),
     scopes: toScopes(input.scopes),
     mailbox: toMailbox(input.mailbox),
+    sort:
+      input.sort === "relevance" ||
+      input.sort === "newest" ||
+      input.sort === "oldest"
+        ? input.sort
+        : undefined,
+    unread: asBoolean(input.unread),
+    hasAttachment: asBoolean(input.hasAttachment),
     from: asString(input.from),
     to: asString(input.to),
     attendeeEmail: asString(input.attendeeEmail) ?? asString(input.attendee),
@@ -108,7 +116,7 @@ export function createSearchCapabilities(env: CapabilityEnvironment): SearchCapa
           error: "search_query_required",
           clarification: {
             kind: "missing_fields",
-            prompt: "What should I search for? You can provide text like 'portfolio review'.",
+            prompt: "search_target_required",
             missingFields: ["query"],
           },
         };
@@ -116,6 +124,17 @@ export function createSearchCapabilities(env: CapabilityEnvironment): SearchCapa
 
       try {
         const result = await service.query(request);
+        if (result.queryPlan?.needsClarification) {
+          return {
+            success: false,
+            error: "clarification_required",
+            clarification: {
+              kind: "missing_fields",
+              prompt: result.queryPlan.clarificationPrompt ?? "search_target_unclear",
+              missingFields: ["query"],
+            },
+          };
+        }
         return {
           success: true,
           data: result,

@@ -14,6 +14,7 @@ import type {
   UnifiedSearchMailbox,
   UnifiedSearchRequest,
   UnifiedSearchResult,
+  UnifiedSearchSort,
   UnifiedSearchSurface,
 } from "@/server/features/search/unified/types";
 
@@ -118,6 +119,22 @@ function includesNeedle(value: unknown, needle: string): boolean {
   return false;
 }
 
+function normalizeLabelIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => (typeof item === "string" ? item.toUpperCase() : ""))
+    .filter((item) => item.length > 0);
+}
+
+function inferEmailUnreadState(metadata: Record<string, unknown>): boolean | undefined {
+  if (typeof metadata.isUnread === "boolean") return metadata.isUnread;
+  const labelIds = normalizeLabelIds(metadata.labelIds);
+  if (labelIds.includes("UNREAD")) return true;
+  if (labelIds.includes("READ")) return false;
+  if (typeof metadata.isRead === "boolean") return !metadata.isRead;
+  return undefined;
+}
+
 function computeGraphProximityScore(doc: RankingDocument, terms: string[]): number {
   if (terms.length === 0) return 0;
   const metadata = asObject(doc.metadata);
@@ -190,6 +207,17 @@ function matchesRequest(doc: RankingDocument, request: UnifiedSearchRequest, mai
   if (!matchDateRange(doc, request)) return false;
 
   const metadata = asObject(doc.metadata);
+  if (doc.surface === "email") {
+    if (typeof request.unread === "boolean") {
+      const unread = inferEmailUnreadState(metadata);
+      if (unread !== request.unread) return false;
+    }
+    if (typeof request.hasAttachment === "boolean") {
+      const hasAttachment = metadata.hasAttachment === true;
+      if (hasAttachment !== request.hasAttachment) return false;
+    }
+  }
+
   const from = normalizeString(request.from);
   if (from && doc.surface === "email") {
     const sourceFrom = metadata.from ?? metadata.authorIdentity ?? doc.metadata?.authorIdentity ?? "";
@@ -304,13 +332,21 @@ async function searchEmailProviderFallback(params: {
   mailbox: UnifiedSearchMailbox | undefined;
   limit: number;
 }): Promise<RankingDocument[]> {
-  if (!params.query.trim()) return [];
+  const queryHints: string[] = [];
+  if (typeof params.request.unread === "boolean") {
+    queryHints.push(params.request.unread ? "is:unread" : "is:read");
+  }
+  if (params.request.hasAttachment === true) {
+    queryHints.push("has:attachment");
+  }
+  const providerQuery = [params.query.trim(), ...queryHints].join(" ").trim();
+  if (!providerQuery) return [];
 
   const after = parseDate(params.request.dateRange?.after);
   const before = parseDate(params.request.dateRange?.before);
   const searchResult = await params.env.providers.email.search({
-    query: params.query,
-    text: params.request.text ?? params.query,
+    query: providerQuery,
+    text: params.request.text ?? params.query ?? providerQuery,
     from: params.request.from,
     to: params.request.to,
     sentByMe: params.mailbox === "sent" ? true : undefined,
@@ -348,6 +384,7 @@ async function searchEmailProviderFallback(params: {
     const isDraft = labelIds.includes("DRAFT");
     const isSpam = labelIds.includes("SPAM");
     const isTrash = labelIds.includes("TRASH");
+    const isUnread = labelIds.includes("UNREAD");
 
     let mailbox = "all";
     if (isSent) mailbox = "sent";
@@ -391,6 +428,7 @@ async function searchEmailProviderFallback(params: {
         isDraft,
         isSpam,
         isTrash,
+        isUnread,
         freshnessScore: computeFreshnessScore(timestamp),
         authorityScore: 0.5,
       },
@@ -413,6 +451,38 @@ function toUnifiedItem(entry: Awaited<ReturnType<typeof rankDocuments>>[number])
   };
 }
 
+function resolveSort(
+  requestSort: UnifiedSearchSort | undefined,
+  plannedSort: UnifiedSearchSort | undefined,
+): UnifiedSearchSort {
+  if (requestSort) return requestSort;
+  if (plannedSort) return plannedSort;
+  return "relevance";
+}
+
+function sortRankedEntries(
+  entries: Awaited<ReturnType<typeof rankDocuments>>,
+  sort: UnifiedSearchSort,
+): Awaited<ReturnType<typeof rankDocuments>> {
+  if (sort === "relevance") return entries;
+  const direction = sort === "newest" ? -1 : 1;
+  return [...entries].sort((a, b) => {
+    const aTs = a.doc.timestamp ? Date.parse(a.doc.timestamp) : NaN;
+    const bTs = b.doc.timestamp ? Date.parse(b.doc.timestamp) : NaN;
+    const aFinite = Number.isFinite(aTs);
+    const bFinite = Number.isFinite(bTs);
+    if (aFinite && bFinite && aTs !== bTs) {
+      return direction * (aTs - bTs);
+    }
+    if (aFinite !== bFinite) {
+      return aFinite ? -1 : 1;
+    }
+    const scoreDiff = b.score - a.score;
+    if (Math.abs(scoreDiff) > 1e-6) return scoreDiff;
+    return a.doc.id.localeCompare(b.doc.id);
+  });
+}
+
 export interface UnifiedSearchService {
   query(request: UnifiedSearchRequest): Promise<UnifiedSearchResult>;
 }
@@ -421,15 +491,68 @@ export function createUnifiedSearchService(env: UnifiedSearchEnvironment): Unifi
   return {
     async query(request) {
       const startedAt = Date.now();
-      const limit = clampInt(request.limit ?? DEFAULT_LIMIT, 1, MAX_LIMIT);
       const queryPlan = await planUnifiedSearchQuery({
         userId: env.userId,
         emailAccountId: env.emailAccountId,
+        email: env.email,
         request,
       });
-      const scopes = normalizeSurfaceList(request.scopes ?? queryPlan.scopes);
-      const mailbox = queryPlan.mailbox ?? request.mailbox;
-      const rankingQuery = queryPlan.rewrittenQuery || normalizeString(request.query) || normalizeString(request.text);
+      const effectiveRequest: UnifiedSearchRequest = {
+        ...request,
+        scopes: request.scopes ?? queryPlan.scopes,
+        mailbox: request.mailbox ?? queryPlan.mailbox,
+        sort: request.sort ?? queryPlan.sort,
+        unread:
+          typeof request.unread === "boolean"
+            ? request.unread
+            : queryPlan.unread,
+        hasAttachment:
+          typeof request.hasAttachment === "boolean"
+            ? request.hasAttachment
+            : queryPlan.hasAttachment,
+        limit: request.limit ?? queryPlan.inferredLimit,
+      };
+
+      const limit = clampInt(
+        effectiveRequest.limit ?? DEFAULT_LIMIT,
+        1,
+        MAX_LIMIT,
+      );
+      const scopes = normalizeSurfaceList(effectiveRequest.scopes);
+      const mailbox = effectiveRequest.mailbox;
+      const sort = resolveSort(effectiveRequest.sort, queryPlan.sort);
+      const rankingQuery =
+        queryPlan.rewrittenQuery ||
+        normalizeString(request.query) ||
+        normalizeString(request.text);
+
+      if (queryPlan.needsClarification) {
+        return {
+          items: [],
+          counts: {
+            email: 0,
+            calendar: 0,
+            rule: 0,
+            memory: 0,
+          },
+          total: 0,
+          truncated: false,
+          queryPlan: {
+            query: queryPlan.query,
+            rewrittenQuery: queryPlan.rewrittenQuery,
+            queryVariants: queryPlan.queryVariants,
+            scopes,
+            mailbox,
+            sort,
+            unread: effectiveRequest.unread,
+            hasAttachment: effectiveRequest.hasAttachment,
+            inferredLimit: queryPlan.inferredLimit,
+            needsClarification: true,
+            clarificationPrompt: queryPlan.clarificationPrompt,
+            aliasExpansions: queryPlan.aliasExpansions,
+          },
+        };
+      }
 
       const indexedDocs = await searchIndexedSurface({
         env,
@@ -437,7 +560,9 @@ export function createUnifiedSearchService(env: UnifiedSearchEnvironment): Unifi
         queryVariants: queryPlan.queryVariants,
         limit,
       });
-      const filteredIndexedDocs = indexedDocs.filter((doc) => matchesRequest(doc, request, mailbox));
+      const filteredIndexedDocs = indexedDocs.filter((doc) =>
+        matchesRequest(doc, effectiveRequest, mailbox),
+      );
 
       const indexedDocumentIds = filteredIndexedDocs
         .map((doc) => {
@@ -485,21 +610,26 @@ export function createUnifiedSearchService(env: UnifiedSearchEnvironment): Unifi
       const hasEmailCandidate = Array.from(docsById.values()).some(
         (doc) => doc.surface === "email",
       );
+      const hasHardEmailConstraints =
+        typeof effectiveRequest.unread === "boolean" ||
+        typeof effectiveRequest.hasAttachment === "boolean";
+      const emailCandidateCount = Array.from(docsById.values()).filter(
+        (doc) => doc.surface === "email",
+      ).length;
       const shouldRunEmailFallback =
         scopes.includes("email") &&
-        !hasEmailCandidate &&
-        rankingQuery.length > 0;
+        (!hasEmailCandidate || (hasHardEmailConstraints && emailCandidateCount < limit));
 
       if (shouldRunEmailFallback) {
         const fallbackDocs = await searchEmailProviderFallback({
           env,
-          request,
+          request: effectiveRequest,
           query: rankingQuery,
           mailbox,
           limit,
         });
         const filteredFallbackDocs = fallbackDocs.filter((doc) =>
-          matchesRequest(doc, request, mailbox),
+          matchesRequest(doc, effectiveRequest, mailbox),
         );
         for (const doc of filteredFallbackDocs) {
           const metadata = asObject(doc.metadata);
@@ -526,12 +656,15 @@ export function createUnifiedSearchService(env: UnifiedSearchEnvironment): Unifi
         intentHints: {
           requestedSurfaces: new Set(scopes),
           mailbox,
+          sort,
         },
       });
 
-      const filteredRanked = rankingQuery
-        ? ranked.filter((entry) => entry.score >= 0.1)
-        : ranked;
+      const rankedBySort = sortRankedEntries(ranked, sort);
+      const filteredRanked =
+        sort === "relevance" && rankingQuery
+          ? rankedBySort.filter((entry) => entry.score >= 0.1)
+          : rankedBySort;
 
       const total = filteredRanked.length;
       const top = filteredRanked.slice(0, limit).map(toUnifiedItem);
@@ -595,6 +728,9 @@ export function createUnifiedSearchService(env: UnifiedSearchEnvironment): Unifi
         query: rankingQuery,
         scopes,
         mailbox,
+        sort,
+        unread: effectiveRequest.unread ?? null,
+        hasAttachment: effectiveRequest.hasAttachment ?? null,
         totalCandidates: docs.length,
         candidateCounts: {
           email: docs.filter((doc) => doc.surface === "email").length,
@@ -619,6 +755,12 @@ export function createUnifiedSearchService(env: UnifiedSearchEnvironment): Unifi
           queryVariants: queryPlan.queryVariants,
           scopes,
           mailbox,
+          sort,
+          unread: effectiveRequest.unread,
+          hasAttachment: effectiveRequest.hasAttachment,
+          inferredLimit: queryPlan.inferredLimit,
+          needsClarification: queryPlan.needsClarification,
+          clarificationPrompt: queryPlan.clarificationPrompt,
           aliasExpansions: queryPlan.aliasExpansions,
         },
       };

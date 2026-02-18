@@ -12,22 +12,24 @@ describe("unified search query planner", () => {
     vi.mocked(lookupSearchAliasExpansions).mockResolvedValue([]);
   });
 
-  it("rewrites sent-folder conversational search into focused terms", async () => {
+  it("preserves raw query text when semantic compiler is unavailable", async () => {
+    const query = `Search my sent emails for "portfolio review"`;
     const plan = await planUnifiedSearchQuery({
       userId: "user_1",
       emailAccountId: "acct_1",
       request: {
-        query: `Search my sent emails for "portfolio review"`,
+        query,
+        mailbox: "sent",
       },
     });
 
-    expect(plan.rewrittenQuery).toBe("portfolio review");
+    expect(plan.rewrittenQuery).toBe(query);
     expect(plan.mailbox).toBe("sent");
     expect(plan.scopes).toContain("email");
-    expect(plan.queryVariants).toContain("portfolio review");
+    expect(plan.queryVariants).toContain(query);
   });
 
-  it("infers calendar scope for meeting/event phrasing", async () => {
+  it("defaults to all scopes when none are explicitly provided", async () => {
     const plan = await planUnifiedSearchQuery({
       userId: "user_1",
       emailAccountId: "acct_1",
@@ -36,7 +38,10 @@ describe("unified search query planner", () => {
       },
     });
 
+    expect(plan.scopes).toContain("email");
     expect(plan.scopes).toContain("calendar");
+    expect(plan.scopes).toContain("rule");
+    expect(plan.scopes).toContain("memory");
   });
 
   it("expands alias terms from indexed alias table", async () => {
@@ -61,7 +66,7 @@ describe("unified search query planner", () => {
     expect(plan.queryVariants.join(" ")).toContain("danny.wang@example.com");
   });
 
-  it("adds nickname/canonical term expansions to query variants", async () => {
+  it("does not synthesize nickname variants heuristically", async () => {
     const plan = await planUnifiedSearchQuery({
       userId: "user_1",
       emailAccountId: "acct_1",
@@ -71,7 +76,29 @@ describe("unified search query planner", () => {
     });
 
     expect(plan.terms).toContain("danny");
-    expect(plan.terms).toContain("daniel");
-    expect(plan.queryVariants.join(" ")).toContain("daniel");
+    expect(plan.terms).not.toContain("daniel");
+    expect(plan.queryVariants.join(" ")).not.toContain("daniel");
+  });
+
+  it("passes through explicit structured constraints without heuristic inference", async () => {
+    const plan = await planUnifiedSearchQuery({
+      userId: "user_1",
+      emailAccountId: "acct_1",
+      request: {
+        query: "anything",
+        scopes: ["email"],
+        mailbox: "inbox",
+        unread: true,
+        sort: "newest",
+        hasAttachment: true,
+        limit: 10,
+      },
+    });
+
+    expect(plan.mailbox).toBe("inbox");
+    expect(plan.unread).toBe(true);
+    expect(plan.sort).toBe("newest");
+    expect(plan.hasAttachment).toBe(true);
+    expect(plan.inferredLimit).toBe(10);
   });
 });

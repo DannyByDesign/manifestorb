@@ -1,73 +1,106 @@
 import { lookupSearchAliasExpansions } from "@/server/features/search/index/repository";
+import { z } from "zod";
+import { createGenerateObject } from "@/server/lib/llms";
+import { getModel } from "@/server/lib/llms/model";
 import type {
   UnifiedSearchMailbox,
   UnifiedSearchRequest,
+  UnifiedSearchSort,
   UnifiedSearchSurface,
 } from "@/server/features/search/unified/types";
 
 const DEFAULT_SURFACES: UnifiedSearchSurface[] = ["email", "calendar", "rule", "memory"];
 
-const SEARCH_STOPWORDS = new Set([
-  "a",
-  "an",
-  "and",
-  "are",
-  "can",
-  "could",
-  "do",
-  "email",
-  "emails",
-  "find",
-  "for",
-  "from",
-  "folder",
-  "i",
-  "in",
-  "is",
-  "look",
-  "me",
-  "message",
-  "messages",
-  "my",
-  "please",
-  "search",
-  "sent",
-  "show",
-  "mailbox",
-  "that",
-  "the",
-  "to",
-  "up",
-  "with",
-  "you",
-]);
+const semanticQueryCompilerSchema = z
+  .object({
+    rewrittenQuery: z.string().max(500).optional(),
+    scopes: z
+      .array(z.enum(["email", "calendar", "rule", "memory"]))
+      .max(4)
+      .optional(),
+    mailbox: z
+      .enum(["inbox", "sent", "draft", "trash", "spam", "archive", "all"])
+      .optional(),
+    sort: z.enum(["relevance", "newest", "oldest"]).optional(),
+    unread: z.boolean().optional(),
+    hasAttachment: z.boolean().optional(),
+    limit: z.number().int().min(1).max(200).optional(),
+    needsClarification: z.boolean().optional(),
+    clarificationPrompt: z.string().max(240).optional(),
+  })
+  .strict();
 
-const NICKNAME_EQUIVALENTS: Record<string, string[]> = {
-  alex: ["alexander", "alexandra"],
-  andy: ["andrew"],
-  ben: ["benjamin"],
-  danny: ["daniel"],
-  dave: ["david"],
-  jenny: ["jennifer"],
-  jon: ["john", "jonathan"],
-  kate: ["katherine", "kathryn"],
-  liz: ["elizabeth"],
-  matt: ["matthew"],
-  mike: ["michael"],
-  nick: ["nicholas"],
-  rob: ["robert"],
-  sam: ["samuel", "samantha"],
-  steve: ["steven", "stephen"],
-  tom: ["thomas"],
-  will: ["william"],
-};
+function shouldUseSemanticQueryCompiler(): boolean {
+  if (process.env.UNIFIED_SEARCH_QUERY_COMPILER_FORCE_MODEL === "true") return true;
+  if (process.env.UNIFIED_SEARCH_QUERY_COMPILER_USE_MODEL === "false") return false;
+  return true;
+}
 
-const SURFACE_HINTS: Record<UnifiedSearchSurface, RegExp[]> = {
-  email: [/\b(email|emails|inbox|sent|draft|message|messages|mail)\b/iu],
-  calendar: [/\b(calendar|event|events|meeting|meetings|schedule|availability|slot|timeslot)\b/iu],
-  rule: [/\b(rule|rules|automation|automations|policy|policies|filter|filters)\b/iu],
-  memory: [/\b(memory|remember|recall|knowledge|history)\b/iu],
-};
+async function compileSemanticQueryIntent(params: {
+  userId: string;
+  emailAccountId?: string;
+  email?: string;
+  query: string;
+}): Promise<z.infer<typeof semanticQueryCompilerSchema> | null> {
+  if (!shouldUseSemanticQueryCompiler()) return null;
+  if (!params.query.trim()) return null;
+  if (!params.emailAccountId || !params.email) return null;
+
+  const modelOptions = getModel("economy");
+  const generate = createGenerateObject({
+    emailAccount: {
+      id: params.emailAccountId,
+      email: params.email,
+      userId: params.userId,
+    },
+    label: "unified-search-query-compiler",
+    modelOptions,
+    maxLLMRetries: 2,
+  });
+
+  const run = generate({
+    model: modelOptions.model,
+    schema: semanticQueryCompilerSchema,
+    system: [
+      "You normalize natural-language search intents into structured retrieval constraints.",
+      "Preserve user intent across inbox/calendar/rules/memory search.",
+      "Return only constraints that are explicit or strongly implied by the query.",
+      "Use sort=newest for latest/recent phrasing and sort=oldest for oldest/earliest phrasing.",
+      "Set unread only when query clearly asks for unread/read.",
+      "Set hasAttachment only when attachment intent is explicit.",
+      "Set rewrittenQuery to semantic content terms only. Omit operational words (e.g. unread/latest/show/list).",
+      "If request is purely operational (e.g. '10 most recent unread emails'), rewrittenQuery should be empty or omitted.",
+      "If intent is ambiguous or underspecified, set needsClarification=true and provide a short clarificationPrompt.",
+      "Do not hallucinate people, dates, or mailbox scopes.",
+    ].join("\n"),
+    prompt: [
+      `Current UTC date: ${new Date().toISOString().slice(0, 10)}`,
+      `Search query: ${params.query}`,
+    ].join("\n"),
+  });
+
+  const timeoutMs = Math.min(
+    Math.max(
+      Number.parseInt(
+        process.env.UNIFIED_SEARCH_QUERY_COMPILER_TIMEOUT_MS ?? "2200",
+        10,
+      ) || 2200,
+      1200,
+    ),
+    7_500,
+  );
+
+  try {
+    const result = await Promise.race([
+      run,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+    ]);
+    if (!result) return null;
+    return semanticQueryCompilerSchema.parse(result.object);
+  } catch {
+    return null;
+  }
+}
 
 function normalize(value: string | undefined): string {
   return (value ?? "").trim().replace(/\s+/g, " ");
@@ -76,90 +109,9 @@ function normalize(value: string | undefined): string {
 function tokenize(value: string): string[] {
   return value
     .toLowerCase()
-    .split(/[^a-z0-9@._-]+/u)
+    .split(/[^a-z0-9@._:-]+/u)
     .map((token) => token.trim())
     .filter((token) => token.length > 1);
-}
-
-function singularize(token: string): string {
-  if (token.endsWith("ies") && token.length > 4) {
-    return `${token.slice(0, -3)}y`;
-  }
-  if (token.endsWith("s") && !token.endsWith("ss") && token.length > 3) {
-    return token.slice(0, -1);
-  }
-  return token;
-}
-
-function stripQuotes(value: string): string {
-  const trimmed = value.trim();
-  if ((trimmed.startsWith(`"`) && trimmed.endsWith(`"`)) || (trimmed.startsWith(`'`) && trimmed.endsWith(`'`))) {
-    return trimmed.slice(1, -1).trim();
-  }
-  return trimmed;
-}
-
-function inferMailbox(query: string, explicit: UnifiedSearchMailbox | undefined): UnifiedSearchMailbox | undefined {
-  if (explicit && explicit !== "all") return explicit;
-  const normalized = query.toLowerCase();
-  if (/\b(sent|outbox|i sent|sent folder)\b/u.test(normalized)) return "sent";
-  if (/\b(inbox|received)\b/u.test(normalized)) return "inbox";
-  if (/\b(draft|drafts)\b/u.test(normalized)) return "draft";
-  if (/\b(trash|bin|deleted)\b/u.test(normalized)) return "trash";
-  if (/\b(spam|junk)\b/u.test(normalized)) return "spam";
-  if (/\b(archive|archived)\b/u.test(normalized)) return "archive";
-  return undefined;
-}
-
-function inferScopes(query: string, explicit: UnifiedSearchSurface[] | undefined): UnifiedSearchSurface[] {
-  if (explicit && explicit.length > 0) return explicit;
-
-  const inferred = new Set<UnifiedSearchSurface>();
-  for (const surface of DEFAULT_SURFACES) {
-    if (SURFACE_HINTS[surface].some((pattern) => pattern.test(query))) {
-      inferred.add(surface);
-    }
-  }
-
-  if (inferred.size === 0) return [...DEFAULT_SURFACES];
-  return [...inferred];
-}
-
-function extractQuotedPhrase(query: string): string | undefined {
-  const match = query.match(/["“”']([^"“”']{2,200})["“”']/u);
-  return match?.[1]?.trim();
-}
-
-function extractInstructionObject(query: string): string {
-  const normalized = query.trim();
-  if (!normalized) return normalized;
-
-  const pattern =
-    /^(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?(?:search|find|look(?:\s+for|\s+up)?|show|check|list)\s+(?:my\s+)?(?:(?:sent|inbox|draft|trash|spam|archive)\s+)?(?:emails?|messages?|mail|calendar|events?|rules?)?\s*(?:for|about|with|containing)?\s*(.+)$/iu;
-  const match = normalized.match(pattern);
-  if (match?.[1]) return stripQuotes(match[1]);
-
-  return stripQuotes(normalized);
-}
-
-function compactSearchTerms(query: string): string {
-  const terms = tokenize(query).filter((token) => !SEARCH_STOPWORDS.has(token));
-  return terms.join(" ").trim();
-}
-
-function expandTermVariants(terms: string[]): string[] {
-  const expanded = new Set<string>();
-  for (const term of terms) {
-    if (!term || term.length <= 1) continue;
-    expanded.add(term);
-    expanded.add(singularize(term));
-    if (term in NICKNAME_EQUIVALENTS) {
-      for (const value of NICKNAME_EQUIVALENTS[term] ?? []) {
-        expanded.add(value);
-      }
-    }
-  }
-  return [...expanded];
 }
 
 function dedupe(values: string[]): string[] {
@@ -178,6 +130,12 @@ export interface PlannedUnifiedSearchQuery {
   queryVariants: string[];
   scopes: UnifiedSearchSurface[];
   mailbox?: UnifiedSearchMailbox;
+  sort?: UnifiedSearchSort;
+  unread?: boolean;
+  hasAttachment?: boolean;
+  inferredLimit?: number;
+  needsClarification?: boolean;
+  clarificationPrompt?: string;
   aliasExpansions: string[];
   terms: string[];
 }
@@ -185,16 +143,43 @@ export interface PlannedUnifiedSearchQuery {
 export async function planUnifiedSearchQuery(params: {
   userId: string;
   emailAccountId?: string;
+  email?: string;
   request: UnifiedSearchRequest;
 }): Promise<PlannedUnifiedSearchQuery> {
   const baseQuery = normalize(params.request.query) || normalize(params.request.text);
-  const quotedPhrase = extractQuotedPhrase(baseQuery);
-  const instructionObject = extractInstructionObject(baseQuery);
-  const compacted = compactSearchTerms(instructionObject);
+  const semanticIntent = await compileSemanticQueryIntent({
+    userId: params.userId,
+    emailAccountId: params.emailAccountId,
+    email: params.email,
+    query: baseQuery,
+  });
+  const inferredLimit = params.request.limit ?? semanticIntent?.limit;
+  const unread =
+    typeof params.request.unread === "boolean"
+      ? params.request.unread
+      : typeof semanticIntent?.unread === "boolean"
+        ? semanticIntent.unread
+        : undefined;
+  const hasAttachment =
+    typeof params.request.hasAttachment === "boolean"
+      ? params.request.hasAttachment
+      : typeof semanticIntent?.hasAttachment === "boolean"
+        ? semanticIntent.hasAttachment
+        : undefined;
+  const sort =
+    params.request.sort && params.request.sort !== "relevance"
+      ? params.request.sort
+      : semanticIntent?.sort && semanticIntent.sort !== "relevance"
+        ? semanticIntent.sort
+        : undefined;
 
-  const rewrittenQuery = quotedPhrase || compacted || instructionObject || baseQuery;
-  const mailbox = inferMailbox(`${baseQuery} ${params.request.mailbox ?? ""}`.trim(), params.request.mailbox);
-  const scopes = inferScopes(baseQuery, params.request.scopes);
+  const rewrittenQuery = normalize(semanticIntent?.rewrittenQuery) || baseQuery;
+  const mailbox =
+    params.request.mailbox ??
+    (semanticIntent?.mailbox && semanticIntent.mailbox !== "all"
+      ? semanticIntent.mailbox
+      : undefined);
+  const scopes = params.request.scopes ?? semanticIntent?.scopes ?? [...DEFAULT_SURFACES];
 
   const terms = dedupe([
     ...tokenize(rewrittenQuery),
@@ -202,26 +187,25 @@ export async function planUnifiedSearchQuery(params: {
     ...tokenize(normalize(params.request.to)),
     ...tokenize(normalize(params.request.attendeeEmail)),
   ]);
-  const expandedTerms = expandTermVariants(terms);
 
   const aliasRows = await lookupSearchAliasExpansions({
     userId: params.userId,
     emailAccountId: params.emailAccountId,
-    terms: expandedTerms,
+    terms,
   });
 
-  const aliasExpansions = dedupe(aliasRows.map((row) => row.canonicalValue).filter(Boolean));
+  const aliasExpansions = dedupe(
+    aliasRows.map((row) => row.canonicalValue).filter(Boolean),
+  );
 
-  const queryVariants = dedupe([
-    rewrittenQuery,
-    instructionObject,
-    compacted,
-    quotedPhrase ?? "",
-    expandedTerms.join(" "),
-    aliasExpansions.join(" "),
-    dedupe([...terms, ...aliasExpansions]).join(" "),
-    dedupe([...expandedTerms, ...aliasExpansions]).join(" "),
-  ]);
+  const queryVariants =
+    rewrittenQuery.length > 0
+      ? dedupe([
+          rewrittenQuery,
+          aliasExpansions.join(" "),
+          dedupe([...terms, ...aliasExpansions]).join(" "),
+        ])
+      : [];
 
   return {
     query: baseQuery,
@@ -229,7 +213,13 @@ export async function planUnifiedSearchQuery(params: {
     queryVariants,
     scopes,
     mailbox,
+    sort,
+    unread,
+    hasAttachment,
+    inferredLimit,
+    needsClarification: semanticIntent?.needsClarification === true,
+    clarificationPrompt: semanticIntent?.clarificationPrompt,
     aliasExpansions,
-    terms: expandedTerms,
+    terms,
   };
 }

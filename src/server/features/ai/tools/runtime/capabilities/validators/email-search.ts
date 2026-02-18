@@ -49,6 +49,19 @@ function sanitizeDateRange(value: unknown): Record<string, unknown> | undefined 
   return Object.keys(next).length > 0 ? next : undefined;
 }
 
+function sanitizeBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function sanitizeSort(
+  value: unknown,
+): "relevance" | "newest" | "oldest" | undefined {
+  if (value !== "relevance" && value !== "newest" && value !== "oldest") {
+    return undefined;
+  }
+  return value;
+}
+
 export type EmailSearchFilterValidationResult =
   | {
       ok: true;
@@ -111,6 +124,27 @@ export function validateEmailSearchFilter(
     sanitized.dateRange = dateRange;
   } else {
     delete sanitized.dateRange;
+  }
+
+  const hasAttachment = sanitizeBoolean(filter.hasAttachment);
+  if (typeof hasAttachment === "boolean") {
+    sanitized.hasAttachment = hasAttachment;
+  } else {
+    delete sanitized.hasAttachment;
+  }
+
+  const unread = sanitizeBoolean(filter.unread);
+  if (typeof unread === "boolean") {
+    sanitized.unread = unread;
+  } else {
+    delete sanitized.unread;
+  }
+
+  const sort = sanitizeSort(filter.sort);
+  if (sort) {
+    sanitized.sort = sort;
+  } else {
+    delete sanitized.sort;
   }
 
   return {

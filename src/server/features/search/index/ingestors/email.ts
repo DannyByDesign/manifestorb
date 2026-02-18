@@ -78,6 +78,7 @@ export async function enqueueEmailDocumentForIndexing(params: {
       isDraft: params.message.labelIds?.includes("DRAFT") ?? false,
       isSent: params.message.labelIds?.includes("SENT") ?? false,
       isInbox: params.message.labelIds?.includes("INBOX") ?? false,
+      isUnread: params.message.labelIds?.includes("UNREAD") ?? false,
     },
   };
 

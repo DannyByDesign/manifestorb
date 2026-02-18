@@ -282,6 +282,20 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           typeof requestFilter.to === "string"
             ? requestFilter.to
             : undefined,
+        unread:
+          typeof requestFilter.unread === "boolean"
+            ? requestFilter.unread
+            : undefined,
+        hasAttachment:
+          typeof requestFilter.hasAttachment === "boolean"
+            ? requestFilter.hasAttachment
+            : undefined,
+        sort:
+          requestFilter.sort === "relevance" ||
+          requestFilter.sort === "newest" ||
+          requestFilter.sort === "oldest"
+            ? requestFilter.sort
+            : undefined,
         dateRange: dateRange
           ? {
               after:
@@ -306,6 +320,18 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
             : undefined,
         fetchAll: Boolean(requestFilter.fetchAll),
       });
+
+      if (result.queryPlan?.needsClarification) {
+        return {
+          success: false,
+          error: "clarification_required",
+          clarification: {
+            kind: "missing_fields",
+            prompt: result.queryPlan.clarificationPrompt ?? "search_target_unclear",
+            missingFields: ["query"],
+          },
+        };
+      }
 
       const data = result.items
         .filter((item) => item.surface === "email")
@@ -393,7 +419,9 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       };
     } catch (error) {
       const fallback = await runUnifiedSearchThreads({
-        query: "is:unread",
+        query: "unread",
+        unread: true,
+        sort: "newest",
         limit: 100,
         fetchAll: false,
       }, "inbox");

@@ -241,7 +241,9 @@ describe("runtime email unified search routing", () => {
       expect.objectContaining({
         scopes: ["email"],
         mailbox: "inbox",
-        query: "is:unread",
+        query: "unread",
+        unread: true,
+        sort: "newest",
         limit: 100,
         fetchAll: false,
       }),

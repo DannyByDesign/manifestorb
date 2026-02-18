@@ -364,7 +364,7 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
       return {
         text: await composeAssistantReply({
           mode: "clarification",
-          fallbackText: clarificationPrompt,
+          fallbackText,
         }),
         stopReason: "needs_clarification",
         attempts: 1,
@@ -649,12 +649,10 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
 
   if (clarificationPrompt) {
     return {
-      text:
-        finalText ||
-        (await composeAssistantReply({
-          mode: "clarification",
-          fallbackText: clarificationPrompt,
-        })),
+      text: await composeAssistantReply({
+        mode: "clarification",
+        fallbackText,
+      }),
       stopReason: "needs_clarification",
       attempts: Math.max(1, generation.steps.length),
     };

@@ -24,6 +24,7 @@ const mailboxSchema = z.enum([
   "archive",
   "all",
 ]);
+const sortSchema = z.enum(["relevance", "newest", "oldest"]);
 
 const requestSchema = z
   .object({
@@ -31,6 +32,9 @@ const requestSchema = z
     text: z.string().min(1).optional(),
     scopes: z.array(surfaceSchema).optional(),
     mailbox: mailboxSchema.optional(),
+    sort: sortSchema.optional(),
+    unread: z.boolean().optional(),
+    hasAttachment: z.boolean().optional(),
     from: z.string().min(1).optional(),
     to: z.string().min(1).optional(),
     attendeeEmail: z.string().min(1).optional(),
@@ -117,6 +121,24 @@ function parseGetRequest(req: NextRequest): UnifiedSearchRequest {
     text: params.get("text") ?? undefined,
     scopes: parseScopes(params.get("scopes")),
     mailbox: parseMailbox(params.get("mailbox")),
+    sort:
+      params.get("sort") === "relevance" ||
+      params.get("sort") === "newest" ||
+      params.get("sort") === "oldest"
+        ? (params.get("sort") as "relevance" | "newest" | "oldest")
+        : undefined,
+    unread:
+      params.get("unread") === "true"
+        ? true
+        : params.get("unread") === "false"
+          ? false
+          : undefined,
+    hasAttachment:
+      params.get("hasAttachment") === "true"
+        ? true
+        : params.get("hasAttachment") === "false"
+          ? false
+          : undefined,
     from: params.get("from") ?? undefined,
     to: params.get("to") ?? undefined,
     attendeeEmail: params.get("attendeeEmail") ?? undefined,
