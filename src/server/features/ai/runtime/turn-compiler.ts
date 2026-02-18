@@ -42,6 +42,13 @@ const CONVERSATION_ONLY_SIGNAL_RE =
   /\b(thought partner|brainstorm|challenge my assumptions|help me think|just thinking out loud|talk through|reflect)\b/u;
 const ATTACHMENT_RE = /\battach(?:ment|ments|ed)?\b|\battatch(?:ment|ments|ed)?\b/u;
 
+const WEB_DIRECT_SIGNAL_RE =
+  /\b(search\s+(?:the\s+)?(?:web|internet)|search\s+online|google|look\s+up\s+(?:online|on\s+(?:the\s+)?(?:web|internet))|browse\s+the\s+web)\b/u;
+const WEB_RECENCY_SIGNAL_RE =
+  /\b(latest|most\s+recent|current|as\s+of|today|right\s+now|this\s+week|newest)\b/u;
+const INTERNAL_SURFACE_SIGNAL_RE =
+  /\b(inbox|email|emails|calendar|meeting|meetings|event|events|schedule|draft|reply|label|archive|trash|unsubscribe|block|rule|policy|memory|remember|recall)\b/u;
+
 const META_CONSTRAINT_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /\b(?:fresh|new)\s+search\b/u, label: "fresh_search" },
   { pattern: /\bnot\s+from\s+(?:our\s+)?conversation\s+memory\b/u, label: "not_from_conversation_memory" },
@@ -80,6 +87,7 @@ const compilerSchema = z
           "email.searchInbox",
           "email.searchSent",
           "calendar.listEvents",
+          "web.search",
         ]),
         reason: z.string().min(1).max(120),
         confidence: z.number().min(0).max(1),
@@ -99,6 +107,11 @@ const compilerSchema = z
             sentByMe: z.boolean().optional(),
             receivedByMe: z.boolean().optional(),
             attachmentIntentTerm: z.string().min(1).max(120).optional(),
+            count: z.number().int().min(1).max(10).optional(),
+            country: z.string().min(1).max(12).optional(),
+            search_lang: z.string().min(1).max(12).optional(),
+            ui_lang: z.string().min(1).max(12).optional(),
+            freshness: z.string().min(1).max(64).optional(),
             dateRange: z
               .object({
                 after: z.string().min(4).max(40),
@@ -295,6 +308,11 @@ function sanitizeLimit(value: unknown): number | undefined {
   return Math.max(1, Math.min(5000, Math.trunc(value)));
 }
 
+function sanitizeWebCount(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  return Math.max(1, Math.min(10, Math.trunc(value)));
+}
+
 function defaultSingleToolReason(toolName: SupportedSingleTool): string {
   switch (toolName) {
     case "email.getUnreadCount":
@@ -303,6 +321,8 @@ function defaultSingleToolReason(toolName: SupportedSingleTool): string {
       return "email_sent_list";
     case "calendar.listEvents":
       return "calendar_read_window";
+    case "web.search":
+      return "web_search";
     case "email.searchInbox":
     default:
       return "email_inbox_list";
@@ -318,9 +338,32 @@ function defaultSingleToolFailureText(toolName: SupportedSingleTool): string {
       return "I couldn't load those emails right now.";
     case "calendar.listEvents":
       return "I couldn't read your calendar right now.";
+    case "web.search":
+      return "I couldn't search the web right now.";
     default:
       return "I hit a temporary issue while handling that.";
   }
+}
+
+function stripLeadingWebSearchPreamble(message: string): string {
+  return message
+    .trim()
+    .replace(/^(?:can you|could you|please|pls)\s+/iu, "")
+    .replace(
+      /^(?:search\s+(?:the\s+)?(?:web|internet)|search\s+online|browse\s+the\s+web)\s+(?:for\s+)?/iu,
+      "",
+    )
+    .replace(/^(?:google|look\s+up)\s+/iu, "")
+    .trim();
+}
+
+function shouldSingleToolWebSearch(message: string): boolean {
+  const normalized = message.toLowerCase();
+  if (CONVERSATION_ONLY_SIGNAL_RE.test(normalized)) return false;
+  if (INTERNAL_SURFACE_SIGNAL_RE.test(normalized)) return false;
+  if (WEB_DIRECT_SIGNAL_RE.test(normalized)) return true;
+  if (WEB_RECENCY_SIGNAL_RE.test(normalized)) return true;
+  return false;
 }
 
 async function resolveTimeZone(params: {
@@ -350,6 +393,34 @@ async function buildSingleToolCallFromCandidate(params: {
 }): Promise<RuntimeSingleToolCall | undefined> {
   const { candidate } = params;
   if (candidate.confidence < 0.78) return undefined;
+
+  if (candidate.toolName === "web.search") {
+    const query =
+      normalizeScopeValue(candidate.args.query) ??
+      normalizeScopeValue(stripLeadingWebSearchPreamble(params.message)) ??
+      "";
+    if (!query) return undefined;
+
+    const count = sanitizeWebCount(candidate.args.count);
+    const country = normalizeScopeValue(candidate.args.country);
+    const search_lang = normalizeScopeValue(candidate.args.search_lang);
+    const ui_lang = normalizeScopeValue(candidate.args.ui_lang);
+    const freshness = normalizeScopeValue(candidate.args.freshness);
+
+    return {
+      toolName: "web.search",
+      args: {
+        query,
+        ...(typeof count === "number" ? { count } : {}),
+        ...(country ? { country } : {}),
+        ...(search_lang ? { search_lang } : {}),
+        ...(ui_lang ? { ui_lang } : {}),
+        ...(freshness ? { freshness } : {}),
+      },
+      reason: candidate.reason || defaultSingleToolReason(candidate.toolName),
+      onFailureText: candidate.onFailureText ?? defaultSingleToolFailureText(candidate.toolName),
+    };
+  }
 
   if (candidate.toolName === "email.getUnreadCount") {
     return {
@@ -472,7 +543,7 @@ async function compileWithModel(params: {
       "If uncertain, set routeHint=planner and needsClarification=true.",
       "Meta constraints like 'not from conversation memory' are metaConstraints, not sender filters.",
       "For 'from <person> in the last N days', set args.from to the person only and put timeframe in dateRange.",
-      "Allowed single tools: email.getUnreadCount, email.searchInbox, email.searchSent, calendar.listEvents.",
+      "Allowed single tools: email.getUnreadCount, email.searchInbox, email.searchSent, calendar.listEvents, web.search.",
       "Do not invent tools or unsupported args.",
     ].join("\n"),
     prompt: [
@@ -537,6 +608,25 @@ export async function compileRuntimeTurn(params: {
     };
   }
 
+  if (shouldSingleToolWebSearch(message)) {
+    const query = normalizeScopeValue(stripLeadingWebSearchPreamble(message)) ?? message;
+    return {
+      routeHint: "single_tool",
+      conversationClauses: [],
+      taskClauses: [{ domain: "general", action: "read", confidence: 0.7 }],
+      metaConstraints,
+      needsClarification: false,
+      singleToolCall: {
+        toolName: "web.search",
+        args: { query },
+        reason: "web_search",
+        onFailureText: "I couldn't search the web right now.",
+      },
+      confidence: 0.72,
+      source: "compiler_fallback",
+    };
+  }
+
   const modelResult = await compileWithModel(params);
 
   if (modelResult) {
@@ -555,6 +645,8 @@ export async function compileRuntimeTurn(params: {
       const inferredTaskClause: RuntimeTaskClause =
         singleToolCall.toolName.startsWith("email.")
           ? { domain: "inbox", action: "read", confidence: 0.8 }
+          : singleToolCall.toolName.startsWith("web.")
+            ? { domain: "general", action: "read", confidence: 0.8 }
           : { domain: "calendar", action: "read", confidence: 0.8 };
       return {
         routeHint: "single_tool",
