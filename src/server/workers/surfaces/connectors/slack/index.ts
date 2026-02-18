@@ -616,7 +616,7 @@ export async function startSlack() {
     });
     slackApp = app;
     registerSocketModeDiagnostics(app);
-    app.error(async (error) => {
+    app.error(async (error: unknown) => {
         const msg = error instanceof Error ? error.message : String(error);
         setPlatformError("slack", msg);
         console.error("[Surfaces][Slack] Bolt app error", { error: msg });

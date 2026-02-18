@@ -7,6 +7,7 @@ import {
     ChannelType,
     Client,
     GatewayIntentBits,
+    type Message,
     Partials
 } from "discord.js";
 import {
@@ -84,7 +85,7 @@ export function startDiscord() {
         console.log(`[Surfaces] Discord Connected as ${client.user?.tag}`);
     });
 
-    client.on("interactionCreate", async (interaction) => {
+    client.on("interactionCreate", async (interaction: ButtonInteraction) => {
         touchPlatformEvent("discord");
         if (!interaction.isButton()) return;
 
@@ -190,7 +191,7 @@ export function startDiscord() {
         }
     });
 
-    client.on("messageCreate", async (message) => {
+    client.on("messageCreate", async (message: Message) => {
         touchPlatformEvent("discord");
         if (message.author.bot) return;
 
@@ -327,7 +328,7 @@ export function startDiscord() {
                             return btn;
                         });
 
-                        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(buttons);
+                        const row = new ActionRowBuilder().addComponents(buttons);
 
                         try {
                             // Build message options based on type
@@ -403,7 +404,7 @@ export function startDiscord() {
         }
     });
 
-    client.login(token).catch(err => {
+    client.login(token).catch((err: unknown) => {
         setPlatformError("discord", err instanceof Error ? err.message : String(err));
         console.error("[Surfaces] Discord Login Error:", err);
     });
