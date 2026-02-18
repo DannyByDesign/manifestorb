@@ -1,67 +1,40 @@
-# AI Runtime (Runtime-First)
+# AI Runtime (`src/server/features/ai`)
 
-This folder contains the assistant runtime used by inbox/calendar surfaces.
+This directory contains the unified assistant runtime used by:
+- the web chat (`src/app/api/chat/route.ts`)
+- surfaces (Slack/Discord/Telegram) via `src/app/api/surfaces/inbound/route.ts`
 
-## Execution Flow
+The runtime is "open-world": the model produces tool calls, those tool calls are executed via a capability layer, and the runtime iterates for a bounded number of steps before finalizing a response.
 
-1. `message-processor.ts` receives the user turn.
-2. `runtime/session.ts` builds runtime context:
-   - semantic turn contract (embedding-first with lexical fallback)
-   - tool capabilities
-   - skill prompt snapshot
-   - semantic candidate tool narrowing
-   - OpenClaw-style layered deterministic filtering:
-     - profile
-     - provider-profile
-     - global allow/deny
-     - global provider allow/deny
-     - agent allow/deny
-     - agent provider allow/deny
-     - group policy
-     - sandbox policy
-     - subagent policy
-   - ranked runtime tool registry
-3. `runtime/router.ts` selects a routing lane and per-lane budgets:
-   - `direct_response` (no tools)
-   - `macro_tool` (deterministic one-tool execution)
-   - `planner_fast` (tight SLA, reduced planner context)
-   - `planner_standard`
-   - `planner_deep` (complex/cross-domain)
-4. `runtime/attempt-loop.ts` runs bounded model/tool iterations using lane budgets.
-5. Tool calls execute through:
-   - `tools/harness/tool-definition-adapter.ts`
-   - `tools/harness/tool-split.ts`
-   - `runtime/harness/session-runner.ts`
-   - `runtime/harness/tool-events.ts`
-   - `tools/runtime/capabilities/executors/*`
-6. Policy and approval checks run before mutating tool calls.
+## Entry Points
 
-## Important Directories
+- Message processor: `message-processor.ts`
+  - normalizes inbound messages (web vs surfaces)
+  - handles pending decisions (approve/deny, schedule proposals, ambiguous time choices) deterministically when possible
+  - calls the runtime kernel to produce a response + tool execution summary
 
-```
-ai/
-├── runtime/                        # Turn loop, session/context setup, response contract
-├── skills/                         # Prompt-layer skills catalog and composition
-├── tools/
-│   ├── runtime/capabilities/       # Canonical runtime tool metadata + execution
-│   ├── providers/                  # Email/calendar provider adapters
-│   ├── packs/                      # Tool pack manifests and loader
-│   ├── fabric/                     # Tool assembly + policy filter integration
-│   ├── harness/                    # OpenClaw-style tool definition/split harness
-│   ├── calendar/                   # Calendar tool primitives
-│   └── email/                      # Email tool primitives
-├── runtime/harness/                # Session runner + tool lifecycle emitters
-├── policy/                         # Runtime policy hooks
-└── message-processor.ts            # Unified runtime entrypoint
-```
+- Runtime kernel: `runtime/index.ts`
+  - `runOpenWorldRuntimeTurn(...)` is the main orchestration entrypoint
 
-## Guardrails
+## Runtime Layout
 
-- Mutating tools are policy-gated (`ai/policy/enforcement.ts`).
-- Approvals are persisted and replayed via `features/approvals`.
-- Runtime tool metadata is source-of-truth in `tools/runtime/capabilities/registry.ts`.
+Key subdirectories/files:
+- `system-prompt.ts`: minimal global policy/style shell (identity, safety, formatting)
+- `runtime/`: budgets, attempt loop, response contract, and tool-runtime glue
+- `tools/`: tool registry + executors
+  - `tools/runtime/capabilities/registry.ts`: canonical tool metadata (source of truth)
+  - `tools/runtime/capabilities/executors/*`: actual implementations (email/calendar/memory/search/etc.)
+- `security.ts`: prompt-injection protection and other safety hardening
 
-## Fast-Path Coverage Source of Truth
+## Safety Model
 
-- Coverage scope and implementation plan live in:
-  - `docs/plans/2026-02-15-fast-path-coverage-source-of-truth.md`
+- The runtime never claims side effects succeeded unless execution confirms it.
+- Mutations are gated by policy and approvals:
+  - approvals live in `src/server/features/approvals/*`
+  - tool enforcement hooks live under `policy/` and runtime tool layers
+
+When changing tools:
+1. Update tool metadata (registry).
+2. Update the executor implementation.
+3. Add/update tests that validate policy/approval behavior.
+

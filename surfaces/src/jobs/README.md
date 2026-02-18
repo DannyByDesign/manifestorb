@@ -1,153 +1,61 @@
-# Background Jobs
+# Background Jobs (`surfaces/src/jobs`)
 
 This directory contains background job workers that run in the surfaces sidecar.
 
-## Why Here?
-
-Background jobs run in the surfaces sidecar instead of Vercel because:
-1. **No timeout limits** - Jobs can run as long as needed
-2. **Cost effective** - No need for Vercel Enterprise
-3. **Clean separation** - Vercel handles web, sidecar handles background
+Why the sidecar:
+- Vercel/serverless environments have execution time limits.
+- Slack Socket Mode and other connectors need persistent processes.
+- Some jobs (memory recording, embedding backfills) are safer to run in a long-lived worker with retries.
 
 ## Jobs
 
-### Recording Worker (`recording-worker.ts`)
+### Memory Recording (`recording-worker.ts`)
 
-Processes memory recording (summarization + fact extraction):
-- Called immediately when user hits 120K token threshold
-- Receives HTTP POST from main app at `/jobs/recording`
-- Calls OpenAI for summarization and fact extraction
-- Stores UserSummary and MemoryFacts
-- Enqueues embeddings for new facts
+Purpose: user-level summarization + fact extraction across *all* conversation messages for a user (unified memory).
 
-**Trigger:** Immediate (HTTP push from main app)
-**Backup:** Every 30 minutes (catches missed triggers)
+Key behaviors:
+- fetches new `ConversationMessage`s since `UserSummary.lastMessageAt`
+- calls Gemini (`gemini-2.5-flash`) to produce a compressed summary + extracted facts
+- upserts `UserSummary` + `MemoryFact`s
+- enqueues embeddings for new/updated facts into Redis (LPUSH to an embedding queue key)
+
+Triggered by:
+- main app: `src/server/features/memory/service.ts` enqueues a job to the sidecar (`SIDECAR_URL`) when `JOBS_SHARED_SECRET` is configured
+- sidecar HTTP endpoint: `POST /jobs/recording` (Authorization: `Bearer ${JOBS_SHARED_SECRET}`)
 
 ### Embedding Worker (`embedding-worker.ts`)
 
-Processes the embedding queue:
-- Reads jobs from Redis queue
-- Generates embeddings via OpenAI API
-- Stores vectors in PostgreSQL (pgvector)
-- Handles retries and failed jobs
+Purpose: drain the embedding queue and generate OpenAI embeddings (used for semantic search).
 
-**Schedule:** Every 5 minutes
+Key behaviors:
+- reads queued jobs from Redis
+- calls OpenAI embeddings (`text-embedding-3-small`)
+- stores vectors in Postgres (pgvector fields on the relevant model)
 
 ### Decay Worker (`decay-worker.ts`)
 
-Manages memory lifecycle:
-1. Marks stale facts as inactive (180+ days without access)
-2. Deletes old inactive facts (30+ days inactive)
+Purpose: apply retention/decay rules to long-term memory facts.
 
-**Schedule:** Daily at 3:00 AM UTC
+Key behaviors:
+- marks stale facts inactive
+- deletes older inactive facts according to retention rules
 
 ### Scheduler (`scheduler.ts`)
 
-Cron scheduler that runs the jobs automatically.
+Purpose: run periodic jobs and expose manual triggers.
 
-## HTTP Endpoints
+Exposed endpoints (see `surfaces/src/index.ts`):
+- `GET /health`
+- `GET /jobs/status`
+- `POST /jobs/embeddings` (Bearer `JOBS_SHARED_SECRET`)
+- `POST /jobs/decay` (Bearer `JOBS_SHARED_SECRET`)
 
-The sidecar exposes these endpoints for job management:
+## Required Environment
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/jobs/status` | None | Get queue and decay stats |
-| POST | `/jobs/embeddings` | Bearer token | Manually trigger embedding processing |
-| POST | `/jobs/decay` | Bearer token | Manually trigger memory decay |
-| GET | `/health` | None | Health check |
+See `surfaces/.env.example` for a dev-friendly template. The important bits:
+- `DATABASE_URL` (same database as the main app)
+- `REDIS_URL`
+- `OPENAI_API_KEY` (embeddings)
+- `GOOGLE_API_KEY` (memory recording)
+- `JOBS_SHARED_SECRET` (auth for job endpoints)
 
-## Environment Variables
-
-Required in `.env`:
-
-```env
-# Database (same as main app)
-DATABASE_URL="postgresql://..."
-
-# Redis (same as main app)  
-REDIS_URL="redis://..."
-
-# OpenAI for embeddings
-OPENAI_API_KEY="sk-..."
-
-# Auth for manual job triggers
-JOBS_SHARED_SECRET="..."
-```
-
-## Development
-
-```bash
-# Install dependencies (generates Prisma client)
-bun install
-
-# Run in development mode
-bun run dev
-```
-
-## Production Deployment
-
-### Railway
-
-1. **Create a new service** from the `surfaces` directory
-2. **Set build command:** `bun install`
-3. **Set start command:** `bun run start`
-4. **Add environment variables:**
-   - `DATABASE_URL` - Same PostgreSQL connection as main app
-   - `REDIS_URL` - Same Redis connection as main app
-   - `OPENAI_API_KEY` - For embedding generation
-   - `JOBS_SHARED_SECRET` - For authenticated job triggers
-   - Platform tokens: `SLACK_BOT_TOKEN`, `DISCORD_BOT_TOKEN`, `TELEGRAM_BOT_TOKEN`
-
-### AWS (ECS/EC2)
-
-1. **Build Docker image:**
-   ```dockerfile
-   FROM oven/bun:1
-   WORKDIR /app
-   COPY package.json bun.lock ./
-   COPY prisma ./prisma
-   RUN bun install --production
-   COPY src ./src
-   CMD ["bun", "run", "start"]
-   ```
-
-2. **Deploy** as a long-running service (not Lambda/serverless)
-
-3. **Configure** environment variables in your secrets manager
-
-### Health Monitoring
-
-The `/health` endpoint returns uptime and can be used for:
-- Load balancer health checks
-- Uptime monitoring (e.g., UptimeRobot, Pingdom)
-
-```bash
-curl https://your-surfaces-host/health
-# {"status":"ok","uptime":12345.67}
-```
-
-### Job Monitoring
-
-Check job queue status:
-
-```bash
-curl https://your-surfaces-host/jobs/status
-# {"embedding":{"pending":5,"processing":0,"failed":0},"decay":{"totalFacts":100,...}}
-```
-
-## Architecture
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│                    Surfaces Sidecar                          │
-├──────────────────────────────────────────────────────────────┤
-│  Platform Connectors          │  Background Jobs             │
-│  ├── Slack (WebSocket)        │  ├── Embedding Worker        │
-│  ├── Discord (Gateway)        │  ├── Decay Worker            │
-│  └── Telegram (Polling)       │  └── Scheduler (cron)        │
-├──────────────────────────────────────────────────────────────┤
-│                       Data Layer                             │
-│  ├── Prisma (PostgreSQL)                                     │
-│  └── Redis (Queue)                                           │
-└──────────────────────────────────────────────────────────────┘
-```

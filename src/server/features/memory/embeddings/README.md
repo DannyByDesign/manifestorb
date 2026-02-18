@@ -165,7 +165,11 @@ CREATE INDEX ON "Knowledge" USING ivfflat (embedding vector_cosine_ops);
 OPENAI_API_KEY=sk-...    # For embedding generation
 
 # Optional (for caching/queue)
-REDIS_URL=redis://...    # Redis connection string
+# The main app Redis client comes from `src/server/lib/redis` and is configured
+# via the Upstash REST variables in `src/env.ts` (or the local dev adapter in
+# `docker-compose.dev.yml`).
+UPSTASH_REDIS_URL=http://localhost:8079
+UPSTASH_REDIS_TOKEN=local-dev-token
 ```
 
 ## Error Handling
@@ -188,5 +192,4 @@ try {
 ## See Also
 
 - [Memory Architecture](../ARCHITECTURE.md)
-- [LLM Registry](../../../../../docs/LLM_REGISTRY.md)
 - [Runtime Memory Capability](../../ai/tools/runtime/capabilities/memory.ts)

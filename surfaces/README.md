@@ -10,18 +10,18 @@ standalone service that connects chat platforms (Slack, Discord, Telegram) to th
    cp .env.example .env
    ```
 
-2. Configure `.env`:
+2. Configure `.env` (see `surfaces/.env.example` for a dev-friendly template):
+   - `CORE_BASE_URL` and `BRAIN_API_URL` should point at the running main app (default `http://localhost:3000`).
+   - `SURFACES_SHARED_SECRET`, `JOBS_SHARED_SECRET`, and `INTERNAL_API_KEY` must match the main app.
+   - Set platform tokens to enable connectors; a platform is skipped if its token is missing.
+
+3. Run:
    ```bash
-   CORE_BASE_URL=http://localhost:3000
-   BRAIN_API_URL=http://localhost:3000/api/surfaces/inbound
-   SURFACES_SHARED_SECRET=shared-secret-must-match-core-env
-   
-   # Tokens (Optional for local dev, service skips if missing)
-   SLACK_BOT_TOKEN=xoxb-...
-   SLACK_APP_TOKEN=xapp-...
-   DISCORD_BOT_TOKEN=...
-   TELEGRAM_BOT_TOKEN=...
+   bun install
+   bun run dev
    ```
+
+The sidecar listens on port `3001` by default and exposes `GET /health`.
 
 ## Credential Setup Guide
 
@@ -102,4 +102,3 @@ To provide a conversational experience:
 -   **Context Fetching**: Should fetch the last 30 messages of the current thread/channel.
 -   **Forwarding**: Passes this history in the `history` array to the Brain.
 -   **Privacy**: This history is NOT stored in the Amodel database long-term; it is only used transiently for the current inference window.
-
