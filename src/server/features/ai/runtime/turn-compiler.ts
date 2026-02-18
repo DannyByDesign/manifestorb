@@ -95,11 +95,7 @@ const compilerSchema = z
             query: z.string().min(1).max(500).optional(),
             text: z.string().min(1).max(500).optional(),
             from: z.string().min(1).max(320).optional(),
-            fromConcept: z.string().min(1).max(120).optional(),
             to: z.string().min(1).max(320).optional(),
-            toConcept: z.string().min(1).max(120).optional(),
-            cc: z.string().min(1).max(320).optional(),
-            ccConcept: z.string().min(1).max(120).optional(),
             hasAttachment: z.boolean().optional(),
             unread: z.boolean().optional(),
             sort: z.enum(["relevance", "newest", "oldest"]).optional(),
@@ -451,12 +447,8 @@ async function buildSingleToolCallFromCandidate(params: {
   const timeZone = await resolveTimeZone(params);
   const query = normalizeScopeValue(candidate.args.query) ?? "";
   const text = normalizeScopeValue(candidate.args.text);
-  const fromConcept = normalizeScopeValue(candidate.args.fromConcept);
-  const toConcept = normalizeScopeValue(candidate.args.toConcept);
-  const ccConcept = normalizeScopeValue(candidate.args.ccConcept);
-  const from = fromConcept ? undefined : sanitizeSenderValue(candidate.args.from);
-  const to = toConcept ? undefined : normalizeScopeValue(candidate.args.to);
-  const cc = ccConcept ? undefined : normalizeScopeValue(candidate.args.cc);
+  const from = sanitizeSenderValue(candidate.args.from);
+  const to = normalizeScopeValue(candidate.args.to);
   const hasAttachment = sanitizeBoolean(candidate.args.hasAttachment);
   const unread = sanitizeBoolean(candidate.args.unread);
   const sort = sanitizeSort(candidate.args.sort);
@@ -476,11 +468,7 @@ async function buildSingleToolCallFromCandidate(params: {
 
   if (dateRange) args.dateRange = dateRange;
   if (from) args.from = from;
-  if (fromConcept) args.fromConcept = fromConcept;
   if (to) args.to = to;
-  if (toConcept) args.toConcept = toConcept;
-  if (cc) args.cc = cc;
-  if (ccConcept) args.ccConcept = ccConcept;
   if (typeof hasAttachment === "boolean") args.hasAttachment = hasAttachment;
   if (typeof unread === "boolean") args.unread = unread;
   if (sort) args.sort = sort;
@@ -552,9 +540,6 @@ async function compileWithModel(params: {
       "If uncertain, set routeHint=planner and needsClarification=true.",
       "Meta constraints like 'not from conversation memory' are metaConstraints, not sender filters.",
       "For 'from <person> in the last N days', set args.from to the person only and put timeframe in dateRange.",
-      "If the user uses role/group language for sender/recipient (e.g. 'recruiters', 'founders', 'investors', 'customers', 'press'), do not guess who that means.",
-      "Instead, set args.fromConcept/args.toConcept/args.ccConcept to the exact phrase and leave args.from/args.to/args.cc empty.",
-      "When using fromConcept/toConcept/ccConcept in a single-tool email search, keep needsClarification=false so the tool can return structured clarification evidence.",
       "Allowed single tools: email.getUnreadCount, email.searchInbox, email.searchSent, calendar.listEvents, web.search.",
       "Do not invent tools or unsupported args.",
     ].join("\n"),

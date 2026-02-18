@@ -61,7 +61,7 @@ export interface ActionRequestContext {
 }
 
 export interface InteractivePayload {
-    type: "approval_request" | "draft_created" | "action_request" | "ambiguous_time" | "clarification_choices";
+    type: "approval_request" | "draft_created" | "action_request" | "ambiguous_time";
     approvalId?: string;
     draftId?: string;
     emailAccountId?: string;
