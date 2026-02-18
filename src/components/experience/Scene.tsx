@@ -42,7 +42,8 @@ const mixHex = (a: string, b: string, t: number): string => {
 };
 
 function SceneContent({ palette }: { palette: ThemePalette }) {
-  const sphereScale = 3.2;
+  const sphereScale = 2.8;
+  const particleDiameterScale = 0.84;
 
   const derived = useMemo(() => {
     const deepViolet = mixHex(palette.coolLavender, palette.plumMagenta, 0.3);
@@ -64,48 +65,48 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
     () => [
       {
         size: 456,
-        pointSize: 16.9,
+        pointSize: 16.9 * particleDiameterScale,
         frequency: 0.45,
         colors: [derived.deepViolet, palette.coolLavender, palette.softMauve, palette.plumMagenta],
       },
       {
         size: 296,
-        pointSize: 17.5,
+        pointSize: 17.5 * particleDiameterScale,
         frequency: 0.48,
         colors: [palette.coolLavender, palette.softMauve, derived.midLavender, derived.paleLilac],
       },
       {
         size: 158,
-        pointSize: 17.0,
+        pointSize: 17.0 * particleDiameterScale,
         frequency: 0.56,
         colors: [derived.midLavender, derived.paleLilac, palette.baseLilac, palette.coolLavender],
       },
       {
         size: 96,
-        pointSize: 17.5,
+        pointSize: 17.5 * particleDiameterScale,
         frequency: 1.65,
         colors: [derived.paleLilac, derived.iceLavender, palette.cyanSheen, palette.softMauve],
       },
       {
         size: 94,
-        pointSize: 17.0,
+        pointSize: 17.0 * particleDiameterScale,
         frequency: 0.7,
         colors: [palette.softMauve, derived.midLavender, derived.paleLilac, derived.iceLavender],
       },
       {
         size: 88,
-        pointSize: 17.5,
+        pointSize: 17.5 * particleDiameterScale,
         frequency: 2.3,
         colors: [derived.iceLavender, palette.cyanSheen, derived.whiteBloom, derived.paleLilac],
       },
       {
         size: 28,
-        pointSize: 15.0,
+        pointSize: 15.0 * particleDiameterScale,
         frequency: 2.8,
         colors: [derived.whiteBloom, "#FFFFFF", derived.iceLavender, palette.baseLilac],
       },
     ],
-    [derived, palette]
+    [derived, palette, particleDiameterScale]
   );
 
   return (
