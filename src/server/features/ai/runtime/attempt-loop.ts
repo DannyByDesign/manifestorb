@@ -203,6 +203,8 @@ function buildNativeRuntimeSystemPrompt(params: {
     "- Prefer the minimum necessary tool calls for simple requests.",
     "- For greetings/capability questions, answer directly without tools.",
     "- For inbox/calendar facts, call tools rather than guessing.",
+    "- For public facts that may be time-sensitive or unfamiliar (news, prices, latest changes), use web.search instead of guessing.",
+    "- If you need details from a specific URL returned by web.search, use web.fetch on that URL.",
     "- For follow-up questions about prior results (for example: 'the second one' or 'why that email'), ground your answer in the latest turn evidence before running a new search.",
     "- Treat scheduled tasks as valid calendar rescheduling targets when the user asks to move/reschedule a task.",
     "- Do not claim missing capability for task/calendar rescheduling when runtime tools are available; ask a clarifying question if identifiers are missing.",

@@ -91,4 +91,48 @@ describe("runtime turn compiler", () => {
       }),
     ).not.toThrow();
   });
+
+  it("routes explicit web search requests to single_tool:web.search deterministically", async () => {
+    const turn = await compileRuntimeTurn({
+      message: "Search the web for bun 1.2.2 release notes",
+      userId: "user-1",
+      email: "user@example.com",
+      emailAccountId: "email-1",
+      logger: testLogger(),
+    });
+
+    expect(turn.routeHint).toBe("single_tool");
+    expect(turn.singleToolCall?.toolName).toBe("web.search");
+    expect(turn.singleToolCall?.args).toEqual(
+      expect.objectContaining({ query: "bun 1.2.2 release notes" }),
+    );
+  });
+
+  it("routes indirect time-sensitive web lookups to single_tool:web.search", async () => {
+    const turn = await compileRuntimeTurn({
+      message: "What's the latest on Nvidia earnings?",
+      userId: "user-1",
+      email: "user@example.com",
+      emailAccountId: "email-1",
+      logger: testLogger(),
+    });
+
+    expect(turn.routeHint).toBe("single_tool");
+    expect(turn.singleToolCall?.toolName).toBe("web.search");
+    expect(turn.singleToolCall?.args).toEqual(
+      expect.objectContaining({ query: "What's the latest on Nvidia earnings?" }),
+    );
+  });
+
+  it("does not mis-route inbox searches to web.search", async () => {
+    const turn = await compileRuntimeTurn({
+      message: "Search my inbox for invoices from last month",
+      userId: "user-1",
+      email: "user@example.com",
+      emailAccountId: "email-1",
+      logger: testLogger(),
+    });
+
+    expect(turn.singleToolCall?.toolName).not.toBe("web.search");
+  });
 });
