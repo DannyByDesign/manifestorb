@@ -16,12 +16,11 @@ export interface RuntimeRoutingPlan {
   decisionToolCatalogLimit: number;
   includeSkillGuidance: boolean;
   singleToolCall?: RuntimeSingleToolCall;
-  conversationFallbackText?: string;
 }
 
 const PROFILE_PRESETS: Record<
   RuntimeRoutingPlan["profile"],
-  Omit<RuntimeRoutingPlan, "lane" | "reason" | "profile" | "singleToolCall" | "conversationFallbackText">
+  Omit<RuntimeRoutingPlan, "lane" | "reason" | "profile" | "singleToolCall">
 > = {
   fast: {
     nativeMaxSteps: 4,
@@ -71,22 +70,21 @@ export async function buildRuntimeRoutingPlan(params: {
   const { session } = params;
   const profile = resolvePlannerProfile(session);
 
-  if (session.turn.routeHint === "conversation_only") {
+  if (session.turn.toolChoice === "none" || session.turn.routeHint === "conversation_only") {
     return {
       lane: "conversation_only",
-      reason: "turn_compiler:conversation_only",
+      reason: session.turn.toolChoice === "none" ? "turn_policy:tool_choice_none" : "turn_compiler:conversation_only",
       profile,
       ...PROFILE_PRESETS.fast,
-      nativeMaxSteps: 0,
-      nativeTurnTimeoutMs: 0,
+      // Run one native turn with tools disabled. (ToolChoice is enforced in the session runner.)
+      nativeMaxSteps: 1,
+      nativeTurnTimeoutMs: 18_000,
       maxAttempts: 1,
       decisionTimeoutMs: 0,
       repairTimeoutMs: 0,
       responseWriteTimeoutMs: 6_000,
       decisionToolCatalogLimit: 0,
       includeSkillGuidance: false,
-      conversationFallbackText:
-        session.turn.conversationFallbackText ?? "How can I help you next?",
     };
   }
 

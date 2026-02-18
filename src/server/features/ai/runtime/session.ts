@@ -175,16 +175,19 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
     ),
   };
 
-  const filtered = await filterToolRegistryDetailed(fullRegistry, {
-    includeDangerous: turn.riskLevel === "high" && turn.requestedOperation !== "read",
-    message: input.message,
-    embeddingEmail: input.email,
-    turn,
-    maxTools: resolveRuntimeToolCatalogMaxTools(turn),
-    layeredPolicies,
-    additionalGroups: registryContext.additionalGroups,
-  });
-  const registry = filtered.tools;
+  const filtered =
+    turn.toolChoice === "none"
+      ? null
+      : await filterToolRegistryDetailed(fullRegistry, {
+          includeDangerous: turn.riskLevel === "high" && turn.requestedOperation !== "read",
+          message: input.message,
+          embeddingEmail: input.email,
+          turn,
+          maxTools: resolveRuntimeToolCatalogMaxTools(turn),
+          layeredPolicies,
+          additionalGroups: registryContext.additionalGroups,
+        });
+  const registry = filtered ? filtered.tools : [];
   const toolLookup = buildToolNameLookup(registry);
 
   input.logger.info("Runtime turn gate applied", {
@@ -198,17 +201,17 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
     turnConfidence: turn.confidence,
     turnSource: turn.source,
     toolCountBefore: fullRegistry.length,
-    toolCountSemanticCandidate: filtered.diagnostics.counts.semanticCandidate,
-    toolCountAfterProfile: filtered.diagnostics.counts.afterProfile,
-    toolCountAfterProviderProfile: filtered.diagnostics.counts.afterProviderProfile,
-    toolCountAfterGlobal: filtered.diagnostics.counts.afterGlobal,
-    toolCountAfterGlobalProvider: filtered.diagnostics.counts.afterGlobalProvider,
-    toolCountAfterAgent: filtered.diagnostics.counts.afterAgent,
-    toolCountAfterAgentProvider: filtered.diagnostics.counts.afterAgentProvider,
-    toolCountAfterGroup: filtered.diagnostics.counts.afterGroup,
-    toolCountAfterSandbox: filtered.diagnostics.counts.afterSandbox,
-    toolCountAfterSubagent: filtered.diagnostics.counts.afterSubagent,
-    toolCountAfterRisk: filtered.diagnostics.counts.afterRisk,
+    toolCountSemanticCandidate: filtered?.diagnostics.counts.semanticCandidate ?? 0,
+    toolCountAfterProfile: filtered?.diagnostics.counts.afterProfile ?? 0,
+    toolCountAfterProviderProfile: filtered?.diagnostics.counts.afterProviderProfile ?? 0,
+    toolCountAfterGlobal: filtered?.diagnostics.counts.afterGlobal ?? 0,
+    toolCountAfterGlobalProvider: filtered?.diagnostics.counts.afterGlobalProvider ?? 0,
+    toolCountAfterAgent: filtered?.diagnostics.counts.afterAgent ?? 0,
+    toolCountAfterAgentProvider: filtered?.diagnostics.counts.afterAgentProvider ?? 0,
+    toolCountAfterGroup: filtered?.diagnostics.counts.afterGroup ?? 0,
+    toolCountAfterSandbox: filtered?.diagnostics.counts.afterSandbox ?? 0,
+    toolCountAfterSubagent: filtered?.diagnostics.counts.afterSubagent ?? 0,
+    toolCountAfterRisk: filtered?.diagnostics.counts.afterRisk ?? 0,
     toolCountAfter: registry.length,
   });
 

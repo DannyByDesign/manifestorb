@@ -27,18 +27,25 @@ export async function runRuntimeSessionRunner(params: {
   maxSteps: number;
   builtInTools: RuntimeCustomToolDefinition[];
   customTools: RuntimeCustomToolDefinition[];
+  toolChoice?: GenerateTextCall["toolChoice"];
 }) {
-  const tools = toAiSdkToolSet([
-    ...params.builtInTools,
-    ...params.customTools,
-  ]);
   const generateWithMaxSteps = params.generate as unknown as GenerateTextWithMaxSteps;
+  const toolChoice = params.toolChoice;
+
+  const tools =
+    toolChoice === "none"
+      ? undefined
+      : toAiSdkToolSet([
+          ...params.builtInTools,
+          ...params.customTools,
+        ]);
 
   return await generateWithMaxSteps({
     model: params.model,
     system: params.system,
     messages: params.messages,
     tools,
+    toolChoice,
     maxSteps: params.maxSteps,
   });
 }

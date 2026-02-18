@@ -8,6 +8,9 @@ import {
   inferToolHints,
   type RuntimeCompiledTurn,
   type RuntimeSingleToolCall,
+  type RuntimeToolChoice,
+  type RuntimeKnowledgeSource,
+  type RuntimeFreshness,
 } from "@/server/features/ai/runtime/turn-compiler";
 
 export type RuntimeTurnIntent =
@@ -41,6 +44,9 @@ export interface RuntimeTurnContract {
   complexity: RuntimeComplexity;
   routeProfile: RuntimeRouteProfile;
   routeHint: "conversation_only" | "single_tool" | "planner";
+  toolChoice: RuntimeToolChoice;
+  knowledgeSource: RuntimeKnowledgeSource;
+  freshness: RuntimeFreshness;
   riskLevel: RuntimeRiskLevel;
   confidence: number;
   toolHints: string[];
@@ -50,7 +56,6 @@ export interface RuntimeTurnContract {
   metaConstraints: string[];
   needsClarification: boolean;
   singleToolCall?: RuntimeSingleToolCall;
-  conversationFallbackText?: string;
 }
 
 function inferIntent(params: {
@@ -121,6 +126,9 @@ export async function classifyRuntimeTurnContract(params: {
       complexity: "simple",
       routeProfile: "fast",
       routeHint: "conversation_only",
+      toolChoice: "none",
+      knowledgeSource: "either",
+      freshness: "low",
       riskLevel: "low",
       confidence: 0.6,
       toolHints: [],
@@ -129,7 +137,6 @@ export async function classifyRuntimeTurnContract(params: {
       taskClauses: [],
       metaConstraints: [],
       needsClarification: false,
-      conversationFallbackText: "What can I help you with?",
     };
   }
 
@@ -155,6 +162,9 @@ export async function classifyRuntimeTurnContract(params: {
     complexity,
     routeProfile,
     routeHint: compiled.routeHint,
+    toolChoice: compiled.toolChoice,
+    knowledgeSource: compiled.knowledgeSource,
+    freshness: compiled.freshness,
     riskLevel,
     confidence: Number(compiled.confidence.toFixed(4)),
     toolHints: inferToolHints({ domain, requestedOperation }),
@@ -164,9 +174,6 @@ export async function classifyRuntimeTurnContract(params: {
     metaConstraints: compiled.metaConstraints,
     needsClarification: compiled.needsClarification,
     ...(compiled.singleToolCall ? { singleToolCall: compiled.singleToolCall } : {}),
-    ...(compiled.conversationFallbackText
-      ? { conversationFallbackText: compiled.conversationFallbackText }
-      : {}),
   };
 
   logger.trace("Runtime turn contract resolved", {

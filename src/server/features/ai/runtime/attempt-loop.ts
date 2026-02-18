@@ -385,17 +385,7 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
   };
 
   if (routingPlan.lane === "conversation_only") {
-    return {
-      text: await composeAssistantReply({
-        mode: "final",
-        fallbackText:
-          routingPlan.conversationFallbackText ??
-          session.turn.conversationFallbackText ??
-          "How can I help you next?",
-      }),
-      stopReason: "completed",
-      attempts: 1,
-    };
+    // Conversation lane is still a native model turn, just with tools disabled.
   }
 
   if (routingPlan.lane === "single_tool" && routingPlan.singleToolCall) {
@@ -543,6 +533,7 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
           maxSteps: nativeMaxSteps,
           builtInTools: session.toolHarness.builtInTools,
           customTools: session.toolHarness.customTools,
+          toolChoice: session.turn.toolChoice,
         }),
     });
 

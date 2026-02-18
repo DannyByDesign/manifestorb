@@ -6,6 +6,9 @@ import { resolveDefaultCalendarTimeZone } from "@/server/features/ai/tools/calen
 import type { Logger } from "@/server/lib/logger";
 
 export type RuntimeTurnRouteHint = "conversation_only" | "single_tool" | "planner";
+export type RuntimeToolChoice = "none" | "auto";
+export type RuntimeKnowledgeSource = "internal" | "web" | "either";
+export type RuntimeFreshness = "low" | "high";
 
 export interface RuntimeSingleToolCall {
   toolName: string;
@@ -22,12 +25,14 @@ export interface RuntimeTaskClause {
 
 export interface RuntimeCompiledTurn {
   routeHint: RuntimeTurnRouteHint;
+  toolChoice: RuntimeToolChoice;
+  knowledgeSource: RuntimeKnowledgeSource;
+  freshness: RuntimeFreshness;
   conversationClauses: string[];
   taskClauses: RuntimeTaskClause[];
   metaConstraints: string[];
   needsClarification: boolean;
   singleToolCall?: RuntimeSingleToolCall;
-  conversationFallbackText?: string;
   confidence: number;
   source: "compiler_model" | "compiler_fallback";
 }
@@ -61,6 +66,9 @@ const ATTACHMENT_TERM_CAPTURE_RE =
 
 const compilerSchema = z
   .object({
+    toolChoice: z.enum(["none", "auto"]).default("auto"),
+    knowledgeSource: z.enum(["internal", "web", "either"]).default("either"),
+    freshness: z.enum(["low", "high"]).default("low"),
     routeHint: z.enum(["conversation_only", "single_tool", "planner"]),
     conversationClauses: z.array(z.string().min(1)).max(8).default([]),
     taskClauses: z
@@ -546,6 +554,9 @@ async function compileWithModel(params: {
       "You compile a user turn into structured intent for a conversational AI runtime.",
       "Return JSON only.",
       "Primary goal: preserve conversational nuance. Do not force tool execution when intent is ambiguous.",
+      "Decide toolChoice: use `none` for purely conversational/reflection/brainstorming turns; use `auto` when the user is asking for an action or factual lookup that benefits from tools.",
+      "Decide knowledgeSource: `internal` for inbox/calendar/policy/memory operations; `web` for public internet research; `either` if both could help.",
+      "Decide freshness: `high` only when the user explicitly requests a fresh web lookup or current public facts; otherwise `low`.",
       "`singleToolCandidate` is optional and only for high-confidence one-tool requests.",
       "If uncertain, set routeHint=planner and needsClarification=true.",
       "Meta constraints like 'not from conversation memory' are metaConstraints, not sender filters.",
@@ -593,12 +604,14 @@ export async function compileRuntimeTurn(params: {
 
   if (GREETING_RE.test(normalized)) {
     return {
+      toolChoice: "none",
+      knowledgeSource: "either",
+      freshness: "low",
       routeHint: "conversation_only",
       conversationClauses: [message],
       taskClauses: [],
       metaConstraints,
       needsClarification: false,
-      conversationFallbackText: "Hey. What can I help you with?",
       confidence: 0.98,
       source: "compiler_fallback",
     };
@@ -606,12 +619,14 @@ export async function compileRuntimeTurn(params: {
 
   if (CAPABILITIES_RE.test(normalized)) {
     return {
+      toolChoice: "none",
+      knowledgeSource: "either",
+      freshness: "low",
       routeHint: "conversation_only",
       conversationClauses: [message],
       taskClauses: [],
       metaConstraints,
       needsClarification: false,
-      conversationFallbackText: fastCapabilitiesReply(),
       confidence: 0.95,
       source: "compiler_fallback",
     };
@@ -620,6 +635,9 @@ export async function compileRuntimeTurn(params: {
   if (shouldSingleToolWebSearch(message)) {
     const query = normalizeScopeValue(stripLeadingWebSearchPreamble(message)) ?? message;
     return {
+      toolChoice: "auto",
+      knowledgeSource: "web",
+      freshness: metaConstraints.includes("fresh_search") ? "high" : "low",
       routeHint: "single_tool",
       conversationClauses: [],
       taskClauses: [{ domain: "general", action: "read", confidence: 0.7 }],
@@ -658,6 +676,9 @@ export async function compileRuntimeTurn(params: {
             ? { domain: "general", action: "read", confidence: 0.8 }
           : { domain: "calendar", action: "read", confidence: 0.8 };
       return {
+        toolChoice: modelResult.toolChoice,
+        knowledgeSource: modelResult.knowledgeSource,
+        freshness: modelResult.freshness,
         routeHint: "single_tool",
         conversationClauses: modelResult.conversationClauses,
         taskClauses:
@@ -679,6 +700,9 @@ export async function compileRuntimeTurn(params: {
 
     if (modelConversationOnly) {
       return {
+        toolChoice: "none",
+        knowledgeSource: modelResult.knowledgeSource,
+        freshness: modelResult.freshness,
         routeHint: "conversation_only",
         conversationClauses:
           modelResult.conversationClauses.length > 0
@@ -693,6 +717,9 @@ export async function compileRuntimeTurn(params: {
     }
 
     return {
+      toolChoice: modelResult.toolChoice,
+      knowledgeSource: modelResult.knowledgeSource,
+      freshness: modelResult.freshness,
       routeHint: "planner",
       conversationClauses: modelResult.conversationClauses,
       taskClauses:
@@ -708,6 +735,9 @@ export async function compileRuntimeTurn(params: {
 
   if (CONVERSATION_ONLY_SIGNAL_RE.test(normalized)) {
     return {
+      toolChoice: "none",
+      knowledgeSource: "either",
+      freshness: "low",
       routeHint: "conversation_only",
       conversationClauses: [message],
       taskClauses: [],
@@ -719,6 +749,9 @@ export async function compileRuntimeTurn(params: {
   }
 
   return {
+    toolChoice: "auto",
+    knowledgeSource: INTERNAL_SURFACE_SIGNAL_RE.test(normalized) ? "internal" : "either",
+    freshness: metaConstraints.includes("fresh_search") ? "high" : "low",
     routeHint: "planner",
     conversationClauses: [],
     taskClauses: [{ domain: "general", action: "meta", confidence: 0.45 }],

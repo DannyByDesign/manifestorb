@@ -86,7 +86,7 @@ function familiesForSemanticContract(
         "memory_mutate",
       ];
     case "general":
-      return [];
+      return op === "read" ? ["web_read"] : [];
     default:
       return [];
   }
@@ -186,7 +186,6 @@ function buildToolEmbeddingText(definition: RuntimeToolDefinition): string {
 function shouldUseSemanticToolRanking(message: string): boolean {
   if (!message) return false;
   if (process.env.VITEST === "true" || process.env.NODE_ENV === "test") return false;
-  if (process.env.RUNTIME_TOOL_RANKING_MODE === "lexical") return false;
   return EmbeddingService.isAvailable();
 }
 
@@ -200,6 +199,15 @@ export function selectSemanticToolCandidates(
   if (turn.requestedOperation === "meta") return [];
 
   let working = [...registry];
+
+  if (turn.knowledgeSource === "web") {
+    const webOnly = working.filter((definition) =>
+      definition.metadata.intentFamilies.includes("web_read") || definition.toolName.startsWith("web."),
+    );
+    if (webOnly.length > 0) working = webOnly;
+  } else if (turn.knowledgeSource === "internal") {
+    working = working.filter((definition) => !definition.toolName.startsWith("web."));
+  }
   const semanticFamilies = familiesForSemanticContract(turn);
   if (semanticFamilies.length > 0) {
     const familyFiltered = working.filter((definition) =>

@@ -44,6 +44,9 @@ function buildSession(params: {
       complexity: params.complexity ?? "simple",
       routeProfile: params.complexity === "complex" ? "deep" : params.complexity === "moderate" ? "standard" : "fast",
       routeHint: params.routeHint,
+      toolChoice: params.routeHint === "conversation_only" ? "none" : "auto",
+      knowledgeSource: "internal",
+      freshness: "low",
       riskLevel: "low",
       confidence: 0.88,
       toolHints: [],
@@ -83,7 +86,7 @@ describe("runtime router", () => {
     });
 
     expect(plan.lane).toBe("conversation_only");
-    expect(plan.nativeMaxSteps).toBe(0);
+    expect(plan.nativeMaxSteps).toBe(1);
   });
 
   it("routes eligible single tool turns to single_tool lane", async () => {

@@ -67,6 +67,7 @@ describe("runtime turn compiler", () => {
     });
 
     expect(turn.routeHint).toBe("conversation_only");
+    expect(turn.toolChoice).toBe("none");
     expect(turn.singleToolCall).toBeUndefined();
   });
 
@@ -81,6 +82,7 @@ describe("runtime turn compiler", () => {
     });
 
     expect(turn.routeHint).toBe("conversation_only");
+    expect(turn.toolChoice).toBe("none");
     expect(turn.singleToolCall).toBeUndefined();
   });
 
@@ -103,6 +105,8 @@ describe("runtime turn compiler", () => {
     });
 
     expect(turn.routeHint).toBe("single_tool");
+    expect(turn.toolChoice).toBe("auto");
+    expect(turn.knowledgeSource).toBe("web");
     expect(turn.singleToolCall?.toolName).toBe("web.search");
     expect(turn.singleToolCall?.args).toEqual(
       expect.objectContaining({ query: "bun 1.2.2 release notes" }),
