@@ -369,6 +369,58 @@ function extractAssistantThreadTs(body: unknown): string | undefined {
     return undefined;
 }
 
+function extractInteractionChannelId(body: unknown): string | undefined {
+    if (!body || typeof body !== "object") return undefined;
+    const record = body as Record<string, unknown>;
+    const container = (record.container && typeof record.container === "object")
+        ? (record.container as Record<string, unknown>)
+        : null;
+
+    const channel =
+        (record.channel && typeof record.channel === "object" && typeof (record.channel as any).id === "string")
+            ? (record.channel as any).id
+            : (container && typeof container.channel_id === "string")
+                ? container.channel_id
+                : undefined;
+    return typeof channel === "string" && channel.length > 0 ? channel : undefined;
+}
+
+function extractInteractionThreadTs(body: unknown): string | undefined {
+    if (!body || typeof body !== "object") return undefined;
+    const record = body as Record<string, unknown>;
+    const container = (record.container && typeof record.container === "object")
+        ? (record.container as Record<string, unknown>)
+        : null;
+    const message = (record.message && typeof record.message === "object")
+        ? (record.message as Record<string, unknown>)
+        : null;
+
+    const thread_ts =
+        (message && typeof (message as any).thread_ts === "string")
+            ? (message as any).thread_ts
+            : (container && typeof (container as any).thread_ts === "string")
+                ? (container as any).thread_ts
+                : (container && typeof (container as any).message_ts === "string")
+                    ? (container as any).message_ts
+                    : (message && typeof message.ts === "string")
+                        ? message.ts
+                        : undefined;
+    return typeof thread_ts === "string" && thread_ts.length > 0 ? thread_ts : undefined;
+}
+
+function extractInteractionMessageId(body: unknown): string | undefined {
+    if (!body || typeof body !== "object") return undefined;
+    const record = body as Record<string, unknown>;
+    const actions = Array.isArray((record as any).actions) ? (record as any).actions : null;
+    const actionTs = actions && actions.length > 0 && typeof actions[0]?.action_ts === "string" ? actions[0].action_ts : undefined;
+    if (actionTs) return actionTs;
+    const container = (record.container && typeof record.container === "object")
+        ? (record.container as Record<string, unknown>)
+        : null;
+    const messageTs = container && typeof (container as any).message_ts === "string" ? (container as any).message_ts : undefined;
+    return typeof messageTs === "string" && messageTs.length > 0 ? messageTs : undefined;
+}
+
 const WELCOME_MESSAGE =
     "Hi! I'm your AI assistant. To use me here, link your Slack account to your Amodel profile (one-time setup).";
 
@@ -778,6 +830,205 @@ export async function startSlack() {
         }
     });
 
+    // Handle clarification pick buttons (send a structured follow-up back to the brain)
+    app.action(/clarify_send_/, async ({ body, action, ack }) => {
+        await ack();
+        await clearInteractionButtons({ app, body });
+
+        if (action.type !== "button") return;
+        const selected = typeof action.value === "string" ? action.value : "";
+        if (!selected) return;
+
+        const channelId = extractInteractionChannelId(body);
+        const threadTs = extractInteractionThreadTs(body);
+        if (!channelId || !threadTs) return;
+
+        const teamId = extractSlackTeamId(body);
+        const { providerAccountId, providerTeamId } = toSlackProviderAccountId({
+            teamId,
+            userId: body.user.id,
+        });
+
+        try {
+            const brainResponse = await forwardToBrain({
+                provider: "slack",
+                content: selected,
+                context: {
+                    channelId,
+                    userId: providerAccountId,
+                    workspaceId: providerTeamId,
+                    messageId: extractInteractionMessageId(body) ?? `clarify:${Date.now()}`,
+                    threadId: threadTs,
+                    isDirectMessage: channelId.startsWith("D"),
+                },
+            });
+
+            if (!brainResponse || !Array.isArray(brainResponse.responses) || brainResponse.responses.length === 0) {
+                await app.client.chat.postMessage({
+                    channel: channelId,
+                    thread_ts: threadTs,
+                    text: toPlainSidecarText("I couldn't generate a follow-up just now. Try again."),
+                });
+                return;
+            }
+
+            for (const resp of brainResponse.responses) {
+                const responseId =
+                    resp && typeof resp === "object" && typeof (resp as { responseId?: unknown }).responseId === "string"
+                        ? (resp as { responseId: string }).responseId
+                        : undefined;
+
+                if (
+                    responseId &&
+                    await hasSidecarResponseBeenDelivered({ provider: "slack", responseId })
+                ) {
+                    continue;
+                }
+
+                const plainResponseContent = toPlainSidecarText(
+                    typeof (resp as any)?.content === "string" ? (resp as any).content : "",
+                );
+
+                if ((resp as any)?.interactive) {
+                    const interactive = (resp as any).interactive as InteractivePayload;
+                    const plainInteractiveSummary = toPlainSidecarText(interactive.summary || "");
+                    let buttonElements: SlackButtonElement[] = [];
+
+                    const isDraft = interactive.type === "draft_created";
+                    const isApprovalLike =
+                        interactive.type === "approval_request" ||
+                        interactive.type === "action_request" ||
+                        interactive.type === "ambiguous_time" ||
+                        interactive.type === "clarification_choices";
+
+                    if (isDraft) {
+                        const buttonValue = `${interactive.draftId}:${interactive.emailAccountId}:${interactive.userId}`;
+                        buttonElements = interactive.actions.map((btn: InteractiveAction) => {
+                            if (btn.url) {
+                                return {
+                                    type: "button",
+                                    text: { type: "plain_text", text: btn.label },
+                                    url: btn.url,
+                                };
+                            }
+                            return {
+                                type: "button",
+                                text: { type: "plain_text", text: btn.label },
+                                style: btn.style === "danger" ? "danger" : "primary",
+                                value: buttonValue,
+                                action_id: `draft_${btn.value}`,
+                            };
+                        });
+                    } else if (isApprovalLike) {
+                        buttonElements = interactive.actions.map((btn: InteractiveAction, idx: number) => {
+                            if (interactive.type === "ambiguous_time") {
+                                return {
+                                    type: "button",
+                                    text: { type: "plain_text", text: btn.label },
+                                    style: "primary",
+                                    value: interactive.ambiguousRequestId,
+                                    action_id: `ambiguous_${btn.value}`,
+                                };
+                            }
+                            if (interactive.type === "clarification_choices") {
+                                return {
+                                    type: "button",
+                                    text: { type: "plain_text", text: btn.label },
+                                    style: "primary",
+                                    value: btn.value,
+                                    action_id: `clarify_send_${idx}`,
+                                };
+                            }
+                            return {
+                                type: "button",
+                                text: { type: "plain_text", text: btn.label },
+                                style: btn.style === "danger" ? "danger" : "primary",
+                                value: interactive.approvalId,
+                                action_id: `${btn.value}_request`,
+                            };
+                        });
+                    }
+
+                    const blocks: SlackBlock[] = [
+                        {
+                            type: "section",
+                            text: {
+                                type: "plain_text",
+                                text: [plainInteractiveSummary, plainResponseContent]
+                                    .filter((part) => part.length > 0)
+                                    .join("\n"),
+                            },
+                        },
+                        ...(buttonElements.length > 0
+                            ? [{ type: "actions", elements: buttonElements } as SlackBlock]
+                            : []),
+                    ];
+
+                    const sent = await app.client.chat.postMessage({
+                        channel: channelId,
+                        thread_ts: threadTs,
+                        blocks: blocks as any,
+                        text:
+                            plainResponseContent ||
+                            plainInteractiveSummary ||
+                            "I completed that request.",
+                    });
+                    const providerMessageId = extractSlackSentTs(sent);
+                    if (responseId) {
+                        await markSidecarResponseDelivered({ provider: "slack", responseId });
+                        if (providerMessageId) {
+                            try {
+                                await acknowledgeSidecarDelivery({
+                                    responseId,
+                                    provider: "slack",
+                                    providerMessageId,
+                                    channelId,
+                                    threadId: threadTs,
+                                });
+                            } catch {
+                                // best-effort
+                            }
+                        }
+                    }
+                } else if ((resp as any)?.content) {
+                    const sent = await app.client.chat.postMessage({
+                        channel: channelId,
+                        thread_ts: threadTs,
+                        text: plainResponseContent,
+                    });
+                    const providerMessageId = extractSlackSentTs(sent);
+                    if (responseId) {
+                        await markSidecarResponseDelivered({ provider: "slack", responseId });
+                        if (providerMessageId) {
+                            try {
+                                await acknowledgeSidecarDelivery({
+                                    responseId,
+                                    provider: "slack",
+                                    providerMessageId,
+                                    channelId,
+                                    threadId: threadTs,
+                                });
+                            } catch {
+                                // best-effort
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn("[Surfaces][Slack] Clarification action failed", {
+                channelId,
+                threadTs,
+                error: error instanceof Error ? error.message : String(error),
+            });
+            await replyToInteractionThread({
+                app,
+                body,
+                text: toPlainSidecarText("I hit an issue processing that selection. Try again."),
+            });
+        }
+    });
+
     // App Home onboarding: a reliable entrypoint when users click into the app.
     app.event("app_home_opened", async ({ event, client, context }) => {
         const slackUserId = event.user;
@@ -1023,7 +1274,8 @@ export async function startSlack() {
                             const isApprovalLike =
                                 interactive.type === "approval_request" ||
                                 interactive.type === "action_request" ||
-                                interactive.type === "ambiguous_time";
+                                interactive.type === "ambiguous_time" ||
+                                interactive.type === "clarification_choices";
 
                             if (isDraft) {
                                 const buttonValue = `${interactive.draftId}:${interactive.emailAccountId}:${interactive.userId}`;
@@ -1044,7 +1296,7 @@ export async function startSlack() {
                                     };
                                 });
                             } else if (isApprovalLike) {
-                                buttonElements = interactive.actions.map((action: InteractiveAction) => {
+                                buttonElements = interactive.actions.map((action: InteractiveAction, idx: number) => {
                                     if (interactive.type === "ambiguous_time") {
                                         return {
                                             type: "button",
@@ -1052,6 +1304,16 @@ export async function startSlack() {
                                             style: "primary",
                                             value: interactive.ambiguousRequestId,
                                             action_id: `ambiguous_${action.value}`,
+                                        };
+                                    }
+                                    if (interactive.type === "clarification_choices") {
+                                        // Value is the follow-up message to send back to the brain.
+                                        return {
+                                            type: "button",
+                                            text: { type: "plain_text", text: action.label },
+                                            style: "primary",
+                                            value: action.value,
+                                            action_id: `clarify_send_${idx}`,
                                         };
                                     }
                                     return {

@@ -295,6 +295,32 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       (typeof requestFilter.mailbox === "string" ? requestFilter.mailbox : undefined) ??
       (requestFilter.sentByMe === true ? "sent" : undefined);
 
+    const buildSuggestedFacetThreadsInput = (params: {
+      conceptField: "from" | "to" | "cc";
+      conceptValue: string;
+    }): { filter: Record<string, unknown>; maxFacets: number; scanLimit: number } => {
+      // Seed facets with the same constraints as the user request, minus the role-like concept itself.
+      const filter: Record<string, unknown> = { ...requestFilter };
+      delete filter.fromConcept;
+      delete filter.toConcept;
+      delete filter.ccConcept;
+
+      const baseQuery = typeof filter.query === "string" ? filter.query.trim() : "";
+      const mailboxToken = mailbox === "sent" ? "in:sent" : mailbox === "inbox" ? "in:inbox" : "";
+      const seededQuery = [baseQuery, mailboxToken].filter((part) => part.length > 0).join(" ").trim();
+      if (seededQuery) {
+        filter.query = seededQuery;
+      } else {
+        delete filter.query;
+      }
+
+      return {
+        filter,
+        maxFacets: 10,
+        scanLimit: 250,
+      };
+    };
+
     const fromConcept =
       typeof requestFilter.fromConcept === "string" ? requestFilter.fromConcept.trim() : "";
     if (fromConcept) {
@@ -307,6 +333,10 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         },
         data: {
           concept: { field: "from", value: fromConcept },
+          suggestedFacetThreadsInput: buildSuggestedFacetThreadsInput({
+            conceptField: "from",
+            conceptValue: fromConcept,
+          }),
         },
       };
     }
@@ -322,6 +352,10 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         },
         data: {
           concept: { field: "to", value: toConcept },
+          suggestedFacetThreadsInput: buildSuggestedFacetThreadsInput({
+            conceptField: "to",
+            conceptValue: toConcept,
+          }),
         },
       };
     }
@@ -337,6 +371,10 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         },
         data: {
           concept: { field: "cc", value: ccConcept },
+          suggestedFacetThreadsInput: buildSuggestedFacetThreadsInput({
+            conceptField: "cc",
+            conceptValue: ccConcept,
+          }),
         },
       };
     }
@@ -1016,8 +1054,25 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           ? Math.max(20, Math.min(800, Math.trunc(input.scanLimit)))
           : 250;
 
+      const appendQueryToken = (base: string, token: string | undefined): string => {
+        const baseQuery = base.trim();
+        const normalizedToken = (token ?? "").trim();
+        if (!normalizedToken) return baseQuery;
+        if (!baseQuery) return normalizedToken;
+        const lowerBase = baseQuery.toLowerCase();
+        const lowerToken = normalizedToken.toLowerCase();
+        if (lowerBase.includes(lowerToken)) return baseQuery;
+        return `${baseQuery} ${normalizedToken}`.trim();
+      };
+
+      const unread = typeof filter.unread === "boolean" ? (filter.unread as boolean) : undefined;
+      const queryWithUnread = appendQueryToken(
+        typeof filter.query === "string" ? filter.query : "",
+        unread === true ? "is:unread" : unread === false ? "is:read" : undefined,
+      );
+
       const search = await provider.search({
-        query: typeof filter.query === "string" ? filter.query : "",
+        query: queryWithUnread,
         text: typeof filter.text === "string" ? filter.text : undefined,
         from: typeof filter.from === "string" ? filter.from : undefined,
         to: typeof filter.to === "string" ? filter.to : undefined,

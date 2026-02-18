@@ -55,7 +55,7 @@ export type ActionRequestContext = {
 };
 
 export type InteractivePayload = {
-    type: "approval_request" | "draft_created" | "action_request" | "ambiguous_time";
+    type: "approval_request" | "draft_created" | "action_request" | "ambiguous_time" | "clarification_choices";
     approvalId?: string;   // For approval_request
     draftId?: string;      // For draft_created
     emailAccountId?: string; // For draft_created

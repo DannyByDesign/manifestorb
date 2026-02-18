@@ -14,6 +14,7 @@ import { emitRuntimeTelemetry } from "@/server/features/ai/runtime/telemetry/sch
 import { runRuntimeSessionRunner } from "@/server/features/ai/runtime/harness/session-runner";
 import { emitToolLifecycleEvents } from "@/server/features/ai/runtime/harness/tool-events";
 import type { RuntimeToolResult } from "@/server/features/ai/tools/contracts/tool-result";
+import type { InteractiveAction, InteractivePayload } from "@/server/features/ai/tools/types";
 import { renderRuntimeContextForPrompt } from "@/server/features/ai/runtime/context/render";
 import { maybeRunDeterministicCrossSurfaceExecutor } from "@/server/features/ai/runtime/deterministic-cross-surface";
 import {
@@ -31,6 +32,50 @@ const RUNTIME_TURN_BUDGET_MS = 180_000;
 const MAX_SKILL_PROMPT_CHARS = 2_200;
 const SINGLE_TOOL_TIMEOUT_MIN_MS = 3_000;
 const SINGLE_TOOL_TIMEOUT_MAX_MS = 15_000;
+
+function buildFacetClarificationActions(params: {
+  concept: { field: "from" | "to" | "cc"; value: string };
+  facets: {
+    topSenders?: Array<{ email: string; count: number }>;
+    topDomains?: Array<{ domain: string; count: number }>;
+  };
+  maxActions: number;
+}): InteractiveAction[] {
+  const { concept, facets, maxActions } = params;
+
+  const actions: InteractiveAction[] = [];
+
+  const pushAction = (label: string, value: string) => {
+    if (actions.length >= maxActions) return;
+    actions.push({
+      label,
+      style: "primary",
+      value,
+    });
+  };
+
+  const normalizedConcept = concept.value.trim();
+  const conceptClause = normalizedConcept ? `"${normalizedConcept}"` : "that";
+
+  for (const entry of (facets.topDomains ?? []).slice(0, maxActions)) {
+    const domain = entry.domain?.trim();
+    if (!domain) continue;
+    const label = `${domain}${Number.isFinite(entry.count) ? ` (${entry.count})` : ""}`;
+    const message = `For this request, define ${conceptClause} as ${concept.field} domain ${domain}.`;
+    pushAction(label, message);
+  }
+
+  for (const entry of (facets.topSenders ?? []).slice(0, maxActions)) {
+    if (actions.length >= maxActions) break;
+    const email = entry.email?.trim();
+    if (!email) continue;
+    const label = `${email}${Number.isFinite(entry.count) ? ` (${entry.count})` : ""}`;
+    const message = `For this request, define ${conceptClause} as ${concept.field} email ${email}.`;
+    pushAction(label, message);
+  }
+
+  return actions;
+}
 
 function resolveSingleToolTimeoutMs(): number {
   const raw = process.env.RUNTIME_SINGLE_TOOL_TIMEOUT_MS;
@@ -344,6 +389,91 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
 
   const finalizeFromCurrentResults = async (): Promise<RuntimeLoopResult> => {
     const approvalsCount = context.session.artifacts.approvals.length;
+    const maybeEnrichSlackConceptClarification = async (): Promise<void> => {
+      if (session.input.provider !== "slack") return;
+      if (context.session.artifacts.interactivePayloads.length > 0) return;
+
+      const summaries = context.session.summaries;
+      const lastClarification = (() => {
+        for (let i = summaries.length - 1; i >= 0; i -= 1) {
+          const result = summaries[i]?.result;
+          const clarification = result?.clarification;
+          if (!clarification || clarification.kind !== "concept_definition_required") continue;
+          const data = result.data && typeof result.data === "object" ? (result.data as Record<string, unknown>) : null;
+          const concept = data?.concept && typeof data.concept === "object" ? (data.concept as Record<string, unknown>) : null;
+          const field = concept && typeof concept.field === "string" ? concept.field : null;
+          const value = concept && typeof concept.value === "string" ? concept.value : null;
+          if ((field !== "from" && field !== "to" && field !== "cc") || !value) continue;
+          const suggested = data?.suggestedFacetThreadsInput && typeof data.suggestedFacetThreadsInput === "object"
+            ? (data.suggestedFacetThreadsInput as Record<string, unknown>)
+            : null;
+          return {
+            concept: { field: field as "from" | "to" | "cc", value },
+            suggestedFacetInput: suggested,
+          };
+        }
+        return null;
+      })();
+      if (!lastClarification?.suggestedFacetInput) return;
+
+      const alreadyFaceted = summaries.some((summary) => summary.toolName === "email.facetThreads");
+      let facetResult: RuntimeToolResult | null = null;
+      if (!alreadyFaceted) {
+        facetResult = await executeToolCall({
+          context,
+          decision: {
+            toolName: "email.facetThreads",
+            args: lastClarification.suggestedFacetInput as Record<string, unknown>,
+          },
+        });
+      } else {
+        for (let i = summaries.length - 1; i >= 0; i -= 1) {
+          if (summaries[i]?.toolName === "email.facetThreads") {
+            facetResult = summaries[i]!.result as RuntimeToolResult;
+            break;
+          }
+        }
+      }
+      if (!facetResult?.success) return;
+
+      const facetData =
+        facetResult.data && typeof facetResult.data === "object"
+          ? (facetResult.data as Record<string, unknown>)
+          : null;
+      const topSenders = Array.isArray(facetData?.topSenders)
+        ? (facetData!.topSenders as Array<{ email?: unknown; count?: unknown }>)
+            .map((row) => ({
+              email: typeof row?.email === "string" ? row.email : "",
+              count: typeof row?.count === "number" ? row.count : 0,
+            }))
+            .filter((row) => row.email.length > 0)
+        : [];
+      const topDomains = Array.isArray(facetData?.topDomains)
+        ? (facetData!.topDomains as Array<{ domain?: unknown; count?: unknown }>)
+            .map((row) => ({
+              domain: typeof row?.domain === "string" ? row.domain : "",
+              count: typeof row?.count === "number" ? row.count : 0,
+            }))
+            .filter((row) => row.domain.length > 0)
+        : [];
+
+      const actions = buildFacetClarificationActions({
+        concept: lastClarification.concept,
+        facets: { topSenders, topDomains },
+        maxActions: 5,
+      });
+      if (actions.length === 0) return;
+
+      const interactive: InteractivePayload = {
+        type: "clarification_choices",
+        summary: "",
+        actions,
+      };
+      context.session.artifacts.interactivePayloads.push(interactive);
+    };
+
+    await maybeEnrichSlackConceptClarification();
+
     const results = collectedResults();
     const clarificationPrompt = latestClarificationPrompt(results);
     const fallbackText = summarizeRuntimeResults({

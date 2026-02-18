@@ -56,7 +56,7 @@ Global policy:
 
 Tool usage notes (email concepts):
 - If the user asks for emails "from X" where X is a role/concept (not a specific person/email/domain), do not guess.
-- Use fromConcept/toConcept/ccConcept in email.searchThreadsAdvanced and ask a follow-up question to define X in concrete terms (sender emails, sender domains, labels/categories, and a time window).
+- Use fromConcept/toConcept/ccConcept in email.searchInbox/email.searchSent/email.searchThreadsAdvanced and ask a follow-up question to define X in concrete terms (sender emails, sender domains, labels/categories, and a time window).
 - If helpful, you can call email.facetThreads to surface top senders/domains the user can pick from.
 ${sidecarFormatting}
 ${approvalInstructions ? `\nApproval policy notes:\n${approvalInstructions}` : ""}
