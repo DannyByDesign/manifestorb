@@ -51,6 +51,22 @@ export async function PATCH(
       return NextResponse.json({ rule: disabled });
     }
 
+    if (body.data.disabled === false) {
+      const updated = await updateRulePlaneRule({
+        userId: session.user.id,
+        id,
+        patch: {
+          enabled: true,
+          // Clearing with empty string is supported by the repository updater.
+          disabledUntil: "",
+        } as never,
+      });
+      if (!updated) {
+        return NextResponse.json({ error: "Rule not found" }, { status: 404 });
+      }
+      return NextResponse.json({ rule: updated });
+    }
+
     const updated = await updateRulePlaneRule({
       userId: session.user.id,
       id,

@@ -85,13 +85,6 @@ function mapDbRuleToCanonical(
   return parsed.data;
 }
 
-function sortCanonicalRules(rules: CanonicalRule[]): CanonicalRule[] {
-  return [...rules].sort((a, b) => {
-    if (a.priority !== b.priority) return b.priority - a.priority;
-    return a.id.localeCompare(b.id);
-  });
-}
-
 export async function listPersistedCanonicalRules(params: {
   userId: string;
   emailAccountId?: string;
@@ -107,10 +100,28 @@ export async function listPersistedCanonicalRules(params: {
         : {}),
       ...(params.type ? { type: params.type } : {}),
     },
-    orderBy: [{ priority: "desc" }, { updatedAt: "desc" }, { id: "asc" }],
+    // NOTE: We also apply an in-memory sort below to ensure account-specific rules
+    // outrank global rules when priority ties.
+    orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
   });
 
-  return rows
+  const sorted = [...rows].sort((a, b) => {
+    if (a.priority !== b.priority) return b.priority - a.priority;
+
+    if (params.emailAccountId) {
+      const aSpecific = a.emailAccountId ? 1 : 0;
+      const bSpecific = b.emailAccountId ? 1 : 0;
+      if (aSpecific !== bSpecific) return bSpecific - aSpecific;
+    }
+
+    const aUpdated = a.updatedAt?.getTime?.() ?? 0;
+    const bUpdated = b.updatedAt?.getTime?.() ?? 0;
+    if (aUpdated !== bUpdated) return bUpdated - aUpdated;
+
+    return a.id.localeCompare(b.id);
+  });
+
+  return sorted
     .map((row) => mapDbRuleToCanonical(row))
     .filter((rule): rule is CanonicalRule => Boolean(rule));
 }
@@ -128,7 +139,7 @@ export async function listEffectiveCanonicalRules(params: {
     emailAccountId: params.emailAccountId,
     type,
   });
-  return sortCanonicalRules(persisted);
+  return persisted;
 }
 
 export async function createCanonicalRule(params: {
@@ -358,16 +369,32 @@ export async function disableCanonicalRule(params: {
     where: { id: params.id, userId: params.userId },
   });
   if (!existing) return null;
+
+  const nextVersion = existing.version + 1;
+  const disableTemporarily = typeof params.disabledUntil === "string" && params.disabledUntil.trim().length > 0;
   const updated = await prisma.canonicalRule.update({
     where: { id: params.id },
     data: {
-      enabled: false,
-      disabledUntil: params.disabledUntil ? new Date(params.disabledUntil) : null,
+      version: nextVersion,
+      // Semantics:
+      // - If disabledUntil is provided: keep the rule enabled but inactive until that timestamp.
+      // - If disabledUntil is absent: permanently disable (enabled=false).
+      enabled: disableTemporarily ? true : false,
+      disabledUntil: disableTemporarily ? new Date(params.disabledUntil!) : null,
     },
   });
 
   const normalized = mapDbRuleToCanonical(updated);
   if (normalized) {
+    await prisma.canonicalRuleVersion.create({
+      data: {
+        canonicalRuleId: updated.id,
+        version: updated.version,
+        payload: normalized as unknown as object,
+        sourceMode: updated.sourceMode,
+      },
+    });
+
     void enqueueRuleDocumentForIndexing({
       userId: params.userId,
       emailAccountId: updated.emailAccountId ?? undefined,

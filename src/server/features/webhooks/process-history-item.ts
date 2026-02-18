@@ -44,6 +44,7 @@ export async function processHistoryItem(
     provider,
     emailAccount,
     hasAiAccess,
+    hasAutomationRules,
     logger,
   } = options;
 
@@ -182,12 +183,14 @@ export async function processHistoryItem(
 
     logger.info("Running canonical automation executor", { hasAiAccess });
 
-    const canonicalAutomationResults = await executeCanonicalEmailAutomations({
-      provider,
-      message: parsedMessage,
-      emailAccount,
-      logger,
-    });
+    const canonicalAutomationResults = hasAutomationRules
+      ? await executeCanonicalEmailAutomations({
+          provider,
+          message: parsedMessage,
+          emailAccount,
+          logger,
+        })
+      : [];
 
     const shouldSuppressNotificationFromCanonical = canonicalAutomationResults.some(
       (result) =>

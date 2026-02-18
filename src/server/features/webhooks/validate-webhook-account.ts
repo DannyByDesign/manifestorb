@@ -125,10 +125,8 @@ export async function validateWebhookAccount(
       disabledUntil: rule.disabledUntil,
     }),
   );
-
   if (!hasAutomationRules) {
-    logger.info("Has no rules enabled");
-    return { success: false, response: NextResponse.json({ ok: true }) };
+    logger.info("Has no automation rules enabled (continuing webhook processing)");
   }
 
   if (

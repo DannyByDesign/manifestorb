@@ -18,25 +18,53 @@ type CanonicalAutomationExecutionResult = {
   actionTypes: ActionType[];
 };
 
-function conditionValue(message: ParsedMessage, field: string): unknown {
-  switch (field) {
-    case "email.sender":
-      return message.headers.from;
-    case "email.recipient":
-      return message.headers.to;
-    case "email.subject":
-      return message.headers.subject ?? message.subject;
-    case "email.body":
-      return `${message.textPlain ?? ""}\n${message.textHtml ?? ""}\n${message.snippet ?? ""}`;
-    case "email.messageId":
-      return message.id;
-    case "email.threadId":
-      return message.threadId;
-    case "email.labelIds":
-      return message.labelIds ?? [];
-    default:
+function getByPath(value: unknown, path: string): unknown {
+  const segments = path
+    .split(".")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  let current: unknown = value;
+  for (const segment of segments) {
+    if (!current || typeof current !== "object" || Array.isArray(current)) {
       return undefined;
+    }
+    current = (current as Record<string, unknown>)[segment];
   }
+  return current;
+}
+
+function buildEmailConditionContext(message: ParsedMessage): Record<string, unknown> {
+  const sender = message.headers.from;
+  const recipient = message.headers.to;
+  const subject = message.headers.subject ?? message.subject;
+  const body = `${message.textPlain ?? ""}\n${message.textHtml ?? ""}\n${message.snippet ?? ""}`;
+  return {
+    // Backward-compatible, stable fields used by legacy automation rules.
+    email: {
+      sender,
+      recipient,
+      subject,
+      body,
+      messageId: message.id,
+      threadId: message.threadId,
+      labelIds: message.labelIds ?? [],
+    },
+    // Raw-ish message shape for more expressive rules.
+    message: {
+      id: message.id,
+      threadId: message.threadId,
+      labelIds: message.labelIds ?? [],
+      snippet: message.snippet ?? null,
+      textPlain: message.textPlain ?? null,
+      textHtml: message.textHtml ?? null,
+      subject,
+      headers: {
+        from: sender,
+        to: recipient,
+        subject,
+      },
+    },
+  };
 }
 
 function compareCondition(params: {
@@ -89,10 +117,11 @@ function matchesEmailAutomationRule(message: ParsedMessage, rule: CanonicalRule)
   if (rule.trigger.eventType !== "email.received") return false;
   if (rule.match.resource !== "email") return false;
 
+  const conditionContext = buildEmailConditionContext(message);
   return rule.match.conditions.every((condition) =>
     compareCondition({
       op: condition.op,
-      actual: conditionValue(message, condition.field),
+      actual: getByPath(conditionContext, condition.field),
       expected: condition.value,
     }),
   );

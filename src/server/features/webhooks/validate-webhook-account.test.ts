@@ -90,15 +90,19 @@ describe("validateWebhookAccount", () => {
     }
   });
 
-  it("returns failure when account has no active automation rules", async () => {
+  it("returns success when account has no active automation rules (but hasAutomationRules=false)", async () => {
     vi.mocked(listEffectiveCanonicalRules).mockResolvedValue([] as never);
 
     const emailAccount = createMockEmailAccount();
     const result = await validateWebhookAccount(emailAccount, logger);
 
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(await result.response.json()).toEqual({ ok: true });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toEqual({
+        emailAccount,
+        hasAutomationRules: false,
+        hasAiAccess: true,
+      });
     }
   });
 

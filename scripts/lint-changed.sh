@@ -20,7 +20,10 @@ collect_changed_files() {
   git ls-files --others --exclude-standard -z
 }
 
-declare -a files=()
+# Bash + `set -u` can be finicky about empty arrays in some environments; keep this
+# explicitly initialized so `${files[@]}` never trips "unbound variable".
+declare -a files
+files=()
 while IFS= read -r -d '' path; do
   [[ -n "$path" ]] || continue
   [[ -f "$path" ]] || continue
@@ -31,7 +34,7 @@ while IFS= read -r -d '' path; do
   esac
 
   already_added=false
-  for existing in "${files[@]}"; do
+  for existing in "${files[@]:-}"; do
     if [[ "$existing" == "$path" ]]; then
       already_added=true
       break
