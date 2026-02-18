@@ -11,10 +11,20 @@ File:
 - Multi-turn workflow packs W1..W12 still rely on model step-chaining.
 
 ## Acceptance Criteria
-- Expand deterministic executor to cover:
-  - IM-020 ("Move all invoices into Finance folder and mark read")
-  - CM-007 ("Move my 1:1 ... to earliest free slot tomorrow afternoon")
-  - CM-020 ("Find a free slot and move event <event-id> there automatically")
-  - CR-011 (overlaps/conflicts)
-- Ensure policy enforcement and approvals are preserved (via tool harness execution).
-- Add unit tests that prove deterministic executor fires for these prompt patterns.
+- Replace XP string-matching with a scalable deterministic orchestration layer that:
+  - Uses one model call to compile a strict JSON plan.
+  - Executes the plan deterministically through the existing tool harness so policy enforcement and approvals remain intact.
+  - Falls back to the native planner when the plan is invalid or tools are not admitted.
+- Add unit tests proving:
+  - The plan is executed sequentially via the harness.
+  - The executor falls back safely when a tool is not available or args are invalid.
+
+## Status
+Implemented (2026-02-18).
+
+## Implementation Notes
+- `src/server/features/ai/runtime/deterministic-cross-surface.ts` now compiles a plan (JSON) and executes tool calls sequentially via `executeToolCall(...)`.
+- Runtime tool gating is still enforced end-to-end:
+  - Session-time allow/deny filtering remains in `src/server/features/ai/runtime/session.ts`.
+  - Per-tool enforcement + approvals remain in `src/server/features/ai/tools/harness/tool-definition-adapter.ts` and policy enforcement.
+- Planner lane tool catalog pruning is prevented from accidentally dropping required tools by setting `maxTools=96` for planner turns in `src/server/features/ai/runtime/session.ts`.
