@@ -36,8 +36,6 @@ const GREETING_RE =
   /^(hi|hello|hey|yo|sup|good morning|good afternoon|good evening|howdy)[\s!.?]*$/u;
 const CAPABILITIES_RE =
   /\b(what can you do|capabilit(?:y|ies)|how can you help|what do you do|help me understand)\b/u;
-const TASK_SIGNAL_RE =
-  /\b(email|emails|inbox|calendar|meeting|meetings|event|events|schedule|find|search|list|show|check|create|update|delete|send|reply|archive|move|label|count|unread)\b/u;
 const CONVERSATION_ONLY_SIGNAL_RE =
   /\b(thought partner|brainstorm|challenge my assumptions|help me think|just thinking out loud|talk through|reflect)\b/u;
 const ATTACHMENT_RE = /\battach(?:ment|ments|ed)?\b|\battatch(?:ment|ments|ed)?\b/u;
@@ -591,7 +589,6 @@ export async function compileRuntimeTurn(params: {
 }): Promise<RuntimeCompiledTurn> {
   const message = params.message.trim();
   const normalized = message.toLowerCase();
-  const hasTaskSignal = TASK_SIGNAL_RE.test(normalized);
   const metaConstraints = extractMetaConstraints(normalized);
 
   if (GREETING_RE.test(normalized)) {
@@ -680,10 +677,7 @@ export async function compileRuntimeTurn(params: {
       modelResult.taskClauses.length === 0 &&
       !modelResult.needsClarification;
 
-    const forceClarificationForTaskLikeConversationOnly =
-      modelConversationOnly && hasTaskSignal;
-
-    if (modelConversationOnly && !hasTaskSignal) {
+    if (modelConversationOnly) {
       return {
         routeHint: "conversation_only",
         conversationClauses:
@@ -704,25 +698,15 @@ export async function compileRuntimeTurn(params: {
       taskClauses:
         modelResult.taskClauses.length > 0
           ? modelResult.taskClauses
-          : [{ domain: "general", action: "read", confidence: 0.55 }],
+          : [{ domain: "general", action: "meta", confidence: 0.55 }],
       metaConstraints: mergedMeta,
-      needsClarification:
-        forceClarificationForTaskLikeConversationOnly || modelResult.needsClarification,
-      confidence: Number(
-        (forceClarificationForTaskLikeConversationOnly
-          ? Math.min(modelResult.confidence, 0.65)
-          : modelResult.confidence
-        ).toFixed(4),
-      ),
+      needsClarification: modelResult.needsClarification,
+      confidence: Number(modelResult.confidence.toFixed(4)),
       source: "compiler_model",
     };
   }
 
-  const explicitlyConversational =
-    CONVERSATION_ONLY_SIGNAL_RE.test(normalized) &&
-    !TASK_SIGNAL_RE.test(normalized);
-
-  if (explicitlyConversational) {
+  if (CONVERSATION_ONLY_SIGNAL_RE.test(normalized)) {
     return {
       routeHint: "conversation_only",
       conversationClauses: [message],
@@ -737,10 +721,10 @@ export async function compileRuntimeTurn(params: {
   return {
     routeHint: "planner",
     conversationClauses: [],
-    taskClauses: [{ domain: "general", action: "read", confidence: 0.5 }],
+    taskClauses: [{ domain: "general", action: "meta", confidence: 0.45 }],
     metaConstraints,
-    needsClarification: !hasTaskSignal,
-    confidence: hasTaskSignal ? 0.5 : 0.45,
+    needsClarification: false,
+    confidence: 0.45,
     source: "compiler_fallback",
   };
 }

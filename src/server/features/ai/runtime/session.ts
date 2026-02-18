@@ -175,9 +175,10 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
     ),
   };
 
-  const filtered = filterToolRegistryDetailed(fullRegistry, {
+  const filtered = await filterToolRegistryDetailed(fullRegistry, {
     includeDangerous: turn.riskLevel === "high" && turn.requestedOperation !== "read",
     message: input.message,
+    embeddingEmail: input.email,
     turn,
     maxTools: resolveRuntimeToolCatalogMaxTools(turn),
     layeredPolicies,

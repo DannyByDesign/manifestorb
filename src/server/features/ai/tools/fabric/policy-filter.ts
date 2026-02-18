@@ -2,7 +2,7 @@ import type { RuntimeTurnContract } from "@/server/features/ai/runtime/turn-cont
 import type { RuntimeToolDefinition } from "@/server/features/ai/tools/fabric/types";
 import { applyDeterministicPolicyLayers } from "@/server/features/ai/tools/fabric/deterministic-policy-filter";
 import {
-  rankAndLimitTools,
+  rankAndLimitToolsAsync,
   selectSemanticToolCandidates,
 } from "@/server/features/ai/tools/fabric/semantic-tool-candidate";
 import type { ResolvedLayeredToolPolicies } from "@/server/features/ai/tools/policy/types";
@@ -10,6 +10,7 @@ import type { ResolvedLayeredToolPolicies } from "@/server/features/ai/tools/pol
 export interface ToolFilterParams {
   includeDangerous?: boolean;
   message?: string;
+  embeddingEmail?: string;
   strictReadOnly?: boolean;
   turn?: RuntimeTurnContract;
   maxTools?: number;
@@ -35,10 +36,10 @@ export interface ToolFilterDiagnostics {
   };
 }
 
-export function filterToolRegistryDetailed(
+export async function filterToolRegistryDetailed(
   registry: RuntimeToolDefinition[],
   params: ToolFilterParams,
-): { tools: RuntimeToolDefinition[]; diagnostics: ToolFilterDiagnostics } {
+): Promise<{ tools: RuntimeToolDefinition[]; diagnostics: ToolFilterDiagnostics }> {
   const semanticCandidates = selectSemanticToolCandidates(registry, {
     turn: params.turn,
     strictReadOnly: params.strictReadOnly,
@@ -50,10 +51,11 @@ export function filterToolRegistryDetailed(
     additionalGroups: params.additionalGroups,
   });
 
-  const ranked = rankAndLimitTools(deterministic.tools, {
+  const ranked = await rankAndLimitToolsAsync(deterministic.tools, {
     includeDangerous: params.includeDangerous,
     maxTools: params.maxTools,
     message: params.message,
+    embeddingEmail: params.embeddingEmail,
     turn: params.turn,
   });
 
@@ -79,9 +81,9 @@ export function filterToolRegistryDetailed(
   };
 }
 
-export function filterToolRegistry(
+export async function filterToolRegistry(
   registry: RuntimeToolDefinition[],
   params: ToolFilterParams,
-): RuntimeToolDefinition[] {
-  return filterToolRegistryDetailed(registry, params).tools;
+): Promise<RuntimeToolDefinition[]> {
+  return (await filterToolRegistryDetailed(registry, params)).tools;
 }

@@ -83,8 +83,8 @@ const registry: RuntimeToolDefinition[] = [
 ];
 
 describe("filterToolRegistry", () => {
-  it("returns no tools for greeting/capability semantic intents", () => {
-    const filtered = filterToolRegistry(registry, {
+  it("returns no tools for greeting/capability semantic intents", async () => {
+    const filtered = await filterToolRegistry(registry, {
       message: "hello",
       turn: {
         intent: "greeting",
@@ -107,8 +107,8 @@ describe("filterToolRegistry", () => {
     expect(filtered).toEqual([]);
   });
 
-  it("keeps inbox read tools and excludes unrelated domain tools", () => {
-    const filtered = filterToolRegistry(registry, {
+  it("keeps inbox read tools and excludes unrelated domain tools", async () => {
+    const filtered = await filterToolRegistry(registry, {
       message: "find the first email in my inbox",
       turn: {
         intent: "inbox_read",
@@ -135,8 +135,8 @@ describe("filterToolRegistry", () => {
     expect(names).not.toContain("email.batchTrash");
   });
 
-  it("allows dangerous tools only when semantic risk is high and includeDangerous is true", () => {
-    const filtered = filterToolRegistry(registry, {
+  it("allows dangerous tools only when semantic risk is high and includeDangerous is true", async () => {
+    const filtered = await filterToolRegistry(registry, {
       message: "delete this calendar event",
       includeDangerous: true,
       turn: {

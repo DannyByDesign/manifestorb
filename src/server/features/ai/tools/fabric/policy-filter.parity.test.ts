@@ -38,8 +38,8 @@ const registry: RuntimeToolDefinition[] = [
 ];
 
 describe("policy filter parity", () => {
-  it("applies deterministic policies in layered intersection order", () => {
-    const result = filterToolRegistryDetailed(registry, {
+  it("applies deterministic policies in layered intersection order", async () => {
+    const result = await filterToolRegistryDetailed(registry, {
       message: "check inbox",
       turn: {
         intent: "inbox_read",

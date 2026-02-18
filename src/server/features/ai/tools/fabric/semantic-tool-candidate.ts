@@ -1,6 +1,7 @@
 import type { RuntimeTurnContract } from "@/server/features/ai/runtime/turn-contract";
 import type { RuntimeToolDefinition } from "@/server/features/ai/tools/fabric/types";
 import type { CapabilityIntentFamily } from "@/server/features/ai/tools/runtime/capabilities/registry";
+import { EmbeddingService } from "@/server/features/memory/embeddings/service";
 
 export interface SemanticToolCandidateParams {
   strictReadOnly?: boolean;
@@ -11,6 +12,7 @@ export interface ToolRankingParams {
   includeDangerous?: boolean;
   maxTools?: number;
   message?: string;
+  embeddingEmail?: string;
   turn?: RuntimeTurnContract;
 }
 
@@ -166,6 +168,28 @@ function scoreToolRelevance(
   return score;
 }
 
+function buildToolEmbeddingText(definition: RuntimeToolDefinition): string {
+  const tags = definition.metadata.tags?.length ? definition.metadata.tags.join(", ") : "";
+  const families = definition.metadata.intentFamilies?.length
+    ? definition.metadata.intentFamilies.join(", ")
+    : "";
+  return [
+    `tool: ${definition.toolName}`,
+    `description: ${definition.description}`,
+    tags ? `tags: ${tags}` : "",
+    families ? `intentFamilies: ${families}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function shouldUseSemanticToolRanking(message: string): boolean {
+  if (!message) return false;
+  if (process.env.VITEST === "true" || process.env.NODE_ENV === "test") return false;
+  if (process.env.RUNTIME_TOOL_RANKING_MODE === "lexical") return false;
+  return EmbeddingService.isAvailable();
+}
+
 export function selectSemanticToolCandidates(
   registry: RuntimeToolDefinition[],
   params: SemanticToolCandidateParams,
@@ -227,4 +251,63 @@ export function rankAndLimitTools(
     afterRisk,
     afterLimit: limited.length,
   };
+}
+
+export async function rankAndLimitToolsAsync(
+  registry: RuntimeToolDefinition[],
+  params: ToolRankingParams,
+): Promise<{ tools: RuntimeToolDefinition[]; afterRisk: number; afterLimit: number }> {
+  // Keep existing deterministic risk pruning semantics.
+  let working = [...registry];
+  if (!params.includeDangerous || params.turn?.riskLevel !== "high") {
+    working = working.filter((definition) => definition.metadata.riskLevel !== "dangerous");
+  }
+  const afterRisk = working.length;
+
+  const limit = resolveAdaptiveToolLimit(params);
+  if (working.length <= 1 || limit <= 1) {
+    const limited = working.slice(0, limit);
+    return { tools: limited, afterRisk, afterLimit: limited.length };
+  }
+
+  const message = (params.message ?? "").trim();
+  const useSemantic = shouldUseSemanticToolRanking(message);
+
+  if (!useSemantic) {
+    const fallback = rankAndLimitTools(working, params);
+    return fallback;
+  }
+
+  try {
+    const queryEmbedding = await EmbeddingService.generateEmbedding(message, params.embeddingEmail);
+    const toolTexts = working.map(buildToolEmbeddingText);
+    const toolEmbeddings = await EmbeddingService.generateEmbeddings(toolTexts, params.embeddingEmail);
+
+    const scored = working
+      .map((definition, index) => {
+        const baseScore = scoreToolRelevance(definition, params);
+        const embedding = toolEmbeddings[index];
+        const similarity = embedding
+          ? EmbeddingService.cosineSimilarity(queryEmbedding, embedding)
+          : 0;
+        // Similarity is [-1, 1]. Clamp negatives and scale to play nicely with the existing scoring.
+        const semanticScore = Math.max(0, similarity) * 12;
+        return {
+          definition,
+          index,
+          score: baseScore + semanticScore,
+        };
+      })
+      .sort((left, right) => {
+        if (right.score !== left.score) return right.score - left.score;
+        return left.index - right.index;
+      })
+      .map((entry) => entry.definition);
+
+    const limited = scored.slice(0, limit);
+    return { tools: limited, afterRisk, afterLimit: limited.length };
+  } catch {
+    // If embeddings are misconfigured or temporarily unavailable, fall back to the deterministic lexical scorer.
+    return rankAndLimitTools(working, params);
+  }
 }
