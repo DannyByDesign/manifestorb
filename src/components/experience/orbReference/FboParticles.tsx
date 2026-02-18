@@ -5,10 +5,6 @@ import { createPortal, useFrame } from "@react-three/fiber";
 
 import SimulationMaterial from "@/components/experience/orbReference/SimulationMaterial";
 import {
-  DEFAULT_PARTICLE_PROFILE,
-  type ParticleProfile,
-} from "@/components/experience/orbReference/particleProfile";
-import {
   fragmentShader,
   simulationFragmentShader,
   simulationVertexShader,
@@ -26,7 +22,6 @@ type FboParticlesProps = {
   frequency?: number;
   simVertShader?: string;
   simFragShader?: string;
-  profile?: Partial<ParticleProfile>;
 };
 
 export function FBOParticles({
@@ -40,7 +35,6 @@ export function FBOParticles({
   frequency = 0.15,
   simVertShader = simulationVertexShader,
   simFragShader = simulationFragmentShader,
-  profile,
 }: FboParticlesProps) {
   const points = useRef<THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial>>(null);
 
@@ -50,16 +44,8 @@ export function FBOParticles({
     []
   );
 
-  const mergedProfile = useMemo<ParticleProfile>(
-    () => ({
-      ...DEFAULT_PARTICLE_PROFILE,
-      ...profile,
-    }),
-    [profile]
-  );
-
   const [simulationMaterial] = useState(
-    () => new SimulationMaterial(size, simVertShader, simFragShader, frequency, mergedProfile)
+    () => new SimulationMaterial(size, simVertShader, simFragShader, frequency)
   );
   const simulationUniformsRef = useRef(simulationMaterial.uniforms);
 
@@ -101,14 +87,8 @@ export function FBOParticles({
       uColor2: { value: new THREE.Color(color2) },
       uColor3: { value: new THREE.Color(color3) },
       uColor4: { value: new THREE.Color(color4) },
-      uDensityBias: { value: mergedProfile.densityBias },
-      uAlphaBase: { value: mergedProfile.alphaBase },
-      uAlphaBoost: { value: mergedProfile.alphaBoost },
-      uDarkTintMix: { value: mergedProfile.darkTintMix },
-      uGlintChance: { value: mergedProfile.glintChance },
-      uDepthFade: { value: mergedProfile.depthFade },
     }),
-    [pointSize, color1, color2, color3, color4, mergedProfile]
+    [pointSize, color1, color2, color3, color4]
   );
 
   useEffect(() => {
