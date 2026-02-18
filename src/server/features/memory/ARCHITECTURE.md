@@ -160,11 +160,14 @@ so the assistant has the same context regardless of which platform the user is o
 | Reserved | 52,000 | Response buffer |
 | **Total** | **200,000** | |
 
-### 2. Memory Tools
+### 2. Runtime Memory Tools
 
-**File:** `src/server/features/ai/memory-tools.ts`
+**Files:**
+- `src/server/features/ai/tools/runtime/capabilities/memory.ts`
+- `src/server/features/ai/tools/runtime/capabilities/executors/memory.ts`
+- `src/server/features/ai/tools/runtime/capabilities/registry.ts`
 
-On-demand memory management via agent tools:
+On-demand memory management via runtime tools:
 
 | Tool | Description |
 |------|-------------|
@@ -426,7 +429,9 @@ The assistant is **one person** across all platforms:
 | `src/server/features/memory/embeddings/search.ts` | Semantic search |
 | `src/server/features/memory/embeddings/queue.ts` | Embedding job queue |
 | `src/server/features/memory/embeddings/cache.ts` | Embedding cache |
-| `src/server/features/ai/memory-tools.ts` | Agent memory tools |
+| `src/server/features/ai/tools/runtime/capabilities/memory.ts` | Memory capability implementation |
+| `src/server/features/ai/tools/runtime/capabilities/executors/memory.ts` | Memory tool executor bindings |
+| `src/server/features/ai/tools/runtime/capabilities/registry.ts` | Memory tool contracts/schemas |
 | `src/server/features/channels/executor.ts` | External chat agent executor |
 | `src/app/api/jobs/record-memory/route.ts` | User-level recording job |
 | `src/server/scripts/backfill-user-summary.ts` | Migration script |

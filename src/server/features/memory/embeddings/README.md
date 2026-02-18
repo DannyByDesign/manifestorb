@@ -189,4 +189,4 @@ try {
 
 - [Memory Architecture](../ARCHITECTURE.md)
 - [LLM Registry](../../../../../docs/LLM_REGISTRY.md)
-- [Memory Tools](../../ai/memory-tools.ts)
+- [Runtime Memory Capability](../../ai/tools/runtime/capabilities/memory.ts)
