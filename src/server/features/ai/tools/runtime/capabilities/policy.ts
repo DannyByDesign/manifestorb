@@ -14,6 +14,7 @@ import type {
   CanonicalRule,
   CanonicalRuleType,
 } from "@/server/features/policy-plane/canonical-schema";
+import { createUnifiedSearchService } from "@/server/features/search/unified/service";
 
 const RULE_TARGET_MAX_CANDIDATES = 25;
 
@@ -37,6 +38,16 @@ function truncate(value: string | undefined, max: number): string | undefined {
   if (!value) return undefined;
   if (value.length <= max) return value;
   return `${value.slice(0, max - 1)}…`;
+}
+
+function buildRuleClarificationPrompt(_params: {
+  action: "update" | "disable" | "delete";
+  target: string;
+  candidates: CanonicalRule[];
+}): string {
+  // `ToolResult.clarification.prompt` is a stable key consumed by the UI/response layer,
+  // not a dynamic human sentence. Keep this deterministic.
+  return "policy_rule_target_ambiguous";
 }
 
 function summarizeRuleForSelection(rule: CanonicalRule): Record<string, unknown> {
@@ -469,7 +480,7 @@ export function createPolicyCapabilities(env: CapabilityEnvironment): PolicyCapa
                 description: log.canonicalRule.description ?? null,
                 match: log.canonicalRule.match,
                 decision: log.canonicalRule.decision ?? null,
-                sourceNl: log.canonicalRule.source?.sourceNl ?? null,
+                sourceNl: log.canonicalRule.sourceNl ?? null,
               }
             : null,
         }));

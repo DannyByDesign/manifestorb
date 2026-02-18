@@ -335,6 +335,7 @@ export async function planUnifiedSearchQuery(params: {
   request: UnifiedSearchRequest;
 }): Promise<PlannedUnifiedSearchQuery> {
   const baseQuery = normalize(params.request.query) || normalize(params.request.text);
+  const emailAccountId = params.emailAccountId;
 
   const timeZone = (() => {
     const explicit = params.request.dateRange?.timeZone?.trim();
@@ -343,11 +344,11 @@ export async function planUnifiedSearchQuery(params: {
   })();
   const resolvedTimeZone = timeZone
     ? timeZone
-    : params.emailAccountId
+    : emailAccountId
       ? await (async () => {
           const resolved = await resolveDefaultCalendarTimeZone({
             userId: params.userId,
-            emailAccountId: params.emailAccountId,
+            emailAccountId,
           });
           return "error" in resolved ? "UTC" : resolved.timeZone;
         })()
@@ -407,10 +408,10 @@ export async function planUnifiedSearchQuery(params: {
     (semanticIntent?.mailbox && semanticIntent.mailbox !== "all"
       ? semanticIntent.mailbox
       : undefined);
-  const scopes = (() => {
+  const scopes: UnifiedSearchSurface[] = (() => {
     if (params.request.scopes?.length) return params.request.scopes;
     // If the user explicitly constrained the mailbox (sent/drafts/etc), that implies email-only.
-    if (params.request.mailbox && params.request.mailbox !== "all") return ["email"] as const;
+    if (params.request.mailbox && params.request.mailbox !== "all") return ["email"];
     if (deterministic.scopes?.length) return deterministic.scopes;
     // Do not narrow by semantic intent: when scopes are not explicitly provided, default to all surfaces.
     return [...DEFAULT_SURFACES];
