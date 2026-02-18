@@ -28,6 +28,7 @@ import {
 export interface CalendarCapabilities {
   findAvailability(filter: Record<string, unknown>): Promise<ToolResult>;
   listEvents(filter: Record<string, unknown>): Promise<ToolResult>;
+  detectConflicts(filter: Record<string, unknown>): Promise<ToolResult>;
   searchEventsByAttendee(filter: Record<string, unknown>): Promise<ToolResult>;
   getEvent(input: { eventId: string; calendarId?: string }): Promise<ToolResult>;
   listCalendars(): Promise<ToolResult>;
@@ -82,6 +83,104 @@ function toStringArray(value: unknown): string[] {
 
 function calendarFailure(error: unknown, message: string): ToolResult {
   return capabilityFailureResult(error, message, { resource: "calendar" });
+}
+
+type ConflictEvent = {
+  id: string;
+  calendarId: string | null;
+  title: string | null;
+  start: string;
+  end: string;
+  startMs: number;
+  endMs: number;
+  allDay: boolean;
+  snippet: string | null;
+};
+
+type ConflictGroup = {
+  start: string;
+  end: string;
+  startLocal: string;
+  endLocal: string;
+  events: Array<{
+    id: string;
+    calendarId: string | null;
+    title: string | null;
+    start: string;
+    end: string;
+    startLocal: string;
+    endLocal: string;
+    allDay: boolean;
+    snippet: string | null;
+  }>;
+};
+
+function formatLocalTimestampForConflict(valueIso: string, timeZone: string): string {
+  const parsed = new Date(valueIso);
+  if (!Number.isFinite(parsed.getTime())) return valueIso;
+  return formatDateTimeForUser(parsed, timeZone);
+}
+
+function computeConflictGroups(params: {
+  events: ConflictEvent[];
+  timeZone: string;
+  includeAllDay: boolean;
+}): ConflictGroup[] {
+  const filtered = params.events
+    .filter((ev) => params.includeAllDay || !ev.allDay)
+    .filter((ev) => Number.isFinite(ev.startMs) && Number.isFinite(ev.endMs) && ev.startMs < ev.endMs)
+    .sort((a, b) => (a.startMs - b.startMs) || (a.endMs - b.endMs) || a.id.localeCompare(b.id));
+
+  const groups: ConflictGroup[] = [];
+  let current: { startMs: number; endMs: number; events: ConflictEvent[] } | null = null;
+
+  const finalize = () => {
+    if (!current) return;
+    if (current.events.length < 2) {
+      current = null;
+      return;
+    }
+    const startIso = new Date(current.startMs).toISOString();
+    const endIso = new Date(current.endMs).toISOString();
+    groups.push({
+      start: startIso,
+      end: endIso,
+      startLocal: formatLocalTimestampForConflict(startIso, params.timeZone),
+      endLocal: formatLocalTimestampForConflict(endIso, params.timeZone),
+      events: current.events.map((ev) => ({
+        id: ev.id,
+        calendarId: ev.calendarId,
+        title: ev.title,
+        start: ev.start,
+        end: ev.end,
+        startLocal: formatLocalTimestampForConflict(ev.start, params.timeZone),
+        endLocal: formatLocalTimestampForConflict(ev.end, params.timeZone),
+        allDay: ev.allDay,
+        snippet: ev.snippet,
+      })),
+    });
+    current = null;
+  };
+
+  for (const ev of filtered) {
+    if (!current) {
+      current = { startMs: ev.startMs, endMs: ev.endMs, events: [ev] };
+      continue;
+    }
+
+    // Strict overlap only; end == start is not a conflict.
+    if (ev.startMs < current.endMs) {
+      current.events.push(ev);
+      if (ev.endMs > current.endMs) current.endMs = ev.endMs;
+      continue;
+    }
+
+    finalize();
+    current = { startMs: ev.startMs, endMs: ev.endMs, events: [ev] };
+  }
+
+  finalize();
+  return groups;
 }
 
 export function createCalendarCapabilities(env: CapabilityEnvironment): CalendarCapabilities {
@@ -374,6 +473,105 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
         };
       } catch (error) {
         return calendarFailure(error, "I couldn't load calendar events right now.");
+      }
+    },
+
+    async detectConflicts(filter) {
+      try {
+        const filterRecord = filter as Record<string, unknown>;
+        const resolvedDateRange = await resolveUnifiedCalendarDateRange(filterRecord);
+        if ("errorResult" in resolvedDateRange) return resolvedDateRange.errorResult;
+
+        const includeAllDay = Boolean((filterRecord as any).includeAllDay);
+
+        const calendarIds = Array.from(
+          new Set([
+            ...toStringArray(filterRecord.calendarIds),
+            ...(safeString(filterRecord.calendarId) ? [safeString(filterRecord.calendarId)!] : []),
+          ]),
+        ).filter(Boolean);
+
+        const result = await unifiedSearch.query({
+          scopes: ["calendar"],
+          query: safeString(filterRecord.query) ?? safeString(filterRecord.titleContains),
+          text: safeString(filterRecord.text),
+          attendeeEmail: safeString(filterRecord.attendeeEmail),
+          calendarIds: calendarIds.length > 0 ? calendarIds : undefined,
+          locationContains:
+            safeString(filterRecord.locationContains) ??
+            safeString(filterRecord.location) ??
+            undefined,
+          dateRange: resolvedDateRange.dateRange,
+          limit:
+            typeof filterRecord.limit === "number" && Number.isFinite(filterRecord.limit)
+              ? Math.trunc(filterRecord.limit)
+              : 200,
+          fetchAll:
+            typeof filterRecord.fetchAll === "boolean"
+              ? filterRecord.fetchAll
+              : true,
+        });
+
+        const events: ConflictEvent[] = result.items
+          .filter((item) => item.surface === "calendar")
+          .map((item) => {
+            const metadata =
+              item.metadata && typeof item.metadata === "object"
+                ? (item.metadata as Record<string, unknown>)
+                : {};
+            const start =
+              typeof metadata.start === "string"
+                ? metadata.start
+                : item.timestamp ?? null;
+            const end = typeof metadata.end === "string" ? metadata.end : null;
+            if (!start || !end) return null;
+
+            const startMs = Date.parse(start);
+            const endMs = Date.parse(end);
+            const id =
+              typeof metadata.eventId === "string" ? metadata.eventId : item.id;
+            return {
+              id,
+              calendarId: typeof metadata.calendarId === "string" ? metadata.calendarId : null,
+              title: typeof item.title === "string" ? item.title : null,
+              start,
+              end,
+              startMs,
+              endMs,
+              allDay: Boolean((metadata as any).allDay),
+              snippet: typeof item.snippet === "string" ? item.snippet : null,
+            } satisfies ConflictEvent;
+          })
+          .filter((ev): ev is ConflictEvent => Boolean(ev));
+
+        const timeZone =
+          resolvedDateRange.timeZone ??
+          safeString(filterRecord.timeZone) ??
+          safeString(filterRecord.timezone) ??
+          "UTC";
+
+        const conflicts = computeConflictGroups({
+          events,
+          timeZone,
+          includeAllDay,
+        });
+
+        return {
+          success: true,
+          data: {
+            hasConflicts: conflicts.length > 0,
+            conflicts,
+            countGroups: conflicts.length,
+            countEventsInConflicts: conflicts.reduce((sum, group) => sum + group.events.length, 0),
+          },
+          meta: { resource: "calendar", itemCount: conflicts.length },
+          message:
+            conflicts.length === 0
+              ? "No overlaps found in that window."
+              : `Found ${conflicts.length} conflict group${conflicts.length === 1 ? "" : "s"}.`,
+        };
+      } catch (error) {
+        return calendarFailure(error, "I couldn't check for overlaps right now.");
       }
     },
 
@@ -1611,3 +1809,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
     },
   };
 }
+
+export const __test__ = {
+  computeConflictGroups,
+};

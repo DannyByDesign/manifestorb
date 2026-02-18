@@ -10,6 +10,8 @@ export const calendarToolExecutors: RuntimeToolExecutorMap = {
     capabilities.calendar.findAvailability(asObject(args)),
   "calendar.listEvents": async ({ args, capabilities }) =>
     capabilities.calendar.listEvents(asObject(args)),
+  "calendar.detectConflicts": async ({ args, capabilities }) =>
+    capabilities.calendar.detectConflicts(asObject(args)),
   "calendar.searchEventsByAttendee": async ({ args, capabilities }) =>
     capabilities.calendar.searchEventsByAttendee(asObject(args)),
   "calendar.getEvent": async ({ args, capabilities }) =>

@@ -181,14 +181,15 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
     },
     {
       id: "email.searchThreadsAdvanced",
-      description: "Advanced thread search using rich filter constraints.",
+      description:
+        "Advanced thread search using rich filter constraints (use unrepliedToSent=true for 'sent but no reply yet').",
       inputSchema: emailSearchInputSchema,
       outputSchema: z.unknown(),
       readOnly: true,
       riskLevel: "safe",
       approvalOperation: "query",
       intentFamilies: ["inbox_read", "cross_surface_planning"],
-      tags: ["email", "search", "advanced"],
+      tags: ["email", "search", "advanced", "unreplied", "awaiting_reply"],
       effects: [{ resource: "email", mutates: false }],
     },
     {
@@ -206,14 +207,15 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
     },
     {
       id: "email.searchSent",
-      description: "Search sent mailbox messages and threads using query/filter constraints.",
+      description:
+        "Search sent mailbox messages and threads using query/filter constraints (use unrepliedToSent=true for 'sent but no reply yet').",
       inputSchema: emailSearchInputSchema,
       outputSchema: z.unknown(),
       readOnly: true,
       riskLevel: "safe",
       approvalOperation: "query",
       intentFamilies: ["inbox_read"],
-      tags: ["email", "search", "sent"],
+      tags: ["email", "search", "sent", "unreplied", "awaiting_reply"],
       effects: [{ resource: "email", mutates: false }],
     },
     {
@@ -656,6 +658,18 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       approvalOperation: "query",
       intentFamilies: ["calendar_read", "cross_surface_planning"],
       tags: ["calendar", "list", "events"],
+      effects: [{ resource: "calendar", mutates: false }],
+    },
+    {
+      id: "calendar.detectConflicts",
+      description: "Detect overlaps/conflicts between calendar events in a window.",
+      inputSchema: unknownObject,
+      outputSchema: z.unknown(),
+      readOnly: true,
+      riskLevel: "safe",
+      approvalOperation: "query",
+      intentFamilies: ["calendar_read", "cross_surface_planning"],
+      tags: ["calendar", "conflicts", "overlaps", "schedule"],
       effects: [{ resource: "calendar", mutates: false }],
     },
     {

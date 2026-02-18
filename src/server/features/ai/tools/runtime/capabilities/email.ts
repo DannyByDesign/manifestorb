@@ -28,6 +28,7 @@ import {
 } from "@/server/features/search/index/repository";
 import { extractEmailAddresses } from "@/server/lib/email";
 import prisma from "@/server/db/client";
+import { Prisma } from "@/generated/prisma/client";
 
 export interface EmailCapabilities {
   getUnreadCount(filter?: Record<string, unknown>): Promise<ToolResult>;
@@ -274,10 +275,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
     const lowerQueryText = queryText.toLowerCase();
 
     const inferredUnrepliedToSent =
-      requestFilter.unrepliedToSent === true ||
-      /\b(no reply|no response|didn'?t get a reply|haven'?t heard back|unanswered)\b/u.test(
-        lowerQueryText,
-      );
+      requestFilter.unrepliedToSent === true;
     const inferredPdfOnly =
       /\bpdf\b/u.test(lowerQueryText) &&
       (requestFilter.hasAttachment === true ||
@@ -411,124 +409,217 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
             : undefined;
         const before = beforeRaw ? new Date(beforeRaw) : undefined;
         const after = afterRaw ? new Date(afterRaw) : undefined;
+        if (!after || !before || !Number.isFinite(after.getTime()) || !Number.isFinite(before.getTime())) {
+          return {
+            success: false,
+            error: "missing_date_range",
+            clarification: {
+              kind: "missing_fields",
+              prompt: "email_unreplied_date_range_required",
+              missingFields: ["dateRange.after", "dateRange.before"],
+            },
+          };
+        }
 
-        const baseQuery =
-          typeof requestFilter.query === "string" && requestFilter.query.trim()
-            ? requestFilter.query.trim()
-            : "in:sent";
+        const limit =
+          typeof requestFilter.limit === "number" && Number.isFinite(requestFilter.limit)
+            ? Math.min(500, Math.max(1, Math.trunc(requestFilter.limit)))
+            : 200;
 
-        const search = await provider.search({
-          query: baseQuery,
-          text: typeof requestFilter.text === "string" ? requestFilter.text : undefined,
-          from: requestFrom,
-          fromEmails,
-          fromDomains,
-          to: requestTo,
-          toEmails,
-          toDomains,
-          cc: requestCc,
-          ccEmails,
-          ccDomains,
-          category:
-            requestFilter.category === "primary" ||
-            requestFilter.category === "promotions" ||
-            requestFilter.category === "social" ||
-            requestFilter.category === "updates" ||
-            requestFilter.category === "forums"
-              ? requestFilter.category
-              : undefined,
-          hasAttachment:
-            typeof requestFilter.hasAttachment === "boolean"
-              ? requestFilter.hasAttachment
-              : undefined,
-          attachmentMimeTypes: inferredPdfOnly
-            ? ["application/pdf", "pdf"]
-            : Array.isArray(requestFilter.attachmentMimeTypes)
-              ? (requestFilter.attachmentMimeTypes as string[])
-              : undefined,
-          attachmentFilenameContains:
-            typeof requestFilter.attachmentFilenameContains === "string"
-              ? requestFilter.attachmentFilenameContains
-              : undefined,
-          sentByMe: true,
-          before,
-          after,
-          limit:
-            typeof requestFilter.limit === "number" && Number.isFinite(requestFilter.limit)
-              ? Math.min(250, Math.trunc(requestFilter.limit))
-              : 150,
-          fetchAll: false,
-        });
-
-        const ownerEmail = (capEnv.runtime.email ?? "").trim().toLowerCase();
-        const candidates = Array.isArray(search.messages) ? search.messages : [];
-        const threadIds = Array.from(new Set(candidates.map((m) => m.threadId).filter(Boolean)));
-
-        const unrepliedThreads: Array<{
+        type Row = {
           threadId: string;
           messageId: string;
-          subject: string;
-          date: string;
-          to: string;
-          cc: string;
-        }> = [];
+          sentAt: Date;
+          toHeader: string;
+          subject: string | null;
+          snippet: string | null;
+        };
 
-        for (const threadId of threadIds.slice(0, 120)) {
-          try {
-            const thread = await provider.getThread(threadId);
-            const messages = Array.isArray(thread.messages) ? thread.messages : [];
-            if (messages.length === 0) continue;
-
-            const sorted = [...messages].sort((a, b) => {
-              const aTs = Date.parse(a.internalDate ?? a.date ?? "");
-              const bTs = Date.parse(b.internalDate ?? b.date ?? "");
-              return (Number.isFinite(aTs) ? aTs : 0) - (Number.isFinite(bTs) ? bTs : 0);
-            });
-
-            const sent = sorted.filter((m) => {
-              const fromHeader = (m.headers?.from ?? "").toLowerCase();
-              return ownerEmail.length > 0 && fromHeader.includes(ownerEmail);
-            });
-            const lastSent = sent[sent.length - 1];
-            if (!lastSent) continue;
-
-            const lastSentTs = Date.parse(lastSent.internalDate ?? lastSent.date ?? "");
-            if (!Number.isFinite(lastSentTs)) continue;
-
-            const hasReply = sorted.some((m) => {
-              const ts = Date.parse(m.internalDate ?? m.date ?? "");
-              if (!Number.isFinite(ts) || ts <= lastSentTs) return false;
-              const fromHeader = (m.headers?.from ?? "").toLowerCase();
-              return ownerEmail.length === 0 || !fromHeader.includes(ownerEmail);
-            });
-            if (hasReply) continue;
-
-            unrepliedThreads.push({
-              threadId,
-              messageId: lastSent.id,
-              subject: lastSent.subject || lastSent.headers?.subject || "(No subject)",
-              date: lastSent.internalDate ?? lastSent.date ?? "",
-              to: lastSent.headers?.to ?? "",
-              cc: lastSent.headers?.cc ?? "",
-            });
-          } catch {
-            continue;
-          }
-        }
+        const rows = await prisma.$queryRaw<Row[]>(Prisma.sql`
+          WITH last_sent AS (
+            SELECT DISTINCT ON (em."threadId")
+              em."threadId" AS "threadId",
+              em."messageId" AS "messageId",
+              em."date" AS "sentAt",
+              em."to" AS "toHeader"
+            FROM "EmailMessage" em
+            WHERE em."emailAccountId" = ${capEnv.runtime.emailAccountId}
+              AND em."sent" = true
+              AND em."date" >= ${after}
+              AND em."date" <= ${before}
+            ORDER BY em."threadId", em."date" DESC
+          ),
+          replied AS (
+            SELECT ls."threadId" AS "threadId"
+            FROM last_sent ls
+            JOIN "EmailMessage" em
+              ON em."emailAccountId" = ${capEnv.runtime.emailAccountId}
+              AND em."threadId" = ls."threadId"
+              AND em."sent" = false
+              AND em."date" > ls."sentAt"
+            GROUP BY ls."threadId"
+          )
+          SELECT
+            ls."threadId",
+            ls."messageId",
+            ls."sentAt",
+            ls."toHeader",
+            sd."title" AS "subject",
+            sd."snippet" AS "snippet"
+          FROM last_sent ls
+          LEFT JOIN replied r ON r."threadId" = ls."threadId"
+          LEFT JOIN "SearchDocument" sd
+            ON sd."userId" = ${capEnv.runtime.userId}
+            AND sd."connector" = 'email'
+            AND sd."sourceType" = 'message'
+            AND sd."sourceId" = ls."messageId"
+            AND (sd."emailAccountId" = ${capEnv.runtime.emailAccountId} OR sd."emailAccountId" IS NULL)
+            AND sd."isDeleted" = false
+          WHERE r."threadId" IS NULL
+          ORDER BY ls."sentAt" DESC
+          LIMIT ${limit};
+        `);
 
         return {
           success: true,
-          data: unrepliedThreads,
+          data: rows.map((row) => ({
+            threadId: row.threadId,
+            messageId: row.messageId,
+            subject: row.subject ?? "(No subject)",
+            date: row.sentAt instanceof Date ? row.sentAt.toISOString() : String(row.sentAt),
+            to: row.toHeader,
+            cc: "",
+            snippet: row.snippet ?? "",
+          })),
           message:
-            unrepliedThreads.length === 0
+            rows.length === 0
               ? "No unreplied sent threads found in that window."
-              : `Found ${unrepliedThreads.length} sent thread${unrepliedThreads.length === 1 ? "" : "s"} without a reply.`,
-          meta: asMetaItemCount(unrepliedThreads.length),
+              : `Found ${rows.length} sent thread${rows.length === 1 ? "" : "s"} without a reply.`,
+          meta: asMetaItemCount(rows.length),
         };
       } catch (error) {
-        return capabilityFailureResult(error, "I couldn't find unreplied sent threads right now.", {
-          resource: "email",
+        capEnv.runtime.logger.warn("unrepliedToSent query failed; falling back to provider scanning", {
+          userId: capEnv.runtime.userId,
+          emailAccountId: capEnv.runtime.emailAccountId,
+          error,
         });
+
+        try {
+          const baseQuery =
+            typeof requestFilter.query === "string" && requestFilter.query.trim()
+              ? requestFilter.query.trim()
+              : "in:sent";
+
+          const search = await provider.search({
+            query: baseQuery,
+            text: typeof requestFilter.text === "string" ? requestFilter.text : undefined,
+            from: requestFrom,
+            fromEmails,
+            fromDomains,
+            to: requestTo,
+            toEmails,
+            toDomains,
+            cc: requestCc,
+            ccEmails,
+            ccDomains,
+            category:
+              requestFilter.category === "primary" ||
+              requestFilter.category === "promotions" ||
+              requestFilter.category === "social" ||
+              requestFilter.category === "updates" ||
+              requestFilter.category === "forums"
+                ? requestFilter.category
+                : undefined,
+            hasAttachment:
+              typeof requestFilter.hasAttachment === "boolean"
+                ? requestFilter.hasAttachment
+                : undefined,
+            attachmentMimeTypes: inferredPdfOnly
+              ? ["application/pdf", "pdf"]
+              : Array.isArray(requestFilter.attachmentMimeTypes)
+                ? (requestFilter.attachmentMimeTypes as string[])
+                : undefined,
+            attachmentFilenameContains:
+              typeof requestFilter.attachmentFilenameContains === "string"
+                ? requestFilter.attachmentFilenameContains
+                : undefined,
+            sentByMe: true,
+            before,
+            after,
+            limit: 120,
+            fetchAll: false,
+          });
+
+          const ownerEmail = (capEnv.runtime.email ?? "").trim().toLowerCase();
+          const candidates = Array.isArray(search.messages) ? search.messages : [];
+          const threadIds = Array.from(new Set(candidates.map((m) => m.threadId).filter(Boolean)));
+
+          const unrepliedThreads: Array<{
+            threadId: string;
+            messageId: string;
+            subject: string;
+            date: string;
+            to: string;
+            cc: string;
+          }> = [];
+
+          for (const threadId of threadIds.slice(0, 80)) {
+            try {
+              const thread = await provider.getThread(threadId);
+              const messages = Array.isArray(thread.messages) ? thread.messages : [];
+              if (messages.length === 0) continue;
+
+              const sorted = [...messages].sort((a, b) => {
+                const aTs = Date.parse(a.internalDate ?? a.date ?? "");
+                const bTs = Date.parse(b.internalDate ?? b.date ?? "");
+                return (Number.isFinite(aTs) ? aTs : 0) - (Number.isFinite(bTs) ? bTs : 0);
+              });
+
+              const sent = sorted.filter((m) => {
+                const fromHeader = (m.headers?.from ?? "").toLowerCase();
+                return ownerEmail.length > 0 && fromHeader.includes(ownerEmail);
+              });
+              const lastSent = sent[sent.length - 1];
+              if (!lastSent) continue;
+
+              const lastSentTs = Date.parse(lastSent.internalDate ?? lastSent.date ?? "");
+              if (!Number.isFinite(lastSentTs)) continue;
+
+              const hasReply = sorted.some((m) => {
+                const ts = Date.parse(m.internalDate ?? m.date ?? "");
+                if (!Number.isFinite(ts) || ts <= lastSentTs) return false;
+                const fromHeader = (m.headers?.from ?? "").toLowerCase();
+                return ownerEmail.length === 0 || !fromHeader.includes(ownerEmail);
+              });
+              if (hasReply) continue;
+
+              unrepliedThreads.push({
+                threadId,
+                messageId: lastSent.id,
+                subject: lastSent.subject || lastSent.headers?.subject || "(No subject)",
+                date: lastSent.internalDate ?? lastSent.date ?? "",
+                to: lastSent.headers?.to ?? "",
+                cc: lastSent.headers?.cc ?? "",
+              });
+            } catch {
+              continue;
+            }
+          }
+
+          return {
+            success: true,
+            data: unrepliedThreads,
+            message:
+              unrepliedThreads.length === 0
+                ? "No unreplied sent threads found in that window."
+                : `Found ${unrepliedThreads.length} sent thread${unrepliedThreads.length === 1 ? "" : "s"} without a reply.`,
+            meta: asMetaItemCount(unrepliedThreads.length),
+          };
+        } catch (fallbackError) {
+          return capabilityFailureResult(fallbackError, "I couldn't find unreplied sent threads right now.", {
+            resource: "email",
+          });
+        }
       }
     }
 

@@ -179,7 +179,7 @@ Format:
 15. `IR-015` | "What was the first email I got today?" | `email.searchInbox` + `email.getThreadMessages` | D3,D2
 16. `IR-016` | "Pull the latest message body in thread <thread-id>." | `email.getLatestMessage` | D3
 17. `IR-017` | "Fetch message payloads for IDs <id1,id2,id3>." | `email.getMessagesBatch` | D3
-18. `IR-018` | "Find emails I sent but didn't get a reply to (last 14 days)." | `email.searchSent` + planner logic | D3,D2
+18. `IR-018` | "Find emails I sent but didn't get a reply to (last 14 days)." | `email.searchSent` | D3,D2
 19. `IR-019` | "List unread emails from recruiters only." | `email.searchThreadsAdvanced (fromConcept clarification)` | D3
 20. `IR-020` | "Show all unread emails older than 14 days." | `email.searchThreadsAdvanced` | D3
 21. `IR-021` | "Show me the 10 oldest unread emails in my inbox." | `email.searchInbox` | D3,D2
@@ -240,7 +240,7 @@ Format:
 8. `CR-008` | "When am I free for 30 minutes tomorrow afternoon?" | `calendar.findAvailability` | D6
 9. `CR-009` | "Find three 1-hour slots next Tuesday between 9 and 5." | `calendar.findAvailability` | D6
 10. `CR-010` | "What's my earliest availability tomorrow?" | `calendar.findAvailability` | D6
-11. `CR-011` | "Do I have any overlaps/conflicts today?" | `calendar.listEvents` + planner logic | D6,D2
+11. `CR-011` | "Do I have any overlaps/conflicts today?" | `calendar.detectConflicts` | D6,D2
 12. `CR-012` | "Show only events in 'work' calendar this week." | `calendar.listEvents` with calendar filter | D6,D9
 13. `CR-013` | "Find events with location containing 'Market Street'." | `calendar.listEvents` + filter | D6
 14. `CR-014` | "What events include dannywang@gmail.com as attendee?" | `calendar.searchEventsByAttendee` | D6
@@ -515,8 +515,9 @@ Use this to ensure 100% expected capability coverage.
 
 1. `calendar.findAvailability` -> CR-008, CR-009, CR-010, CM-020
 2. `calendar.listEvents` -> CR-001, CR-002, CR-003, CR-005
-3. `calendar.searchEventsByAttendee` -> CR-006, CR-014
-4. `calendar.getEvent` -> CR-007, CR-004
+3. `calendar.detectConflicts` -> CR-011
+4. `calendar.searchEventsByAttendee` -> CR-006, CR-014
+5. `calendar.getEvent` -> CR-007, CR-004
 5. `calendar.createEvent` -> CM-001
 6. `calendar.updateEvent` -> CM-002
 7. `calendar.deleteEvent` -> CM-003
