@@ -109,6 +109,7 @@ export const vertexShader = `
   uniform sampler2D uPositions;
   uniform float uTime;
   uniform float uPointSize;
+  uniform float uPositionScale;
 
   varying float vSeed;
   varying float vRadial;
@@ -124,7 +125,8 @@ export const vertexShader = `
 
   void main() {
     vec2 sampleUv = position.xy;
-    vec3 pos = texture2D(uPositions, sampleUv).xyz;
+    vec3 rawPos = texture2D(uPositions, sampleUv).xyz;
+    vec3 pos = rawPos * uPositionScale;
 
     vec4 modelPosition = modelMatrix * vec4(pos, 1.0);
     vec4 viewPosition = viewMatrix * modelPosition;
@@ -133,20 +135,20 @@ export const vertexShader = `
     gl_Position = projected;
 
     vSeed = hash21(sampleUv);
-    vRadial = clamp(length(pos), 0.0, 1.2);
+    vRadial = clamp(length(rawPos), 0.0, 1.2);
     vDepth = clamp(abs(viewPosition.z) / 16.0, 0.0, 1.0);
     float clumpField =
-      sin(pos.x * 8.5 + uTime * 0.31) +
-      cos(pos.y * 7.3 - uTime * 0.27) +
-      sin(pos.z * 6.1 + uTime * 0.42);
+      sin(rawPos.x * 8.5 + uTime * 0.31) +
+      cos(rawPos.y * 7.3 - uTime * 0.27) +
+      sin(rawPos.z * 6.1 + uTime * 0.42);
     vClump = clamp(clumpField * 0.166 + 0.5, 0.0, 1.0);
-    vParticlePos = pos;
+    vParticlePos = rawPos;
 
     float size = uPointSize;
     float variation =
       0.7 +
-      0.25 * sin(pos.x * 7.0 + uTime * 0.4) +
-      0.18 * cos(pos.y * 6.0 + uTime * 0.3);
+      0.25 * sin(rawPos.x * 7.0 + uTime * 0.4) +
+      0.18 * cos(rawPos.y * 6.0 + uTime * 0.3);
     size *= variation;
     size *= mix(0.76, 1.28, vClump);
     size *= mix(1.08, 0.74, smoothstep(0.35, 1.05, vRadial));

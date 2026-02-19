@@ -14,6 +14,7 @@ import {
 type FboParticlesProps = {
   size?: number;
   pointSize?: number;
+  positionScale?: number;
   blending?: THREE.Blending;
   densityBias?: number;
   alphaBase?: number;
@@ -33,6 +34,7 @@ type FboParticlesProps = {
 export function FBOParticles({
   size = 32,
   pointSize = 3.0,
+  positionScale = 1.32,
   blending = THREE.NormalBlending,
   densityBias = 0.12,
   alphaBase = 0.54,
@@ -95,6 +97,7 @@ export function FBOParticles({
       uPositions: { value: null as THREE.Texture | null },
       uTime: { value: 0 },
       uPointSize: { value: pointSize },
+      uPositionScale: { value: positionScale },
       uColor1: { value: new THREE.Color(color1) },
       uColor2: { value: new THREE.Color(color2) },
       uColor3: { value: new THREE.Color(color3) },
@@ -108,6 +111,7 @@ export function FBOParticles({
     }),
     [
       pointSize,
+      positionScale,
       color1,
       color2,
       color3,
