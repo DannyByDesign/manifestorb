@@ -457,7 +457,7 @@ async function buildSingleToolCallFromCandidate(params: {
   }
 
   const timeZone = await resolveTimeZone(params);
-  const query = normalizeScopeValue(candidate.args.query) ?? "";
+  const query = normalizeScopeValue(candidate.args.query);
   const text = normalizeScopeValue(candidate.args.text);
   const fromConcept = normalizeScopeValue(candidate.args.fromConcept);
   const toConcept = normalizeScopeValue(candidate.args.toConcept);
@@ -475,8 +475,10 @@ async function buildSingleToolCallFromCandidate(params: {
     normalizeAttachmentIntentTerm(normalizeScopeValue(candidate.args.attachmentIntentTerm)) ??
     inferAttachmentIntentTerm(params.message, text ?? query);
 
+  const semanticQuery = query ?? normalizeScopeValue(params.message) ?? "";
+
   const args: Record<string, unknown> = {
-    query,
+    query: semanticQuery,
     purpose,
     limit: sanitizeLimit(candidate.args.limit) ?? (purpose === "count" ? 100 : dateRange ? 100 : 25),
     fetchAll: sanitizeBoolean(candidate.args.fetchAll) ?? false,
@@ -520,14 +522,6 @@ function extractMetaConstraints(message: string): string[] {
   return constraints;
 }
 
-function fastCapabilitiesReply(): string {
-  return [
-    "I can help across inbox and calendar.",
-    "I can search and summarize email, draft and send replies with approval safeguards, and manage labels and rules.",
-    "I can review your schedule, find availability, create or reschedule events, and enforce your policy guardrails.",
-  ].join(" ");
-}
-
 async function compileWithModel(params: {
   message: string;
   userId: string;
@@ -564,6 +558,8 @@ async function compileWithModel(params: {
       "If uncertain, set routeHint=planner and needsClarification=true.",
       "Meta constraints like 'not from conversation memory' are metaConstraints, not sender filters.",
       "For 'from <person> in the last N days', set args.from to the person only and put timeframe in dateRange.",
+      "Preserve ordering intent explicitly in tool args: use sort=newest for latest/most-recent/newest phrasing and sort=oldest for oldest/earliest phrasing.",
+      "Preserve read-state intent explicitly in tool args: use unread=true for unread-only and unread=false for read-only phrasing.",
       "If the user uses role/group language for sender/recipient (e.g. 'recruiters', 'founders', 'investors', 'customers', 'press'), do not guess who that means.",
       "Instead, set args.fromConcept/args.toConcept/args.ccConcept to the exact phrase and leave args.from/args.to/args.cc empty.",
       "When using fromConcept/toConcept/ccConcept in a single-tool email search, keep needsClarification=false so the tool can return structured clarification evidence.",

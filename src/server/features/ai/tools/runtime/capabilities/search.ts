@@ -174,31 +174,40 @@ export function createSearchCapabilities(env: CapabilityEnvironment): SearchCapa
   return {
     async query(input) {
       const request = toRequest(input);
+      const currentMessage = env.toolContext.currentMessage?.trim();
+      const requestWithContext: UnifiedSearchRequest =
+        request.query || request.text || !currentMessage
+          ? request
+          : {
+              ...request,
+              // Preserve the raw user utterance when args only include structured fields.
+              query: currentMessage,
+            };
       const hasQuery = Boolean(
-        request.query ||
-          request.text ||
-          request.from ||
-          request.to ||
-          request.cc ||
-          (request.fromEmails?.length ?? 0) > 0 ||
-          (request.fromDomains?.length ?? 0) > 0 ||
-          (request.toEmails?.length ?? 0) > 0 ||
-          (request.toDomains?.length ?? 0) > 0 ||
-          (request.ccEmails?.length ?? 0) > 0 ||
-          (request.ccDomains?.length ?? 0) > 0 ||
-          request.attendeeEmail ||
-          request.locationContains,
+        requestWithContext.query ||
+          requestWithContext.text ||
+          requestWithContext.from ||
+          requestWithContext.to ||
+          requestWithContext.cc ||
+          (requestWithContext.fromEmails?.length ?? 0) > 0 ||
+          (requestWithContext.fromDomains?.length ?? 0) > 0 ||
+          (requestWithContext.toEmails?.length ?? 0) > 0 ||
+          (requestWithContext.toDomains?.length ?? 0) > 0 ||
+          (requestWithContext.ccEmails?.length ?? 0) > 0 ||
+          (requestWithContext.ccDomains?.length ?? 0) > 0 ||
+          requestWithContext.attendeeEmail ||
+          requestWithContext.locationContains,
       );
       const hasStructuredConstraints = Boolean(
-        request.dateRange ||
-          typeof request.unread === "boolean" ||
-          typeof request.hasAttachment === "boolean" ||
-          request.calendarIds?.length ||
-          request.category ||
-          (request.attachmentMimeTypes?.length ?? 0) > 0 ||
-          request.attachmentFilenameContains,
+        requestWithContext.dateRange ||
+          typeof requestWithContext.unread === "boolean" ||
+          typeof requestWithContext.hasAttachment === "boolean" ||
+          requestWithContext.calendarIds?.length ||
+          requestWithContext.category ||
+          (requestWithContext.attachmentMimeTypes?.length ?? 0) > 0 ||
+          requestWithContext.attachmentFilenameContains,
       );
-      const hasScopeOrMailbox = Boolean(request.scopes || request.mailbox);
+      const hasScopeOrMailbox = Boolean(requestWithContext.scopes || requestWithContext.mailbox);
 
       if (!hasQuery && !hasStructuredConstraints && !hasScopeOrMailbox) {
         return {
@@ -226,7 +235,7 @@ export function createSearchCapabilities(env: CapabilityEnvironment): SearchCapa
       }
 
       try {
-        const result = await service.query(request);
+        const result = await service.query(requestWithContext);
         if (result.queryPlan?.needsClarification) {
           return {
             success: false,

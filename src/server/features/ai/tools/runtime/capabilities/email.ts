@@ -273,6 +273,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       .join(" ")
       .trim();
     const lowerQueryText = queryText.toLowerCase();
+    const fallbackQuery = currentMessage.trim();
 
     const inferredUnrepliedToSent =
       requestFilter.unrepliedToSent === true;
@@ -624,20 +625,28 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
     }
 
     try {
+      const requestQuery =
+        typeof requestFilter.query === "string" && requestFilter.query.trim().length > 0
+          ? requestFilter.query.trim()
+          : undefined;
+      const requestText =
+        typeof requestFilter.text === "string" && requestFilter.text.trim().length > 0
+          ? requestFilter.text.trim()
+          : undefined;
+
+      // Preserve the full user turn for intent compilation when tool args are underspecified.
+      // This prevents ranking/filter constraints (e.g. recency/unread) from being dropped.
+      const semanticQuery =
+        requestQuery ?? requestText ?? (fallbackQuery.length > 0 ? fallbackQuery : undefined);
+
       const result = await unifiedSearch.query({
         scopes: ["email"],
         mailbox:
           mailbox === "inbox" || mailbox === "sent"
             ? mailbox
             : undefined,
-        query:
-          typeof requestFilter.query === "string"
-            ? requestFilter.query
-            : undefined,
-        text:
-          typeof requestFilter.text === "string"
-            ? requestFilter.text
-            : undefined,
+        query: semanticQuery,
+        text: requestText,
         from: requestFrom,
         to: requestTo,
         cc: requestCc,
@@ -1034,7 +1043,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           filter.category === "social" ||
           filter.category === "updates" ||
           filter.category === "forums"
-            ? (filter.category as any)
+            ? filter.category
             : undefined,
         hasAttachment: typeof filter.hasAttachment === "boolean" ? (filter.hasAttachment as boolean) : undefined,
         attachmentMimeTypes: Array.isArray(filter.attachmentMimeTypes) ? (filter.attachmentMimeTypes as string[]) : undefined,
@@ -2017,10 +2026,20 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       const mode: "send" | "draft" = input.mode === "draft" ? "draft" : "send";
       const replyAll = input.replyAll === true;
 
-      let parentMessage: any = null;
+      type ParentMessage = {
+        id?: string;
+        internalDate?: string;
+        date?: string;
+        headers?: Record<string, string | undefined>;
+      };
+
+      let parentMessage: ParentMessage | null = null;
       try {
         const byId = await provider.get([parent]);
-        parentMessage = Array.isArray(byId) && byId.length > 0 ? byId[0] : null;
+        parentMessage =
+          Array.isArray(byId) && byId.length > 0
+            ? (byId[0] as ParentMessage)
+            : null;
       } catch {
         parentMessage = null;
       }
@@ -2028,7 +2047,9 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       if (!parentMessage) {
         try {
           const thread = await provider.getThread(parent);
-          const messages = Array.isArray(thread.messages) ? thread.messages : [];
+          const messages = Array.isArray(thread.messages)
+            ? (thread.messages as ParentMessage[])
+            : [];
           parentMessage =
             messages.length > 0
               ? [...messages].sort((a, b) => {
@@ -2140,10 +2161,19 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         };
       }
 
-      let parentMessage: any = null;
+      type ParentMessage = {
+        id?: string;
+        internalDate?: string;
+        date?: string;
+      };
+
+      let parentMessage: ParentMessage | null = null;
       try {
         const byId = await provider.get([parent]);
-        parentMessage = Array.isArray(byId) && byId.length > 0 ? byId[0] : null;
+        parentMessage =
+          Array.isArray(byId) && byId.length > 0
+            ? (byId[0] as ParentMessage)
+            : null;
       } catch {
         parentMessage = null;
       }
@@ -2151,7 +2181,9 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       if (!parentMessage) {
         try {
           const thread = await provider.getThread(parent);
-          const messages = Array.isArray(thread.messages) ? thread.messages : [];
+          const messages = Array.isArray(thread.messages)
+            ? (thread.messages as ParentMessage[])
+            : [];
           parentMessage =
             messages.length > 0
               ? [...messages].sort((a, b) => {
@@ -2264,9 +2296,12 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
                   : {}),
               },
             });
-          } catch (error: any) {
+          } catch (error: unknown) {
             // If we already scheduled this draft+timestamp, return the existing row deterministically.
-            if (typeof error?.code === "string" && error.code === "P2002") {
+            if (
+              error instanceof Prisma.PrismaClientKnownRequestError &&
+              error.code === "P2002"
+            ) {
               const existing = await prisma.scheduledDraftSend.findUnique({
                 where: { idempotencyKey: deduplicationId },
               });

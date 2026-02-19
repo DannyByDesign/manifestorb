@@ -27,6 +27,7 @@ vi.mock("@/server/features/ai/tools/email/primitives", () => ({
 
 function buildEnv(options?: {
   emailProvider?: CapabilityEnvironment["toolContext"]["providers"]["email"];
+  currentMessage?: string;
 }): CapabilityEnvironment {
   return {
     runtime: {
@@ -34,6 +35,7 @@ function buildEnv(options?: {
       emailAccountId: "account-1",
       email: "user@example.com",
       provider: "web",
+      currentMessage: options?.currentMessage,
       logger: {
         info: vi.fn(),
         warn: vi.fn(),
@@ -46,6 +48,7 @@ function buildEnv(options?: {
     toolContext: {
       userId: "user-1",
       emailAccountId: "account-1",
+      currentMessage: options?.currentMessage,
       logger: {
         info: vi.fn(),
         warn: vi.fn(),
@@ -114,6 +117,27 @@ describe("runtime email unified search routing", () => {
       expect.objectContaining({
         mailbox: "sent",
         query: "portfolio review",
+        limit: 10,
+      }),
+    );
+  });
+
+  it("preserves user-turn semantic query context when explicit query/text is missing", async () => {
+    const caps = createEmailCapabilities(
+      buildEnv({
+        currentMessage: "Show me my 10 most recent unread emails",
+      }),
+    );
+    await caps.searchInbox({
+      unread: true,
+      limit: 10,
+    });
+
+    expect(unifiedQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mailbox: "inbox",
+        query: "Show me my 10 most recent unread emails",
+        unread: true,
         limit: 10,
       }),
     );
