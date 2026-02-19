@@ -7,12 +7,12 @@
   --font-geist-mono: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 
 
-  --base-lilac: #EDE8F2;
-  --cool-lavender: #887DAD;
-  --soft-mauve: #C69BBB;
-  --plum-magenta: #B86698;
-  --warm-coral: #D8919B;
-  --cyan-sheen: #E0EEF1;
+  --base-lilac: #F3EDF8;
+  --cool-lavender: #8D72D2;
+  --soft-mauve: #D8A0D6;
+  --plum-magenta: #C85DAF;
+  --warm-coral: #EC8B9A;
+  --cyan-sheen: #EAFBFF;
 
   /* Orb Tints (Mapped for Orb.tsx inputs) */
   --orb-base: var(--base-lilac);
@@ -51,47 +51,47 @@ body {
   background-image:
     /* 1) Diagonal purple/violet band (Softer, less linear feel) */
     linear-gradient(135deg,
-      rgb(136 125 173 / 0.00) 0%,
-      rgb(130 100 160 / 0.50) 30%,
-      rgb(140 90 170 / 0.65) 50%,
-      rgb(140 90 170 / 0.00) 80%),
+      rgb(141 114 210 / 0.00) 0%,
+      rgb(129 98 205 / 0.52) 30%,
+      rgb(146 101 214 / 0.70) 50%,
+      rgb(146 101 214 / 0.00) 80%),
 
     /* 2) ORGANIC LIGHT FLOW: Massive radial wash from top-left, curves slightly, reaches bottom-right */
     /* Using ellipse at offset to simulated 'flow' vs straight line */
     radial-gradient(2200px 1800px at 5% 5%,
-      rgb(245 248 255 / 1.00) 0%,
-      rgb(235 240 250 / 0.70) 30%,
-      rgb(237 232 242 / 0.20) 60%,
-      rgb(216 145 155 / 0.00) 90%),
+      rgb(250 248 252 / 1.00) 0%,
+      rgb(239 233 247 / 0.75) 30%,
+      rgb(243 237 248 / 0.22) 60%,
+      rgb(236 139 154 / 0.00) 90%),
 
     /* 3) Deep Violet/Blue blob (Top-Right) */
     radial-gradient(1100px 900px at 90% 10%,
-      rgb(100 90 180 / 0.85) 0%,
-      rgb(120 100 190 / 0.50) 45%,
-      rgb(120 100 190 / 0.00) 85%),
+      rgb(116 96 202 / 0.88) 0%,
+      rgb(138 112 214 / 0.54) 45%,
+      rgb(138 112 214 / 0.00) 85%),
 
     /* 4) Cool Blue-Purple Shadow (Center-Right) */
     radial-gradient(900px 700px at 75% 50%,
-      rgb(110 100 170 / 0.50) 0%,
-      rgb(110 100 170 / 0.20) 50%,
-      rgb(110 100 170 / 0.00) 85%),
+      rgb(126 105 196 / 0.58) 0%,
+      rgb(126 105 196 / 0.24) 50%,
+      rgb(126 105 196 / 0.00) 85%),
 
     /* 5) Warm Coral/Pink (Strictly Bottom-Right) */
     radial-gradient(1400px 1100px at 100% 100%,
-      rgb(225 155 165 / 1.00) 0%,
-      rgb(216 145 155 / 0.75) 45%,
-      rgb(216 145 155 / 0.00) 85%),
+      rgb(243 150 163 / 1.00) 0%,
+      rgb(236 139 154 / 0.78) 45%,
+      rgb(236 139 154 / 0.00) 85%),
 
     /* 6) Cool Lavender/Blue Wash (Bottom-Left) */
     radial-gradient(1400px 1000px at 0% 100%,
-      rgb(160 170 210 / 0.70) 0%,
-      rgb(160 170 210 / 0.40) 35%,
-      rgb(160 170 210 / 0.00) 70%),
+      rgb(176 186 236 / 0.72) 0%,
+      rgb(176 186 236 / 0.42) 35%,
+      rgb(176 186 236 / 0.00) 70%),
 
     /* 7) Cool cyan highlight (Top Edge) */
     linear-gradient(180deg,
-      rgb(224 238 241 / 0.45) 0%,
-      rgb(224 238 241 / 0.00) 15%);
+      rgb(232 250 255 / 0.48) 0%,
+      rgb(232 250 255 / 0.00) 15%);
 
   background-repeat: no-repeat;
   background-attachment: fixed;
@@ -108,22 +108,22 @@ body::before {
   background-image:
     /* Reinforce diagonal ribbon (subtle second pass) */
     linear-gradient(125deg,
-      rgb(136 125 173 / 0.00) 0%,
-      rgb(136 125 173 / 0.25) 22%,
-      rgb(160 120 170 / 0.30) 38%,
-      rgb(184 102 152 / 0.20) 52%,
-      rgb(184 102 152 / 0.00) 68%),
+      rgb(141 114 210 / 0.00) 0%,
+      rgb(141 114 210 / 0.30) 22%,
+      rgb(173 112 206 / 0.35) 38%,
+      rgb(200 93 175 / 0.24) 52%,
+      rgb(200 93 175 / 0.00) 68%),
 
     /* Soft center haze (keeps orb area lighter) */
     radial-gradient(1200px 900px at 40% 40%,
-      rgb(237 232 242 / 0.45) 0%,
-      rgb(237 232 242 / 0.00) 60%);
+      rgb(243 237 248 / 0.50) 0%,
+      rgb(243 237 248 / 0.00) 60%);
 
   background-repeat: no-repeat;
   background-size: cover;
 
-  filter: saturate(1.05) contrast(1.01);
-  opacity: 0.90;
+  filter: saturate(1.14) contrast(1.02);
+  opacity: 0.94;
 }
 
 /* ---------------------------------------------------------

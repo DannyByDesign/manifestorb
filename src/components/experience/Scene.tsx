@@ -23,11 +23,11 @@ type ThemePalette = {
 };
 
 const DEFAULT_PALETTE: ThemePalette = {
-  baseLilac: "#EDE8F2",
-  coolLavender: "#887DAD",
-  softMauve: "#C69BBB",
-  plumMagenta: "#B86698",
-  cyanSheen: "#E0EEF1",
+  baseLilac: "#F3EDF8",
+  coolLavender: "#8D72D2",
+  softMauve: "#D8A0D6",
+  plumMagenta: "#C85DAF",
+  cyanSheen: "#EAFBFF",
 };
 
 const readCssVar = (name: string, fallback: string): string => {
@@ -50,9 +50,9 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
     const paleLilac = mixHex(palette.baseLilac, palette.softMauve, 0.25);
     const iceLavender = mixHex(palette.baseLilac, palette.cyanSheen, 0.35);
     const whiteBloom = mixHex("#ffffff", palette.baseLilac, 0.35);
-    const inkyViolet = mixHex(palette.coolLavender, "#36206f", 0.68);
-    const electricViolet = mixHex(palette.plumMagenta, "#6a4cff", 0.45);
-    const richPlum = mixHex(palette.plumMagenta, "#4a236e", 0.42);
+    const inkyViolet = mixHex(palette.coolLavender, "#3a1f80", 0.68);
+    const electricViolet = mixHex(palette.plumMagenta, "#7b58ff", 0.45);
+    const richPlum = mixHex(palette.plumMagenta, "#5a2a85", 0.42);
 
     return {
       deepViolet,
