@@ -33,8 +33,13 @@ export const fragmentShader = `
     float alpha = 1.0 - smoothstep(edge - aa, edge + aa, r);
     if (alpha <= 0.0) discard;
 
-    float gradientY = gl_PointCoord.y;
-    float gradientX = gl_PointCoord.x;
+    vec3 orbDir = normalize(vParticlePos + vec3(1e-5));
+    float orbY = clamp(orbDir.y * 0.5 + 0.5, 0.0, 1.0);
+    float orbAzimuth = atan(orbDir.z, orbDir.x) / 6.28318530718 + 0.5;
+    float orbRadius = clamp(length(vParticlePos.xy), 0.0, 1.25);
+    float coreToRim = smoothstep(0.08, 1.0, orbRadius);
+    float gradientY = clamp(mix(orbY, coreToRim, 0.64), 0.0, 1.0);
+    float gradientX = fract(orbAzimuth + coreToRim * 0.28);
     float radialGradient = 1.0 - r * 1.25;
 
     vec3 col;
@@ -64,7 +69,7 @@ export const fragmentShader = `
       col2 = mix(uColor4, uColor2, t);
     }
 
-    col = mix(col, col2, 0.42);
+    col = mix(col, col2, 0.28 + coreToRim * 0.22);
 
     float structure = clamp(vClump * 0.74 + (1.0 - vRadial) * 0.66 + vSeed * 0.2 + uDensityBias, 0.0, 1.0);
     float filamentNoise =

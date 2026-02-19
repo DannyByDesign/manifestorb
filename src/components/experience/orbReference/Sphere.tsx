@@ -89,9 +89,13 @@ export function RimSparkleSphere({
 
       float whiteRim = smoothstep(1.0 - uRimWidth, 1.0, rim);
 
-      float gradient = clamp(N.y * 0.6 + 0.5, 0.0, 1.0);
-      float posGradient = clamp(vWorldPos.y * 0.4 + 0.5, 0.0, 1.0);
-      float finalGradient = mix(gradient, posGradient, 0.3);
+      // Drive the gradient by sphere curvature so color wraps with the orb volume.
+      float centerToEdge = 1.0 - ndv;
+      float radialGradient = pow(clamp(centerToEdge, 0.0, 1.0), 0.72);
+      float hemisphereGradient = clamp(N.y * 0.5 + 0.5, 0.0, 1.0);
+      float azimuth = atan(N.z, N.x) / 6.28318530718 + 0.5;
+      float azimuthWarp = sin(azimuth * 6.28318530718) * 0.06;
+      float finalGradient = clamp(mix(hemisphereGradient, radialGradient, 0.72) + azimuthWarp, 0.0, 1.0);
 
       vec3 blendedColor;
 
