@@ -182,7 +182,7 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         <RimSparkleSphere
           position={[0, 0, 0]}
           renderOrder={20}
-          colorA={derived.paleLilac}
+          colorA={derived.midLavender}
           colorB={derived.rosePeach}
           colorC={derived.deepViolet}
         />
