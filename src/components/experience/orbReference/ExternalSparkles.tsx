@@ -22,9 +22,9 @@ const hash01 = (index: number, salt: number): number => {
 
 export function ExternalSparkles2D({
   count = 3000,
-  color1 = "#FBF4FF",
+  color1 = "#FFEDE4",
   color2 = "#FFFFFF",
-  color3 = "#EAFBFF",
+  color3 = "#DDF6FF",
   circleRadius = 1.2,
   mouseInfluenceRadius = 2.0,
   mouseRepelStrength = 0.6,

@@ -19,15 +19,17 @@ type ThemePalette = {
   coolLavender: string;
   softMauve: string;
   plumMagenta: string;
+  warmCoral: string;
   cyanSheen: string;
 };
 
 const DEFAULT_PALETTE: ThemePalette = {
-  baseLilac: "#F3EDF8",
-  coolLavender: "#8D72D2",
-  softMauve: "#D8A0D6",
-  plumMagenta: "#C85DAF",
-  cyanSheen: "#EAFBFF",
+  baseLilac: "#F4EFF7",
+  coolLavender: "#866AD6",
+  softMauve: "#DB93D0",
+  plumMagenta: "#C55AAA",
+  warmCoral: "#F2AA91",
+  cyanSheen: "#DDF6FF",
 };
 
 const readCssVar = (name: string, fallback: string): string => {
@@ -49,6 +51,8 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
     const midLavender = mixHex(palette.coolLavender, palette.softMauve, 0.45);
     const paleLilac = mixHex(palette.baseLilac, palette.softMauve, 0.25);
     const iceLavender = mixHex(palette.baseLilac, palette.cyanSheen, 0.35);
+    const peachGlow = mixHex(palette.warmCoral, palette.baseLilac, 0.38);
+    const rosePeach = mixHex(palette.warmCoral, palette.softMauve, 0.45);
     const whiteBloom = mixHex("#ffffff", palette.baseLilac, 0.35);
     const inkyViolet = mixHex(palette.coolLavender, "#3a1f80", 0.68);
     const electricViolet = mixHex(palette.plumMagenta, "#7b58ff", 0.45);
@@ -59,6 +63,8 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
       midLavender,
       paleLilac,
       iceLavender,
+      peachGlow,
+      rosePeach,
       whiteBloom,
       inkyViolet,
       electricViolet,
@@ -92,7 +98,7 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         darkTintMix: 0.76,
         glintChance: 0.006,
         depthFade: 0.31,
-        colors: [derived.deepViolet, derived.richPlum, palette.softMauve, derived.midLavender],
+        colors: [derived.deepViolet, derived.richPlum, derived.rosePeach, derived.midLavender],
       },
       {
         size: 132,
@@ -105,7 +111,7 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         darkTintMix: 0.68,
         glintChance: 0.008,
         depthFade: 0.28,
-        colors: [derived.richPlum, derived.midLavender, derived.paleLilac, palette.coolLavender],
+        colors: [derived.richPlum, derived.midLavender, derived.paleLilac, derived.rosePeach],
       },
       {
         size: 78,
@@ -118,7 +124,7 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         darkTintMix: 0.6,
         glintChance: 0.01,
         depthFade: 0.25,
-        colors: [derived.midLavender, derived.paleLilac, derived.iceLavender, palette.softMauve],
+        colors: [derived.midLavender, derived.peachGlow, derived.iceLavender, palette.softMauve],
       },
       {
         size: 72,
@@ -144,7 +150,7 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         darkTintMix: 0.38,
         glintChance: 0.016,
         depthFade: 0.22,
-        colors: [derived.electricViolet, derived.iceLavender, derived.paleLilac, palette.softMauve],
+        colors: [derived.electricViolet, derived.iceLavender, derived.peachGlow, derived.rosePeach],
       },
       {
         size: 18,
@@ -157,7 +163,7 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         darkTintMix: 0.18,
         glintChance: 0.022,
         depthFade: 0.19,
-        colors: [derived.iceLavender, derived.paleLilac, derived.whiteBloom, palette.baseLilac],
+        colors: [derived.iceLavender, derived.peachGlow, derived.whiteBloom, palette.baseLilac],
       },
     ],
     [derived, palette]
@@ -168,7 +174,7 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
       <ambientLight intensity={0.8} />
       <pointLight position={[5, 5, 7]} intensity={0.8} />
       <pointLight position={[-6, 4, 6]} intensity={0.6} color={derived.paleLilac} />
-      <pointLight position={[0, -5, 5]} intensity={0.4} />
+      <pointLight position={[0, -5, 5]} intensity={0.4} color={derived.rosePeach} />
       <pointLight position={[3, -2, 8]} intensity={0.3} color={derived.iceLavender} />
       <directionalLight position={[-8, 5, 5]} intensity={0.7} color={palette.coolLavender} />
 
@@ -177,7 +183,7 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
           position={[0, 0, 0]}
           renderOrder={20}
           colorA={derived.paleLilac}
-          colorB={palette.softMauve}
+          colorB={derived.rosePeach}
           colorC={derived.deepViolet}
         />
 
@@ -206,7 +212,7 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         <ExternalSparkles2D
           count={3500}
           color1={derived.whiteBloom}
-          color2="#FFFFFF"
+          color2={derived.peachGlow}
           color3={derived.iceLavender}
           circleRadius={1.4}
           mouseInfluenceRadius={0.5}
@@ -236,6 +242,7 @@ export function Scene() {
       coolLavender: readCssVar("--cool-lavender", DEFAULT_PALETTE.coolLavender),
       softMauve: readCssVar("--soft-mauve", DEFAULT_PALETTE.softMauve),
       plumMagenta: readCssVar("--plum-magenta", DEFAULT_PALETTE.plumMagenta),
+      warmCoral: readCssVar("--warm-coral", DEFAULT_PALETTE.warmCoral),
       cyanSheen: readCssVar("--cyan-sheen", DEFAULT_PALETTE.cyanSheen),
     }),
     []

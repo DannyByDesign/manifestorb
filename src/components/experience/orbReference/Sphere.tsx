@@ -9,9 +9,9 @@ type RimSparkleSphereProps = ComponentProps<"mesh"> & {
 };
 
 export function RimSparkleSphere({
-  colorA = "#F3EDF8",
-  colorB = "#D8A0D6",
-  colorC = "#8D72D2",
+  colorA = "#F4EFF7",
+  colorB = "#E6B2A0",
+  colorC = "#866AD6",
   ...props
 }: RimSparkleSphereProps) {
   const mat = useRef<THREE.ShaderMaterial>(null);
