@@ -99,18 +99,16 @@ export function RimSparkleSphere({
 
       vec3 blendedColor;
 
-      // Keep warmth subtle while letting saturated lavender dominate farther inward.
-      vec3 warmLavender = mix(uColorA, uColorB, 0.18);
-
-      if (finalGradient < 0.28) {
-        float t = finalGradient / 0.28;
-        blendedColor = mix(uColorC, uColorA, t);
-      } else if (finalGradient < 0.82) {
-        float t = (finalGradient - 0.28) / 0.54;
-        blendedColor = mix(uColorA, warmLavender, t);
+      if (finalGradient < 0.33) {
+        float t = finalGradient * 3.0;
+        blendedColor = mix(uColorC, uColorB, t);
+      } else if (finalGradient < 0.66) {
+        float t = (finalGradient - 0.33) * 3.0;
+        blendedColor = mix(uColorB, uColorA, t);
       } else {
-        float t = (finalGradient - 0.82) / 0.18;
-        blendedColor = mix(warmLavender, uColorC, t);
+        // Slightly delay the outer transition to uColorC so the lavender ring reads thicker.
+        float t = pow((finalGradient - 0.66) * 3.0, 1.35);
+        blendedColor = mix(uColorA, uColorC, t);
       }
 
       float viewGradient = clamp(dot(lightingN, V) * 0.5 + 0.5, 0.0, 1.0);
