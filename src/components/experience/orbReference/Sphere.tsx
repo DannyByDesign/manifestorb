@@ -99,14 +99,14 @@ export function RimSparkleSphere({
 
       vec3 blendedColor;
 
-      if (finalGradient < 0.33) {
-        float t = finalGradient * 3.0;
+      if (finalGradient < 0.24) {
+        float t = finalGradient / 0.24;
         blendedColor = mix(uColorC, uColorB, t);
-      } else if (finalGradient < 0.66) {
-        float t = (finalGradient - 0.33) * 3.0;
+      } else if (finalGradient < 0.9) {
+        float t = (finalGradient - 0.24) / 0.66;
         blendedColor = mix(uColorB, uColorA, t);
       } else {
-        float t = (finalGradient - 0.66) * 3.0;
+        float t = (finalGradient - 0.9) / 0.1;
         blendedColor = mix(uColorA, uColorC, t);
       }
 
