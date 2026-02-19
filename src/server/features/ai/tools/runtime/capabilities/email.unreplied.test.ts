@@ -127,21 +127,53 @@ describe("email unrepliedToSent", () => {
     expect(unifiedQuery).not.toHaveBeenCalled();
 
     const [queryArg] = vi.mocked(prisma.$queryRaw).mock.calls[0] ?? [];
-    expect((queryArg as any)?.sql ?? "").toContain("DISTINCT ON");
-    expect((queryArg as any)?.sql ?? "").toContain("FROM \"EmailMessage\"");
+    const queryText =
+      queryArg && typeof queryArg === "object" && "sql" in queryArg && typeof queryArg.sql === "string"
+        ? queryArg.sql
+        : "";
+    expect(queryText).toContain("DISTINCT ON");
+    expect(queryText).toContain("FROM \"EmailMessage\"");
   });
 
-  it("falls back to provider scanning when DB query fails and preserves unreplied semantics", async () => {
+  it("falls back to unified search scan when DB query fails and preserves unreplied semantics", async () => {
     vi.mocked(prisma.$queryRaw).mockRejectedValueOnce(new Error("db down"));
+    unifiedQuery.mockResolvedValueOnce({
+      items: [
+        {
+          surface: "email",
+          id: "email:m-a",
+          title: "A",
+          snippet: "",
+          timestamp: "2026-02-06T10:00:00.000Z",
+          score: 0.8,
+          metadata: { threadId: "t-a", messageId: "m-a" },
+        },
+        {
+          surface: "email",
+          id: "email:m-b",
+          title: "B",
+          snippet: "",
+          timestamp: "2026-02-02T09:00:00.000Z",
+          score: 0.7,
+          metadata: { threadId: "t-b", messageId: "m-b" },
+        },
+        {
+          surface: "email",
+          id: "email:m-c",
+          title: "C",
+          snippet: "",
+          timestamp: "2026-02-04T12:00:00.000Z",
+          score: 0.7,
+          metadata: { threadId: "t-c", messageId: "m-c" },
+        },
+      ],
+      counts: { email: 3, calendar: 0, rule: 0, memory: 0 },
+      total: 3,
+      truncated: false,
+    });
 
     const provider = {
-      search: vi.fn().mockResolvedValue({
-        messages: [
-          { id: "m-a", threadId: "t-a" },
-          { id: "m-b", threadId: "t-b" },
-          { id: "m-c", threadId: "t-c" },
-        ],
-      }),
+      search: vi.fn(),
       getThread: vi.fn(async (threadId: string) => {
         const mk = (p: {
           id: string;
@@ -200,12 +232,14 @@ describe("email unrepliedToSent", () => {
       },
     });
 
-    expect(provider.search).toHaveBeenCalledWith(
+    expect(unifiedQuery).toHaveBeenCalledWith(
       expect.objectContaining({
-        query: "in:sent",
-        sentByMe: true,
+        scopes: ["email"],
+        mailbox: "sent",
+        sort: "newest",
       }),
     );
+    expect(provider.search).not.toHaveBeenCalled();
 
     expect(result.success).toBe(true);
     const items = Array.isArray(result.data) ? result.data : [];
@@ -213,4 +247,3 @@ describe("email unrepliedToSent", () => {
     expect(threadIds).toEqual(["t-b", "t-c"]);
   });
 });
-

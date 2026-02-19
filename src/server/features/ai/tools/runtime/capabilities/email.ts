@@ -499,21 +499,29 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           meta: asMetaItemCount(rows.length),
         };
       } catch (error) {
-        capEnv.runtime.logger.warn("unrepliedToSent query failed; falling back to provider scanning", {
+        capEnv.runtime.logger.warn("unrepliedToSent query failed; falling back to unified search scan", {
           userId: capEnv.runtime.userId,
           emailAccountId: capEnv.runtime.emailAccountId,
           error,
         });
 
         try {
-          const baseQuery =
-            typeof requestFilter.query === "string" && requestFilter.query.trim()
+          const requestQuery =
+            typeof requestFilter.query === "string" && requestFilter.query.trim().length > 0
               ? requestFilter.query.trim()
-              : "in:sent";
+              : undefined;
+          const requestText =
+            typeof requestFilter.text === "string" && requestFilter.text.trim().length > 0
+              ? requestFilter.text.trim()
+              : undefined;
+          const semanticQuery =
+            requestQuery ?? requestText ?? (fallbackQuery.length > 0 ? fallbackQuery : undefined);
 
-          const search = await provider.search({
-            query: baseQuery,
-            text: typeof requestFilter.text === "string" ? requestFilter.text : undefined,
+          const search = await unifiedSearch.query({
+            scopes: ["email"],
+            mailbox: "sent",
+            query: semanticQuery,
+            text: requestText,
             from: requestFrom,
             fromEmails,
             fromDomains,
@@ -544,16 +552,50 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
               typeof requestFilter.attachmentFilenameContains === "string"
                 ? requestFilter.attachmentFilenameContains
                 : undefined,
-            sentByMe: true,
-            before,
-            after,
+            dateRange: dateRange
+              ? {
+                  after:
+                    typeof dateRange.after === "string" ? dateRange.after : undefined,
+                  before:
+                    typeof dateRange.before === "string" ? dateRange.before : undefined,
+                  timeZone:
+                    typeof dateRange.timeZone === "string"
+                      ? dateRange.timeZone
+                      : typeof dateRange.timezone === "string"
+                        ? dateRange.timezone
+                        : typeof requestFilter.timeZone === "string"
+                          ? requestFilter.timeZone
+                          : typeof requestFilter.timezone === "string"
+                            ? requestFilter.timezone
+                            : undefined,
+                }
+              : undefined,
+            sort: "newest",
             limit: 120,
             fetchAll: false,
           });
 
           const ownerEmail = (capEnv.runtime.email ?? "").trim().toLowerCase();
-          const candidates = Array.isArray(search.messages) ? search.messages : [];
-          const threadIds = Array.from(new Set(candidates.map((m) => m.threadId).filter(Boolean)));
+          const threadIds = Array.from(
+            new Set(
+              search.items
+                .filter((item) => item.surface === "email")
+                .map((item) => {
+                  const metadata =
+                    item.metadata && typeof item.metadata === "object"
+                      ? (item.metadata as Record<string, unknown>)
+                      : {};
+                  const threadId =
+                    typeof metadata.threadId === "string"
+                      ? metadata.threadId
+                      : typeof metadata.sourceParentId === "string"
+                        ? metadata.sourceParentId
+                        : null;
+                  return threadId;
+                })
+                .filter((threadId): threadId is string => Boolean(threadId)),
+            ),
+          );
 
           const unrepliedThreads: Array<{
             threadId: string;
@@ -1015,19 +1057,30 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         filter.dateRange && typeof filter.dateRange === "object"
           ? (filter.dateRange as Record<string, unknown>)
           : undefined;
-      const before =
-        dateRange && typeof dateRange.before === "string" ? new Date(dateRange.before) : undefined;
-      const after =
-        dateRange && typeof dateRange.after === "string" ? new Date(dateRange.after) : undefined;
 
       const scanLimit =
         typeof input.scanLimit === "number" && Number.isFinite(input.scanLimit)
           ? Math.max(20, Math.min(800, Math.trunc(input.scanLimit)))
           : 250;
 
-      const search = await provider.search({
-        query: typeof filter.query === "string" ? filter.query : "",
-        text: typeof filter.text === "string" ? filter.text : undefined,
+      const requestQuery =
+        typeof filter.query === "string" && filter.query.trim().length > 0
+          ? filter.query.trim()
+          : undefined;
+      const requestText =
+        typeof filter.text === "string" && filter.text.trim().length > 0
+          ? filter.text.trim()
+          : undefined;
+      const fallbackFacetQuery = capEnv.toolContext.currentMessage?.trim();
+      const semanticQuery =
+        requestQuery ??
+        requestText ??
+        (fallbackFacetQuery && fallbackFacetQuery.length > 0 ? fallbackFacetQuery : undefined);
+
+      const search = await unifiedSearch.query({
+        scopes: ["email"],
+        query: semanticQuery,
+        text: requestText,
         from: typeof filter.from === "string" ? filter.from : undefined,
         to: typeof filter.to === "string" ? filter.to : undefined,
         cc: typeof filter.cc === "string" ? filter.cc : undefined,
@@ -1048,13 +1101,42 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         hasAttachment: typeof filter.hasAttachment === "boolean" ? (filter.hasAttachment as boolean) : undefined,
         attachmentMimeTypes: Array.isArray(filter.attachmentMimeTypes) ? (filter.attachmentMimeTypes as string[]) : undefined,
         attachmentFilenameContains: typeof filter.attachmentFilenameContains === "string" ? filter.attachmentFilenameContains : undefined,
-        before,
-        after,
+        dateRange: dateRange
+          ? {
+              after:
+                typeof dateRange.after === "string" ? dateRange.after : undefined,
+              before:
+                typeof dateRange.before === "string" ? dateRange.before : undefined,
+              timeZone:
+                typeof dateRange.timeZone === "string"
+                  ? dateRange.timeZone
+                  : typeof dateRange.timezone === "string"
+                    ? dateRange.timezone
+                    : undefined,
+            }
+          : undefined,
+        sort: "newest",
         limit: scanLimit,
         fetchAll: false,
       });
 
-      const messages = Array.isArray(search.messages) ? search.messages : [];
+      const messages = search.items
+        .filter((item) => item.surface === "email")
+        .map((item) => {
+          const metadata =
+            item.metadata && typeof item.metadata === "object"
+              ? (item.metadata as Record<string, unknown>)
+              : {};
+          return {
+            from: typeof metadata.from === "string" ? metadata.from : "",
+            threadId:
+              typeof metadata.threadId === "string"
+                ? metadata.threadId
+                : typeof metadata.sourceParentId === "string"
+                  ? metadata.sourceParentId
+                  : "",
+          };
+        });
       const maxFacets =
         typeof input.maxFacets === "number" && Number.isFinite(input.maxFacets)
           ? Math.max(3, Math.min(25, Math.trunc(input.maxFacets)))
@@ -1064,7 +1146,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       const domainCounts = new Map<string, { count: number; sampleThreadIds: string[] }>();
 
       for (const message of messages) {
-        const fromHeader = message.headers?.from ?? "";
+        const fromHeader = message.from ?? "";
         const emails = extractEmailAddresses(fromHeader).map((e) => e.toLowerCase());
         const threadId = message.threadId ?? "";
         for (const email of emails.slice(0, 1)) {

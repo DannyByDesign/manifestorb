@@ -228,6 +228,74 @@ describe("runtime email unified search routing", () => {
     });
   });
 
+  it("derives sender/domain facets from unified search results", async () => {
+    unifiedQuery.mockResolvedValueOnce({
+      items: [
+        {
+          surface: "email",
+          id: "email:m-1",
+          title: "Subject A",
+          snippet: "",
+          timestamp: "2026-02-15T12:00:00.000Z",
+          score: 0.8,
+          metadata: { from: "Alice <alice@alpha.com>", threadId: "t-1" },
+        },
+        {
+          surface: "email",
+          id: "email:m-2",
+          title: "Subject B",
+          snippet: "",
+          timestamp: "2026-02-15T11:00:00.000Z",
+          score: 0.7,
+          metadata: { from: "alice@alpha.com", threadId: "t-2" },
+        },
+        {
+          surface: "email",
+          id: "email:m-3",
+          title: "Subject C",
+          snippet: "",
+          timestamp: "2026-02-15T10:00:00.000Z",
+          score: 0.6,
+          metadata: { from: "bob@beta.com", threadId: "t-3" },
+        },
+      ],
+      counts: { email: 3, calendar: 0, rule: 0, memory: 0 },
+      total: 3,
+      truncated: false,
+    });
+
+    const caps = createEmailCapabilities(buildEnv());
+    const result = await caps.facetThreads({
+      filter: { query: "invoices" },
+      maxFacets: 5,
+      scanLimit: 100,
+    });
+
+    expect(unifiedQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scopes: ["email"],
+        query: "invoices",
+        sort: "newest",
+        limit: 100,
+      }),
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data).toEqual(
+      expect.objectContaining({
+        scannedMessages: 3,
+        topSenders: expect.arrayContaining([
+          expect.objectContaining({ email: "alice@alpha.com", count: 2 }),
+          expect.objectContaining({ email: "bob@beta.com", count: 1 }),
+        ]),
+        topDomains: expect.arrayContaining([
+          expect.objectContaining({ domain: "alpha.com", count: 2 }),
+          expect.objectContaining({ domain: "beta.com", count: 1 }),
+        ]),
+      }),
+    );
+  });
+
   it("returns exact unread count from provider counters when available", async () => {
     const getUnreadCount = vi.fn().mockResolvedValue({
       count: 1234,
