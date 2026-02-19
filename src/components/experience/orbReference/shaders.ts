@@ -10,6 +10,7 @@ export const fragmentShader = `
   uniform float uDarkTintMix;
   uniform float uGlintChance;
   uniform float uDepthFade;
+  uniform float uClumpFlatten;
 
   varying float vSeed;
   varying float vRadial;
@@ -71,11 +72,16 @@ export const fragmentShader = `
 
     col = mix(col, col2, 0.28 + coreToRim * 0.22);
 
-    float structure = clamp(vClump * 0.74 + (1.0 - vRadial) * 0.66 + vSeed * 0.2 + uDensityBias, 0.0, 1.0);
+    float clumpSignal = mix(vClump, 0.5, uClumpFlatten);
+    float structure = clamp(clumpSignal * 0.74 + (1.0 - vRadial) * 0.66 + vSeed * 0.2 + uDensityBias, 0.0, 1.0);
     float filamentNoise =
-      sin(vParticlePos.x * 12.0 + vParticlePos.y * 10.0 + uTime * 0.34) * 0.1 +
-      cos(vParticlePos.z * 9.0 - uTime * 0.22) * 0.08;
-    float filament = smoothstep(0.34, 0.94, structure + filamentNoise);
+      sin(vParticlePos.x * 12.0 + vParticlePos.y * 10.0 + uTime * 0.34) * mix(0.1, 0.045, uClumpFlatten) +
+      cos(vParticlePos.z * 9.0 - uTime * 0.22) * mix(0.08, 0.035, uClumpFlatten);
+    float filament = smoothstep(
+      mix(0.34, 0.26, uClumpFlatten),
+      mix(0.94, 0.88, uClumpFlatten),
+      structure + filamentNoise
+    );
 
     vec3 darkTint = mix(uColor4, uColor1, 0.55) * 0.58;
     col = mix(col, darkTint, filament * uDarkTintMix);
@@ -110,6 +116,7 @@ export const vertexShader = `
   uniform float uTime;
   uniform float uPointSize;
   uniform float uPositionScale;
+  uniform float uClumpFlatten;
 
   varying float vSeed;
   varying float vRadial;
@@ -150,7 +157,7 @@ export const vertexShader = `
       0.25 * sin(rawPos.x * 7.0 + uTime * 0.4) +
       0.18 * cos(rawPos.y * 6.0 + uTime * 0.3);
     size *= variation;
-    size *= mix(0.76, 1.28, vClump);
+    size *= mix(0.76, 1.28, mix(vClump, 0.5, uClumpFlatten));
     size *= mix(1.08, 0.74, smoothstep(0.35, 1.05, vRadial));
     size *= (1.7 / (1.0 + abs(viewPosition.z) * 0.2));
 

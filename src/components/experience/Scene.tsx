@@ -142,7 +142,7 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
       {
         size: 60,
         pointSize: 15.6,
-        frequency: 2.3,
+        frequency: 0.78,
         blending: THREE.AdditiveBlending,
         densityBias: -0.04,
         alphaBase: 0.26,
@@ -150,6 +150,7 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         darkTintMix: 0.38,
         glintChance: 0.016,
         depthFade: 0.22,
+        clumpFlatten: 0.88,
         colors: [derived.electricViolet, derived.iceLavender, derived.peachGlow, derived.rosePeach],
       },
       {
@@ -204,6 +205,7 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
             darkTintMix={config.darkTintMix}
             glintChance={config.glintChance}
             depthFade={config.depthFade}
+            clumpFlatten={config.clumpFlatten ?? 0}
             simVertShader={simulationVertexShader}
             simFragShader={simulationFragmentShader}
           />
