@@ -98,21 +98,10 @@ export const fragmentShader = `
     float centerBoost = mix(0.66 + filament * 0.46, 0.84 + filament * 0.18, uFieldMode);
     col *= centerBoost * (0.88 + radialGradient * 0.28);
 
-    float sparkle =
-      sin(gl_PointCoord.x * 25.0) *
-      sin(gl_PointCoord.y * 25.0) *
-      (0.018 * uSparkleBoost);
-    col += sparkle;
-
     float haloMask = smoothstep(0.62, 0.0, r);
-    vec3 haloGlow = mix(vec3(1.0), col, 0.25) * haloMask * (0.42 * uGlowBoost);
+    float whiteGlowStrength = 0.22 + (0.22 * uGlowBoost);
+    vec3 haloGlow = vec3(1.0, 0.99, 1.0) * haloMask * whiteGlowStrength;
     col += haloGlow;
-
-    float glintNoise = fract(vSeed * 41.73 + filament * 8.13 + hash11(vSeed + vClump) * 6.1);
-    float glintMask = step(1.0 - uGlintChance, glintNoise);
-    float glintPulse = 0.45 + 0.55 * sin(uTime * (1.7 + vSeed * 2.4) + vSeed * 17.0);
-    vec3 glintCol = vec3(1.0, 0.98, 1.0) * glintMask * glintPulse * (0.24 + filament * 0.72);
-    col += glintCol;
 
     float radialFade = 1.0 - smoothstep(0.78, 1.05, vRadial);
     float outerAlpha = smoothstep(0.55, 1.05, vRadial);
@@ -120,8 +109,7 @@ export const fragmentShader = `
     float depthAtten = 1.0 - vDepth * uDepthFade;
     float finalAlpha = alpha * (uAlphaBase + filament * uAlphaBoost);
     finalAlpha *= radialAlpha * depthAtten;
-    finalAlpha += glintMask * 0.03 * glintPulse;
-    finalAlpha += haloMask * 0.08 * uGlowBoost;
+    finalAlpha += haloMask * (0.055 + 0.045 * uGlowBoost);
     finalAlpha = clamp(finalAlpha, 0.0, 1.0);
 
     gl_FragColor = vec4(col, finalAlpha);
