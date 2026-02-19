@@ -71,41 +71,114 @@ function normalizeSlackThreadTs(value: unknown): string | undefined {
     return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-function extractTokenByPrefix(raw: string | undefined, prefix: "xoxb-" | "xapp-"): string | undefined {
-    if (!raw) return undefined;
+function extractTokenCandidates(raw: string | undefined, prefix: "xoxb-" | "xapp-"): string[] {
+    if (!raw) return [];
     const trimmed = raw.trim();
-    if (!trimmed) return undefined;
+    if (!trimmed) return [];
 
     const unwrapped = trimmed.replace(/^[`"' ]+|[`"' ]+$/g, "").replace(/\r/g, "").trim();
-    if (!unwrapped) return undefined;
-    if (unwrapped.startsWith(prefix)) return unwrapped;
+    if (!unwrapped) return [];
 
-    const pattern = prefix === "xoxb-" ? /(xoxb-[^\s'",`]+)/ : /(xapp-[^\s'",`]+)/;
-    const match = unwrapped.match(pattern);
-    return match?.[1];
-}
-
-function resolveSlackSocketTokens(): { botToken?: string; appToken?: string } {
-    const rawBotToken = env.SLACK_BOT_TOKEN;
-    const rawAppToken = env.SLACK_APP_TOKEN;
-
-    let botToken = extractTokenByPrefix(rawBotToken, "xoxb-");
-    let appToken = extractTokenByPrefix(rawAppToken, "xapp-");
-
-    // Migration-safe: auto-correct if tokens were pasted into opposite vars.
-    if (!botToken) {
-        const swappedBotToken = extractTokenByPrefix(rawAppToken, "xoxb-");
-        if (swappedBotToken) {
-            botToken = swappedBotToken;
-            console.warn("[Surfaces][Slack] Detected SLACK_BOT_TOKEN in SLACK_APP_TOKEN, auto-correcting");
+    const pattern = prefix === "xoxb-" ? /(xoxb-[^\s'",`]+)/g : /(xapp-[^\s'",`]+)/g;
+    const matches = unwrapped.match(pattern) ?? [];
+    const deduped: string[] = [];
+    const seen = new Set<string>();
+    for (const match of matches) {
+        if (!seen.has(match)) {
+            seen.add(match);
+            deduped.push(match);
         }
     }
-    if (!appToken) {
-        const swappedAppToken = extractTokenByPrefix(rawBotToken, "xapp-");
-        if (swappedAppToken) {
-            appToken = swappedAppToken;
-            console.warn("[Surfaces][Slack] Detected SLACK_APP_TOKEN in SLACK_BOT_TOKEN, auto-correcting");
+    return deduped;
+}
+
+async function validateSlackBotToken(botToken: string): Promise<{ ok: true } | { ok: false; reason: string }> {
+    try {
+        const response = await fetch("https://slack.com/api/auth.test", {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${botToken}`,
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams(),
+        });
+        const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+        if (payload?.ok === true) return { ok: true };
+        return {
+            ok: false,
+            reason: typeof payload?.error === "string" ? payload.error : "unknown_error",
+        };
+    } catch (error) {
+        return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+    }
+}
+
+async function validateSlackAppToken(appToken: string): Promise<{ ok: true } | { ok: false; reason: string }> {
+    try {
+        const response = await fetch("https://slack.com/api/apps.connections.open", {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${appToken}`,
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams(),
+        });
+        const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+        if (payload?.ok === true) return { ok: true };
+        return {
+            ok: false,
+            reason: typeof payload?.error === "string" ? payload.error : "unknown_error",
+        };
+    } catch (error) {
+        return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+    }
+}
+
+async function resolveSlackSocketTokens(): Promise<{ botToken: string; appToken: string }> {
+    const rawBotToken = env.SLACK_BOT_TOKEN;
+    const rawAppToken = env.SLACK_APP_TOKEN;
+    const botCandidates = [
+        ...extractTokenCandidates(rawBotToken, "xoxb-"),
+        ...extractTokenCandidates(rawAppToken, "xoxb-"),
+    ];
+    const appCandidates = [
+        ...extractTokenCandidates(rawAppToken, "xapp-"),
+        ...extractTokenCandidates(rawBotToken, "xapp-"),
+    ];
+
+    if (botCandidates.length === 0) {
+        throw new Error("No Slack bot token candidate found (expected xoxb-...)");
+    }
+    if (appCandidates.length === 0) {
+        throw new Error("No Slack app token candidate found (expected xapp-...)");
+    }
+
+    let botToken: string | undefined;
+    const botErrors: string[] = [];
+    for (const candidate of botCandidates) {
+        const result = await validateSlackBotToken(candidate);
+        if (result.ok) {
+            botToken = candidate;
+            break;
         }
+        botErrors.push(result.reason);
+    }
+    if (!botToken) {
+        throw new Error(`All Slack bot token candidates rejected (${botErrors[0] ?? "invalid_auth"})`);
+    }
+
+    let appToken: string | undefined;
+    const appErrors: string[] = [];
+    for (const candidate of appCandidates) {
+        const result = await validateSlackAppToken(candidate);
+        if (result.ok) {
+            appToken = candidate;
+            break;
+        }
+        appErrors.push(result.reason);
+    }
+    if (!appToken) {
+        throw new Error(`All Slack app token candidates rejected (${appErrors[0] ?? "invalid_auth"})`);
     }
 
     return { botToken, appToken };
@@ -640,16 +713,17 @@ export async function startSlack() {
     }
 
     slackStartPromise = (async () => {
-    const { botToken, appToken } = resolveSlackSocketTokens();
-    if (!botToken) {
+    let botToken: string;
+    let appToken: string;
+    try {
+        ({ botToken, appToken } = await resolveSlackSocketTokens());
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
         setPlatformEnabled("slack", false);
-        console.log("⚠️ Surfaces: Skipping Slack (SLACK_BOT_TOKEN missing)");
-        return;
-    }
-    if (!appToken) {
-        setPlatformEnabled("slack", false);
-        setPlatformError("slack", "SLACK_APP_TOKEN missing (required for Socket Mode)");
-        console.error("[Surfaces][Slack] Skipping Slack start because SLACK_APP_TOKEN is missing");
+        setPlatformError("slack", message);
+        console.error("[Surfaces][Slack] Unable to resolve valid Slack socket tokens", {
+            error: message,
+        });
         return;
     }
     setPlatformEnabled("slack", true);
