@@ -57,7 +57,7 @@ describe("runtime turn compiler", () => {
     );
   });
 
-  it("keeps simple greetings in conversation-only lane", async () => {
+  it("does not use lexical fallback to force greeting turns into conversation-only", async () => {
     const turn = await compileRuntimeTurn({
       message: "hello",
       userId: "user-1",
@@ -66,12 +66,12 @@ describe("runtime turn compiler", () => {
       logger: testLogger(),
     });
 
-    expect(turn.routeHint).toBe("conversation_only");
-    expect(turn.toolChoice).toBe("none");
+    expect(turn.routeHint).toBe("planner");
+    expect(turn.toolChoice).toBe("auto");
     expect(turn.singleToolCall).toBeUndefined();
   });
 
-  it("keeps thought-partner prompts in conversation-only lane", async () => {
+  it("does not use lexical fallback to force thought-partner turns into conversation-only", async () => {
     const turn = await compileRuntimeTurn({
       message:
         "I need a thought partner. Help me reason through two options and challenge my assumptions.",
@@ -81,8 +81,8 @@ describe("runtime turn compiler", () => {
       logger: testLogger(),
     });
 
-    expect(turn.routeHint).toBe("conversation_only");
-    expect(turn.toolChoice).toBe("none");
+    expect(turn.routeHint).toBe("planner");
+    expect(turn.toolChoice).toBe("auto");
     expect(turn.singleToolCall).toBeUndefined();
   });
 
@@ -95,7 +95,7 @@ describe("runtime turn compiler", () => {
     ).not.toThrow();
   });
 
-  it("routes explicit web search requests to single_tool:web.search deterministically", async () => {
+  it("does not use lexical fallback to force explicit web search into single-tool mode", async () => {
     const turn = await compileRuntimeTurn({
       message: "Search the web for bun 1.2.2 release notes",
       userId: "user-1",
@@ -104,13 +104,10 @@ describe("runtime turn compiler", () => {
       logger: testLogger(),
     });
 
-    expect(turn.routeHint).toBe("single_tool");
+    expect(turn.routeHint).toBe("planner");
     expect(turn.toolChoice).toBe("auto");
-    expect(turn.knowledgeSource).toBe("web");
-    expect(turn.singleToolCall?.toolName).toBe("web.search");
-    expect(turn.singleToolCall?.args).toEqual(
-      expect.objectContaining({ query: "bun 1.2.2 release notes" }),
-    );
+    expect(turn.knowledgeSource).toBe("either");
+    expect(turn.singleToolCall).toBeUndefined();
   });
 
   it("does not auto-route indirect recency questions to web.search", async () => {

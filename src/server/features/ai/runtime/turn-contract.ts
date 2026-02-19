@@ -59,19 +59,17 @@ export interface RuntimeTurnContract {
 }
 
 function inferIntent(params: {
-  message: string;
   domain: RuntimeTurnDomain;
   requestedOperation: RuntimeRequestedOperation;
+  routeHint: RuntimeCompiledTurn["routeHint"];
+  toolChoice: RuntimeCompiledTurn["toolChoice"];
 }): RuntimeTurnIntent {
-  const normalized = params.message.toLowerCase();
-  if (/^(hi|hello|hey|yo|sup|howdy)\b/u.test(normalized)) return "greeting";
-  if (/\b(what can you do|capabilit(?:y|ies)|how can you help|what do you do)\b/u.test(normalized)) {
-    return "capabilities";
+  if (params.routeHint === "conversation_only" && params.toolChoice === "none") {
+    return "general";
   }
 
   if (params.domain === "cross_surface") return "cross_surface_plan";
   if (params.domain === "inbox") {
-    if (/\bunread|attention|reply\b/u.test(normalized)) return "inbox_attention";
     if (params.requestedOperation === "mutate" || params.requestedOperation === "mixed") {
       return "inbox_mutation";
     }
@@ -87,22 +85,37 @@ function inferIntent(params: {
   return "general";
 }
 
-function inferComplexity(message: string, requestedOperation: RuntimeRequestedOperation): RuntimeComplexity {
-  const normalized = message.toLowerCase();
-  const tokens = normalized.split(/\s+/u).filter(Boolean).length;
-  const hasConditional = /\b(if|unless|otherwise|except|only if|when)\b/u.test(normalized);
-  const chainingCount = [
-    ...normalized.matchAll(/\b(and then|then|also|plus|follow(?:ed)? by|after that|before that|next)\b/gu),
-  ].length;
-
-  if (tokens > 45 || hasConditional || chainingCount >= 2) return "complex";
-  if (tokens > 20 || requestedOperation === "mutate" || chainingCount === 1) return "moderate";
+function inferComplexity(params: {
+  taskClauses: RuntimeCompiledTurn["taskClauses"];
+  domain: RuntimeTurnDomain;
+  requestedOperation: RuntimeRequestedOperation;
+  routeHint: RuntimeCompiledTurn["routeHint"];
+  needsClarification: boolean;
+}): RuntimeComplexity {
+  if (params.routeHint === "conversation_only") return "simple";
+  if (
+    params.domain === "cross_surface" ||
+    params.requestedOperation === "mixed" ||
+    params.taskClauses.length >= 3
+  ) {
+    return "complex";
+  }
+  if (
+    params.requestedOperation === "mutate" ||
+    params.taskClauses.length >= 1 ||
+    params.needsClarification
+  ) {
+    return "moderate";
+  }
   return "simple";
 }
 
-function inferRisk(message: string, requestedOperation: RuntimeRequestedOperation): RuntimeRiskLevel {
-  if (requestedOperation === "meta" || requestedOperation === "read") return "low";
-  if (/\b(delete|trash|block|unsubscribe|cancel all|remove all|archive all)\b/u.test(message.toLowerCase())) {
+function inferRisk(params: {
+  domain: RuntimeTurnDomain;
+  requestedOperation: RuntimeRequestedOperation;
+}): RuntimeRiskLevel {
+  if (params.requestedOperation === "meta" || params.requestedOperation === "read") return "low";
+  if (params.domain === "cross_surface" && params.requestedOperation === "mixed") {
     return "high";
   }
   return "medium";
@@ -152,10 +165,21 @@ export async function classifyRuntimeTurnContract(params: {
 
   const domain = inferDomainFromTaskClauses(compiled.taskClauses) as RuntimeTurnDomain;
   const requestedOperation = inferOperationFromTaskClauses(compiled.taskClauses);
-  const complexity = inferComplexity(message, requestedOperation);
+  const complexity = inferComplexity({
+    taskClauses: compiled.taskClauses,
+    domain,
+    requestedOperation,
+    routeHint: compiled.routeHint,
+    needsClarification: compiled.needsClarification,
+  });
   const routeProfile = inferRouteProfileFromComplexity(complexity);
-  const riskLevel = inferRisk(message, requestedOperation);
-  const intent = inferIntent({ message, domain, requestedOperation });
+  const riskLevel = inferRisk({ domain, requestedOperation });
+  const intent = inferIntent({
+    domain,
+    requestedOperation,
+    routeHint: compiled.routeHint,
+    toolChoice: compiled.toolChoice,
+  });
 
   const contract: RuntimeTurnContract = {
     intent,

@@ -2,13 +2,14 @@ import { describe, expect, it } from "vitest";
 import { summarizeRuntimeResults } from "@/server/features/ai/runtime/result-summarizer";
 
 describe("summarizeRuntimeResults", () => {
-  it("picks the most recent dated item for latest/most recent requests", () => {
+  it("uses tool-provided message when available instead of lexical first/last rewrites", () => {
     const text = summarizeRuntimeResults({
       request: "what is my most recent email",
       approvalsCount: 0,
       results: [
         {
           success: true,
+          message: 'The first unread email is from new@example.com — "Newest message".',
           data: [
             {
               title: "Older message",
@@ -25,8 +26,7 @@ describe("summarizeRuntimeResults", () => {
       ],
     });
 
-    expect(text).toContain("Your most recent item is");
+    expect(text).toContain("The first unread email is");
     expect(text).toContain("Newest message");
-    expect(text).not.toContain("Older message");
   });
 });

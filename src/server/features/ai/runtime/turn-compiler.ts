@@ -39,18 +39,7 @@ export interface RuntimeCompiledTurn {
   source: "compiler_model" | "compiler_fallback";
 }
 
-const GREETING_RE =
-  /^(hi|hello|hey|yo|sup|good morning|good afternoon|good evening|howdy)[\s!.?]*$/u;
-const CAPABILITIES_RE =
-  /\b(what can you do|capabilit(?:y|ies)|how can you help|what do you do|help me understand)\b/u;
-const CONVERSATION_ONLY_SIGNAL_RE =
-  /\b(thought partner|brainstorm|challenge my assumptions|help me think|just thinking out loud|talk through|reflect)\b/u;
 const ATTACHMENT_RE = /\battach(?:ment|ments|ed)?\b|\battatch(?:ment|ments|ed)?\b/u;
-
-const WEB_DIRECT_SIGNAL_RE =
-  /\b(search\s+(?:the\s+)?(?:web|internet)|search\s+online|google|look\s+up\s+(?:online|on\s+(?:the\s+)?(?:web|internet))|browse\s+the\s+web)\b/u;
-const INTERNAL_SURFACE_SIGNAL_RE =
-  /\b(inbox|email|emails|calendar|meeting|meetings|event|events|schedule|draft|reply|label|archive|trash|unsubscribe|block|rule|policy|memory|remember|recall)\b/u;
 
 const META_CONSTRAINT_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /\b(?:fresh|new)\s+search\b/u, label: "fresh_search" },
@@ -367,14 +356,6 @@ function stripLeadingWebSearchPreamble(message: string): string {
     .trim();
 }
 
-function shouldSingleToolWebSearch(message: string): boolean {
-  const normalized = message.toLowerCase();
-  if (CONVERSATION_ONLY_SIGNAL_RE.test(normalized)) return false;
-  if (INTERNAL_SURFACE_SIGNAL_RE.test(normalized)) return false;
-  if (WEB_DIRECT_SIGNAL_RE.test(normalized)) return true;
-  return false;
-}
-
 async function resolveTimeZone(params: {
   userId: string;
   emailAccountId: string;
@@ -603,60 +584,7 @@ export async function compileRuntimeTurn(params: {
   contextPack?: ContextPack;
 }): Promise<RuntimeCompiledTurn> {
   const message = params.message.trim();
-  const normalized = message.toLowerCase();
-  const metaConstraints = extractMetaConstraints(normalized);
-
-  if (GREETING_RE.test(normalized)) {
-    return {
-      toolChoice: "none",
-      knowledgeSource: "either",
-      freshness: "low",
-      routeHint: "conversation_only",
-      conversationClauses: [message],
-      taskClauses: [],
-      metaConstraints,
-      needsClarification: false,
-      confidence: 0.98,
-      source: "compiler_fallback",
-    };
-  }
-
-  if (CAPABILITIES_RE.test(normalized)) {
-    return {
-      toolChoice: "none",
-      knowledgeSource: "either",
-      freshness: "low",
-      routeHint: "conversation_only",
-      conversationClauses: [message],
-      taskClauses: [],
-      metaConstraints,
-      needsClarification: false,
-      confidence: 0.95,
-      source: "compiler_fallback",
-    };
-  }
-
-  if (shouldSingleToolWebSearch(message)) {
-    const query = normalizeScopeValue(stripLeadingWebSearchPreamble(message)) ?? message;
-    return {
-      toolChoice: "auto",
-      knowledgeSource: "web",
-      freshness: metaConstraints.includes("fresh_search") ? "high" : "low",
-      routeHint: "single_tool",
-      conversationClauses: [],
-      taskClauses: [{ domain: "general", action: "read", confidence: 0.7 }],
-      metaConstraints,
-      needsClarification: false,
-      singleToolCall: {
-        toolName: "web.search",
-        args: { query },
-        reason: "web_search",
-        onFailureText: "I couldn't search the web right now.",
-      },
-      confidence: 0.72,
-      source: "compiler_fallback",
-    };
-  }
+  const metaConstraints = extractMetaConstraints(message.toLowerCase());
 
   const modelResult = await compileWithModel(params);
 
@@ -739,7 +667,7 @@ export async function compileRuntimeTurn(params: {
 
   return {
     toolChoice: "auto",
-    knowledgeSource: INTERNAL_SURFACE_SIGNAL_RE.test(normalized) ? "internal" : "either",
+    knowledgeSource: "either",
     freshness: metaConstraints.includes("fresh_search") ? "high" : "low",
     routeHint: "planner",
     conversationClauses: [],

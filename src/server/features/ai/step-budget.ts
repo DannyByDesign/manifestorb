@@ -14,70 +14,39 @@ export interface StepBudgetInput {
   hasPendingScheduleProposal: boolean;
 }
 
-const APPROVAL_REPLY_PATTERN =
-  /^(yes|yep|yeah|approve|approved|deny|denied|no|nah|cancel|go ahead|send it|do it)$/iu;
-const LOOKUP_VERB_PATTERN =
-  /\b(show|find|list|check|lookup|search|what|which|when|where|who|am i|do i have)\b/iu;
-const MUTATION_VERB_PATTERN =
-  /\b(create|schedule|reschedule|cancel|delete|trash|archive|mark|move|send|draft|update|modify|set|turn on|turn off)\b/iu;
-const CONDITIONAL_PATTERN = /\b(if|unless|otherwise|except|only if|when)\b/iu;
-const CHAINING_PATTERN =
-  /\b(and then|then|also|plus|follow(ed)? by|after that|before that|next)\b/iu;
-const BULK_PATTERN = /\b(all|every|bulk|entire|across)\b/iu;
-
 function clampPositiveInt(value: number, fallback: number): number {
   const rounded = Number.isFinite(value) ? Math.floor(value) : fallback;
   return Math.max(1, rounded);
 }
 
-function countMatches(text: string, pattern: RegExp): number {
-  const globalPattern = new RegExp(pattern.source, `${pattern.flags.replace("g", "")}g`);
-  return [...text.matchAll(globalPattern)].length;
-}
-
-function isCrossResourceRequest(text: string): boolean {
-  const mentionsEmail = /\b(email|inbox|thread|message)\b/iu.test(text);
-  const mentionsCalendar = /\b(calendar|meeting|event|schedule)\b/iu.test(text);
-  const mentionsTasks = /\b(task|todo|to-do)\b/iu.test(text);
-  const mentioned = [mentionsEmail, mentionsCalendar, mentionsTasks].filter(Boolean).length;
-  return mentioned >= 2;
-}
-
 export function classifyStepBudgetProfile(input: StepBudgetInput): StepBudgetProfile {
-  const text = input.message.trim().toLowerCase();
+  const text = input.message.trim();
   if (!text) return "contextual_followup";
 
-  const tokenCount = text.split(/\s+/u).filter(Boolean).length;
-  const hasConditional = CONDITIONAL_PATTERN.test(text);
-  const chainCount = countMatches(text, CHAINING_PATTERN);
-  const hasBulk = BULK_PATTERN.test(text);
-  const isLookup = LOOKUP_VERB_PATTERN.test(text);
-  const isMutation = MUTATION_VERB_PATTERN.test(text);
-  const crossResource = isCrossResourceRequest(text);
+  const tokenCount = text.toLowerCase().split(/\s+/u).filter(Boolean).length;
+  const sentenceCount = text
+    .split(/[.!?;\n]+/u)
+    .map((segment) => segment.trim())
+    .filter(Boolean).length;
+  const clauseCount = text
+    .split(/[,;]+/u)
+    .map((segment) => segment.trim())
+    .filter(Boolean).length;
   const pendingContext = input.hasPendingApproval || input.hasPendingScheduleProposal;
 
-  if (pendingContext && APPROVAL_REPLY_PATTERN.test(text)) {
+  if (pendingContext && tokenCount <= 6 && sentenceCount <= 1) {
     return "approval_decision";
   }
 
-  if (
-    hasConditional ||
-    chainCount >= 2 ||
-    crossResource ||
-    (hasBulk && isMutation)
-  ) {
-    return "multi_step";
-  }
-
-  if (isLookup && !isMutation && tokenCount <= 24) {
+  if (tokenCount <= 12 && sentenceCount <= 1 && clauseCount <= 1) {
     return "simple_lookup";
   }
 
-  if (isMutation && !hasConditional && chainCount === 0 && !crossResource) {
+  if (tokenCount <= 24 && sentenceCount <= 2 && clauseCount <= 1) {
     return "single_action";
   }
 
-  if (tokenCount <= 10) return "contextual_followup";
+  if (tokenCount <= 48 && sentenceCount <= 4) return "multi_step";
   return "complex";
 }
 
@@ -102,4 +71,3 @@ export function computeAdaptiveMaxSteps(input: StepBudgetInput): {
     maxSteps: Math.min(configured, budgetByProfile[profile]),
   };
 }
-
