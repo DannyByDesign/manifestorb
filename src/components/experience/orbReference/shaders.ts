@@ -183,6 +183,7 @@ export const simulationFragmentShader = `
   uniform sampler2D positions;
   uniform float uTime;
   uniform float uFrequency;
+  uniform float uFieldMode;
 
   varying vec2 vUv;
 
@@ -286,6 +287,19 @@ export const simulationFragmentShader = `
                      dot(p2,x2), dot(p3,x3) ) );
   }
 
+  float hash21(vec2 p) {
+    p = fract(p * vec2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return fract(p.x * p.y);
+  }
+
+  vec3 seededDirection(vec2 uv) {
+    float azimuth = hash21(uv * 17.31 + 0.13) * 6.28318530718;
+    float z = hash21(uv * 29.17 + 0.71) * 2.0 - 1.0;
+    float ring = sqrt(max(0.0, 1.0 - z * z));
+    return vec3(cos(azimuth) * ring, sin(azimuth) * ring, z);
+  }
+
 
   vec3 snoiseVec3( vec3 x ){
 
@@ -325,6 +339,31 @@ export const simulationFragmentShader = `
   void main() {
     vec3 pos = texture2D(positions, vUv).rgb;
     vec3 curlPos = texture2D(positions, vUv).rgb;
+
+    // Separate, de-clumped motion field for bright accent particles.
+    if (uFieldMode > 0.5) {
+      vec3 seedDir = seededDirection(vUv);
+      float targetRadius = 0.52 + 0.44 * hash21(vUv * 43.7 + 1.91);
+      vec3 targetPos = seedDir * targetRadius;
+
+      vec3 accentCurl = curlNoise(
+        (pos + seedDir * 0.35) * (uFrequency * 0.65) +
+        vec3(uTime * 0.028, -uTime * 0.021, uTime * 0.018)
+      );
+
+      vec3 tangentOrbit = normalize(vec3(-pos.y, pos.x, 0.0) + vec3(1e-4));
+      vec3 drift = pos + accentCurl * 0.09 + tangentOrbit * 0.035;
+      vec3 spread = mix(drift, targetPos, 0.085);
+
+      float maxRadius = 1.02 + 0.04 * sin(uTime * 0.4 + hash21(vUv * 11.0) * 6.28318530718);
+      float spreadLen = length(spread);
+      if (spreadLen > maxRadius) {
+        spread *= maxRadius / spreadLen;
+      }
+
+      gl_FragColor = vec4(spread, 1.0);
+      return;
+    }
 
     // Gentle movement for particles
     float freq1 = uFrequency * (0.9 + sin(pos.x * 4.0) * 0.2);

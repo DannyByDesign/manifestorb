@@ -38,7 +38,13 @@ const getRandomData = (width: number, height: number) => {
 class SimulationMaterial extends THREE.ShaderMaterial {
   private readonly positionsTexture: THREE.DataTexture;
 
-  constructor(size: number, vertexShader: string, fragmentShader: string, frequency = 0.15) {
+  constructor(
+    size: number,
+    vertexShader: string,
+    fragmentShader: string,
+    frequency = 0.15,
+    fieldMode = 0
+  ) {
     const positionsTexture = new THREE.DataTexture(
       getRandomData(size, size),
       size,
@@ -51,6 +57,7 @@ class SimulationMaterial extends THREE.ShaderMaterial {
     const simulationUniforms = {
       positions: { value: positionsTexture },
       uFrequency: { value: frequency },
+      uFieldMode: { value: fieldMode },
       uTime: { value: 0 },
     };
 

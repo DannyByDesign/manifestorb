@@ -23,6 +23,22 @@ type ThemePalette = {
   cyanSheen: string;
 };
 
+type ParticleConfig = {
+  size: number;
+  pointSize: number;
+  frequency: number;
+  blending: THREE.Blending;
+  densityBias: number;
+  alphaBase: number;
+  alphaBoost: number;
+  darkTintMix: number;
+  glintChance: number;
+  depthFade: number;
+  clumpFlatten?: number;
+  fieldMode?: number;
+  colors: [string, string, string, string];
+};
+
 const DEFAULT_PALETTE: ThemePalette = {
   baseLilac: "#F4EFF7",
   coolLavender: "#866AD6",
@@ -72,7 +88,7 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
     };
   }, [palette]);
 
-  const particleConfigs = useMemo(
+  const particleConfigs = useMemo<ParticleConfig[]>(
     () => [
       {
         size: 360,
@@ -151,6 +167,7 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         glintChance: 0.016,
         depthFade: 0.22,
         clumpFlatten: 0.88,
+        fieldMode: 1,
         colors: [derived.electricViolet, derived.iceLavender, derived.peachGlow, derived.rosePeach],
       },
       {
@@ -206,6 +223,7 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
             glintChance={config.glintChance}
             depthFade={config.depthFade}
             clumpFlatten={config.clumpFlatten ?? 0}
+            fieldMode={config.fieldMode ?? 0}
             simVertShader={simulationVertexShader}
             simFragShader={simulationFragmentShader}
           />
