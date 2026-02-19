@@ -4,9 +4,17 @@ import { sendReconnectionEmail } from "@amodel/resend";
 import { env } from "@/env";
 import { addUserErrorMessage, ErrorType } from "@/server/lib/error-messages";
 import { createUnsubscribeToken } from "@/server/lib/unsubscribe";
+import { recordInvalidGrantFailure } from "@/server/auth/oauth-refresh-failure-policy";
+
+export type CleanupInvalidTokensResult =
+  | { status: "not_found" | "already_disconnected" }
+  | { status: "deferred"; attempts: number; threshold: number }
+  | { status: "disconnected" };
 
 /**
- * Cleans up invalid tokens when authentication fails permanently.
+ * Handles permanent auth failures.
+ * For invalid_grant we require repeated failures before hard disconnect
+ * to avoid destructive one-off disconnects caused by transient auth faults.
  * Used for:
  * - invalid_grant: User revoked access or tokens expired
  * - insufficientPermissions: User hasn't granted all required scopes
@@ -19,7 +27,7 @@ export async function cleanupInvalidTokens({
   emailAccountId: string;
   reason: "invalid_grant" | "insufficient_permissions";
   logger: Logger;
-}) {
+}): Promise<CleanupInvalidTokensResult> {
   logger.info("Cleaning up invalid tokens", { reason });
 
   const emailAccount = await prisma.emailAccount.findUnique({
@@ -33,6 +41,7 @@ export async function cleanupInvalidTokens({
       account: {
         select: {
           disconnectedAt: true,
+          provider: true,
         },
       },
     },
@@ -40,19 +49,43 @@ export async function cleanupInvalidTokens({
 
   if (!emailAccount) {
     logger.warn("Email account not found");
-    return;
+    return { status: "not_found" };
   }
 
   if (emailAccount.account?.disconnectedAt) {
     logger.info("Account already marked as disconnected");
-    return;
+    return { status: "already_disconnected" };
+  }
+
+  if (reason === "invalid_grant") {
+    const decision = await recordInvalidGrantFailure({
+      provider: emailAccount.account?.provider ?? "unknown",
+      accountId: emailAccount.accountId,
+      logger,
+    });
+
+    if (!decision.shouldDisconnect) {
+      logger.warn(
+        "Deferring hard disconnect after invalid_grant (waiting for repeated confirmation)",
+        {
+          emailAccountId,
+          accountId: emailAccount.accountId,
+          attempts: decision.attempts,
+          threshold: decision.threshold,
+        },
+      );
+      return {
+        status: "deferred",
+        attempts: decision.attempts,
+        threshold: decision.threshold,
+      };
+    }
   }
 
   const updated = await prisma.account.updateMany({
     where: { id: emailAccount.accountId, disconnectedAt: null },
     data: {
       access_token: null,
-      refresh_token: null,
       expires_at: null,
       disconnectedAt: new Date(),
     },
@@ -62,7 +95,7 @@ export async function cleanupInvalidTokens({
     logger.info(
       "Account already marked as disconnected (via concurrent update)",
     );
-    return;
+    return { status: "already_disconnected" };
   }
 
   if (reason === "invalid_grant") {
@@ -106,5 +139,8 @@ export async function cleanupInvalidTokens({
     );
   }
 
-  logger.info("Tokens cleared - user must re-authenticate", { reason });
+  logger.info("Account marked disconnected - user must re-authenticate", {
+    reason,
+  });
+  return { status: "disconnected" };
 }

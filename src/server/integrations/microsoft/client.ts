@@ -203,11 +203,17 @@ export const getOutlookClientWithRefresh = async ({
           },
         );
 
-        await cleanupInvalidTokens({
+        const cleanup = await cleanupInvalidTokens({
           emailAccountId,
           reason: "invalid_grant",
           logger,
         });
+
+        if (cleanup.status === "deferred") {
+          throw new SafeError(
+            "Microsoft authentication failed while refreshing access. Please try again. If this keeps happening, reconnect your account in the Amodel web app.",
+          );
+        }
 
         throw new SafeError(
           "Your Microsoft authorization has expired. Please sign out and log in again to reconnect your account.",

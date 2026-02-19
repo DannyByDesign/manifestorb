@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { saveTokens } from "@/server/auth";
 import prisma from "@/server/lib/__mocks__/prisma";
 import { clearSpecificErrorMessages } from "@/server/lib/error-messages";
+import { clearInvalidGrantFailures } from "@/server/auth/oauth-refresh-failure-policy";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/server/db/client");
@@ -22,6 +23,9 @@ vi.mock("@googleapis/gmail", () => ({
 }));
 vi.mock("@/server/lib/encryption", () => ({
   encryptToken: vi.fn((t) => t),
+}));
+vi.mock("@/server/auth/oauth-refresh-failure-policy", () => ({
+  clearInvalidGrantFailures: vi.fn().mockResolvedValue(undefined),
 }));
 
 describe("saveTokens", () => {
@@ -59,6 +63,12 @@ describe("saveTokens", () => {
         }),
       }),
     );
+    expect(clearInvalidGrantFailures).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "google",
+        accountId: "acc_1",
+      }),
+    );
     expect(clearSpecificErrorMessages).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: "user_1",
@@ -68,7 +78,10 @@ describe("saveTokens", () => {
   });
 
   it("clears disconnectedAt and error messages when saving tokens via providerAccountId", async () => {
-    prisma.account.update.mockResolvedValue({ userId: "user_1" } as any);
+    prisma.account.update.mockResolvedValue({
+      id: "acc_2",
+      userId: "user_1",
+    } as any);
 
     await saveTokens({
       providerAccountId: "pa_1",
@@ -92,6 +105,12 @@ describe("saveTokens", () => {
         data: expect.objectContaining({
           disconnectedAt: null,
         }),
+      }),
+    );
+    expect(clearInvalidGrantFailures).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "google",
+        accountId: "acc_2",
       }),
     );
     expect(clearSpecificErrorMessages).toHaveBeenCalledWith(

@@ -8,6 +8,7 @@ import {
   ErrorType,
 } from "@/server/lib/error-messages";
 import { isDuplicateError } from "@/server/db/client-helpers";
+import { clearInvalidGrantFailures } from "@/server/auth/oauth-refresh-failure-policy";
 
 const logger = createScopedLogger("auth");
 
@@ -203,6 +204,12 @@ export async function saveTokens({
       data,
     });
 
+    await clearInvalidGrantFailures({
+      provider,
+      accountId: emailAccount.accountId,
+      logger,
+    });
+
     await clearSpecificErrorMessages({
       userId: emailAccount.userId,
       errorTypes: [ErrorType.ACCOUNT_DISCONNECTED],
@@ -227,6 +234,12 @@ export async function saveTokens({
         },
       },
       data,
+    });
+
+    await clearInvalidGrantFailures({
+      provider,
+      accountId: account.id,
+      logger,
     });
 
     await clearSpecificErrorMessages({

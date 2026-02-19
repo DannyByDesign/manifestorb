@@ -205,14 +205,25 @@ async function watchEmails({
     const isInvalidGrant = errorMessage === "invalid_grant";
 
     if (isInsufficientPermissions || isInvalidGrant) {
-      logger.warn("Auth failure while watching inbox - cleaning up tokens", {
+      logger.warn("Auth failure while watching inbox", {
         error,
       });
-      await cleanupInvalidTokens({
+      const cleanup = await cleanupInvalidTokens({
         emailAccountId,
         reason: isInvalidGrant ? "invalid_grant" : "insufficient_permissions",
         logger,
       });
+
+      if (cleanup.status === "deferred") {
+        logger.warn(
+          "Deferring disconnect after invalid_grant during watch setup",
+          {
+            emailAccountId,
+            attempts: cleanup.attempts,
+            threshold: cleanup.threshold,
+          },
+        );
+      }
     } else {
       logger.error("Error watching inbox", { error });
       captureException(error, { emailAccountId });

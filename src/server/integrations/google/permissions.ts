@@ -4,7 +4,7 @@ import {
   getGmailClientWithRefresh,
 } from "@/server/integrations/google/client";
 import { createScopedLogger } from "@/server/lib/logger";
-import prisma from "@/server/db/client";
+import { cleanupInvalidTokens } from "@/server/auth/cleanup-invalid-tokens";
 
 const logger = createScopedLogger("Gmail Permissions");
 
@@ -137,25 +137,23 @@ export async function handleGmailPermissionsCheck({
           permissionsAfterRefresh.error &&
           permissionsAfterRefresh.error === "invalid_grant"
         ) {
-          logger.info("Cleaning up invalid Gmail tokens", { emailAccountId });
-          const emailAccount = await prisma.emailAccount.findUnique({
-            where: { id: emailAccountId },
-            select: { accountId: true },
+          logger.info("Handling invalid Gmail grant after refresh retry", {
+            emailAccountId,
           });
-          if (!emailAccount)
+          const cleanup = await cleanupInvalidTokens({
+            emailAccountId,
+            reason: "invalid_grant",
+            logger,
+          });
+
+          if (cleanup.status === "deferred") {
             return {
               hasAllPermissions: false,
-              error: "Email account not found",
+              error:
+                "Gmail authorization refresh failed. Please try again. If this keeps happening, reconnect your account.",
+              missingScopes: permissionsBeforeRefresh.missingScopes,
             };
-
-          await prisma.account.update({
-            where: { id: emailAccount.accountId },
-            data: {
-              access_token: null,
-              refresh_token: null,
-              expires_at: null,
-            },
-          });
+          }
 
           return {
             hasAllPermissions: false,
@@ -165,10 +163,13 @@ export async function handleGmailPermissionsCheck({
         }
 
         return permissionsAfterRefresh;
-      } catch (_) {
+      } catch (error) {
         return {
           hasAllPermissions: false,
-          error: "Gmail access expired. Please reconnect your account.",
+          error:
+            error instanceof Error
+              ? error.message
+              : "Gmail access expired. Please reconnect your account.",
           missingScopes: permissionsBeforeRefresh.missingScopes,
         };
       }

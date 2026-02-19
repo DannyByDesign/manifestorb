@@ -14,6 +14,26 @@ type AuthOptions = {
   expiresAt?: number | null;
 };
 
+type OAuthErrorData = {
+  error?: string;
+  error_description?: string;
+};
+
+function getOAuthErrorData(error: unknown): OAuthErrorData | null {
+  if (!error || typeof error !== "object") return null;
+  const response = (error as { response?: { data?: unknown } }).response;
+  if (!response || typeof response !== "object") return null;
+  const data = response.data;
+  if (!data || typeof data !== "object") return null;
+  return data as OAuthErrorData;
+}
+
+function isInvalidGrantError(error: unknown): boolean {
+  const code = getOAuthErrorData(error)?.error;
+  if (code) return code === "invalid_grant";
+  return error instanceof Error && error.message.trim() === "invalid_grant";
+}
+
 const getAuth = ({
   accessToken,
   refreshToken,
@@ -96,21 +116,26 @@ export const getGmailClientWithRefresh = async ({
 
     return g;
   } catch (error) {
-    const isInvalidGrantError =
-      error instanceof Error && error.message.includes("invalid_grant");
+    const invalidGrant = isInvalidGrantError(error);
 
-    if (isInvalidGrantError) {
+    if (invalidGrant) {
       logger.warn("Error refreshing Gmail access token", {
         emailAccountId,
-        error: error.message,
-        errorDescription: (error as { response?: { data?: { error_description?: string } } })?.response?.data?.error_description,
+        error: error instanceof Error ? error.message : String(error),
+        errorDescription: getOAuthErrorData(error)?.error_description,
       });
 
-      await cleanupInvalidTokens({
+      const cleanup = await cleanupInvalidTokens({
         emailAccountId,
         reason: "invalid_grant",
         logger,
       });
+
+      if (cleanup.status === "deferred") {
+        throw new SafeError(
+          "Gmail authentication failed while refreshing access. Please try again. If this keeps happening, reconnect your account in the Amodel web app.",
+        );
+      }
 
       throw new SafeError(
         "Your Gmail connection has expired. Please reconnect your account in the Amodel web app.",
@@ -179,20 +204,25 @@ export const getContactsClientWithRefresh = async ({
 
     return contacts;
   } catch (error) {
-    const isInvalidGrantError =
-      error instanceof Error && error.message.includes("invalid_grant");
+    const invalidGrant = isInvalidGrantError(error);
 
-    if (isInvalidGrantError) {
+    if (invalidGrant) {
       logger.warn("Error refreshing Google Contacts access token", {
         emailAccountId,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
       });
 
-      await cleanupInvalidTokens({
+      const cleanup = await cleanupInvalidTokens({
         emailAccountId,
         reason: "invalid_grant",
         logger,
       });
+
+      if (cleanup.status === "deferred") {
+        throw new SafeError(
+          "Google authentication failed while refreshing access. Please try again. If this keeps happening, reconnect your account in the Amodel web app.",
+        );
+      }
 
       throw new SafeError(
         "Your Gmail connection has expired. Please reconnect your account in the Amodel web app.",
