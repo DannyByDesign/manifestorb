@@ -256,54 +256,23 @@ export const simulationFragmentShader = `
 
   void main() {
     vec3 pos = texture2D(positions, vUv).rgb;
-    float radial = max(length(pos), 0.0001);
-    float t = uTime;
-    float freqBase = clamp(uFrequency, 0.08, 2.2);
+    vec3 curlPos = texture2D(positions, vUv).rgb;
 
-    float freq1 = freqBase * (0.9 + sin(pos.x * 4.0) * 0.2);
-    float freq2 = freqBase * (1.1 + cos(pos.y * 4.0) * 0.3);
+    // Gentle movement for particles
+    float freq1 = uFrequency * (0.9 + sin(pos.x * 4.0) * 0.2);
+    float freq2 = uFrequency * (1.1 + cos(pos.y * 4.0) * 0.3);
+    float freq3 = uFrequency * (1.3 + sin(pos.z * 4.0) * 0.4);
 
-    vec3 curlLarge = curlNoise(pos * freq1 + vec3(0.0, t * 0.08, 0.0));
-    vec3 curlFine = curlNoise((pos + vec3(2.1, -1.3, 0.7)) * freq2 - vec3(t * 0.11, 0.0, t * 0.07));
+    pos = curlNoise(pos * freq1 + uTime * 0.08);
+    curlPos = curlNoise(curlPos * freq2 + uTime * 0.1);
+    curlPos += curlNoise(curlPos * freq3) * 0.15;
 
-    vec3 driftAxis = normalize(vec3(0.24, 0.87, 0.42));
-    vec3 orbital = cross(driftAxis, pos + curlLarge * 0.35);
-    float orbitalMod = 0.62 + 0.38 * sin(t * 0.34 + pos.y * 4.8 + pos.x * 2.4);
+    vec3 randomOffset = vec3(
+      sin(pos.y * 8.0 + uTime) * 0.08,
+      cos(pos.z * 8.0 + uTime * 1.1) * 0.08,
+      sin(pos.x * 8.0 + uTime * 0.9) * 0.08
+    );
 
-    float shearBand = smoothstep(0.22, 0.96, radial) * (0.55 + 0.45 * sin(pos.y * 8.4 + t * 0.52));
-    vec3 shear = vec3(-pos.y, pos.x, sin(pos.x * 4.2 + t * 0.24) * 0.32) * shearBand;
-
-    vec3 lobeA = vec3(0.3, -0.1, 0.18);
-    vec3 lobeB = vec3(-0.24, 0.16, -0.08);
-    vec3 toA = lobeA - pos;
-    vec3 toB = lobeB - pos;
-    vec3 attract = toA / (0.18 + dot(toA, toA)) + toB / (0.2 + dot(toB, toB));
-
-    float breath = sin(t * 0.6 + radial * 8.3) * 0.22;
-    vec3 radialDir = pos / radial;
-    vec3 compression = -radialDir * ((radial - 0.5) * 0.42 + breath * 0.2);
-
-    vec3 flow = mix(curlLarge, curlFine, 0.58);
-    vec3 velocity =
-      orbital * orbitalMod * 0.78 +
-      flow * 0.92 +
-      shear * 0.55 +
-      attract * 0.16 +
-      compression;
-
-    vec3 nextPos = pos + velocity * 0.09;
-
-    float nextLen = max(length(nextPos), 0.0001);
-    float conf = smoothstep(0.72, 1.06, nextLen);
-    vec3 confined = nextPos / nextLen * 0.76;
-    nextPos = mix(nextPos, confined, conf * 0.9);
-
-    vec3 jitter = vec3(
-      snoise(vec3(nextPos.xy * 7.0, t * 0.17)),
-      snoise(vec3(nextPos.yz * 6.5, t * 0.19)),
-      snoise(vec3(nextPos.zx * 6.9, t * 0.21))
-    ) * 0.0035;
-
-    gl_FragColor = vec4(nextPos + jitter, 1.0);
+    gl_FragColor = vec4(mix(pos, curlPos, 0.5) + randomOffset, 1.0);
   }
 `;
