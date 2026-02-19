@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-const fetchMock = vi.fn();
-vi.stubGlobal("fetch", fetchMock);
+const approveRoutePostMock = vi.fn();
+const denyRoutePostMock = vi.fn();
+const resolveAmbiguousTimePostMock = vi.fn();
+const draftSendPostMock = vi.fn();
+const draftDeleteMock = vi.fn();
 
 vi.mock("@/env", () => ({
   env: {
@@ -10,9 +13,33 @@ vi.mock("@/env", () => ({
   },
 }));
 
+vi.mock("@/app/api/approvals/[id]/approve/route", () => ({
+  POST: approveRoutePostMock,
+}));
+
+vi.mock("@/app/api/approvals/[id]/deny/route", () => ({
+  POST: denyRoutePostMock,
+}));
+
+vi.mock("@/app/api/ambiguous-time/[id]/resolve/route", () => ({
+  POST: resolveAmbiguousTimePostMock,
+}));
+
+vi.mock("@/app/api/drafts/[id]/send/route", () => ({
+  POST: draftSendPostMock,
+}));
+
+vi.mock("@/app/api/drafts/[id]/route", () => ({
+  DELETE: draftDeleteMock,
+}));
+
 describe("POST /api/surfaces/actions", () => {
   beforeEach(() => {
-    fetchMock.mockReset();
+    approveRoutePostMock.mockReset();
+    denyRoutePostMock.mockReset();
+    resolveAmbiguousTimePostMock.mockReset();
+    draftSendPostMock.mockReset();
+    draftDeleteMock.mockReset();
   });
 
   it("returns 401 when unauthorized", async () => {
@@ -39,7 +66,7 @@ describe("POST /api/surfaces/actions", () => {
   });
 
   it("proxies approval actions", async () => {
-    fetchMock.mockResolvedValueOnce(
+    approveRoutePostMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ decision: "APPROVED" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -65,16 +92,24 @@ describe("POST /api/surfaces/actions", () => {
     const json = await res.json();
     expect(res.status).toBe(200);
     expect(json).toMatchObject({ ok: true, status: 200 });
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost/api/approvals/req-1/approve",
-      expect.objectContaining({
-        method: "POST",
-      }),
-    );
+    expect(approveRoutePostMock).toHaveBeenCalledTimes(1);
+
+    const [internalReq, routeCtx] = approveRoutePostMock.mock.calls[0] as [
+      NextRequest,
+      { params: Promise<{ id: string }> },
+    ];
+    expect(internalReq.method).toBe("POST");
+    expect(internalReq.nextUrl.pathname).toBe("/api/approvals/req-1/approve");
+    expect(await internalReq.json()).toEqual({
+      provider: "discord",
+      userId: "U123",
+      reason: undefined,
+    });
+    expect(await routeCtx.params).toEqual({ id: "req-1" });
   });
 
   it("proxies draft discard and forwards non-200 status", async () => {
-    fetchMock.mockResolvedValueOnce(
+    draftDeleteMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ error: "Draft not found" }), {
         status: 404,
         headers: { "Content-Type": "application/json" },
@@ -106,11 +141,18 @@ describe("POST /api/surfaces/actions", () => {
       status: 404,
       error: "Draft not found",
     });
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost/api/drafts/d-1?userId=user-1&emailAccountId=email-1",
-      expect.objectContaining({
-        method: "DELETE",
-      }),
+    expect(draftDeleteMock).toHaveBeenCalledTimes(1);
+
+    const [internalReq, routeCtx] = draftDeleteMock.mock.calls[0] as [
+      NextRequest,
+      { params: Promise<{ id: string }> },
+    ];
+    expect(internalReq.method).toBe("DELETE");
+    expect(internalReq.nextUrl.pathname).toBe("/api/drafts/d-1");
+    expect(internalReq.nextUrl.searchParams.get("userId")).toBe("user-1");
+    expect(internalReq.nextUrl.searchParams.get("emailAccountId")).toBe(
+      "email-1",
     );
+    expect(await routeCtx.params).toEqual({ id: "d-1" });
   });
 });

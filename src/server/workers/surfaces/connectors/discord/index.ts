@@ -15,7 +15,7 @@ import {
     forwardToBrain,
     resolveSurfaceSession,
     submitSurfaceAction,
-    toPlainSidecarText,
+    toPlainSurfaceText,
     type InteractiveAction,
     type InteractivePayload
 } from "../../utils";
@@ -26,14 +26,14 @@ import {
     touchPlatformEvent
 } from "../../platform-status";
 import {
-    acknowledgeSidecarDelivery,
-    hasSidecarResponseBeenDelivered,
-    markSidecarResponseDelivered,
+    acknowledgeSurfaceDelivery,
+    hasSurfaceResponseBeenDelivered,
+    markSurfaceResponseDelivered,
 } from "../../delivery";
 import { env } from "../../env";
 
 async function clearInteractionButtons(interaction: ButtonInteraction) {
-    const currentContent = toPlainSidecarText(
+    const currentContent = toPlainSurfaceText(
         typeof interaction.message.content === "string" && interaction.message.content.length > 0
             ? interaction.message.content
             : "Processing request...",
@@ -116,9 +116,9 @@ export function startDiscord() {
                 });
 
                 if (result.ok) {
-                    await interaction.followUp(toPlainSidecarText("success"));
+                    await interaction.followUp(toPlainSurfaceText("success"));
                 } else {
-                    await interaction.followUp(toPlainSidecarText("Failed to send email."));
+                    await interaction.followUp(toPlainSurfaceText("Failed to send email."));
                 }
             } else if (action === "draft_discard") {
                 console.log(`[Surfaces] Discord: Discarding draft ${draftId}`);
@@ -135,9 +135,9 @@ export function startDiscord() {
                 });
 
                 if (result.ok) {
-                    await interaction.followUp(toPlainSidecarText("success"));
+                    await interaction.followUp(toPlainSurfaceText("success"));
                 } else {
-                    await interaction.followUp(toPlainSidecarText("Failed to discard draft."));
+                    await interaction.followUp(toPlainSurfaceText("Failed to discard draft."));
                 }
             }
             return;
@@ -161,9 +161,9 @@ export function startDiscord() {
             });
 
             if (result.ok) {
-                await interaction.followUp(toPlainSidecarText("success"));
+                await interaction.followUp(toPlainSurfaceText("success"));
             } else {
-                await interaction.followUp(toPlainSidecarText("Failed to resolve that time."));
+                await interaction.followUp(toPlainSurfaceText("Failed to resolve that time."));
             }
             return;
         }
@@ -187,7 +187,7 @@ export function startDiscord() {
         });
 
         if (!result.ok) {
-            await interaction.followUp(toPlainSidecarText(`Failed to ${action} request.`));
+            await interaction.followUp(toPlainSurfaceText(`Failed to ${action} request.`));
         }
     });
 
@@ -247,9 +247,9 @@ export function startDiscord() {
                     const text = linkUrl
                         ? `Welcome to Amodel.\n\nTo get started, connect your account here (one-time): ${linkUrl}`
                         : "Welcome to Amodel.\n\nSomething went wrong generating your link. Please try again in a moment.";
-                    await message.reply(toPlainSidecarText(text));
+                    await message.reply(toPlainSurfaceText(text));
                 } else {
-                    await message.reply(toPlainSidecarText("To connect your Amodel account, please DM me directly."));
+                    await message.reply(toPlainSurfaceText("To connect your Amodel account, please DM me directly."));
                 }
                 return;
             }
@@ -281,7 +281,7 @@ export function startDiscord() {
                             : undefined;
                     if (
                         responseId &&
-                        await hasSidecarResponseBeenDelivered({
+                        await hasSurfaceResponseBeenDelivered({
                             provider: "discord",
                             responseId,
                         })
@@ -294,13 +294,13 @@ export function startDiscord() {
                         continue;
                     }
 
-                    const plainResponseContent = toPlainSidecarText(
+                    const plainResponseContent = toPlainSurfaceText(
                         typeof resp.content === "string" ? resp.content : "",
                     );
                     let providerMessageId: string | undefined;
                     if (resp.interactive) {
                         const interactive = resp.interactive as InteractivePayload;
-                        const plainInteractiveSummary = toPlainSidecarText(interactive.summary || "");
+                        const plainInteractiveSummary = toPlainSurfaceText(interactive.summary || "");
 
                         const isDraft = interactive.type === "draft_created";
                         const isApprovalLike = interactive.type === "approval_request" || interactive.type === "action_request";
@@ -334,7 +334,7 @@ export function startDiscord() {
                             // Build message options based on type
                             if (isDraft && interactive.preview) {
                                 const preview = interactive.preview;
-                                const previewBody = toPlainSidecarText(preview.body || "");
+                                const previewBody = toPlainSurfaceText(preview.body || "");
                                 const bodySnippet = previewBody.length > 1000
                                     ? previewBody.slice(0, 1000) + "..."
                                     : previewBody;
@@ -377,12 +377,12 @@ export function startDiscord() {
                     }
 
                     if (responseId && providerMessageId) {
-                        await markSidecarResponseDelivered({
+                        await markSurfaceResponseDelivered({
                             provider: "discord",
                             responseId,
                         });
                         try {
-                            await acknowledgeSidecarDelivery({
+                            await acknowledgeSurfaceDelivery({
                                 responseId,
                                 provider: "discord",
                                 providerMessageId,
@@ -420,7 +420,7 @@ export async function sendDiscordMessage(channelId: string, content: string): Pr
     try {
         const channel = await discordClient.channels.fetch(channelId);
         if (channel && channel.isTextBased() && "send" in channel) {
-            const sent = await channel.send(toPlainSidecarText(content));
+            const sent = await channel.send(toPlainSurfaceText(content));
             return typeof sent.id === "string" ? sent.id : undefined;
         }
         return undefined;
@@ -437,7 +437,7 @@ export async function sendLinkedToDiscordUser(providerAccountId: string): Promis
     try {
         const user = await discordClient.users.fetch(providerAccountId);
         await user.send(
-            toPlainSidecarText(
+            toPlainSurfaceText(
                 "Connected. You're all set.\n\nSend me a message here anytime and I'll handle email + calendar for you.",
             ),
         );

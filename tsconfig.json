@@ -84,7 +84,6 @@
   ],
   "exclude": [
     "node_modules",
-    "surfaces",
     "**/*.test.ts",
     "**/*.test.tsx"
   ]

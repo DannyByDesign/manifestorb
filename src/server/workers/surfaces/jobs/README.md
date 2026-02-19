@@ -5,7 +5,7 @@ This directory contains long-running job workers executed by the surfaces worker
 Why this worker runtime:
 - Chat connectors (Slack/Discord/Telegram) require persistent process state.
 - Memory and embedding pipelines are safer in retryable long-lived workers.
-- Main app and worker now run in the same Railway service (no separate sidecar deployment).
+- Main app and worker run in one Railway service (no separate surfaces deployment).
 
 ## Jobs
 
@@ -14,10 +14,8 @@ Why this worker runtime:
 Purpose: user-level summarization + fact extraction across *all* conversation messages for a user (unified memory).
 
 Key behaviors:
-- fetches new `ConversationMessage`s since `UserSummary.lastMessageAt`
-- calls Gemini (`gemini-2.5-flash`) to produce a compressed summary + extracted facts
-- upserts `UserSummary` + `MemoryFact`s
-- enqueues embeddings for new/updated facts into Redis (LPUSH to an embedding queue key)
+- delegates to core route `POST /api/jobs/record-memory`
+- preserves worker-facing response shape for scheduler/trigger callers
 
 Triggered by:
 - main app: `src/server/features/memory/service.ts` enqueues to the co-located surfaces worker when `JOBS_SHARED_SECRET` is configured
@@ -28,17 +26,16 @@ Triggered by:
 Purpose: drain the embedding queue and generate OpenAI embeddings (used for semantic search).
 
 Key behaviors:
-- reads queued jobs from Redis
-- calls OpenAI embeddings (`text-embedding-3-small`)
-- stores vectors in Postgres (pgvector fields on the relevant model)
+- delegates to core route `POST /api/jobs/process-embeddings`
+- returns processed/recovered counts and queue stats to scheduler/status endpoints
 
 ### Decay Worker (`decay-worker.ts`)
 
 Purpose: apply retention/decay rules to long-term memory facts.
 
 Key behaviors:
-- marks stale facts inactive
-- deletes older inactive facts according to retention rules
+- delegates to core route `POST /api/jobs/memory-decay`
+- keeps local stats query for status visibility
 
 ### Scheduler (`scheduler.ts`)
 
@@ -52,7 +49,7 @@ Exposed endpoints (see `src/server/workers/surfaces/index.ts`):
 
 ## Required Environment
 
-See `/.env.example` for the unified template. The important bits:
+The important bits:
 - `DATABASE_URL` (same database as the main app)
 - `REDIS_URL`
 - `OPENAI_API_KEY` (embeddings)

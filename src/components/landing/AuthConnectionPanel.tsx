@@ -24,7 +24,7 @@ type IntegrationStatusResponse = {
     connected: boolean;
     reason: string | null;
   };
-  sidecars?: {
+  chatConnectors?: {
     slack?: { linked: boolean };
     discord?: { linked: boolean };
     telegram?: { linked: boolean };
@@ -405,29 +405,29 @@ export function AuthConnectionPanel() {
             <div className="font-medium">Chat Connectors</div>
             <p>
               Slack:{" "}
-              {status?.sidecars?.slack?.linked ? "Linked" : "Not linked"}
+              {status?.chatConnectors?.slack?.linked ? "Linked" : "Not linked"}
             </p>
             <p>
               Discord:{" "}
-              {status?.sidecars?.discord?.linked ? "Linked" : "Not linked"}
+              {status?.chatConnectors?.discord?.linked ? "Linked" : "Not linked"}
             </p>
             <p>
               Telegram:{" "}
-              {status?.sidecars?.telegram?.linked ? "Linked" : "Not linked"}
+              {status?.chatConnectors?.telegram?.linked ? "Linked" : "Not linked"}
             </p>
             {status?.authenticated && (
               <div className="mt-2 flex gap-2">
                 <button
                   type="button"
                   onClick={() => void startSlackConnect()}
-                  disabled={connecting !== null || status?.sidecars?.slack?.linked}
+                  disabled={connecting !== null || status?.chatConnectors?.slack?.linked}
                   className="rounded bg-white px-3 py-1.5 text-black disabled:opacity-60"
                 >
-                  {status?.sidecars?.slack?.linked
+                  {status?.chatConnectors?.slack?.linked
                     ? "Slack Connected"
                     : "Connect Slack"}
                 </button>
-                {status?.sidecars?.slack?.linked && (
+                {status?.chatConnectors?.slack?.linked && (
                   <button
                     type="button"
                     onClick={() => void disconnectSlack()}

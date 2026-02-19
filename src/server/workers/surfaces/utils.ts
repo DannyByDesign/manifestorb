@@ -362,6 +362,3 @@ export function toPlainSurfaceText(input: string): string {
         .trim();
     return text;
 }
-
-// Back-compat alias while connector modules are migrated.
-export const toPlainSidecarText = toPlainSurfaceText;

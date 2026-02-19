@@ -1,115 +1,86 @@
 /**
- * Memory Decay Worker
- * 
- * Manages the lifecycle of memory facts:
- * 1. Marks stale memories as inactive (soft delete)
- * 2. Permanently deletes old inactive memories (hard delete)
- * 
- * This worker runs in the surfaces worker with no timeout constraints.
+ * Memory Decay Worker bridge
+ *
+ * Worker runtime delegates decay execution to the canonical core API job
+ * implementation so lifecycle logic is defined in one place.
  */
-import { prisma } from '../db/prisma';
+import { prisma } from "../db/prisma";
+import { env } from "../env";
 
-// Configuration (must match main app's decay.ts)
-const STALE_THRESHOLD_DAYS = 180;  // Mark inactive after 180 days without access
-const INACTIVE_PURGE_DAYS = 30;    // Delete after 30 days inactive
+const STALE_THRESHOLD_DAYS = 180;
 
 export interface DecayResult {
-    pruned: number;   // Facts marked as inactive
-    purged: number;   // Facts permanently deleted
+  pruned: number;
+  purged: number;
 }
 
-/**
- * Run the memory decay process
- * 
- * 1. Marks facts as inactive if:
- *    - Not accessed in 180+ days, OR
- *    - Past their explicit expiresAt date
- * 
- * 2. Permanently deletes facts that:
- *    - Have been inactive for 30+ days
- */
+type DecayJobResponse = {
+  success?: boolean;
+  pruned?: number;
+  purged?: number;
+};
+
+function resolveJobEndpoint(pathname: string): string {
+  return new URL(pathname, env.CORE_BASE_URL).toString();
+}
+
 export async function runMemoryDecay(): Promise<DecayResult> {
-    const staleDate = new Date(Date.now() - STALE_THRESHOLD_DAYS * 24 * 60 * 60 * 1000);
-    const purgeDate = new Date(Date.now() - INACTIVE_PURGE_DAYS * 24 * 60 * 60 * 1000);
-    const now = new Date();
+  if (!env.JOBS_SHARED_SECRET) {
+    throw new Error("JOBS_SHARED_SECRET not configured");
+  }
 
-    console.log('[Decay] Starting memory decay process');
-    console.log(`[Decay] Stale threshold: ${staleDate.toISOString()}`);
-    console.log(`[Decay] Purge threshold: ${purgeDate.toISOString()}`);
+  const response = await fetch(resolveJobEndpoint("/api/jobs/memory-decay"), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.JOBS_SHARED_SECRET}`,
+    },
+  });
 
-    // 1. Mark stale memories as inactive (soft delete)
-    const pruned = await prisma.memoryFact.updateMany({
-        where: {
-            isActive: true,
-            OR: [
-                // Expired by TTL
-                { expiresAt: { lt: now } },
-                // Stale by access time
-                {
-                    AND: [
-                        { lastAccessedAt: { lt: staleDate } },
-                        { updatedAt: { lt: staleDate } },
-                    ],
-                },
-            ],
-        },
-        data: { isActive: false },
-    });
+  let payload: DecayJobResponse = {};
+  try {
+    payload = (await response.json()) as DecayJobResponse;
+  } catch {
+    payload = {};
+  }
 
-    if (pruned.count > 0) {
-        console.log(`[Decay] Pruned ${pruned.count} stale memories`);
-    }
+  if (!response.ok || payload.success !== true) {
+    const body = JSON.stringify(payload).slice(0, 500);
+    throw new Error(`decay_job_failed:${response.status}:${body}`);
+  }
 
-    // 2. Permanently delete old inactive memories (hard delete)
-    const purged = await prisma.memoryFact.deleteMany({
-        where: {
-            isActive: false,
-            updatedAt: { lt: purgeDate },
-        },
-    });
-
-    if (purged.count > 0) {
-        console.log(`[Decay] Purged ${purged.count} inactive memories`);
-    }
-
-    console.log(`[Decay] Complete - Pruned: ${pruned.count}, Purged: ${purged.count}`);
-
-    return {
-        pruned: pruned.count,
-        purged: purged.count,
-    };
+  return {
+    pruned: typeof payload.pruned === "number" ? payload.pruned : 0,
+    purged: typeof payload.purged === "number" ? payload.purged : 0,
+  };
 }
 
-/**
- * Get decay statistics for monitoring
- */
 export async function getDecayStats(): Promise<{
-    totalFacts: number;
-    activeFacts: number;
-    inactiveFacts: number;
-    staleFacts: number;
+  totalFacts: number;
+  activeFacts: number;
+  inactiveFacts: number;
+  staleFacts: number;
 }> {
-    const staleDate = new Date(Date.now() - STALE_THRESHOLD_DAYS * 24 * 60 * 60 * 1000);
+  const staleDate = new Date(Date.now() - STALE_THRESHOLD_DAYS * 24 * 60 * 60 * 1000);
 
-    const [total, active, inactive, stale] = await Promise.all([
-        prisma.memoryFact.count(),
-        prisma.memoryFact.count({ where: { isActive: true } }),
-        prisma.memoryFact.count({ where: { isActive: false } }),
-        prisma.memoryFact.count({
-            where: {
-                isActive: true,
-                OR: [
-                    { lastAccessedAt: { lt: staleDate } },
-                    { updatedAt: { lt: staleDate } },
-                ],
-            },
-        }),
-    ]);
+  const [total, active, inactive, stale] = await Promise.all([
+    prisma.memoryFact.count(),
+    prisma.memoryFact.count({ where: { isActive: true } }),
+    prisma.memoryFact.count({ where: { isActive: false } }),
+    prisma.memoryFact.count({
+      where: {
+        isActive: true,
+        OR: [
+          { lastAccessedAt: { lt: staleDate } },
+          { updatedAt: { lt: staleDate } },
+        ],
+      },
+    }),
+  ]);
 
-    return {
-        totalFacts: total,
-        activeFacts: active,
-        inactiveFacts: inactive,
-        staleFacts: stale,
-    };
+  return {
+    totalFacts: total,
+    activeFacts: active,
+    inactiveFacts: inactive,
+    staleFacts: stale,
+  };
 }

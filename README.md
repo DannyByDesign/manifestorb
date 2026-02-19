@@ -16,8 +16,8 @@ Prereqs:
    ```
 
 2. Configure environment:
-   - Copy `/.env.example` to `/.env.local` (recommended for Next.js local dev).
-   - Fill required values. The authoritative schema is `src/env.ts`.
+   - Create `/.env.local` for Next.js local dev.
+   - Fill required values from the authoritative schema in `src/env.ts`.
 
 3. Install deps (also runs Prisma generate via `postinstall`):
    ```bash
@@ -62,7 +62,6 @@ bun run test:evals
 ## Configuration
 
 - Environment variable schema: `src/env.ts`
-- Main app template: `/.env.example`
 - Worker internals: `src/server/workers/README.md`
 
 Notes:

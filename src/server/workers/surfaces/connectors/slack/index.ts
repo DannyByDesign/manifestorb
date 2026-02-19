@@ -8,7 +8,7 @@ import {
     fetchOnboardingLinkUrl,
     resolveSurfaceSession,
     submitSurfaceAction,
-    toPlainSidecarText,
+    toPlainSurfaceText,
     type InteractiveAction,
     type InteractivePayload,
     type SurfaceIdentityResult,
@@ -20,9 +20,9 @@ import {
     touchPlatformEvent
 } from "../../platform-status";
 import {
-    acknowledgeSidecarDelivery,
-    hasSidecarResponseBeenDelivered,
-    markSidecarResponseDelivered,
+    acknowledgeSurfaceDelivery,
+    hasSurfaceResponseBeenDelivered,
+    markSurfaceResponseDelivered,
 } from "../../delivery";
 import { redis } from "../../db/redis";
 import { env } from "../../env";
@@ -243,14 +243,14 @@ async function sendSlackOnboardingWelcome(params: {
         await params.client.chat.postMessage({
             channel: channelId,
             thread_ts: normalizeSlackThreadTs(params.threadTs),
-            text: toPlainSidecarText(
+            text: toPlainSurfaceText(
                 `${WELCOME_MESSAGE} Something went wrong generating your link — please try messaging me again in a moment.`,
             ),
         });
         return;
     }
 
-    const onboardingText = toPlainSidecarText(
+    const onboardingText = toPlainSurfaceText(
         `${WELCOME_MESSAGE}\n\nTo get started, open this link to connect your Slack account (one-time): ${linkUrl}\n\nThen you can ask me about your calendar, email, and more.`,
     );
 
@@ -944,7 +944,7 @@ export async function startSlack() {
                     await app.client.chat.postMessage({
                         channel: channelId,
                         thread_ts: meta.threadTs ?? messageTs,
-                        text: toPlainSidecarText(
+                        text: toPlainSurfaceText(
                             "To connect your Amodel account, please DM me directly.",
                         ),
                     });
@@ -1005,7 +1005,7 @@ export async function startSlack() {
                     });
                     await say({
                         thread_ts: replyThreadTs,
-                        text: toPlainSidecarText(
+                        text: toPlainSurfaceText(
                             "I couldn't reach the AI service just now. Please try again in a moment.",
                         ),
                     });
@@ -1020,7 +1020,7 @@ export async function startSlack() {
                     });
                     await say({
                         thread_ts: replyThreadTs,
-                        text: toPlainSidecarText(
+                        text: toPlainSurfaceText(
                             "I received that, but couldn't generate a reply. Please resend your request.",
                         ),
                     });
@@ -1042,7 +1042,7 @@ export async function startSlack() {
                                 : undefined;
                         if (
                             responseId &&
-                            await hasSidecarResponseBeenDelivered({
+                            await hasSurfaceResponseBeenDelivered({
                                 provider: "slack",
                                 responseId,
                             })
@@ -1057,12 +1057,12 @@ export async function startSlack() {
                             continue;
                         }
 
-                        const plainResponseContent = toPlainSidecarText(
+                        const plainResponseContent = toPlainSurfaceText(
                             typeof resp.content === "string" ? resp.content : "",
                         );
                         if (resp.interactive) {
                             const interactive = resp.interactive as InteractivePayload;
-                            const plainInteractiveSummary = toPlainSidecarText(interactive.summary || "");
+                            const plainInteractiveSummary = toPlainSurfaceText(interactive.summary || "");
                             let buttonElements: SlackButtonElement[];
 
                             const isDraft = interactive.type === "draft_created";
@@ -1115,7 +1115,7 @@ export async function startSlack() {
                             let blocks: SlackBlock[];
                             if (isDraft && interactive.preview) {
                                 const preview = interactive.preview;
-                                const previewBody = toPlainSidecarText(preview.body || "");
+                                const previewBody = toPlainSurfaceText(preview.body || "");
                                 const bodySnippet =
                                     previewBody.length > 500 ? `${previewBody.slice(0, 500)}...` : previewBody;
 
@@ -1180,13 +1180,13 @@ export async function startSlack() {
                             });
                             const providerMessageId = extractSlackSentTs(sent);
                             if (responseId) {
-                                await markSidecarResponseDelivered({
+                                await markSurfaceResponseDelivered({
                                     provider: "slack",
                                     responseId,
                                 });
                                 if (providerMessageId) {
                                     try {
-                                        await acknowledgeSidecarDelivery({
+                                        await acknowledgeSurfaceDelivery({
                                             responseId,
                                             provider: "slack",
                                             providerMessageId,
@@ -1220,13 +1220,13 @@ export async function startSlack() {
                             });
                             const providerMessageId = extractSlackSentTs(sent);
                             if (responseId) {
-                                await markSidecarResponseDelivered({
+                                await markSurfaceResponseDelivered({
                                     provider: "slack",
                                     responseId,
                                 });
                                 if (providerMessageId) {
                                     try {
-                                        await acknowledgeSidecarDelivery({
+                                        await acknowledgeSurfaceDelivery({
                                             responseId,
                                             provider: "slack",
                                             providerMessageId,
@@ -1323,7 +1323,7 @@ export async function sendSlackMessage(
     try {
         const sent = await slackApp.client.chat.postMessage({
             channel: channelId,
-            text: toPlainSidecarText(text),
+            text: toPlainSurfaceText(text),
             blocks: undefined,
             thread_ts: normalizeSlackThreadTs(threadId),
         });
@@ -1352,7 +1352,7 @@ export async function sendLinkedToSlackUser(providerAccountId: string): Promise<
             return { ok: false, error: "Could not open DM channel" };
         }
 
-        const text = toPlainSidecarText(
+        const text = toPlainSurfaceText(
             "Connected. You're all set.\n\nSend me a message here anytime and I'll handle email + calendar for you.",
         );
 

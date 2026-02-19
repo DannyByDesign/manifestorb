@@ -5,7 +5,7 @@ import {
     forwardToBrain,
     resolveSurfaceSession,
     submitSurfaceAction,
-    toPlainSidecarText,
+    toPlainSurfaceText,
     type InteractiveAction,
     type InteractivePayload
 } from "../../utils";
@@ -16,9 +16,9 @@ import {
     touchPlatformEvent
 } from "../../platform-status";
 import {
-    acknowledgeSidecarDelivery,
-    hasSidecarResponseBeenDelivered,
-    markSidecarResponseDelivered,
+    acknowledgeSurfaceDelivery,
+    hasSurfaceResponseBeenDelivered,
+    markSurfaceResponseDelivered,
 } from "../../delivery";
 import { env } from "../../env";
 
@@ -66,7 +66,7 @@ export function startTelegram() {
         // Handle draft actions (draft_send:draftId:emailAccountId:userId)
         if (data.startsWith("draft_send:") || data.startsWith("draft_discard:")) {
             await clearCallbackButtons(ctx);
-            await ctx.answerCbQuery(toPlainSidecarText("Processing..."));
+            await ctx.answerCbQuery(toPlainSurfaceText("Processing..."));
 
             const parts = data.split(":");
             const action = parts[0]; // draft_send or draft_discard
@@ -89,9 +89,9 @@ export function startTelegram() {
                 });
 
                 if (result.ok) {
-                    await ctx.reply(toPlainSidecarText("success"));
+                    await ctx.reply(toPlainSurfaceText("success"));
                 } else {
-                    await ctx.reply(toPlainSidecarText("Failed to send email."));
+                    await ctx.reply(toPlainSurfaceText("Failed to send email."));
                 }
             } else if (action === "draft_discard") {
                 console.log(`[Surfaces] Telegram: Discarding draft ${draftId}`);
@@ -108,9 +108,9 @@ export function startTelegram() {
                 });
 
                 if (result.ok) {
-                    await ctx.reply(toPlainSidecarText("success"));
+                    await ctx.reply(toPlainSurfaceText("success"));
                 } else {
-                    await ctx.reply(toPlainSidecarText("Failed to discard draft."));
+                    await ctx.reply(toPlainSurfaceText("Failed to discard draft."));
                 }
             }
             return;
@@ -119,7 +119,7 @@ export function startTelegram() {
         // Handle ambiguous time actions (ambiguous:choice:requestId)
         if (data.startsWith("ambiguous:")) {
             await clearCallbackButtons(ctx);
-            await ctx.answerCbQuery(toPlainSidecarText("Processing..."));
+            await ctx.answerCbQuery(toPlainSurfaceText("Processing..."));
 
             const [, choice, requestId] = data.split(":");
             if (choice !== "earlier" && choice !== "later") return;
@@ -135,9 +135,9 @@ export function startTelegram() {
             });
 
             if (result.ok) {
-                await ctx.reply(toPlainSidecarText("success"));
+                await ctx.reply(toPlainSurfaceText("success"));
             } else {
-                await ctx.reply(toPlainSidecarText("Failed to resolve that time."));
+                await ctx.reply(toPlainSurfaceText("Failed to resolve that time."));
             }
             return;
         }
@@ -147,7 +147,7 @@ export function startTelegram() {
         if (action !== "approve" && action !== "deny") return;
 
         await clearCallbackButtons(ctx);
-        await ctx.answerCbQuery(toPlainSidecarText("Processing..."));
+        await ctx.answerCbQuery(toPlainSurfaceText("Processing..."));
 
         console.log(`[Surfaces] Telegram: Processing ${action} for request ${requestId}`);
 
@@ -162,7 +162,7 @@ export function startTelegram() {
         });
 
         if (!result.ok) {
-            await ctx.reply(toPlainSidecarText(`Failed to ${action} request.`));
+            await ctx.reply(toPlainSurfaceText(`Failed to ${action} request.`));
         }
     });
 
@@ -224,9 +224,9 @@ export function startTelegram() {
                     const msg = linkUrl
                         ? `Welcome to Amodel.\n\nTo get started, connect your account here (one-time): ${linkUrl}`
                         : "Welcome to Amodel.\n\nSomething went wrong generating your link. Please try again in a moment.";
-                    await ctx.reply(toPlainSidecarText(msg));
+                    await ctx.reply(toPlainSurfaceText(msg));
                 } else {
-                    await ctx.reply(toPlainSidecarText("To connect your Amodel account, please DM me directly."));
+                    await ctx.reply(toPlainSurfaceText("To connect your Amodel account, please DM me directly."));
                 }
                 return;
             }
@@ -254,7 +254,7 @@ export function startTelegram() {
                             : undefined;
                     if (
                         responseId &&
-                        await hasSidecarResponseBeenDelivered({
+                        await hasSurfaceResponseBeenDelivered({
                             provider: "telegram",
                             responseId,
                         })
@@ -267,13 +267,13 @@ export function startTelegram() {
                         continue;
                     }
 
-                    const plainResponseContent = toPlainSidecarText(
+                    const plainResponseContent = toPlainSurfaceText(
                         typeof resp.content === "string" ? resp.content : "",
                     );
                     let providerMessageId: string | undefined;
                     if (resp.interactive) {
                         const interactive = resp.interactive as InteractivePayload;
-                        const plainInteractiveSummary = toPlainSidecarText(interactive.summary || "");
+                        const plainInteractiveSummary = toPlainSurfaceText(interactive.summary || "");
 
                         const isDraft = interactive.type === "draft_created";
                         const isApprovalLike = interactive.type === "approval_request" || interactive.type === "action_request";
@@ -306,7 +306,7 @@ export function startTelegram() {
 
                             if (isDraft && interactive.preview) {
                                 const preview = interactive.preview;
-                                const previewBody = toPlainSidecarText(preview.body || "");
+                                const previewBody = toPlainSurfaceText(preview.body || "");
                                 const bodySnippet = previewBody.length > 800
                                     ? previewBody.slice(0, 800) + "..."
                                     : previewBody;
@@ -332,7 +332,7 @@ export function startTelegram() {
                                     .join("\n");
                             }
 
-                            const sent = await ctx.reply(toPlainSidecarText(messageText), {
+                            const sent = await ctx.reply(toPlainSurfaceText(messageText), {
                                 ...Markup.inlineKeyboard([buttons])
                             });
                             providerMessageId =
@@ -345,7 +345,7 @@ export function startTelegram() {
 
                     } else if (resp.content) {
                         try {
-                            const sent = await ctx.reply(toPlainSidecarText(plainResponseContent));
+                            const sent = await ctx.reply(toPlainSurfaceText(plainResponseContent));
                             providerMessageId =
                                 typeof sent?.message_id === "number"
                                     ? String(sent.message_id)
@@ -356,12 +356,12 @@ export function startTelegram() {
                     }
 
                     if (responseId && providerMessageId) {
-                        await markSidecarResponseDelivered({
+                        await markSurfaceResponseDelivered({
                             provider: "telegram",
                             responseId,
                         });
                         try {
-                            await acknowledgeSidecarDelivery({
+                            await acknowledgeSurfaceDelivery({
                                 responseId,
                                 provider: "telegram",
                                 providerMessageId,
@@ -404,7 +404,7 @@ export async function sendTelegramMessage(channelId: string, content: string): P
     try {
         const sent = await telegramBot.telegram.sendMessage(
             channelId,
-            toPlainSidecarText(content),
+            toPlainSurfaceText(content),
         );
         return typeof sent.message_id === "number" ? String(sent.message_id) : undefined;
     } catch (error) {
@@ -420,7 +420,7 @@ export async function sendLinkedToTelegramUser(providerAccountId: string): Promi
     try {
         await telegramBot.telegram.sendMessage(
             providerAccountId,
-            toPlainSidecarText(
+            toPlainSurfaceText(
                 "Connected. You're all set.\n\nSend me a message here anytime and I'll handle email + calendar for you.",
             ),
         );

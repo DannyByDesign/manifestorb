@@ -8,7 +8,7 @@ const DELIVERY_DEDUPE_TTL_MS = Math.max(
   Number(process.env.SURFACES_DELIVERY_DEDUPE_TTL_MS || 7 * 24 * 60 * 60 * 1000),
 );
 const DELIVERY_DEDUPE_KEY_PREFIX =
-  process.env.SURFACES_DELIVERY_DEDUPE_KEY_PREFIX || "surfaces:delivery:sidecar";
+  process.env.SURFACES_DELIVERY_DEDUPE_KEY_PREFIX || "surfaces:delivery:response";
 
 const deliveryDedupeFallback = new Map<string, number>();
 
@@ -16,7 +16,7 @@ function keyFor(provider: "slack" | "discord" | "telegram", responseId: string):
   return `${DELIVERY_DEDUPE_KEY_PREFIX}:${provider}:${responseId}`;
 }
 
-export async function hasSidecarResponseBeenDelivered(params: {
+export async function hasSurfaceResponseBeenDelivered(params: {
   provider: "slack" | "discord" | "telegram";
   responseId: string;
 }): Promise<boolean> {
@@ -44,7 +44,7 @@ export async function hasSidecarResponseBeenDelivered(params: {
   return true;
 }
 
-export async function markSidecarResponseDelivered(params: {
+export async function markSurfaceResponseDelivered(params: {
   provider: "slack" | "discord" | "telegram";
   responseId: string;
 }): Promise<void> {
@@ -66,7 +66,7 @@ export async function markSidecarResponseDelivered(params: {
   deliveryDedupeFallback.set(key, Date.now() + DELIVERY_DEDUPE_TTL_MS);
 }
 
-export async function acknowledgeSidecarDelivery(params: {
+export async function acknowledgeSurfaceDelivery(params: {
   responseId: string;
   provider: "slack" | "discord" | "telegram";
   providerMessageId: string;
@@ -93,6 +93,9 @@ export async function acknowledgeSidecarDelivery(params: {
 }
 
 // Back-compat aliases while callers are migrated.
-export const hasSurfacesWorkerResponseBeenDelivered = hasSidecarResponseBeenDelivered;
-export const markSurfacesWorkerResponseDelivered = markSidecarResponseDelivered;
-export const acknowledgeSurfacesWorkerDelivery = acknowledgeSidecarDelivery;
+export const hasSidecarResponseBeenDelivered = hasSurfaceResponseBeenDelivered;
+export const markSidecarResponseDelivered = markSurfaceResponseDelivered;
+export const acknowledgeSidecarDelivery = acknowledgeSurfaceDelivery;
+export const hasSurfacesWorkerResponseBeenDelivered = hasSurfaceResponseBeenDelivered;
+export const markSurfacesWorkerResponseDelivered = markSurfaceResponseDelivered;
+export const acknowledgeSurfacesWorkerDelivery = acknowledgeSurfaceDelivery;

@@ -52,15 +52,15 @@ function extractErrorMessage(body: unknown): string | null {
   return null;
 }
 
-async function proxyToCore(params: {
+function buildInternalRequest(params: {
   req: NextRequest;
   surfacesSecret: string;
-  path: string;
+  pathname: string;
   method: "POST" | "DELETE";
   body?: Record<string, unknown>;
-}): Promise<ProxiedActionResponse> {
-  const origin = params.req.nextUrl.origin;
-  const response = await fetch(`${origin}${params.path}`, {
+}): NextRequest {
+  const url = new URL(params.pathname, params.req.nextUrl.origin);
+  return new NextRequest(url, {
     method: params.method,
     headers: {
       "Content-Type": "application/json",
@@ -68,7 +68,9 @@ async function proxyToCore(params: {
     },
     body: params.method === "POST" ? JSON.stringify(params.body ?? {}) : undefined,
   });
+}
 
+async function toProxiedActionResponse(response: Response): Promise<ProxiedActionResponse> {
   let parsedBody: unknown = null;
   let bodyText = "";
   try {
@@ -113,53 +115,77 @@ export async function POST(req: NextRequest) {
     let proxied: ProxiedActionResponse;
 
     if (action.type === "approval") {
-      proxied = await proxyToCore({
-        req,
-        surfacesSecret,
-        path: `/api/approvals/${action.requestId}/${action.decision}`,
-        method: "POST",
-        body: {
-          provider,
-          userId: providerAccountId,
-          reason: action.reason,
-        },
-      });
+      const route =
+        action.decision === "approve"
+          ? (await import("@/app/api/approvals/[id]/approve/route")).POST
+          : (await import("@/app/api/approvals/[id]/deny/route")).POST;
+
+      const response = await route(
+        buildInternalRequest({
+          req,
+          surfacesSecret,
+          pathname: `/api/approvals/${action.requestId}/${action.decision}`,
+          method: "POST",
+          body: {
+            provider,
+            userId: providerAccountId,
+            reason: action.reason,
+          },
+        }),
+        { params: Promise.resolve({ id: action.requestId }) },
+      );
+      proxied = await toProxiedActionResponse(response);
     } else if (action.type === "ambiguous_time") {
-      proxied = await proxyToCore({
-        req,
-        surfacesSecret,
-        path: `/api/ambiguous-time/${action.requestId}/resolve`,
-        method: "POST",
-        body: {
-          choice: action.choice,
-        },
-      });
+      const route = (await import("@/app/api/ambiguous-time/[id]/resolve/route")).POST;
+      const response = await route(
+        buildInternalRequest({
+          req,
+          surfacesSecret,
+          pathname: `/api/ambiguous-time/${action.requestId}/resolve`,
+          method: "POST",
+          body: {
+            choice: action.choice,
+          },
+        }),
+        { params: Promise.resolve({ id: action.requestId }) },
+      );
+      proxied = await toProxiedActionResponse(response);
     } else if (action.decision === "send") {
-      proxied = await proxyToCore({
-        req,
-        surfacesSecret,
-        path: `/api/drafts/${action.draftId}/send`,
-        method: "POST",
-        body: {
-          userId: action.userId,
-          emailAccountId: action.emailAccountId,
-        },
-      });
+      const route = (await import("@/app/api/drafts/[id]/send/route")).POST;
+      const response = await route(
+        buildInternalRequest({
+          req,
+          surfacesSecret,
+          pathname: `/api/drafts/${action.draftId}/send`,
+          method: "POST",
+          body: {
+            userId: action.userId,
+            emailAccountId: action.emailAccountId,
+          },
+        }),
+        { params: Promise.resolve({ id: action.draftId }) },
+      );
+      proxied = await toProxiedActionResponse(response);
     } else {
+      const route = (await import("@/app/api/drafts/[id]/route")).DELETE;
       const query = new URLSearchParams({
         userId: action.userId,
         emailAccountId: action.emailAccountId,
       });
-      proxied = await proxyToCore({
-        req,
-        surfacesSecret,
-        path: `/api/drafts/${action.draftId}?${query.toString()}`,
-        method: "DELETE",
-      });
+      const response = await route(
+        buildInternalRequest({
+          req,
+          surfacesSecret,
+          pathname: `/api/drafts/${action.draftId}?${query.toString()}`,
+          method: "DELETE",
+        }),
+        { params: Promise.resolve({ id: action.draftId }) },
+      );
+      proxied = await toProxiedActionResponse(response);
     }
 
     if (!proxied.ok) {
-      logger.warn("Surface action proxy failed", {
+      logger.warn("Surface action execution failed", {
         provider,
         actionType: action.type,
         status: proxied.status,
@@ -171,7 +197,7 @@ export async function POST(req: NextRequest) {
       status: proxied.ok ? 200 : proxied.status,
     });
   } catch (error) {
-    logger.error("Surface action proxy crashed", { error });
+    logger.error("Surface action execution crashed", { error });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Internal Server Error" },
       { status: 500 },

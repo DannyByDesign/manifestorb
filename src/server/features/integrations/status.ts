@@ -22,7 +22,7 @@ export type IntegrationStatus = {
     connected: boolean;
     reason: string | null;
   };
-  sidecars: {
+  chatConnectors: {
     slack: { linked: boolean };
     discord: { linked: boolean };
     telegram: { linked: boolean };
@@ -104,18 +104,18 @@ export async function getIntegrationStatusForUser(
   });
 
   const oauth = buildOAuthDiagnostics(baseUrl);
-  const linkedSidecars = await prisma.account.findMany({
+  const linkedConnectors = await prisma.account.findMany({
     where: {
       userId,
       provider: { in: ["slack", "discord", "telegram"] },
     },
     select: { provider: true },
   });
-  const sidecarSet = new Set(linkedSidecars.map((a) => a.provider));
-  const sidecars = {
-    slack: { linked: sidecarSet.has("slack") },
-    discord: { linked: sidecarSet.has("discord") },
-    telegram: { linked: sidecarSet.has("telegram") },
+  const connectorSet = new Set(linkedConnectors.map((a) => a.provider));
+  const chatConnectors = {
+    slack: { linked: connectorSet.has("slack") },
+    discord: { linked: connectorSet.has("discord") },
+    telegram: { linked: connectorSet.has("telegram") },
   };
 
   if (!emailAccount) {
@@ -131,7 +131,7 @@ export async function getIntegrationStatusForUser(
         connected: false,
         reason: "Connect Gmail first.",
       },
-      sidecars,
+      chatConnectors,
       oauth,
     };
   }
@@ -165,7 +165,7 @@ export async function getIntegrationStatusForUser(
       connected: Boolean(calendarConnection),
       reason: calendarConnection ? null : "Calendar is not connected.",
     },
-    sidecars,
+    chatConnectors,
     oauth,
   };
 }
