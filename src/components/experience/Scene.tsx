@@ -134,7 +134,7 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
       {
         size: 78,
         pointSize: 16.2,
-        frequency: 1.65,
+        frequency: 1.0,
         blending: THREE.NormalBlending,
         densityBias: -0.02,
         alphaBase: 0.38,
@@ -142,7 +142,7 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         darkTintMix: 0.6,
         glintChance: 0.01,
         depthFade: 0.25,
-        colors: [derived.midLavender, derived.peachGlow, derived.iceLavender, palette.softMauve],
+        colors: [derived.electricViolet, palette.coolLavender, derived.deepViolet, derived.midLavender],
       },
       {
         size: 72,
