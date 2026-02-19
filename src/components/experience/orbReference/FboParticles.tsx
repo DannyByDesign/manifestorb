@@ -163,7 +163,7 @@ export function FBOParticles({
         <shaderMaterial
           blending={blending}
           depthWrite={false}
-          depthTest
+          depthTest={false}
           toneMapped
           dithering
           fragmentShader={fragmentShader}
