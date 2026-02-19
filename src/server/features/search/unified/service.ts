@@ -593,11 +593,44 @@ function toUnifiedItem(entry: Awaited<ReturnType<typeof rankDocuments>>[number])
 }
 
 function resolveSort(
-  requestSort: UnifiedSearchSort | undefined,
-  plannedSort: UnifiedSearchSort | undefined,
+  params: {
+    requestSort: UnifiedSearchSort | undefined;
+    plannedSort: UnifiedSearchSort | undefined;
+    scopes: UnifiedSearchSurface[];
+    mailbox: UnifiedSearchMailbox | undefined;
+    request: UnifiedSearchRequest;
+  },
 ): UnifiedSearchSort {
-  if (requestSort) return requestSort;
-  if (plannedSort) return plannedSort;
+  if (params.requestSort) return params.requestSort;
+  if (params.plannedSort) return params.plannedSort;
+
+  // Contract default for mailbox retrieval: when the request is email-only and
+  // no explicit order is provided, return mailbox items in inbox-style order.
+  const isEmailOnlyScope =
+    params.scopes.length === 1 && params.scopes[0] === "email";
+  if (!isEmailOnlyScope) return "relevance";
+
+  if (params.mailbox && params.mailbox !== "all") return "newest";
+
+  const hasEmailRetrievalConstraint = Boolean(
+    typeof params.request.unread === "boolean" ||
+      typeof params.request.hasAttachment === "boolean" ||
+      params.request.from ||
+      params.request.to ||
+      params.request.cc ||
+      params.request.fromEmails?.length ||
+      params.request.fromDomains?.length ||
+      params.request.toEmails?.length ||
+      params.request.toDomains?.length ||
+      params.request.ccEmails?.length ||
+      params.request.ccDomains?.length ||
+      params.request.category ||
+      params.request.attachmentMimeTypes?.length ||
+      params.request.attachmentFilenameContains ||
+      params.request.dateRange,
+  );
+  if (hasEmailRetrievalConstraint) return "newest";
+
   return "relevance";
 }
 
@@ -663,7 +696,13 @@ export function createUnifiedSearchService(env: UnifiedSearchEnvironment): Unifi
       );
       const scopes = normalizeSurfaceList(effectiveRequest.scopes);
       const mailbox = effectiveRequest.mailbox;
-      const sort = resolveSort(effectiveRequest.sort, queryPlan.sort);
+      const sort = resolveSort({
+        requestSort: effectiveRequest.sort,
+        plannedSort: queryPlan.sort,
+        scopes,
+        mailbox,
+        request: effectiveRequest,
+      });
       const rankingQuery =
         queryPlan.rewrittenQuery ||
         normalizeString(request.query) ||

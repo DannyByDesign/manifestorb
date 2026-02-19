@@ -180,4 +180,88 @@ describe("unified search service hard constraints", () => {
     expect(result.queryPlan?.unread).toBe(true);
     expect(result.queryPlan?.sort).toBe("newest");
   });
+
+  it("defaults email-only mailbox retrieval to newest when sort is omitted", async () => {
+    vi.mocked(planUnifiedSearchQuery).mockResolvedValue({
+      query: "what's the first unread email in my inbox?",
+      rewrittenQuery: "",
+      queryVariants: [],
+      scopes: ["email"],
+      mailbox: "inbox",
+      sort: undefined,
+      unread: true,
+      hasAttachment: undefined,
+      inferredLimit: 1,
+      aliasExpansions: [],
+      terms: [],
+    });
+
+    vi.mocked(listRecentIndexedDocuments).mockResolvedValue([
+      {
+        id: "doc_1",
+        connector: "email",
+        sourceType: "message",
+        sourceId: "m_old_unread",
+        sourceParentId: "t_old_unread",
+        title: "Older unread",
+        snippet: "old",
+        bodyText: "old",
+        url: null,
+        authorIdentity: "old@example.com",
+        occurredAt: new Date("2025-01-14T09:17:00.000Z"),
+        startAt: null,
+        endAt: null,
+        updatedSourceAt: new Date("2025-01-14T09:17:00.000Z"),
+        freshnessScore: 0.2,
+        authorityScore: 0.5,
+        metadata: {
+          mailbox: "inbox",
+          labelIds: ["INBOX", "UNREAD"],
+          isInbox: true,
+          isUnread: true,
+          messageId: "m_old_unread",
+          threadId: "t_old_unread",
+        },
+      },
+      {
+        id: "doc_2",
+        connector: "email",
+        sourceType: "message",
+        sourceId: "m_new_unread",
+        sourceParentId: "t_new_unread",
+        title: "Newest unread",
+        snippet: "new",
+        bodyText: "new",
+        url: null,
+        authorIdentity: "new@example.com",
+        occurredAt: new Date("2026-02-19T03:27:00.000Z"),
+        startAt: null,
+        endAt: null,
+        updatedSourceAt: new Date("2026-02-19T03:27:00.000Z"),
+        freshnessScore: 1,
+        authorityScore: 0.5,
+        metadata: {
+          mailbox: "inbox",
+          labelIds: ["INBOX", "UNREAD"],
+          isInbox: true,
+          isUnread: true,
+          messageId: "m_new_unread",
+          threadId: "t_new_unread",
+        },
+      },
+    ]);
+
+    const service = buildService();
+    const result = await service.query({
+      query: "what's the first unread email in my inbox?",
+      scopes: ["email"],
+      mailbox: "inbox",
+      unread: true,
+      limit: 1,
+    });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.id).toBe("email:m_new_unread");
+    expect(result.queryPlan?.sort).toBe("newest");
+  });
 });

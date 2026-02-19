@@ -240,7 +240,7 @@ function inferDateRangeFromQuery(query: string, timeZone: string): UnifiedSearch
 
 function inferSortFromQuery(query: string): UnifiedSearchSort | undefined {
   const q = query.toLowerCase();
-  if (/\b(oldest|earliest|first)\b/u.test(q)) return "oldest";
+  if (/\b(oldest|earliest)\b/u.test(q)) return "oldest";
   if (/\b(newest|latest|most recent|recent)\b/u.test(q)) return "newest";
   if (/\bnext\b/u.test(q)) return "oldest";
   return undefined;
@@ -406,7 +406,8 @@ export async function planUnifiedSearchQuery(params: {
   const requestedMailbox = params.request.mailbox;
   const semanticMailbox = semanticIntent?.mailbox;
   const mailboxExplicit =
-    Boolean(requestedMailbox) || semanticIntent?.mailboxExplicit === true;
+    Boolean(requestedMailbox ?? semanticMailbox) &&
+    (Boolean(requestedMailbox) || semanticIntent?.mailboxExplicit === true);
   const emailSearchSignal = hasEmailSearchSignal({
     request: params.request,
     semanticIntent,
@@ -427,7 +428,8 @@ export async function planUnifiedSearchQuery(params: {
   const requestedCategory = params.request.category;
   const semanticCategory = semanticIntent?.category;
   const categoryExplicit =
-    Boolean(requestedCategory) || semanticIntent?.categoryExplicit === true;
+    Boolean(requestedCategory ?? semanticCategory) &&
+    (Boolean(requestedCategory) || semanticIntent?.categoryExplicit === true);
   const category =
     requestedCategory ??
     semanticCategory ??

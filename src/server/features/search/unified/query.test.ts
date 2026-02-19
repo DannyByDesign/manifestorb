@@ -102,6 +102,20 @@ describe("unified search query planner", () => {
     expect(plan.inferredLimit).toBe(10);
   });
 
+  it("does not force oldest ordering from positional phrasing alone", async () => {
+    const plan = await planUnifiedSearchQuery({
+      userId: "user_1",
+      emailAccountId: "acct_1",
+      request: {
+        query: "what's the first unread email in my inbox?",
+        scopes: ["email"],
+        unread: true,
+      },
+    });
+
+    expect(plan.sort).toBeUndefined();
+  });
+
   it("defaults email search to inbox + primary when mailbox/category are unspecified", async () => {
     const plan = await planUnifiedSearchQuery({
       userId: "user_1",
