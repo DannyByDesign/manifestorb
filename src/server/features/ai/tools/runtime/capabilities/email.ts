@@ -2120,7 +2120,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         const byId = await provider.get([parent]);
         parentMessage =
           Array.isArray(byId) && byId.length > 0
-            ? (byId[0] as ParentMessage)
+            ? (byId[0] as unknown as ParentMessage)
             : null;
       } catch {
         parentMessage = null;
@@ -2130,7 +2130,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         try {
           const thread = await provider.getThread(parent);
           const messages = Array.isArray(thread.messages)
-            ? (thread.messages as ParentMessage[])
+            ? (thread.messages as unknown as ParentMessage[])
             : [];
           parentMessage =
             messages.length > 0
@@ -2254,7 +2254,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         const byId = await provider.get([parent]);
         parentMessage =
           Array.isArray(byId) && byId.length > 0
-            ? (byId[0] as ParentMessage)
+            ? (byId[0] as unknown as ParentMessage)
             : null;
       } catch {
         parentMessage = null;
@@ -2264,7 +2264,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         try {
           const thread = await provider.getThread(parent);
           const messages = Array.isArray(thread.messages)
-            ? (thread.messages as ParentMessage[])
+            ? (thread.messages as unknown as ParentMessage[])
             : [];
           parentMessage =
             messages.length > 0
