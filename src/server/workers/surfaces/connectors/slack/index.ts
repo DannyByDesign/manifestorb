@@ -71,22 +71,41 @@ function normalizeSlackThreadTs(value: unknown): string | undefined {
     return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-function resolveSlackSocketTokens(): { botToken?: string; appToken?: string } {
-    let botToken = env.SLACK_BOT_TOKEN?.trim();
-    let appToken = env.SLACK_APP_TOKEN?.trim();
+function extractTokenByPrefix(raw: string | undefined, prefix: "xoxb-" | "xapp-"): string | undefined {
+    if (!raw) return undefined;
+    const trimmed = raw.trim();
+    if (!trimmed) return undefined;
 
-    // Common migration mistake: values pasted into the opposite env vars.
-    if (
-        typeof botToken === "string" &&
-        typeof appToken === "string" &&
-        botToken.startsWith("xapp-") &&
-        appToken.startsWith("xoxb-")
-    ) {
-        console.warn("[Surfaces][Slack] Detected swapped Slack token env vars, auto-correcting in-memory");
-        const nextBotToken = appToken;
-        const nextAppToken = botToken;
-        botToken = nextBotToken;
-        appToken = nextAppToken;
+    const unwrapped = trimmed.replace(/^[`"' ]+|[`"' ]+$/g, "").replace(/\r/g, "").trim();
+    if (!unwrapped) return undefined;
+    if (unwrapped.startsWith(prefix)) return unwrapped;
+
+    const pattern = prefix === "xoxb-" ? /(xoxb-[^\s'",`]+)/ : /(xapp-[^\s'",`]+)/;
+    const match = unwrapped.match(pattern);
+    return match?.[1];
+}
+
+function resolveSlackSocketTokens(): { botToken?: string; appToken?: string } {
+    const rawBotToken = env.SLACK_BOT_TOKEN;
+    const rawAppToken = env.SLACK_APP_TOKEN;
+
+    let botToken = extractTokenByPrefix(rawBotToken, "xoxb-");
+    let appToken = extractTokenByPrefix(rawAppToken, "xapp-");
+
+    // Migration-safe: auto-correct if tokens were pasted into opposite vars.
+    if (!botToken) {
+        const swappedBotToken = extractTokenByPrefix(rawAppToken, "xoxb-");
+        if (swappedBotToken) {
+            botToken = swappedBotToken;
+            console.warn("[Surfaces][Slack] Detected SLACK_BOT_TOKEN in SLACK_APP_TOKEN, auto-correcting");
+        }
+    }
+    if (!appToken) {
+        const swappedAppToken = extractTokenByPrefix(rawBotToken, "xapp-");
+        if (swappedAppToken) {
+            appToken = swappedAppToken;
+            console.warn("[Surfaces][Slack] Detected SLACK_APP_TOKEN in SLACK_BOT_TOKEN, auto-correcting");
+        }
     }
 
     return { botToken, appToken };
