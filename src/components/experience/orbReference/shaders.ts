@@ -75,7 +75,7 @@ export const fragmentShader = `
     vec3 darkTint = mix(uColor4, uColor1, 0.55) * 0.58;
     col = mix(col, darkTint, filament * uDarkTintMix);
 
-    float centerBoost = 0.74 + filament * 0.58;
+    float centerBoost = 0.66 + filament * 0.46;
     col *= centerBoost * (0.88 + radialGradient * 0.28);
 
     float sparkle = sin(gl_PointCoord.x * 25.0) * sin(gl_PointCoord.y * 25.0) * 0.018;
@@ -84,14 +84,14 @@ export const fragmentShader = `
     float glintNoise = fract(vSeed * 41.73 + filament * 8.13 + hash11(vSeed + vClump) * 6.1);
     float glintMask = step(1.0 - uGlintChance, glintNoise);
     float glintPulse = 0.45 + 0.55 * sin(uTime * (1.7 + vSeed * 2.4) + vSeed * 17.0);
-    vec3 glintCol = vec3(1.0, 0.98, 1.0) * glintMask * glintPulse * (0.36 + filament * 0.9);
+    vec3 glintCol = vec3(1.0, 0.98, 1.0) * glintMask * glintPulse * (0.24 + filament * 0.72);
     col += glintCol;
 
     float radialFade = 1.0 - smoothstep(0.78, 1.05, vRadial);
     float depthAtten = 1.0 - vDepth * uDepthFade;
     float finalAlpha = alpha * (uAlphaBase + filament * uAlphaBoost);
     finalAlpha *= mix(0.58, 1.0, radialFade) * depthAtten;
-    finalAlpha += glintMask * 0.06 * glintPulse;
+    finalAlpha += glintMask * 0.03 * glintPulse;
     finalAlpha = clamp(finalAlpha, 0.0, 1.0);
 
     gl_FragColor = vec4(col, finalAlpha);
@@ -317,14 +317,14 @@ export const simulationFragmentShader = `
     float freq2 = uFrequency * (1.1 + cos(pos.y * 4.0) * 0.3);
     float freq3 = uFrequency * (1.3 + sin(pos.z * 4.0) * 0.4);
 
-    pos = curlNoise(pos * freq1 + uTime * 0.08);
-    curlPos = curlNoise(curlPos * freq2 + uTime * 0.1);
-    curlPos += curlNoise(curlPos * freq3) * 0.15;
+    pos = curlNoise(pos * freq1 + uTime * 0.058);
+    curlPos = curlNoise(curlPos * freq2 + uTime * 0.072);
+    curlPos += curlNoise(curlPos * freq3) * 0.11;
 
     vec3 randomOffset = vec3(
-      sin(pos.y * 8.0 + uTime) * 0.08,
-      cos(pos.z * 8.0 + uTime * 1.1) * 0.08,
-      sin(pos.x * 8.0 + uTime * 0.9) * 0.08
+      sin(pos.y * 8.0 + uTime * 0.72) * 0.055,
+      cos(pos.z * 8.0 + uTime * 0.8) * 0.055,
+      sin(pos.x * 8.0 + uTime * 0.68) * 0.055
     );
 
     gl_FragColor = vec4(mix(pos, curlPos, 0.5) + randomOffset, 1.0);

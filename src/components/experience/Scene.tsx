@@ -50,6 +50,9 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
     const paleLilac = mixHex(palette.baseLilac, palette.softMauve, 0.25);
     const iceLavender = mixHex(palette.baseLilac, palette.cyanSheen, 0.35);
     const whiteBloom = mixHex("#ffffff", palette.baseLilac, 0.35);
+    const inkyViolet = mixHex(palette.coolLavender, "#36206f", 0.68);
+    const electricViolet = mixHex(palette.plumMagenta, "#6a4cff", 0.45);
+    const richPlum = mixHex(palette.plumMagenta, "#4a236e", 0.42);
 
     return {
       deepViolet,
@@ -57,101 +60,104 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
       paleLilac,
       iceLavender,
       whiteBloom,
+      inkyViolet,
+      electricViolet,
+      richPlum,
     };
   }, [palette]);
 
   const particleConfigs = useMemo(
     () => [
       {
-        size: 456,
-        pointSize: 16.2,
+        size: 360,
+        pointSize: 15.8,
         frequency: 0.45,
         blending: THREE.NormalBlending,
-        densityBias: 0.2,
-        alphaBase: 0.56,
-        alphaBoost: 0.66,
-        darkTintMix: 0.78,
-        glintChance: 0.01,
-        depthFade: 0.3,
-        colors: [derived.deepViolet, palette.coolLavender, palette.softMauve, palette.plumMagenta],
+        densityBias: 0.1,
+        alphaBase: 0.44,
+        alphaBoost: 0.5,
+        darkTintMix: 0.82,
+        glintChance: 0.004,
+        depthFade: 0.33,
+        colors: [derived.inkyViolet, derived.deepViolet, derived.richPlum, palette.coolLavender],
       },
       {
-        size: 296,
-        pointSize: 16.8,
+        size: 240,
+        pointSize: 16.2,
         frequency: 0.48,
         blending: THREE.NormalBlending,
-        densityBias: 0.15,
-        alphaBase: 0.54,
-        alphaBoost: 0.62,
-        darkTintMix: 0.72,
-        glintChance: 0.014,
-        depthFade: 0.28,
-        colors: [palette.coolLavender, palette.softMauve, derived.midLavender, derived.paleLilac],
+        densityBias: 0.04,
+        alphaBase: 0.42,
+        alphaBoost: 0.48,
+        darkTintMix: 0.76,
+        glintChance: 0.006,
+        depthFade: 0.31,
+        colors: [derived.deepViolet, derived.richPlum, palette.softMauve, derived.midLavender],
       },
       {
-        size: 158,
-        pointSize: 16.5,
+        size: 132,
+        pointSize: 16.0,
         frequency: 0.56,
         blending: THREE.NormalBlending,
-        densityBias: 0.09,
-        alphaBase: 0.5,
-        alphaBoost: 0.54,
-        darkTintMix: 0.64,
-        glintChance: 0.02,
-        depthFade: 0.25,
-        colors: [derived.midLavender, derived.paleLilac, palette.baseLilac, palette.coolLavender],
+        densityBias: 0.0,
+        alphaBase: 0.4,
+        alphaBoost: 0.44,
+        darkTintMix: 0.68,
+        glintChance: 0.008,
+        depthFade: 0.28,
+        colors: [derived.richPlum, derived.midLavender, derived.paleLilac, palette.coolLavender],
       },
       {
-        size: 96,
-        pointSize: 16.8,
+        size: 78,
+        pointSize: 16.2,
         frequency: 1.65,
         blending: THREE.NormalBlending,
-        densityBias: 0.04,
-        alphaBase: 0.48,
-        alphaBoost: 0.48,
-        darkTintMix: 0.56,
-        glintChance: 0.03,
-        depthFade: 0.22,
-        colors: [derived.paleLilac, derived.iceLavender, palette.cyanSheen, palette.softMauve],
+        densityBias: -0.02,
+        alphaBase: 0.38,
+        alphaBoost: 0.4,
+        darkTintMix: 0.6,
+        glintChance: 0.01,
+        depthFade: 0.25,
+        colors: [derived.midLavender, derived.paleLilac, derived.iceLavender, palette.softMauve],
       },
       {
-        size: 94,
-        pointSize: 16.2,
+        size: 72,
+        pointSize: 15.9,
         frequency: 0.7,
         blending: THREE.NormalBlending,
-        densityBias: 0.06,
-        alphaBase: 0.48,
-        alphaBoost: 0.5,
-        darkTintMix: 0.58,
-        glintChance: 0.03,
-        depthFade: 0.24,
-        colors: [palette.softMauve, derived.midLavender, derived.paleLilac, derived.iceLavender],
+        densityBias: -0.01,
+        alphaBase: 0.38,
+        alphaBoost: 0.4,
+        darkTintMix: 0.62,
+        glintChance: 0.012,
+        depthFade: 0.26,
+        colors: [derived.deepViolet, derived.midLavender, derived.paleLilac, derived.iceLavender],
       },
       {
-        size: 88,
-        pointSize: 17.0,
+        size: 60,
+        pointSize: 15.6,
         frequency: 2.3,
         blending: THREE.AdditiveBlending,
-        densityBias: 0.0,
-        alphaBase: 0.38,
-        alphaBoost: 0.42,
-        darkTintMix: 0.34,
-        glintChance: 0.06,
-        depthFade: 0.2,
-        colors: [derived.iceLavender, palette.cyanSheen, derived.whiteBloom, derived.paleLilac],
+        densityBias: -0.04,
+        alphaBase: 0.26,
+        alphaBoost: 0.28,
+        darkTintMix: 0.38,
+        glintChance: 0.016,
+        depthFade: 0.22,
+        colors: [derived.electricViolet, derived.iceLavender, derived.paleLilac, palette.softMauve],
       },
       {
-        size: 28,
-        pointSize: 13.8,
+        size: 18,
+        pointSize: 12.2,
         frequency: 2.8,
         blending: THREE.AdditiveBlending,
-        densityBias: -0.08,
-        alphaBase: 0.34,
-        alphaBoost: 0.38,
-        darkTintMix: 0.2,
-        glintChance: 0.11,
-        depthFade: 0.18,
-        colors: [derived.whiteBloom, "#FFFFFF", derived.iceLavender, palette.baseLilac],
+        densityBias: -0.12,
+        alphaBase: 0.2,
+        alphaBoost: 0.22,
+        darkTintMix: 0.18,
+        glintChance: 0.022,
+        depthFade: 0.19,
+        colors: [derived.iceLavender, derived.paleLilac, derived.whiteBloom, palette.baseLilac],
       },
     ],
     [derived, palette]
@@ -169,6 +175,7 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
       <group position={[0, 0, 0]} scale={sphereScale}>
         <RimSparkleSphere
           position={[0, 0, 0]}
+          renderOrder={20}
           colorA={derived.paleLilac}
           colorB={palette.softMauve}
           colorC={derived.deepViolet}
@@ -210,10 +217,10 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
 
       <EffectComposer>
         <Bloom
-          intensity={0.52}
-          luminanceThreshold={0.28}
-          luminanceSmoothing={0.18}
-          radius={0.62}
+          intensity={0.36}
+          luminanceThreshold={0.38}
+          luminanceSmoothing={0.2}
+          radius={0.5}
         />
       </EffectComposer>
     </>

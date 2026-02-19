@@ -27,7 +27,7 @@ export function RimSparkleSphere({
       uRimPower: { value: 3.5 },
       uRimIntensity: { value: 0.5 },
       uGrain: { value: 0.03 },
-      uOpacity: { value: 1.0 },
+      uOpacity: { value: 0.93 },
     }),
     [colorA, colorB, colorC]
   );
@@ -147,10 +147,12 @@ export function RimSparkleSphere({
         uniforms={uniforms}
         vertexShader={vertex}
         fragmentShader={fragment}
-        transparent={false}
-        depthWrite
+        transparent
+        depthWrite={false}
         depthTest
         blending={THREE.NormalBlending}
+        toneMapped
+        dithering
         side={THREE.DoubleSide}
       />
     </mesh>

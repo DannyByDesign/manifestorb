@@ -158,12 +158,12 @@ export function FBOParticles({
         scene
       )}
 
-      <points ref={points} frustumCulled={false} visible>
+      <points ref={points} frustumCulled={false} visible renderOrder={10}>
         <primitive object={geometry} attach="geometry" />
         <shaderMaterial
           blending={blending}
           depthWrite={false}
-          depthTest={false}
+          depthTest
           toneMapped
           dithering
           fragmentShader={fragmentShader}
