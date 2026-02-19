@@ -36,6 +36,8 @@ type ParticleConfig = {
   depthFade: number;
   clumpFlatten?: number;
   fieldMode?: number;
+  glowBoost?: number;
+  sparkleBoost?: number;
   colors: [string, string, string, string];
 };
 
@@ -156,8 +158,8 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         colors: [derived.deepViolet, derived.midLavender, derived.paleLilac, derived.iceLavender],
       },
       {
-        size: 60,
-        pointSize: 15.6,
+        size: 48,
+        pointSize: 16.0,
         frequency: 0.78,
         blending: THREE.AdditiveBlending,
         densityBias: -0.04,
@@ -166,8 +168,10 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         darkTintMix: 0.38,
         glintChance: 0.016,
         depthFade: 0.22,
-        clumpFlatten: 0.88,
+        clumpFlatten: 1.0,
         fieldMode: 1,
+        glowBoost: 1.28,
+        sparkleBoost: 2.1,
         colors: [derived.electricViolet, derived.iceLavender, derived.peachGlow, derived.rosePeach],
       },
       {
@@ -224,6 +228,8 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
             depthFade={config.depthFade}
             clumpFlatten={config.clumpFlatten ?? 0}
             fieldMode={config.fieldMode ?? 0}
+            glowBoost={config.glowBoost ?? 0}
+            sparkleBoost={config.sparkleBoost ?? 1}
             simVertShader={simulationVertexShader}
             simFragShader={simulationFragmentShader}
           />

@@ -24,6 +24,8 @@ type FboParticlesProps = {
   depthFade?: number;
   clumpFlatten?: number;
   fieldMode?: number;
+  glowBoost?: number;
+  sparkleBoost?: number;
   color1?: string;
   color2?: string;
   color3?: string;
@@ -46,6 +48,8 @@ export function FBOParticles({
   depthFade = 0.26,
   clumpFlatten = 0,
   fieldMode = 0,
+  glowBoost = 0,
+  sparkleBoost = 1,
   color1 = "#866AD6",
   color2 = "#E6B2A0",
   color3 = "#F4EFF7",
@@ -113,6 +117,8 @@ export function FBOParticles({
       uGlintChance: { value: glintChance },
       uDepthFade: { value: depthFade },
       uClumpFlatten: { value: clumpFlatten },
+      uGlowBoost: { value: glowBoost },
+      uSparkleBoost: { value: sparkleBoost },
     }),
     [
       pointSize,
@@ -128,6 +134,8 @@ export function FBOParticles({
       glintChance,
       depthFade,
       clumpFlatten,
+      glowBoost,
+      sparkleBoost,
     ]
   );
 

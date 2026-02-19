@@ -58,6 +58,7 @@ class SimulationMaterial extends THREE.ShaderMaterial {
       positions: { value: positionsTexture },
       uFrequency: { value: frequency },
       uFieldMode: { value: fieldMode },
+      uTextureSize: { value: size },
       uTime: { value: 0 },
     };
 

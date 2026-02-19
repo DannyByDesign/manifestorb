@@ -11,6 +11,8 @@ export const fragmentShader = `
   uniform float uGlintChance;
   uniform float uDepthFade;
   uniform float uClumpFlatten;
+  uniform float uGlowBoost;
+  uniform float uSparkleBoost;
 
   varying float vSeed;
   varying float vRadial;
@@ -89,8 +91,15 @@ export const fragmentShader = `
     float centerBoost = 0.66 + filament * 0.46;
     col *= centerBoost * (0.88 + radialGradient * 0.28);
 
-    float sparkle = sin(gl_PointCoord.x * 25.0) * sin(gl_PointCoord.y * 25.0) * 0.018;
+    float sparkle =
+      sin(gl_PointCoord.x * 25.0) *
+      sin(gl_PointCoord.y * 25.0) *
+      (0.018 * uSparkleBoost);
     col += sparkle;
+
+    float haloMask = smoothstep(0.62, 0.0, r);
+    vec3 haloGlow = mix(vec3(1.0), col, 0.25) * haloMask * (0.42 * uGlowBoost);
+    col += haloGlow;
 
     float glintNoise = fract(vSeed * 41.73 + filament * 8.13 + hash11(vSeed + vClump) * 6.1);
     float glintMask = step(1.0 - uGlintChance, glintNoise);
@@ -103,6 +112,7 @@ export const fragmentShader = `
     float finalAlpha = alpha * (uAlphaBase + filament * uAlphaBoost);
     finalAlpha *= mix(0.58, 1.0, radialFade) * depthAtten;
     finalAlpha += glintMask * 0.03 * glintPulse;
+    finalAlpha += haloMask * 0.08 * uGlowBoost;
     finalAlpha = clamp(finalAlpha, 0.0, 1.0);
 
     gl_FragColor = vec4(col, finalAlpha);
@@ -184,6 +194,7 @@ export const simulationFragmentShader = `
   uniform float uTime;
   uniform float uFrequency;
   uniform float uFieldMode;
+  uniform float uTextureSize;
 
   varying vec2 vUv;
 
@@ -293,11 +304,21 @@ export const simulationFragmentShader = `
     return fract(p.x * p.y);
   }
 
+  float hash11(float x) {
+    return fract(sin(x * 127.1 + 311.7) * 43758.5453123);
+  }
+
   vec3 seededDirection(vec2 uv) {
     float azimuth = hash21(uv * 17.31 + 0.13) * 6.28318530718;
     float z = hash21(uv * 29.17 + 0.71) * 2.0 - 1.0;
     float ring = sqrt(max(0.0, 1.0 - z * z));
     return vec3(cos(azimuth) * ring, sin(azimuth) * ring, z);
+  }
+
+  vec3 rotateAroundAxis(vec3 v, vec3 axis, float angle) {
+    float s = sin(angle);
+    float c = cos(angle);
+    return v * c + cross(axis, v) * s + axis * dot(axis, v) * (1.0 - c);
   }
 
 
@@ -340,28 +361,46 @@ export const simulationFragmentShader = `
     vec3 pos = texture2D(positions, vUv).rgb;
     vec3 curlPos = texture2D(positions, vUv).rgb;
 
-    // Separate, de-clumped motion field for bright accent particles.
+    // Separate, deterministic orbit field for bright accent particles.
     if (uFieldMode > 0.5) {
-      vec3 seedDir = seededDirection(vUv);
-      float targetRadius = 0.52 + 0.44 * hash21(vUv * 43.7 + 1.91);
-      vec3 targetPos = seedDir * targetRadius;
+      float texSize = max(uTextureSize, 1.0);
+      vec2 cell = floor(vUv * texSize);
+      float idx = cell.x + cell.y * texSize;
+      float count = texSize * texSize;
+
+      const float GOLDEN_ANGLE = 2.399963229728653;
+      float y = 1.0 - (2.0 * (idx + 0.5) / count);
+      float ring = sqrt(max(0.0, 1.0 - y * y));
+      float theta = GOLDEN_ANGLE * (idx + 0.5);
+      vec3 baseDir = vec3(cos(theta) * ring, y, sin(theta) * ring);
+
+      float phase = hash11(idx * 0.73 + 0.19) * 6.28318530718;
+      float orbitSpeed = 0.35 + 0.3 * hash11(idx * 1.41 + 2.17);
+      vec3 orbitAxis = normalize(seededDirection(vec2(hash11(idx * 0.11), hash11(idx * 0.37))) + vec3(0.31, 0.42, -0.27));
+      vec3 orbitDir = rotateAroundAxis(baseDir, orbitAxis, uTime * orbitSpeed + phase);
+
+      float radiusSeed = hash11(idx * 1.9 + 5.7);
+      float targetRadius = 0.16 + 0.84 * pow(radiusSeed, 0.3333333);
+      vec3 targetPos = orbitDir * targetRadius;
 
       vec3 accentCurl = curlNoise(
-        (pos + seedDir * 0.35) * (uFrequency * 0.65) +
-        vec3(uTime * 0.028, -uTime * 0.021, uTime * 0.018)
+        (pos + orbitDir * 0.25) * (uFrequency * 0.85) +
+        vec3(uTime * 0.03, -uTime * 0.024, uTime * 0.02)
       );
 
-      vec3 tangentOrbit = normalize(vec3(-pos.y, pos.x, 0.0) + vec3(1e-4));
-      vec3 drift = pos + accentCurl * 0.09 + tangentOrbit * 0.035;
-      vec3 spread = mix(drift, targetPos, 0.085);
+      vec3 tangent = normalize(cross(orbitAxis, targetPos) + vec3(1e-4));
+      float wobble = sin(uTime * (0.6 + hash11(idx * 2.31) * 0.5) + phase);
 
-      float maxRadius = 1.02 + 0.04 * sin(uTime * 0.4 + hash21(vUv * 11.0) * 6.28318530718);
-      float spreadLen = length(spread);
-      if (spreadLen > maxRadius) {
-        spread *= maxRadius / spreadLen;
+      vec3 nextPos = mix(pos, targetPos, 0.14);
+      nextPos += tangent * (0.013 * wobble);
+      nextPos += accentCurl * 0.026;
+
+      float nextLen = length(nextPos);
+      if (nextLen > 1.02) {
+        nextPos *= 1.02 / nextLen;
       }
 
-      gl_FragColor = vec4(spread, 1.0);
+      gl_FragColor = vec4(nextPos, 1.0);
       return;
     }
 
