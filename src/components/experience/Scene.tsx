@@ -64,44 +64,93 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
     () => [
       {
         size: 456,
-        pointSize: 16.9,
+        pointSize: 16.2,
         frequency: 0.45,
+        blending: THREE.NormalBlending,
+        densityBias: 0.2,
+        alphaBase: 0.56,
+        alphaBoost: 0.66,
+        darkTintMix: 0.78,
+        glintChance: 0.01,
+        depthFade: 0.3,
         colors: [derived.deepViolet, palette.coolLavender, palette.softMauve, palette.plumMagenta],
       },
       {
         size: 296,
-        pointSize: 17.5,
+        pointSize: 16.8,
         frequency: 0.48,
+        blending: THREE.NormalBlending,
+        densityBias: 0.15,
+        alphaBase: 0.54,
+        alphaBoost: 0.62,
+        darkTintMix: 0.72,
+        glintChance: 0.014,
+        depthFade: 0.28,
         colors: [palette.coolLavender, palette.softMauve, derived.midLavender, derived.paleLilac],
       },
       {
         size: 158,
-        pointSize: 17.0,
+        pointSize: 16.5,
         frequency: 0.56,
+        blending: THREE.NormalBlending,
+        densityBias: 0.09,
+        alphaBase: 0.5,
+        alphaBoost: 0.54,
+        darkTintMix: 0.64,
+        glintChance: 0.02,
+        depthFade: 0.25,
         colors: [derived.midLavender, derived.paleLilac, palette.baseLilac, palette.coolLavender],
       },
       {
         size: 96,
-        pointSize: 17.5,
+        pointSize: 16.8,
         frequency: 1.65,
+        blending: THREE.NormalBlending,
+        densityBias: 0.04,
+        alphaBase: 0.48,
+        alphaBoost: 0.48,
+        darkTintMix: 0.56,
+        glintChance: 0.03,
+        depthFade: 0.22,
         colors: [derived.paleLilac, derived.iceLavender, palette.cyanSheen, palette.softMauve],
       },
       {
         size: 94,
-        pointSize: 17.0,
+        pointSize: 16.2,
         frequency: 0.7,
+        blending: THREE.NormalBlending,
+        densityBias: 0.06,
+        alphaBase: 0.48,
+        alphaBoost: 0.5,
+        darkTintMix: 0.58,
+        glintChance: 0.03,
+        depthFade: 0.24,
         colors: [palette.softMauve, derived.midLavender, derived.paleLilac, derived.iceLavender],
       },
       {
         size: 88,
-        pointSize: 17.5,
+        pointSize: 17.0,
         frequency: 2.3,
+        blending: THREE.AdditiveBlending,
+        densityBias: 0.0,
+        alphaBase: 0.38,
+        alphaBoost: 0.42,
+        darkTintMix: 0.34,
+        glintChance: 0.06,
+        depthFade: 0.2,
         colors: [derived.iceLavender, palette.cyanSheen, derived.whiteBloom, derived.paleLilac],
       },
       {
         size: 28,
-        pointSize: 15.0,
+        pointSize: 13.8,
         frequency: 2.8,
+        blending: THREE.AdditiveBlending,
+        densityBias: -0.08,
+        alphaBase: 0.34,
+        alphaBoost: 0.38,
+        darkTintMix: 0.2,
+        glintChance: 0.11,
+        depthFade: 0.18,
         colors: [derived.whiteBloom, "#FFFFFF", derived.iceLavender, palette.baseLilac],
       },
     ],
@@ -135,7 +184,13 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
             color2={config.colors[1]}
             color3={config.colors[2]}
             color4={config.colors[3]}
-            blending={THREE.NormalBlending}
+            blending={config.blending}
+            densityBias={config.densityBias}
+            alphaBase={config.alphaBase}
+            alphaBoost={config.alphaBoost}
+            darkTintMix={config.darkTintMix}
+            glintChance={config.glintChance}
+            depthFade={config.depthFade}
             simVertShader={simulationVertexShader}
             simFragShader={simulationFragmentShader}
           />
@@ -155,10 +210,10 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
 
       <EffectComposer>
         <Bloom
-          intensity={0.4}
-          luminanceThreshold={0.15}
-          luminanceSmoothing={0.4}
-          radius={0.5}
+          intensity={0.52}
+          luminanceThreshold={0.28}
+          luminanceSmoothing={0.18}
+          radius={0.62}
         />
       </EffectComposer>
     </>

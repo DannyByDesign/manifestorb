@@ -4,67 +4,99 @@ export const fragmentShader = `
   uniform vec3 uColor3;
   uniform vec3 uColor4;
   uniform float uTime;
+  uniform float uDensityBias;
+  uniform float uAlphaBase;
+  uniform float uAlphaBoost;
+  uniform float uDarkTintMix;
+  uniform float uGlintChance;
+  uniform float uDepthFade;
+
+  varying float vSeed;
+  varying float vRadial;
+  varying float vDepth;
+  varying float vClump;
+  varying vec3 vParticlePos;
+
+  float hash11(float p) {
+    p = fract(p * 0.1031);
+    p *= p + 33.33;
+    p *= p + p;
+    return fract(p);
+  }
 
   void main() {
     vec2 p = gl_PointCoord - vec2(0.5);
     float r = length(p);
 
-    // Softer edge for better blending
-    float edge = 0.45;
+    float edge = 0.46;
     float aa = fwidth(r);
     float alpha = 1.0 - smoothstep(edge - aa, edge + aa, r);
     if (alpha <= 0.0) discard;
 
-    // Create gradient based on position within the particle
-    float gradient = gl_PointCoord.y;
-    float gradient2 = gl_PointCoord.x;
-    float radialGradient = 1.0 - r * 1.2;
+    float gradientY = gl_PointCoord.y;
+    float gradientX = gl_PointCoord.x;
+    float radialGradient = 1.0 - r * 1.25;
 
-    // Mix all 4 colors based on position for variety
     vec3 col;
-
-    if (gradient < 0.25) {
-      float t = gradient * 4.0;
+    if (gradientY < 0.25) {
+      float t = gradientY * 4.0;
       col = mix(uColor1, uColor2, t);
-    } else if (gradient < 0.5) {
-      float t = (gradient - 0.25) * 4.0;
+    } else if (gradientY < 0.5) {
+      float t = (gradientY - 0.25) * 4.0;
       col = mix(uColor2, uColor3, t);
-    } else if (gradient < 0.75) {
-      float t = (gradient - 0.5) * 4.0;
+    } else if (gradientY < 0.75) {
+      float t = (gradientY - 0.5) * 4.0;
       col = mix(uColor3, uColor4, t);
     } else {
-      float t = (gradient - 0.75) * 4.0;
+      float t = (gradientY - 0.75) * 4.0;
       col = mix(uColor4, uColor1, t);
     }
 
-    // Add subtle variation with x-gradient
     vec3 col2;
-    if (gradient2 < 0.33) {
-      float t = gradient2 * 3.0;
+    if (gradientX < 0.33) {
+      float t = gradientX * 3.0;
       col2 = mix(uColor1, uColor3, t);
-    } else if (gradient2 < 0.66) {
-      float t = (gradient2 - 0.33) * 3.0;
+    } else if (gradientX < 0.66) {
+      float t = (gradientX - 0.33) * 3.0;
       col2 = mix(uColor3, uColor4, t);
     } else {
-      float t = (gradient2 - 0.66) * 3.0;
+      float t = (gradientX - 0.66) * 3.0;
       col2 = mix(uColor4, uColor2, t);
     }
 
-    // Blend both gradients for rich color variation
-    col = mix(col, col2, 0.4);
+    col = mix(col, col2, 0.42);
 
-    // Gentle brightness falloff from center
-    col *= (0.85 + radialGradient * 0.3);
+    float structure = clamp(vClump * 0.74 + (1.0 - vRadial) * 0.66 + vSeed * 0.2 + uDensityBias, 0.0, 1.0);
+    float filamentNoise =
+      sin(vParticlePos.x * 12.0 + vParticlePos.y * 10.0 + uTime * 0.34) * 0.1 +
+      cos(vParticlePos.z * 9.0 - uTime * 0.22) * 0.08;
+    float filament = smoothstep(0.34, 0.94, structure + filamentNoise);
 
-    // Very subtle sparkle for highlight particles
-    float sparkle = sin(gl_PointCoord.x * 25.0) * sin(gl_PointCoord.y * 25.0) * 0.02;
+    vec3 darkTint = mix(uColor4, uColor1, 0.55) * 0.58;
+    col = mix(col, darkTint, filament * uDarkTintMix);
+
+    float centerBoost = 0.74 + filament * 0.58;
+    col *= centerBoost * (0.88 + radialGradient * 0.28);
+
+    float sparkle = sin(gl_PointCoord.x * 25.0) * sin(gl_PointCoord.y * 25.0) * 0.018;
     col += sparkle;
 
-    // Adjust alpha based on color brightness
-    float brightness = (col.r + col.g + col.b) / 3.0;
-    float finalAlpha = alpha * (0.85 + brightness * 0.15);
+    float glintNoise = fract(vSeed * 41.73 + filament * 8.13 + hash11(vSeed + vClump) * 6.1);
+    float glintMask = step(1.0 - uGlintChance, glintNoise);
+    float glintPulse = 0.45 + 0.55 * sin(uTime * (1.7 + vSeed * 2.4) + vSeed * 17.0);
+    vec3 glintCol = vec3(1.0, 0.98, 1.0) * glintMask * glintPulse * (0.36 + filament * 0.9);
+    col += glintCol;
+
+    float radialFade = 1.0 - smoothstep(0.78, 1.05, vRadial);
+    float depthAtten = 1.0 - vDepth * uDepthFade;
+    float finalAlpha = alpha * (uAlphaBase + filament * uAlphaBoost);
+    finalAlpha *= mix(0.58, 1.0, radialFade) * depthAtten;
+    finalAlpha += glintMask * 0.06 * glintPulse;
+    finalAlpha = clamp(finalAlpha, 0.0, 1.0);
 
     gl_FragColor = vec4(col, finalAlpha);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
   }
 `;
 
@@ -73,25 +105,47 @@ export const vertexShader = `
   uniform float uTime;
   uniform float uPointSize;
 
+  varying float vSeed;
+  varying float vRadial;
+  varying float vDepth;
+  varying float vClump;
+  varying vec3 vParticlePos;
+
+  float hash21(vec2 p) {
+    p = fract(p * vec2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return fract(p.x * p.y);
+  }
+
   void main() {
-    vec3 pos = texture2D(uPositions, position.xy).xyz;
+    vec2 sampleUv = position.xy;
+    vec3 pos = texture2D(uPositions, sampleUv).xyz;
 
     vec4 modelPosition = modelMatrix * vec4(pos, 1.0);
-    vec4 viewPosition  = viewMatrix  * modelPosition;
-    vec4 projected     = projectionMatrix * viewPosition;
+    vec4 viewPosition = viewMatrix * modelPosition;
+    vec4 projected = projectionMatrix * viewPosition;
 
     gl_Position = projected;
 
-    // Size variation for scattered look
+    vSeed = hash21(sampleUv);
+    vRadial = clamp(length(pos), 0.0, 1.2);
+    vDepth = clamp(abs(viewPosition.z) / 16.0, 0.0, 1.0);
+    float clumpField =
+      sin(pos.x * 8.5 + uTime * 0.31) +
+      cos(pos.y * 7.3 - uTime * 0.27) +
+      sin(pos.z * 6.1 + uTime * 0.42);
+    vClump = clamp(clumpField * 0.166 + 0.5, 0.0, 1.0);
+    vParticlePos = pos;
+
     float size = uPointSize;
-
-    // Gentle size variation for organic feel
-    float variation = sin(pos.x * 7.0 + uTime * 0.4) * 0.2 +
-                      cos(pos.y * 6.0 + uTime * 0.3) * 0.15 + 0.7;
+    float variation =
+      0.7 +
+      0.25 * sin(pos.x * 7.0 + uTime * 0.4) +
+      0.18 * cos(pos.y * 6.0 + uTime * 0.3);
     size *= variation;
-
-    // Distance attenuation
-    size *= (1.6 / (1.0 + abs(viewPosition.z) * 0.2));
+    size *= mix(0.76, 1.28, vClump);
+    size *= mix(1.08, 0.74, smoothstep(0.35, 1.05, vRadial));
+    size *= (1.7 / (1.0 + abs(viewPosition.z) * 0.2));
 
     gl_PointSize = size;
   }

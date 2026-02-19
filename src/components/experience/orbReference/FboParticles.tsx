@@ -15,6 +15,12 @@ type FboParticlesProps = {
   size?: number;
   pointSize?: number;
   blending?: THREE.Blending;
+  densityBias?: number;
+  alphaBase?: number;
+  alphaBoost?: number;
+  darkTintMix?: number;
+  glintChance?: number;
+  depthFade?: number;
   color1?: string;
   color2?: string;
   color3?: string;
@@ -28,6 +34,12 @@ export function FBOParticles({
   size = 32,
   pointSize = 3.0,
   blending = THREE.NormalBlending,
+  densityBias = 0.12,
+  alphaBase = 0.54,
+  alphaBoost = 0.52,
+  darkTintMix = 0.62,
+  glintChance = 0.02,
+  depthFade = 0.26,
   color1 = "#887DAD",
   color2 = "#C69BBB",
   color3 = "#EDE8F2",
@@ -87,8 +99,26 @@ export function FBOParticles({
       uColor2: { value: new THREE.Color(color2) },
       uColor3: { value: new THREE.Color(color3) },
       uColor4: { value: new THREE.Color(color4) },
+      uDensityBias: { value: densityBias },
+      uAlphaBase: { value: alphaBase },
+      uAlphaBoost: { value: alphaBoost },
+      uDarkTintMix: { value: darkTintMix },
+      uGlintChance: { value: glintChance },
+      uDepthFade: { value: depthFade },
     }),
-    [pointSize, color1, color2, color3, color4]
+    [
+      pointSize,
+      color1,
+      color2,
+      color3,
+      color4,
+      densityBias,
+      alphaBase,
+      alphaBoost,
+      darkTintMix,
+      glintChance,
+      depthFade,
+    ]
   );
 
   useEffect(() => {
@@ -133,7 +163,9 @@ export function FBOParticles({
         <shaderMaterial
           blending={blending}
           depthWrite={false}
-          depthTest={false}
+          depthTest
+          toneMapped
+          dithering
           fragmentShader={fragmentShader}
           vertexShader={vertexShader}
           uniforms={uniforms}
