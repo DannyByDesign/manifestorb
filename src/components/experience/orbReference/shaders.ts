@@ -11,6 +11,7 @@ export const fragmentShader = `
   uniform float uGlintChance;
   uniform float uDepthFade;
   uniform float uClumpFlatten;
+  uniform float uFieldMode;
   uniform float uGlowBoost;
   uniform float uSparkleBoost;
 
@@ -75,7 +76,13 @@ export const fragmentShader = `
     col = mix(col, col2, 0.28 + coreToRim * 0.22);
 
     float clumpSignal = mix(vClump, 0.5, uClumpFlatten);
-    float structure = clamp(clumpSignal * 0.74 + (1.0 - vRadial) * 0.66 + vSeed * 0.2 + uDensityBias, 0.0, 1.0);
+    clumpSignal = mix(clumpSignal, 0.5, uFieldMode);
+    float radialDensity = mix(
+      (1.0 - vRadial) * 0.66,
+      smoothstep(0.52, 1.05, vRadial) * 0.72,
+      uFieldMode
+    );
+    float structure = clamp(clumpSignal * 0.74 + radialDensity + vSeed * 0.2 + uDensityBias, 0.0, 1.0);
     float filamentNoise =
       sin(vParticlePos.x * 12.0 + vParticlePos.y * 10.0 + uTime * 0.34) * mix(0.1, 0.045, uClumpFlatten) +
       cos(vParticlePos.z * 9.0 - uTime * 0.22) * mix(0.08, 0.035, uClumpFlatten);
@@ -88,7 +95,7 @@ export const fragmentShader = `
     vec3 darkTint = mix(uColor4, uColor1, 0.55) * 0.58;
     col = mix(col, darkTint, filament * uDarkTintMix);
 
-    float centerBoost = 0.66 + filament * 0.46;
+    float centerBoost = mix(0.66 + filament * 0.46, 0.84 + filament * 0.18, uFieldMode);
     col *= centerBoost * (0.88 + radialGradient * 0.28);
 
     float sparkle =
@@ -108,9 +115,11 @@ export const fragmentShader = `
     col += glintCol;
 
     float radialFade = 1.0 - smoothstep(0.78, 1.05, vRadial);
+    float outerAlpha = smoothstep(0.55, 1.05, vRadial);
+    float radialAlpha = mix(mix(0.58, 1.0, radialFade), mix(0.36, 1.0, outerAlpha), uFieldMode);
     float depthAtten = 1.0 - vDepth * uDepthFade;
     float finalAlpha = alpha * (uAlphaBase + filament * uAlphaBoost);
-    finalAlpha *= mix(0.58, 1.0, radialFade) * depthAtten;
+    finalAlpha *= radialAlpha * depthAtten;
     finalAlpha += glintMask * 0.03 * glintPulse;
     finalAlpha += haloMask * 0.08 * uGlowBoost;
     finalAlpha = clamp(finalAlpha, 0.0, 1.0);
@@ -375,29 +384,35 @@ export const simulationFragmentShader = `
       vec3 baseDir = vec3(cos(theta) * ring, y, sin(theta) * ring);
 
       float phase = hash11(idx * 0.73 + 0.19) * 6.28318530718;
-      float orbitSpeed = 0.35 + 0.3 * hash11(idx * 1.41 + 2.17);
-      vec3 orbitAxis = normalize(seededDirection(vec2(hash11(idx * 0.11), hash11(idx * 0.37))) + vec3(0.31, 0.42, -0.27));
+      float orbitSpeed = 0.14 + 0.11 * hash11(idx * 1.41 + 2.17);
+      vec3 orbitAxis = normalize(seededDirection(vec2(hash11(idx * 0.11), hash11(idx * 0.37))) + vec3(0.29, 0.47, -0.25));
       vec3 orbitDir = rotateAroundAxis(baseDir, orbitAxis, uTime * orbitSpeed + phase);
 
       float radiusSeed = hash11(idx * 1.9 + 5.7);
-      float targetRadius = 0.16 + 0.84 * pow(radiusSeed, 0.3333333);
+      float targetRadius = 0.68 + 0.30 * pow(radiusSeed, 0.55);
       vec3 targetPos = orbitDir * targetRadius;
 
       vec3 accentCurl = curlNoise(
-        (pos + orbitDir * 0.25) * (uFrequency * 0.85) +
-        vec3(uTime * 0.03, -uTime * 0.024, uTime * 0.02)
+        (pos + orbitDir * 0.28) * (uFrequency * 1.45) +
+        vec3(uTime * 0.038, -uTime * 0.031, uTime * 0.027)
       );
 
-      vec3 tangent = normalize(cross(orbitAxis, targetPos) + vec3(1e-4));
-      float wobble = sin(uTime * (0.6 + hash11(idx * 2.31) * 0.5) + phase);
+      vec3 tangent = normalize(cross(orbitAxis, pos) + vec3(1e-4));
+      float wobble = sin(uTime * (0.7 + hash11(idx * 2.31) * 0.5) + phase);
+      float posLen = max(length(pos), 1e-4);
+      vec3 radialPull = normalize(targetPos - pos + vec3(1e-4)) * (abs(targetRadius - posLen) * 0.08);
 
-      vec3 nextPos = mix(pos, targetPos, 0.14);
-      nextPos += tangent * (0.013 * wobble);
-      nextPos += accentCurl * 0.026;
+      vec3 nextPos = pos;
+      nextPos += tangent * (0.024 + 0.014 * wobble);
+      nextPos += accentCurl * 0.054;
+      nextPos += radialPull;
+      nextPos = mix(nextPos, targetPos, 0.04);
 
       float nextLen = length(nextPos);
-      if (nextLen > 1.02) {
-        nextPos *= 1.02 / nextLen;
+      if (nextLen > 1.00) {
+        nextPos *= 1.00 / nextLen;
+      } else if (nextLen < 0.62) {
+        nextPos = normalize(nextPos + targetPos * 1e-4) * (0.62 + 0.06 * hash11(idx * 3.1 + 1.7));
       }
 
       gl_FragColor = vec4(nextPos, 1.0);

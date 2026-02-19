@@ -117,6 +117,7 @@ export function FBOParticles({
       uGlintChance: { value: glintChance },
       uDepthFade: { value: depthFade },
       uClumpFlatten: { value: clumpFlatten },
+      uFieldMode: { value: fieldMode },
       uGlowBoost: { value: glowBoost },
       uSparkleBoost: { value: sparkleBoost },
     }),
@@ -134,6 +135,7 @@ export function FBOParticles({
       glintChance,
       depthFade,
       clumpFlatten,
+      fieldMode,
       glowBoost,
       sparkleBoost,
     ]
