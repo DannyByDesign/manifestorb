@@ -23,7 +23,6 @@ import {
 } from "@/server/features/ai/tools/email/primitives";
 import {
   lookupSearchDocumentIds,
-  lookupSearchAliasExpansions,
   recordSearchSignals,
 } from "@/server/features/search/index/repository";
 import { extractEmailAddresses } from "@/server/lib/email";
@@ -265,31 +264,9 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         : undefined;
 
     const currentMessage = capEnv.toolContext.currentMessage ?? "";
-    const queryText = [
-      typeof requestFilter.query === "string" ? requestFilter.query : "",
-      typeof requestFilter.text === "string" ? requestFilter.text : "",
-      currentMessage,
-    ]
-      .join(" ")
-      .trim();
-    const lowerQueryText = queryText.toLowerCase();
     const fallbackQuery = currentMessage.trim();
 
-    const inferredUnrepliedToSent =
-      requestFilter.unrepliedToSent === true;
-    const inferredPdfOnly =
-      /\bpdf\b/u.test(lowerQueryText) &&
-      (requestFilter.hasAttachment === true ||
-        /\battach(?:ment|ments)\b/u.test(lowerQueryText));
-    const inferredCc =
-      typeof requestFilter.cc === "string" && requestFilter.cc.trim().length > 0
-        ? requestFilter.cc.trim()
-        : (() => {
-            const match = lowerQueryText.match(
-              /\bcc['’]?(?:d)?\s*(?:by|from)?\s*([^\s,<>()]+@[^\s,<>()]+\.[^\s,<>()]+)/u,
-            );
-            return match?.[1]?.trim();
-          })();
+    const inferredUnrepliedToSent = requestFilter.unrepliedToSent === true;
 
     const mailbox =
       mailboxOverride ??
@@ -344,55 +321,28 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
 
     const requestFrom = typeof requestFilter.from === "string" ? requestFilter.from : undefined;
     const requestTo = typeof requestFilter.to === "string" ? requestFilter.to : undefined;
-    const requestCc =
-      typeof requestFilter.cc === "string" ? requestFilter.cc : inferredCc;
-
-    const tryResolveSingleEmail = async (value: string | undefined): Promise<string[] | undefined> => {
-      const raw = (value ?? "").trim();
-      if (!raw) return undefined;
-      if (raw.includes("@")) return undefined;
-      if (/^[^\s@]+\.[^\s@]+$/u.test(raw)) return undefined;
-      try {
-        const aliasRows = await lookupSearchAliasExpansions({
-          userId: capEnv.runtime.userId,
-          emailAccountId: capEnv.runtime.emailAccountId,
-          terms: [raw],
-          limit: 40,
-        });
-        const candidates = Array.from(
-          new Set(
-            aliasRows
-              .filter((row) => row.entityType === "person")
-              .map((row) => row.canonicalValue)
-              .filter((v) => typeof v === "string" && v.includes("@")),
-          ),
-        );
-        return candidates.length === 1 ? candidates.slice(0, 1) : undefined;
-      } catch {
-        return undefined;
-      }
-    };
+    const requestCc = typeof requestFilter.cc === "string" ? requestFilter.cc : undefined;
 
     const fromEmails =
-      (Array.isArray(requestFilter.fromEmails) && requestFilter.fromEmails.length > 0
+      Array.isArray(requestFilter.fromEmails) && requestFilter.fromEmails.length > 0
         ? (requestFilter.fromEmails as string[])
-        : undefined) ?? (await tryResolveSingleEmail(requestFrom));
+        : undefined;
     const fromDomains =
       Array.isArray(requestFilter.fromDomains) && requestFilter.fromDomains.length > 0
         ? (requestFilter.fromDomains as string[])
         : undefined;
     const toEmails =
-      (Array.isArray(requestFilter.toEmails) && requestFilter.toEmails.length > 0
+      Array.isArray(requestFilter.toEmails) && requestFilter.toEmails.length > 0
         ? (requestFilter.toEmails as string[])
-        : undefined) ?? (await tryResolveSingleEmail(requestTo));
+        : undefined;
     const toDomains =
       Array.isArray(requestFilter.toDomains) && requestFilter.toDomains.length > 0
         ? (requestFilter.toDomains as string[])
         : undefined;
     const ccEmails =
-      (Array.isArray(requestFilter.ccEmails) && requestFilter.ccEmails.length > 0
+      Array.isArray(requestFilter.ccEmails) && requestFilter.ccEmails.length > 0
         ? (requestFilter.ccEmails as string[])
-        : undefined) ?? (await tryResolveSingleEmail(requestCc));
+        : undefined;
     const ccDomains =
       Array.isArray(requestFilter.ccDomains) && requestFilter.ccDomains.length > 0
         ? (requestFilter.ccDomains as string[])
@@ -543,11 +493,9 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
               typeof requestFilter.hasAttachment === "boolean"
                 ? requestFilter.hasAttachment
                 : undefined,
-            attachmentMimeTypes: inferredPdfOnly
-              ? ["application/pdf", "pdf"]
-              : Array.isArray(requestFilter.attachmentMimeTypes)
-                ? (requestFilter.attachmentMimeTypes as string[])
-                : undefined,
+            attachmentMimeTypes: Array.isArray(requestFilter.attachmentMimeTypes)
+              ? (requestFilter.attachmentMimeTypes as string[])
+              : undefined,
             attachmentFilenameContains:
               typeof requestFilter.attachmentFilenameContains === "string"
                 ? requestFilter.attachmentFilenameContains
@@ -714,11 +662,9 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           typeof requestFilter.hasAttachment === "boolean"
             ? requestFilter.hasAttachment
             : undefined,
-        attachmentMimeTypes: inferredPdfOnly
-          ? ["application/pdf", "pdf"]
-          : Array.isArray(requestFilter.attachmentMimeTypes)
-            ? (requestFilter.attachmentMimeTypes as string[])
-            : undefined,
+        attachmentMimeTypes: Array.isArray(requestFilter.attachmentMimeTypes)
+          ? (requestFilter.attachmentMimeTypes as string[])
+          : undefined,
         attachmentFilenameContains:
           typeof requestFilter.attachmentFilenameContains === "string"
             ? requestFilter.attachmentFilenameContains

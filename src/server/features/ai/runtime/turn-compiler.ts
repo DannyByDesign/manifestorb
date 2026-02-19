@@ -737,21 +737,6 @@ export async function compileRuntimeTurn(params: {
     };
   }
 
-  if (CONVERSATION_ONLY_SIGNAL_RE.test(normalized)) {
-    return {
-      toolChoice: "none",
-      knowledgeSource: "either",
-      freshness: "low",
-      routeHint: "conversation_only",
-      conversationClauses: [message],
-      taskClauses: [],
-      metaConstraints,
-      needsClarification: false,
-      confidence: 0.62,
-      source: "compiler_fallback",
-    };
-  }
-
   return {
     toolChoice: "auto",
     knowledgeSource: INTERNAL_SURFACE_SIGNAL_RE.test(normalized) ? "internal" : "either",

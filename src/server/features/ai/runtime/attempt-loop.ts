@@ -206,6 +206,8 @@ function buildNativeRuntimeSystemPrompt(params: {
     "- For public facts that may be time-sensitive or unfamiliar (news, prices, latest changes), use web.search instead of guessing.",
     "- If you need details from a specific URL returned by web.search, use web.fetch on that URL.",
     "- For follow-up questions about prior results (for example: 'the second one' or 'why that email'), ground your answer in the latest turn evidence before running a new search.",
+    "- Reuse prior grounded tool evidence for follow-ups to avoid redundant retrieval, unless the user disputes correctness or asks to re-check.",
+    "- If the user says the prior factual answer is wrong/inaccurate, run fresh retrieval tools instead of defending the prior answer.",
     "- Treat scheduled tasks as valid calendar rescheduling targets when the user asks to move/reschedule a task.",
     "- Do not claim missing capability for task/calendar rescheduling when runtime tools are available; ask a clarifying question if identifiers are missing.",
     "- If a tool indicates missing fields, ask one precise follow-up question.",

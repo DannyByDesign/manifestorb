@@ -16,15 +16,6 @@ export interface ToolRankingParams {
   turn?: RuntimeTurnContract;
 }
 
-const MUTATION_RE =
-  /\b(create|update|edit|change|delete|remove|archive|trash|send|reply|move|label|reschedule|book|cancel|block|unsubscribe|mark|snooze)\b/u;
-const INBOX_RE = /\b(inbox|email|thread|message|draft|reply|sender)\b/u;
-const CALENDAR_RE =
-  /\b(calendar|meeting|event|schedule|availability|task|tasks|todo|to-do)\b/u;
-const POLICY_RE = /\b(rule|policy|approval|permission|automation|preference)\b/u;
-const MEMORY_RE =
-  /\b(remember|memory|recall|forgot|forget|last time|history|relationship|contact context)\b/u;
-
 const PROFILE_LIMITS: Record<NonNullable<RuntimeTurnContract["routeProfile"]>, number> = {
   fast: 20,
   standard: 48,
@@ -92,15 +83,6 @@ function familiesForSemanticContract(
   }
 }
 
-function lexicalDomainHints(message: string): Array<"inbox" | "calendar" | "policy" | "memory"> {
-  const hints: Array<"inbox" | "calendar" | "policy" | "memory"> = [];
-  if (INBOX_RE.test(message)) hints.push("inbox");
-  if (CALENDAR_RE.test(message)) hints.push("calendar");
-  if (POLICY_RE.test(message)) hints.push("policy");
-  if (MEMORY_RE.test(message)) hints.push("memory");
-  return hints;
-}
-
 function scoreToolRelevance(
   definition: RuntimeToolDefinition,
   params: ToolRankingParams,
@@ -127,42 +109,6 @@ function scoreToolRelevance(
     for (const tag of tags) {
       if (message.includes(tag.toLowerCase())) score += 1;
     }
-
-    const hints = lexicalDomainHints(message);
-    if (
-      hints.includes("inbox") &&
-      definition.metadata.intentFamilies.some((family) => family.startsWith("inbox_"))
-    ) {
-      score += 3;
-    }
-
-    if (
-      hints.includes("calendar") &&
-      definition.metadata.intentFamilies.some((family) => family.startsWith("calendar_"))
-    ) {
-      score += 3;
-    }
-
-    if (
-      hints.includes("policy") &&
-      (definition.metadata.intentFamilies.includes("calendar_policy") ||
-        definition.metadata.intentFamilies.includes("cross_surface_planning"))
-    ) {
-      score += 2;
-    }
-
-    if (
-      hints.includes("memory") &&
-      definition.metadata.intentFamilies.some(
-        (family) => family === "memory_read" || family === "memory_mutate",
-      )
-    ) {
-      score += 4;
-    }
-
-    const mutating = MUTATION_RE.test(message);
-    if (mutating && !definition.metadata.readOnly) score += 2;
-    if (!mutating && definition.metadata.readOnly) score += 2;
   }
 
   return score;

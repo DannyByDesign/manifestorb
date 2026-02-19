@@ -11,77 +11,6 @@ function extractList(data: unknown): unknown[] {
   return [];
 }
 
-function summarizeItem(item: unknown): string {
-  if (!item || typeof item !== "object") return String(item);
-  const record = item as Record<string, unknown>;
-  const subject =
-    typeof record.subject === "string"
-      ? record.subject
-      : typeof record.title === "string"
-        ? record.title
-        : undefined;
-  const from = typeof record.from === "string" ? record.from : undefined;
-  const localWhen =
-    typeof record.dateLocal === "string"
-      ? record.dateLocal
-      : typeof record.startLocal === "string"
-        ? record.startLocal
-        : typeof record.endLocal === "string"
-          ? record.endLocal
-          : undefined;
-  const when =
-    localWhen ??
-    (typeof record.date === "string"
-      ? record.date
-      : typeof record.start === "string"
-        ? record.start
-        : undefined);
-
-  if (!subject && !from && !when) return "details unavailable";
-  if (subject && from && when) return `from ${from} — "${subject}" (${when})`;
-  if (subject && from) return `from ${from} — "${subject}"`;
-  if (subject && when) return `"${subject}" (${when})`;
-  if (from && when) return `from ${from} (${when})`;
-  if (subject) return `"${subject}"`;
-  if (from) return `from ${from}`;
-  return `${when}`;
-}
-
-function itemTimestampMs(item: unknown): number | null {
-  if (!item || typeof item !== "object") return null;
-  const record = item as Record<string, unknown>;
-  const candidates = [
-    record.date,
-    record.start,
-    record.receivedAt,
-    record.updatedAt,
-    record.createdAt,
-  ];
-
-  for (const candidate of candidates) {
-    if (typeof candidate !== "string" || candidate.trim().length === 0) continue;
-    const parsed = Date.parse(candidate);
-    if (Number.isFinite(parsed) && parsed > 0) return parsed;
-  }
-  return null;
-}
-
-function pickMostRecentItem(items: unknown[]): unknown {
-  let selected = items[0];
-  let selectedMs = itemTimestampMs(selected) ?? Number.NEGATIVE_INFINITY;
-
-  for (let i = 1; i < items.length; i += 1) {
-    const candidate = items[i];
-    const candidateMs = itemTimestampMs(candidate) ?? Number.NEGATIVE_INFINITY;
-    if (candidateMs > selectedMs) {
-      selected = candidate;
-      selectedMs = candidateMs;
-    }
-  }
-
-  return selected;
-}
-
 export function summarizeRuntimeResults(params: {
   request: string;
   results: RuntimeToolResult[];
@@ -98,23 +27,6 @@ export function summarizeRuntimeResults(params: {
       failed?.error ||
       "I couldn't complete that request with the available tools yet."
     );
-  }
-
-  const normalized = params.request.toLowerCase();
-  const wantsFirst = /\b(first|1st|top)\b/u.test(normalized);
-  const wantsLast = /\b(last|latest|most recent)\b/u.test(normalized);
-
-  if (wantsFirst || wantsLast) {
-    for (const result of successful) {
-      const items = extractList(result.data);
-      if (items.length === 0) continue;
-      if (wantsLast) {
-        const selected = pickMostRecentItem(items);
-        return `Your most recent item is ${summarizeItem(selected)}.`;
-      }
-      const selected = items[0];
-      return `The first item is ${summarizeItem(selected)}.`;
-    }
   }
 
   const latest = successful[successful.length - 1];

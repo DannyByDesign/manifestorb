@@ -143,7 +143,7 @@ describe("runtime email unified search routing", () => {
     );
   });
 
-  it("sanitizes suspicious sender filters into text hints before unified search", async () => {
+  it("preserves sender filters exactly without validator-side rewrites", async () => {
     const caps = createEmailCapabilities(buildEnv());
     await caps.searchInbox({
       from: "our conversation memory",
@@ -153,13 +153,13 @@ describe("runtime email unified search routing", () => {
     expect(unifiedQuery).toHaveBeenCalledWith(
       expect.objectContaining({
         mailbox: "inbox",
-        from: undefined,
-        text: "our conversation memory",
+        from: "our conversation memory",
+        text: undefined,
       }),
     );
   });
 
-  it("strips temporal suffixes from sender filters", async () => {
+  it("does not strip temporal suffixes from sender filters", async () => {
     const caps = createEmailCapabilities(buildEnv());
     await caps.searchInbox({
       from: "Haseeb in the last 7 days",
@@ -169,7 +169,7 @@ describe("runtime email unified search routing", () => {
     expect(unifiedQuery).toHaveBeenCalledWith(
       expect.objectContaining({
         mailbox: "inbox",
-        from: "Haseeb",
+        from: "Haseeb in the last 7 days",
       }),
     );
   });

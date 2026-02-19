@@ -1,32 +1,7 @@
-const SUSPICIOUS_FROM_PATTERNS: RegExp[] = [
-  /\bconversation\s+memory\b/iu,
-  /\bchat\s+history\b/iu,
-  /\bour\s+conversation\b/iu,
-  /\bthis\s+chat\b/iu,
-  /\bprevious\s+messages?\b/iu,
-];
-
-const TRAILING_TEMPORAL_SUFFIX_PATTERNS: RegExp[] = [
-  /\s+(?:in\s+)?(?:the\s+)?(?:last|past)\s+\d{1,3}\s+(?:day|days|week|weeks|month|months|year|years)\b.*$/iu,
-  /\s+(?:today|tonight|tomorrow|yesterday|this\s+week|next\s+week|this\s+month|last\s+month)\b.*$/iu,
-];
-
 function normalizeStringValue(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value.trim().replace(/\s+/g, " ");
   return normalized.length > 0 ? normalized : undefined;
-}
-
-function isSuspiciousFromValue(value: string): boolean {
-  if (value.length > 120) return true;
-  return SUSPICIOUS_FROM_PATTERNS.some((pattern) => pattern.test(value));
-}
-
-function stripTrailingTemporalScope(value: string): string {
-  return TRAILING_TEMPORAL_SUFFIX_PATTERNS.reduce(
-    (current, pattern) => current.replace(pattern, "").trim(),
-    value,
-  );
 }
 
 function sanitizeDateRange(value: unknown): Record<string, unknown> | undefined {
@@ -126,18 +101,7 @@ export function validateEmailSearchFilter(
 
   const from = normalizeStringValue(filter.from);
   if (from) {
-    const normalizedFrom = stripTrailingTemporalScope(from);
-    if (!normalizedFrom) {
-      delete sanitized.from;
-    } else if (isSuspiciousFromValue(normalizedFrom)) {
-      // Convert over-broad sender prose into a soft text hint instead of hard-failing.
-      delete sanitized.from;
-      if (!normalizeStringValue(sanitized.text)) {
-        sanitized.text = normalizedFrom;
-      }
-    } else {
-      sanitized.from = normalizedFrom;
-    }
+    sanitized.from = from;
   } else {
     delete sanitized.from;
   }

@@ -1,8 +1,7 @@
 import { lookupSearchAliasExpansions } from "@/server/features/search/index/repository";
 import { z } from "zod";
 import { createGenerateObject } from "@/server/lib/llms";
-import { getModel } from "@/server/lib/llms/model";
-import { toZonedTime } from "date-fns-tz";
+import { getModel, type ModelType } from "@/server/lib/llms/model";
 import { resolveDefaultCalendarTimeZone } from "@/server/features/ai/tools/calendar-time";
 import type {
   UnifiedSearchMailbox,
@@ -32,6 +31,13 @@ const semanticQueryCompilerSchema = z
     mailboxExplicit: z.boolean().optional(),
     categoryExplicit: z.boolean().optional(),
     limit: z.number().int().min(1).max(200).optional(),
+    dateRange: z
+      .object({
+        after: z.string().max(80).optional(),
+        before: z.string().max(80).optional(),
+        timeZone: z.string().max(80).optional(),
+      })
+      .optional(),
     needsClarification: z.boolean().optional(),
     clarificationPrompt: z.string().max(240).optional(),
   })
@@ -48,44 +54,13 @@ async function compileSemanticQueryIntent(params: {
   emailAccountId?: string;
   email?: string;
   query: string;
+  timeZone: string;
 }): Promise<z.infer<typeof semanticQueryCompilerSchema> | null> {
   if (!shouldUseSemanticQueryCompiler()) return null;
   if (!params.query.trim()) return null;
   if (!params.emailAccountId || !params.email) return null;
-
-  const modelOptions = getModel("economy");
-  const generate = createGenerateObject({
-    emailAccount: {
-      id: params.emailAccountId,
-      email: params.email,
-      userId: params.userId,
-    },
-    label: "unified-search-query-compiler",
-    modelOptions,
-    maxLLMRetries: 2,
-  });
-
-  const run = generate({
-    model: modelOptions.model,
-    schema: semanticQueryCompilerSchema,
-    system: [
-      "You normalize natural-language search intents into structured retrieval constraints.",
-      "Preserve user intent across inbox/calendar/rules/memory search.",
-      "Return only constraints that are explicit or strongly implied by the query.",
-      "Use sort=newest for latest/recent phrasing and sort=oldest for oldest/earliest phrasing.",
-      "Set unread only when query clearly asks for unread/read.",
-      "Set hasAttachment only when attachment intent is explicit.",
-      "Set mailboxExplicit/categoryExplicit to true only when the user explicitly asks for that mailbox/category.",
-      "Set rewrittenQuery to semantic content terms only. Omit operational words (e.g. unread/latest/show/list).",
-      "If request is purely operational (e.g. '10 most recent unread emails'), rewrittenQuery should be empty or omitted.",
-      "If intent is ambiguous or underspecified, set needsClarification=true and provide a short clarificationPrompt.",
-      "Do not hallucinate people, dates, or mailbox scopes.",
-    ].join("\n"),
-    prompt: [
-      `Current UTC date: ${new Date().toISOString().slice(0, 10)}`,
-      `Search query: ${params.query}`,
-    ].join("\n"),
-  });
+  const emailAccountId = params.emailAccountId;
+  const email = params.email;
 
   const timeoutMs = Math.min(
     Math.max(
@@ -98,25 +73,68 @@ async function compileSemanticQueryIntent(params: {
     7_500,
   );
 
-  try {
-    const result = await Promise.race([
-      run,
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
-    ]);
-    if (!result) return null;
-    return semanticQueryCompilerSchema.parse(result.object);
-  } catch {
-    return null;
+  const tryCompile = async (
+    modelType: ModelType,
+  ): Promise<z.infer<typeof semanticQueryCompilerSchema> | null> => {
+    const modelOptions = getModel(modelType);
+    const generate = createGenerateObject({
+      emailAccount: {
+        id: emailAccountId,
+        email,
+        userId: params.userId,
+      },
+      label: "unified-search-query-compiler",
+      modelOptions,
+      maxLLMRetries: 2,
+    });
+
+    const run = generate({
+      model: modelOptions.model,
+      schema: semanticQueryCompilerSchema,
+      system: [
+        "You normalize natural-language search intents into structured retrieval constraints.",
+        "Preserve user intent across inbox/calendar/rules/memory search.",
+        "Return only constraints that are explicit or strongly implied by the query.",
+        "Use sort=newest for latest/recent phrasing and sort=oldest for oldest/earliest phrasing.",
+        "Set unread only when query clearly asks for unread/read.",
+        "Set hasAttachment only when attachment intent is explicit.",
+        "Set mailboxExplicit/categoryExplicit to true only when the user explicitly asks for that mailbox/category.",
+        "Extract dateRange when the user expresses temporal windows (today, yesterday, last 7 days, next week, this month, specific dates).",
+        "Use the supplied user timezone for interpreting relative dates.",
+        "Set rewrittenQuery to semantic content terms only. Omit operational words (e.g. unread/latest/show/list).",
+        "If request is purely operational (e.g. '10 most recent unread emails'), rewrittenQuery should be empty or omitted.",
+        "If intent is ambiguous or underspecified, set needsClarification=true and provide a short clarificationPrompt.",
+        "Do not hallucinate people, dates, or mailbox scopes.",
+      ].join("\n"),
+      prompt: [
+        `Current UTC date: ${new Date().toISOString().slice(0, 10)}`,
+        `User timezone: ${params.timeZone}`,
+        `Search query: ${params.query}`,
+      ].join("\n"),
+    });
+
+    try {
+      const result = await Promise.race([
+        run,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+      ]);
+      if (!result) return null;
+      return semanticQueryCompilerSchema.parse(result.object);
+    } catch {
+      return null;
+    }
+  };
+
+  const modelOrder: ModelType[] = ["economy", "default"];
+  for (const modelType of modelOrder) {
+    const compiled = await tryCompile(modelType);
+    if (compiled) return compiled;
   }
+  return null;
 }
 
 function normalize(value: string | undefined): string {
   return (value ?? "").trim().replace(/\s+/g, " ");
-}
-
-function clampInt(value: number, min: number, max: number): number {
-  if (!Number.isFinite(value)) return min;
-  return Math.min(Math.max(Math.trunc(value), min), max);
 }
 
 function tokenize(value: string): string[] {
@@ -135,161 +153,6 @@ function dedupe(values: string[]): string[] {
     set.add(normalized);
   }
   return [...set];
-}
-
-function pad2(value: number): string {
-  return String(value).padStart(2, "0");
-}
-
-function formatLocalYmd(localDate: Date): string {
-  return `${localDate.getFullYear()}-${pad2(localDate.getMonth() + 1)}-${pad2(localDate.getDate())}`;
-}
-
-function startOfLocalDay(localDate: Date): Date {
-  const out = new Date(localDate);
-  out.setHours(0, 0, 0, 0);
-  return out;
-}
-
-function addLocalDays(localDate: Date, days: number): Date {
-  const out = new Date(localDate);
-  out.setDate(out.getDate() + days);
-  return out;
-}
-
-function monthBounds(localDate: Date): { start: Date; end: Date } {
-  const start = new Date(localDate.getFullYear(), localDate.getMonth(), 1);
-  const end = new Date(localDate.getFullYear(), localDate.getMonth() + 1, 0);
-  return { start, end };
-}
-
-function lastMonthBounds(localDate: Date): { start: Date; end: Date } {
-  const start = new Date(localDate.getFullYear(), localDate.getMonth() - 1, 1);
-  const end = new Date(localDate.getFullYear(), localDate.getMonth(), 0);
-  return { start, end };
-}
-
-function inferDateRangeFromQuery(query: string, timeZone: string): UnifiedSearchDateRange | undefined {
-  const normalized = query.toLowerCase();
-  const nowLocal = toZonedTime(new Date(), timeZone);
-  const today = startOfLocalDay(nowLocal);
-
-  if (/\blast\s+7\s+days\b/u.test(normalized)) {
-    const start = addLocalDays(today, -6);
-    return { after: formatLocalYmd(start), before: formatLocalYmd(today) };
-  }
-
-  const lastDaysMatch = normalized.match(/\b(?:last|past)\s+(\d{1,3})\s+days?\b/u);
-  if (lastDaysMatch) {
-    const days = Number.parseInt(lastDaysMatch[1] ?? "", 10);
-    if (Number.isFinite(days) && days > 0 && days <= 365) {
-      const start = addLocalDays(today, -(days - 1));
-      return { after: formatLocalYmd(start), before: formatLocalYmd(today) };
-    }
-  }
-
-  if (/\byesterday\b/u.test(normalized)) {
-    const day = addLocalDays(today, -1);
-    const ymd = formatLocalYmd(day);
-    return { after: ymd, before: ymd };
-  }
-
-  if (/\btoday|tonight\b/u.test(normalized)) {
-    const ymd = formatLocalYmd(today);
-    return { after: ymd, before: ymd };
-  }
-
-  if (/\btomorrow\b/u.test(normalized)) {
-    const day = addLocalDays(today, 1);
-    const ymd = formatLocalYmd(day);
-    return { after: ymd, before: ymd };
-  }
-
-  if (/\bthis month\b/u.test(normalized)) {
-    const { start, end } = monthBounds(today);
-    return { after: formatLocalYmd(start), before: formatLocalYmd(end) };
-  }
-
-  if (/\blast month\b/u.test(normalized)) {
-    const { start, end } = lastMonthBounds(today);
-    return { after: formatLocalYmd(start), before: formatLocalYmd(end) };
-  }
-
-  if (/\bthis week\b/u.test(normalized)) {
-    const dayOfWeek = today.getDay();
-    const end = addLocalDays(today, 6 - dayOfWeek);
-    return { after: formatLocalYmd(today), before: formatLocalYmd(end) };
-  }
-
-  if (/\bnext week\b/u.test(normalized)) {
-    const dayOfWeek = today.getDay();
-    const daysUntilNextMonday = ((8 - dayOfWeek) % 7) || 7;
-    const start = addLocalDays(today, daysUntilNextMonday);
-    const end = addLocalDays(start, 6);
-    return { after: formatLocalYmd(start), before: formatLocalYmd(end) };
-  }
-
-  // Calendar-style "next event" semantics: clamp to future.
-  if (/\bnext\b/u.test(normalized)) {
-    // We only enforce after=now if query explicitly asks for "next" and not "next week" (handled above).
-    return { after: new Date().toISOString() };
-  }
-
-  return undefined;
-}
-
-function inferSortFromQuery(query: string): UnifiedSearchSort | undefined {
-  const q = query.toLowerCase();
-  if (/\b(oldest|earliest)\b/u.test(q)) return "oldest";
-  if (/\b(newest|latest|most recent|recent)\b/u.test(q)) return "newest";
-  if (/\bnext\b/u.test(q)) return "oldest";
-  return undefined;
-}
-
-function inferUnreadFromQuery(query: string): boolean | undefined {
-  const q = query.toLowerCase();
-  if (/\bunread\b/u.test(q)) return true;
-  if (/\bread\b/u.test(q) && !/\bunread\b/u.test(q)) return false;
-  return undefined;
-}
-
-function inferHasAttachmentFromQuery(query: string): boolean | undefined {
-  const q = query.toLowerCase();
-  if (/\bwith\s+attachments?\b|\bhas\s+attachments?\b|\bcontaining\s+attachments?\b/u.test(q)) {
-    return true;
-  }
-  if (/\bno\s+attachments?\b|\bwithout\s+attachments?\b/u.test(q)) return false;
-  if (/\battachments?\b/u.test(q)) return true;
-  return undefined;
-}
-
-function inferExplicitScopesFromQuery(query: string): UnifiedSearchSurface[] | undefined {
-  // Only treat scopes as "explicit" when the user clearly names the surface(s),
-  // not when they use domain words like "meeting" (which could appear in email too).
-  const q = query.toLowerCase();
-  const scopes: UnifiedSearchSurface[] = [];
-
-  const mentionsEmail =
-    /\b(my\s+)?(inbox|email|emails|mail|sent)\b/u.test(q) ||
-    /\bin:(inbox|sent|drafts?|spam|trash|archive)\b/u.test(q);
-  const mentionsCalendar = /\b(my\s+)?calendar\b/u.test(q) || /\b(events?)\b/u.test(q) && /\bmy\s+calendar\b/u.test(q);
-  const mentionsRules = /\b(my\s+)?(rules?|policy|guardrails?|automation)\b/u.test(q);
-  const mentionsMemory = /\b(my\s+)?memory\b/u.test(q);
-
-  if (mentionsEmail) scopes.push("email");
-  if (mentionsCalendar) scopes.push("calendar");
-  if (mentionsRules) scopes.push("rule");
-  if (mentionsMemory) scopes.push("memory");
-
-  return scopes.length > 0 ? Array.from(new Set(scopes)) : undefined;
-}
-
-function inferLimitFromQuery(query: string): number | undefined {
-  const match = query.toLowerCase().match(/\b(?:top|first|last|show|list)\s+(\d{1,3})\b/u);
-  if (!match) return undefined;
-  const value = Number.parseInt(match[1] ?? "", 10);
-  if (!Number.isFinite(value) || value <= 0) return undefined;
-  return clampInt(value, 1, 200);
 }
 
 export interface PlannedUnifiedSearchQuery {
@@ -357,50 +220,44 @@ export async function planUnifiedSearchQuery(params: {
         })()
       : "UTC";
 
-  const inferredDateRange =
-    params.request.dateRange ?? (baseQuery ? inferDateRangeFromQuery(baseQuery, resolvedTimeZone) : undefined);
-
-  const deterministic = baseQuery
-    ? {
-        sort: inferSortFromQuery(baseQuery),
-        unread: inferUnreadFromQuery(baseQuery),
-        hasAttachment: inferHasAttachmentFromQuery(baseQuery),
-        limit: inferLimitFromQuery(baseQuery),
-        scopes: inferExplicitScopesFromQuery(baseQuery),
-      }
-    : {};
-
   const semanticIntent = await compileSemanticQueryIntent({
     userId: params.userId,
     emailAccountId: params.emailAccountId,
     email: params.email,
     query: baseQuery,
+    timeZone: resolvedTimeZone,
   });
-  const inferredLimit = params.request.limit ?? deterministic.limit ?? semanticIntent?.limit;
+  const inferredLimit = params.request.limit ?? semanticIntent?.limit;
   const unread =
     typeof params.request.unread === "boolean"
       ? params.request.unread
-      : typeof deterministic.unread === "boolean"
-        ? deterministic.unread
-        : typeof semanticIntent?.unread === "boolean"
-        ? semanticIntent.unread
-        : undefined;
+      : typeof semanticIntent?.unread === "boolean"
+      ? semanticIntent.unread
+      : undefined;
   const hasAttachment =
     typeof params.request.hasAttachment === "boolean"
       ? params.request.hasAttachment
-      : typeof deterministic.hasAttachment === "boolean"
-        ? deterministic.hasAttachment
-        : typeof semanticIntent?.hasAttachment === "boolean"
-        ? semanticIntent.hasAttachment
-        : undefined;
+      : typeof semanticIntent?.hasAttachment === "boolean"
+      ? semanticIntent.hasAttachment
+      : undefined;
   const sort =
     params.request.sort && params.request.sort !== "relevance"
       ? params.request.sort
-      : deterministic.sort && deterministic.sort !== "relevance"
-        ? deterministic.sort
-        : semanticIntent?.sort && semanticIntent.sort !== "relevance"
-        ? semanticIntent.sort
-        : undefined;
+      : semanticIntent?.sort && semanticIntent.sort !== "relevance"
+      ? semanticIntent.sort
+      : undefined;
+  const inferredDateRange =
+    params.request.dateRange ??
+    (semanticIntent?.dateRange &&
+    (semanticIntent.dateRange.after ||
+      semanticIntent.dateRange.before ||
+      semanticIntent.dateRange.timeZone)
+      ? {
+          after: semanticIntent.dateRange.after,
+          before: semanticIntent.dateRange.before,
+          timeZone: semanticIntent.dateRange.timeZone,
+        }
+      : undefined);
 
   const rewrittenQuery = normalize(semanticIntent?.rewrittenQuery) || baseQuery;
   const requestedMailbox = params.request.mailbox;
@@ -420,8 +277,9 @@ export async function planUnifiedSearchQuery(params: {
     if (params.request.scopes?.length) return params.request.scopes;
     // If the user explicitly constrained the mailbox (sent/drafts/etc), that implies email-only.
     if (params.request.mailbox && params.request.mailbox !== "all") return ["email"];
-    if (deterministic.scopes?.length) return deterministic.scopes;
-    // Do not narrow by semantic intent: when scopes are not explicitly provided, default to all surfaces.
+    if (semanticIntent?.scopes?.length) return semanticIntent.scopes;
+    if (emailSearchSignal) return ["email"];
+    // When nothing indicates a specific surface, search across all supported surfaces.
     return [...DEFAULT_SURFACES];
   })();
 

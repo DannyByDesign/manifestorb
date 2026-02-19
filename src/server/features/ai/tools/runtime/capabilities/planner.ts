@@ -12,6 +12,28 @@ type PlannedAction = {
   rationale?: string;
 };
 
+type CalendarPlanItem = {
+  id: string;
+  title?: string | null;
+  snippet?: string | null;
+  start?: string | null;
+  end?: string | null;
+  startLocal?: string | null;
+  endLocal?: string | null;
+  location?: string | null;
+  organizerEmail?: string | null;
+  attendees?: unknown[];
+};
+
+type EmailPlanItem = {
+  id: string;
+  title?: string | null;
+  snippet?: string | null;
+  timestamp?: string | null;
+  from?: string | null;
+  subject?: string | null;
+};
+
 function normalize(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -20,6 +42,18 @@ function asObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+function isCalendarPlanItem(value: unknown): value is CalendarPlanItem {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const obj = value as Record<string, unknown>;
+  return typeof obj.id === "string" && obj.id.length > 0;
+}
+
+function isEmailPlanItem(value: unknown): value is EmailPlanItem {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const obj = value as Record<string, unknown>;
+  return typeof obj.id === "string" && obj.id.length > 0;
 }
 
 function clampInt(value: number, min: number, max: number): number {
@@ -34,94 +68,14 @@ function isoOrNull(value: unknown): string | null {
   return new Date(parsed).toISOString();
 }
 
-function detectXpActions(request: string, timeZone: string): PlannedAction[] {
-  const q = request.toLowerCase();
-  const actions: PlannedAction[] = [];
-
-  if (q.includes("missing location") && q.includes("draft")) {
-    actions.push({
-      toolName: "calendar.listEvents",
-      args: {
-        dateRange: { after: new Date().toISOString(), before: new Date(Date.now() + 7 * 864e5).toISOString(), timeZone },
-        limit: 50,
-      },
-      rationale: "Find upcoming events to identify missing location fields.",
-    });
-    actions.push({
-      toolName: "email.createDraft",
-      args: {
-        // Placeholder: caller should populate to/subject/body per event.
-      },
-      rationale: "Draft follow-up emails to organizers for events missing a location.",
-    });
-  }
-
-  if (q.includes("archive") && q.includes("newsletter") && q.includes("focus block")) {
-    actions.push({
-      toolName: "email.batchArchive",
-      args: {
-        filter: { query: "unsubscribe", mailbox: "inbox" },
-        limit: 50,
-      },
-      rationale: "Archive low-priority newsletter-like messages.",
-    });
-    actions.push({
-      toolName: "calendar.createFocusBlock",
-      args: {
-        // Placeholder: caller should fill start/end using availability.
-      },
-      rationale: "Create a single focus block.",
-    });
-  }
-
-  if (q.includes("reschedule") && q.includes("task") && q.includes("tomorrow")) {
-    const today = new Date();
-    const ymd = new Intl.DateTimeFormat("sv-SE", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(today);
-
-    actions.push({
-      toolName: "task.bulkReschedule",
-      args: {
-        dueDateRange: { after: ymd, before: ymd },
-        // Placeholder: caller should set windowStart/windowEnd for tomorrow.
-      },
-      rationale: "Reschedule tasks due today into tomorrow's free window.",
-    });
-  }
-
-  if (/\btop\s*3\b/u.test(q) && q.includes("email") && q.includes("repl") && q.includes("schedule")) {
-    actions.push({
-      toolName: "email.searchInbox",
-      args: { unread: true, sort: "newest", limit: 3 },
-      rationale: "Identify top inbox items likely needing replies.",
-    });
-    actions.push({
-      toolName: "calendar.findAvailability",
-      args: { durationMinutes: 30 },
-      rationale: "Find a 30-minute slot to respond.",
-    });
-    actions.push({
-      toolName: "calendar.createEvent",
-      args: { title: "Email replies" },
-      rationale: "Block time on the calendar to reply.",
-    });
-  }
-
-  return actions;
-}
-
-function computeConflicts(events: Array<{ start?: string | null; end?: string | null; id: string; title: string }>) {
+function computeConflicts(events: Array<{ start?: string | null; end?: string | null; id: string; title?: string | null }>) {
   const parsed = events
     .map((ev) => {
       const startIso = isoOrNull(ev.start);
       const endIso = isoOrNull(ev.end);
       return {
         id: ev.id,
-        title: ev.title,
+        title: typeof ev.title === "string" ? ev.title : "",
         startIso,
         endIso,
         startMs: startIso ? Date.parse(startIso) : NaN,
@@ -257,9 +211,9 @@ export function createPlannerCapabilities(env: CapabilityEnvironment): PlannerCa
         }
 
         const timeZone = window.timeZone;
-        const calendarItems =
+        const calendarItems: CalendarPlanItem[] =
           Array.isArray(input.calendarItems) && input.calendarItems.length > 0
-            ? input.calendarItems
+            ? input.calendarItems.filter(isCalendarPlanItem)
             : await (async () => {
                 const result = await unifiedSearch.query({
                   scopes: ["calendar"],
@@ -292,9 +246,9 @@ export function createPlannerCapabilities(env: CapabilityEnvironment): PlannerCa
                   });
               })();
 
-        const topEmailItems =
+        const topEmailItems: EmailPlanItem[] =
           Array.isArray(input.topEmailItems) && input.topEmailItems.length > 0
-            ? input.topEmailItems
+            ? input.topEmailItems.filter(isEmailPlanItem)
             : await (async () => {
                 const result = await unifiedSearch.query({
                   scopes: ["email"],
@@ -319,11 +273,7 @@ export function createPlannerCapabilities(env: CapabilityEnvironment): PlannerCa
                   });
               })();
 
-        const conflicts = computeConflicts(
-          (Array.isArray(calendarItems) ? calendarItems : []).filter(
-            (item): item is any => Boolean(item) && typeof item === "object" && "id" in (item as any),
-          ) as any,
-        );
+        const conflicts = computeConflicts(calendarItems);
 
         const preferences = await prisma.taskPreference.findUnique({
           where: { userId: env.runtime.userId },
@@ -341,9 +291,9 @@ export function createPlannerCapabilities(env: CapabilityEnvironment): PlannerCa
         const messageParts: string[] = [];
         messageParts.push(`Today (${timeZone}):`);
 
-        if (Array.isArray(calendarItems) && calendarItems.length > 0) {
+        if (calendarItems.length > 0) {
           messageParts.push("Calendar:");
-          for (const ev of calendarItems.slice(0, 10) as any[]) {
+          for (const ev of calendarItems.slice(0, 10)) {
             const title = typeof ev?.title === "string" ? ev.title : "(Untitled)";
             const when = typeof ev?.startLocal === "string" ? ev.startLocal : typeof ev?.start === "string" ? ev.start : "";
             const where = typeof ev?.location === "string" && ev.location ? ` @ ${ev.location}` : "";
@@ -378,9 +328,9 @@ export function createPlannerCapabilities(env: CapabilityEnvironment): PlannerCa
           }
         }
 
-        if (Array.isArray(topEmailItems) && topEmailItems.length > 0) {
+        if (topEmailItems.length > 0) {
           messageParts.push("Urgent inbox (unread):");
-          for (const it of topEmailItems.slice(0, 10) as any[]) {
+          for (const it of topEmailItems.slice(0, 10)) {
             const title = typeof it?.title === "string" ? it.title : "(No subject)";
             const from = typeof it?.from === "string" ? it.from : null;
             messageParts.push(`- ${from ? `${from}: ` : ""}${title}`);
@@ -418,9 +368,6 @@ export function createPlannerCapabilities(env: CapabilityEnvironment): PlannerCa
 
     async compileMultiActionPlan(input) {
       try {
-        const request = normalize(input.request);
-        const timeZone = await resolveTimeZone();
-
         const requestedActions = Array.isArray(input.actions)
           ? input.actions
               .filter((item) => Boolean(item) && typeof item === "object" && !Array.isArray(item))
@@ -433,8 +380,7 @@ export function createPlannerCapabilities(env: CapabilityEnvironment): PlannerCa
               .filter((entry): entry is PlannedAction => Boolean(entry))
           : [];
 
-        const inferred = request ? detectXpActions(request, timeZone) : [];
-        const actions = requestedActions.length > 0 ? requestedActions : inferred;
+        const actions = requestedActions;
 
         return {
           success: true,
@@ -442,7 +388,7 @@ export function createPlannerCapabilities(env: CapabilityEnvironment): PlannerCa
             actions,
             constraints: input.constraints ?? {},
             actionCount: actions.length,
-            inferredFromRequest: requestedActions.length === 0 && inferred.length > 0,
+            inferredFromRequest: false,
           },
           message:
             actions.length === 0
