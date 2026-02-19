@@ -96,7 +96,7 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         size: 360,
         pointSize: 15.8,
         frequency: 0.45,
-        blending: THREE.AdditiveBlending,
+        blending: THREE.NormalBlending,
         densityBias: 0.1,
         alphaBase: 0.8,
         alphaBoost: 0.5,
