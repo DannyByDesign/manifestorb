@@ -160,7 +160,7 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
       {
         size: 42,
         pointSize: 16.0,
-        frequency: 0.3,
+        frequency: 0.6,
         blending: THREE.AdditiveBlending,
         densityBias: -0.04,
         alphaBase: 0.18,
