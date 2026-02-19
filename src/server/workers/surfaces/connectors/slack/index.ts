@@ -28,6 +28,7 @@ import { redis } from "../../db/redis";
 import { env } from "../../env";
 
 const SLACK_LEADER_LOCK_KEY = process.env.SLACK_LEADER_LOCK_KEY || "surfaces:slack:socket-mode:leader";
+const SLACK_LEADER_LOCK_ENABLED = process.env.SLACK_LEADER_LOCK_ENABLED === "true";
 const SLACK_LEADER_LOCK_TTL_MS = Number(process.env.SLACK_LEADER_LOCK_TTL_MS || 30000);
 const SLACK_SOCKET_CLIENT_PING_TIMEOUT_MS = 15_000;
 const SLACK_SOCKET_SERVER_PING_TIMEOUT_MS = 60_000;
@@ -68,6 +69,27 @@ function threadContextKey(channelId: string, userId: string): string {
 
 function normalizeSlackThreadTs(value: unknown): string | undefined {
     return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function resolveSlackSocketTokens(): { botToken?: string; appToken?: string } {
+    let botToken = env.SLACK_BOT_TOKEN?.trim();
+    let appToken = env.SLACK_APP_TOKEN?.trim();
+
+    // Common migration mistake: values pasted into the opposite env vars.
+    if (
+        typeof botToken === "string" &&
+        typeof appToken === "string" &&
+        botToken.startsWith("xapp-") &&
+        appToken.startsWith("xoxb-")
+    ) {
+        console.warn("[Surfaces][Slack] Detected swapped Slack token env vars, auto-correcting in-memory");
+        const nextBotToken = appToken;
+        const nextAppToken = botToken;
+        botToken = nextBotToken;
+        appToken = nextAppToken;
+    }
+
+    return { botToken, appToken };
 }
 
 function extractSlackSentTs(result: unknown): string | undefined {
@@ -436,7 +458,7 @@ function registerSocketModeDiagnostics(app: App) {
 }
 
 async function acquireSlackLeaderLock(): Promise<boolean> {
-    if (!redis) return true;
+    if (!SLACK_LEADER_LOCK_ENABLED || !redis) return true;
     const token = `${process.pid}:${randomUUID()}`;
     const lock = await redis.set(
         SLACK_LEADER_LOCK_KEY,
@@ -502,6 +524,7 @@ function scheduleSlackLeaderRetry() {
 }
 
 async function releaseSlackLeaderLock() {
+    if (!SLACK_LEADER_LOCK_ENABLED) return;
     if (slackLeaderRetryTimer) {
         clearTimeout(slackLeaderRetryTimer);
         slackLeaderRetryTimer = null;
@@ -598,10 +621,16 @@ export async function startSlack() {
     }
 
     slackStartPromise = (async () => {
-    const token = env.SLACK_BOT_TOKEN;
-    if (!token) {
+    const { botToken, appToken } = resolveSlackSocketTokens();
+    if (!botToken) {
         setPlatformEnabled("slack", false);
         console.log("⚠️ Surfaces: Skipping Slack (SLACK_BOT_TOKEN missing)");
+        return;
+    }
+    if (!appToken) {
+        setPlatformEnabled("slack", false);
+        setPlatformError("slack", "SLACK_APP_TOKEN missing (required for Socket Mode)");
+        console.error("[Surfaces][Slack] Skipping Slack start because SLACK_APP_TOKEN is missing");
         return;
     }
     setPlatformEnabled("slack", true);
@@ -610,8 +639,8 @@ export async function startSlack() {
 
     // Initialize Slack App in Socket Mode
     const app = new App({
-        token: env.SLACK_BOT_TOKEN,
-        appToken: env.SLACK_APP_TOKEN,
+        token: botToken,
+        appToken,
         socketMode: true,
     });
     slackApp = app;
@@ -904,14 +933,14 @@ export async function startSlack() {
                 return;
             }
 
+            const replyThreadTs =
+                normalizeSlackThreadTs(inboundThreadTs) ??
+                messageTs;
             const canonicalThreadTs =
                 normalizeSlackThreadTs(session.canonicalThreadId) ??
-                normalizeSlackThreadTs(inboundThreadTs) ??
                 normalizeSlackThreadTs(cachedThreadTs) ??
-                messageTs;
-
-            slackThreadContext.set(cacheKey, canonicalThreadTs);
-            const replyThreadTs = canonicalThreadTs;
+                replyThreadTs;
+            slackThreadContext.set(cacheKey, replyThreadTs);
             const statusThreadTs = normalizeSlackThreadTs(assistantThreadTs);
 
             console.log("[Surfaces][Slack] Resolved canonical thread", {
@@ -1009,8 +1038,6 @@ export async function startSlack() {
                             continue;
                         }
 
-                        // Enforce a single long-running thread per user/channel.
-                        // We intentionally ignore per-response thread routing to avoid "history tab" UX issues.
                         const plainResponseContent = toPlainSidecarText(
                             typeof resp.content === "string" ? resp.content : "",
                         );
