@@ -29,6 +29,8 @@ const semanticQueryCompilerSchema = z
     unread: z.boolean().optional(),
     hasAttachment: z.boolean().optional(),
     category: z.enum(["primary", "promotions", "social", "updates", "forums"]).optional(),
+    mailboxExplicit: z.boolean().optional(),
+    categoryExplicit: z.boolean().optional(),
     limit: z.number().int().min(1).max(200).optional(),
     needsClarification: z.boolean().optional(),
     clarificationPrompt: z.string().max(240).optional(),
@@ -73,6 +75,7 @@ async function compileSemanticQueryIntent(params: {
       "Use sort=newest for latest/recent phrasing and sort=oldest for oldest/earliest phrasing.",
       "Set unread only when query clearly asks for unread/read.",
       "Set hasAttachment only when attachment intent is explicit.",
+      "Set mailboxExplicit/categoryExplicit to true only when the user explicitly asks for that mailbox/category.",
       "Set rewrittenQuery to semantic content terms only. Omit operational words (e.g. unread/latest/show/list).",
       "If request is purely operational (e.g. '10 most recent unread emails'), rewrittenQuery should be empty or omitted.",
       "If intent is ambiguous or underspecified, set needsClarification=true and provide a short clarificationPrompt.",
@@ -260,27 +263,6 @@ function inferHasAttachmentFromQuery(query: string): boolean | undefined {
   return undefined;
 }
 
-function inferCategoryFromQuery(query: string): UnifiedSearchEmailCategory | undefined {
-  const q = query.toLowerCase();
-  if (/\bpromotions?\b/u.test(q)) return "promotions";
-  if (/\bsocial\b/u.test(q)) return "social";
-  if (/\bupdates\b/u.test(q)) return "updates";
-  if (/\bforums\b/u.test(q)) return "forums";
-  if (/\bprimary\b/u.test(q)) return "primary";
-  return undefined;
-}
-
-function inferMailboxFromQuery(query: string): UnifiedSearchMailbox | undefined {
-  const q = query.toLowerCase();
-  if (/\bsent\b/u.test(q)) return "sent";
-  if (/\bdrafts?\b/u.test(q)) return "draft";
-  if (/\bspam\b|\bjunk\b/u.test(q)) return "spam";
-  if (/\btrash\b|\bdeleted\b/u.test(q)) return "trash";
-  if (/\barchive\b/u.test(q)) return "archive";
-  if (/\binbox\b/u.test(q)) return "inbox";
-  return undefined;
-}
-
 function inferExplicitScopesFromQuery(query: string): UnifiedSearchSurface[] | undefined {
   // Only treat scopes as "explicit" when the user clearly names the surface(s),
   // not when they use domain words like "meeting" (which could appear in email too).
@@ -316,16 +298,37 @@ export interface PlannedUnifiedSearchQuery {
   queryVariants: string[];
   scopes: UnifiedSearchSurface[];
   mailbox?: UnifiedSearchMailbox;
+  mailboxExplicit?: boolean;
   sort?: UnifiedSearchSort;
   unread?: boolean;
   hasAttachment?: boolean;
   category?: UnifiedSearchEmailCategory;
+  categoryExplicit?: boolean;
   dateRange?: UnifiedSearchDateRange;
   inferredLimit?: number;
   needsClarification?: boolean;
   clarificationPrompt?: string;
   aliasExpansions: string[];
   terms: string[];
+}
+
+function hasEmailSearchSignal(params: {
+  request: UnifiedSearchRequest;
+  semanticIntent: z.infer<typeof semanticQueryCompilerSchema> | null;
+}): boolean {
+  const { request, semanticIntent } = params;
+  if (request.scopes?.includes("email")) return true;
+  if (semanticIntent?.scopes?.includes("email")) return true;
+  if (request.mailbox || semanticIntent?.mailbox) return true;
+  if (request.category || semanticIntent?.category) return true;
+  if (request.from || request.to || request.cc) return true;
+  if (request.fromEmails?.length || request.fromDomains?.length) return true;
+  if (request.toEmails?.length || request.toDomains?.length) return true;
+  if (request.ccEmails?.length || request.ccDomains?.length) return true;
+  if (typeof request.unread === "boolean") return true;
+  if (typeof request.hasAttachment === "boolean") return true;
+  if (request.attachmentMimeTypes?.length || request.attachmentFilenameContains) return true;
+  return false;
 }
 
 export async function planUnifiedSearchQuery(params: {
@@ -363,9 +366,7 @@ export async function planUnifiedSearchQuery(params: {
         unread: inferUnreadFromQuery(baseQuery),
         hasAttachment: inferHasAttachmentFromQuery(baseQuery),
         limit: inferLimitFromQuery(baseQuery),
-        mailbox: inferMailboxFromQuery(baseQuery),
         scopes: inferExplicitScopesFromQuery(baseQuery),
-        category: inferCategoryFromQuery(baseQuery),
       }
     : {};
 
@@ -402,12 +403,18 @@ export async function planUnifiedSearchQuery(params: {
         : undefined;
 
   const rewrittenQuery = normalize(semanticIntent?.rewrittenQuery) || baseQuery;
+  const requestedMailbox = params.request.mailbox;
+  const semanticMailbox = semanticIntent?.mailbox;
+  const mailboxExplicit =
+    Boolean(requestedMailbox) || semanticIntent?.mailboxExplicit === true;
+  const emailSearchSignal = hasEmailSearchSignal({
+    request: params.request,
+    semanticIntent,
+  });
   const mailbox =
-    params.request.mailbox ??
-    deterministic.mailbox ??
-    (semanticIntent?.mailbox && semanticIntent.mailbox !== "all"
-      ? semanticIntent.mailbox
-      : undefined);
+    requestedMailbox ??
+    semanticMailbox ??
+    (emailSearchSignal && !mailboxExplicit ? "inbox" : undefined);
   const scopes: UnifiedSearchSurface[] = (() => {
     if (params.request.scopes?.length) return params.request.scopes;
     // If the user explicitly constrained the mailbox (sent/drafts/etc), that implies email-only.
@@ -417,7 +424,16 @@ export async function planUnifiedSearchQuery(params: {
     return [...DEFAULT_SURFACES];
   })();
 
-  const category = params.request.category ?? deterministic.category ?? semanticIntent?.category;
+  const requestedCategory = params.request.category;
+  const semanticCategory = semanticIntent?.category;
+  const categoryExplicit =
+    Boolean(requestedCategory) || semanticIntent?.categoryExplicit === true;
+  const category =
+    requestedCategory ??
+    semanticCategory ??
+    (mailbox === "inbox" && emailSearchSignal && !categoryExplicit
+      ? "primary"
+      : undefined);
 
   const hasStructuredConstraints = Boolean(
     typeof params.request.unread === "boolean" ||
@@ -472,10 +488,12 @@ export async function planUnifiedSearchQuery(params: {
     queryVariants,
     scopes,
     mailbox,
+    mailboxExplicit,
     sort,
     unread,
     hasAttachment,
     category,
+    categoryExplicit,
     dateRange: inferredDateRange,
     inferredLimit,
     needsClarification,

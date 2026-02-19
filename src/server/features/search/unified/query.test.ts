@@ -101,4 +101,56 @@ describe("unified search query planner", () => {
     expect(plan.hasAttachment).toBe(true);
     expect(plan.inferredLimit).toBe(10);
   });
+
+  it("defaults email search to inbox + primary when mailbox/category are unspecified", async () => {
+    const plan = await planUnifiedSearchQuery({
+      userId: "user_1",
+      emailAccountId: "acct_1",
+      request: {
+        query: "find unread messages from Alice",
+        scopes: ["email"],
+        unread: true,
+      },
+    });
+
+    expect(plan.mailbox).toBe("inbox");
+    expect(plan.category).toBe("primary");
+    expect(plan.mailboxExplicit).toBe(false);
+    expect(plan.categoryExplicit).toBe(false);
+  });
+
+  it("honors explicit mailbox/category without applying inbox/primary defaults", async () => {
+    const plan = await planUnifiedSearchQuery({
+      userId: "user_1",
+      emailAccountId: "acct_1",
+      request: {
+        query: "search sent promotions",
+        scopes: ["email"],
+        mailbox: "sent",
+        category: "promotions",
+      },
+    });
+
+    expect(plan.mailbox).toBe("sent");
+    expect(plan.category).toBe("promotions");
+    expect(plan.mailboxExplicit).toBe(true);
+    expect(plan.categoryExplicit).toBe(true);
+  });
+
+  it("keeps category unset for explicit mailbox=all when category is unspecified", async () => {
+    const plan = await planUnifiedSearchQuery({
+      userId: "user_1",
+      emailAccountId: "acct_1",
+      request: {
+        query: "search all emails about invoice",
+        scopes: ["email"],
+        mailbox: "all",
+      },
+    });
+
+    expect(plan.mailbox).toBe("all");
+    expect(plan.category).toBeUndefined();
+    expect(plan.mailboxExplicit).toBe(true);
+    expect(plan.categoryExplicit).toBe(false);
+  });
 });

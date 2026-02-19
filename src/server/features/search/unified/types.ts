@@ -91,10 +91,12 @@ export interface UnifiedSearchResult {
     queryVariants: string[];
     scopes: UnifiedSearchSurface[];
     mailbox?: UnifiedSearchMailbox;
+    mailboxExplicit?: boolean;
     sort?: UnifiedSearchSort;
     unread?: boolean;
     hasAttachment?: boolean;
     category?: UnifiedSearchEmailCategory;
+    categoryExplicit?: boolean;
     dateRange?: UnifiedSearchDateRange;
     inferredLimit?: number;
     needsClarification?: boolean;
