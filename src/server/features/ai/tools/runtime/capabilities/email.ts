@@ -21,10 +21,6 @@ import {
   modifyEmailMessages,
   trashEmailMessages,
 } from "@/server/features/ai/tools/email/primitives";
-import {
-  lookupSearchDocumentIds,
-  recordSearchSignals,
-} from "@/server/features/search/index/repository";
 import { extractEmailAddresses } from "@/server/lib/email";
 import prisma from "@/server/db/client";
 import { Prisma } from "@/generated/prisma/client";
@@ -192,49 +188,6 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
     logger: capEnv.runtime.logger,
     providers: capEnv.toolContext.providers,
   });
-
-  const recordEmailInteractionSignal = async (params: {
-    signalType: "result_open" | "result_action";
-    signalValue?: number;
-    threadId?: string;
-    messageIds?: string[];
-    metadata?: Record<string, unknown>;
-  }) => {
-    const sourceIds = Array.isArray(params.messageIds)
-      ? params.messageIds
-      : [];
-    const sourceParentIds = params.threadId ? [params.threadId] : [];
-
-    if (sourceIds.length === 0 && sourceParentIds.length === 0) return;
-
-    try {
-      const documentIds = await lookupSearchDocumentIds({
-        userId: capEnv.runtime.userId,
-        emailAccountId: capEnv.runtime.emailAccountId,
-        connector: "email",
-        sourceIds,
-        sourceParentIds,
-        limit: 200,
-      });
-      if (documentIds.length === 0) return;
-
-      await recordSearchSignals({
-        userId: capEnv.runtime.userId,
-        emailAccountId: capEnv.runtime.emailAccountId,
-        signalType: params.signalType,
-        signalValue: params.signalValue ?? 1,
-        documentIds,
-        metadata: params.metadata,
-      });
-    } catch (error) {
-      capEnv.runtime.logger.warn("Failed to record email interaction signal", {
-        userId: capEnv.runtime.userId,
-        emailAccountId: capEnv.runtime.emailAccountId,
-        signalType: params.signalType,
-        error,
-      });
-    }
-  };
 
   const runUnifiedSearchThreads = async (
     filter: Record<string, unknown>,
@@ -1147,14 +1100,6 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       try {
         const thread = await getEmailThread(provider, threadId);
         const messages = Array.isArray(thread.messages) ? thread.messages : [];
-        void recordEmailInteractionSignal({
-          signalType: "result_open",
-          threadId,
-          messageIds: messages.map((message) => message.id).filter(Boolean),
-          metadata: {
-            action: "getThreadMessages",
-          },
-        });
         return {
           success: true,
           data: { threadId, messages, snippet: thread.snippet },
@@ -1184,13 +1129,6 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       }
       try {
         const messages = await getEmailMessages(provider, normalized);
-        void recordEmailInteractionSignal({
-          signalType: "result_open",
-          messageIds: normalized,
-          metadata: {
-            action: "getMessagesBatch",
-          },
-        });
         return {
           success: true,
           data: messages,
@@ -1214,16 +1152,6 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           return bMs - aMs;
         });
         const latest = messages[0] ?? null;
-        if (latest?.id) {
-          void recordEmailInteractionSignal({
-            signalType: "result_open",
-            threadId,
-            messageIds: [latest.id],
-            metadata: {
-              action: "getLatestMessage",
-            },
-          });
-        }
         return {
           success: true,
           data: latest,
@@ -1256,14 +1184,6 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       }
       try {
         const result = await modifyEmailMessages(provider, messageIds, { archive: true });
-        void recordEmailInteractionSignal({
-          signalType: "result_action",
-          signalValue: 1.2,
-          messageIds,
-          metadata: {
-            action: "batchArchive",
-          },
-        });
         return {
           success: result.success,
           data: { count: result.count },
@@ -1294,14 +1214,6 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       }
       try {
         const result = await trashEmailMessages(provider, messageIds);
-        void recordEmailInteractionSignal({
-          signalType: "result_action",
-          signalValue: 1.2,
-          messageIds,
-          metadata: {
-            action: "batchTrash",
-          },
-        });
         return {
           success: result.success,
           data: { count: result.count },
@@ -1333,15 +1245,6 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       }
       try {
         const result = await modifyEmailMessages(provider, messageIds, { read });
-        void recordEmailInteractionSignal({
-          signalType: "result_action",
-          signalValue: read ? 0.8 : 0.4,
-          messageIds,
-          metadata: {
-            action: "markReadUnread",
-            read,
-          },
-        });
         return {
           success: result.success,
           data: { count: result.count, read },

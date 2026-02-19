@@ -1,21 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createUnifiedSearchService } from "@/server/features/search/unified/service";
 import { planUnifiedSearchQuery } from "@/server/features/search/unified/query";
-import {
-  getSearchBehaviorScores,
-  listRecentIndexedDocuments,
-  recordSearchSignals,
-  searchIndexedDocuments,
-} from "@/server/features/search/index/repository";
+import { listRecentIndexedDocuments, searchIndexedDocuments } from "@/server/features/search/index/repository";
 
 vi.mock("@/server/features/search/unified/query", () => ({
   planUnifiedSearchQuery: vi.fn(),
 }));
 
+vi.mock("@/server/db/client", () => ({
+  default: {
+    canonicalRule: {
+      findMany: vi.fn(async () => []),
+    },
+  },
+}));
+
 vi.mock("@/server/features/search/index/repository", () => ({
-  getSearchBehaviorScores: vi.fn(async () => []),
   listRecentIndexedDocuments: vi.fn(async () => []),
-  recordSearchSignals: vi.fn(async () => {}),
   searchIndexedDocuments: vi.fn(async () => []),
 }));
 
@@ -40,6 +41,8 @@ vi.mock("@/server/features/search/unified/ranking", () => ({
   ),
 }));
 
+const emailSearchMock = vi.fn(async () => ({ messages: [], nextPageToken: null }));
+
 function buildService() {
   return createUnifiedSearchService({
     userId: "user_1",
@@ -56,9 +59,11 @@ function buildService() {
     providers: {
       email: {
         name: "google",
-        search: vi.fn(async () => ({ messages: [], nextPageToken: null })),
+        search: emailSearchMock,
       } as never,
-      calendar: {} as never,
+      calendar: {
+        searchEvents: vi.fn(async () => []),
+      } as never,
     },
   });
 }
@@ -66,9 +71,9 @@ function buildService() {
 describe("unified search service hard constraints", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    emailSearchMock.mockResolvedValue({ messages: [], nextPageToken: null });
     vi.mocked(searchIndexedDocuments).mockResolvedValue([]);
-    vi.mocked(getSearchBehaviorScores).mockResolvedValue([]);
-    vi.mocked(recordSearchSignals).mockResolvedValue(undefined);
+    vi.mocked(listRecentIndexedDocuments).mockResolvedValue([]);
   });
 
   it("enforces unread newest ordering regardless of ranking preference", async () => {
@@ -86,86 +91,41 @@ describe("unified search service hard constraints", () => {
       terms: [],
     });
 
-    vi.mocked(listRecentIndexedDocuments).mockResolvedValue([
-      {
-        id: "doc_1",
-        connector: "email",
-        sourceType: "message",
-        sourceId: "m_older_unread",
-        sourceParentId: "t_older_unread",
-        title: "Older unread",
-        snippet: "one",
-        bodyText: "one",
-        url: null,
-        authorIdentity: "a@example.com",
-        occurredAt: new Date("2025-01-10T10:00:00.000Z"),
-        startAt: null,
-        endAt: null,
-        updatedSourceAt: new Date("2025-01-10T10:00:00.000Z"),
-        freshnessScore: 0.2,
-        authorityScore: 0.5,
-        metadata: {
-          mailbox: "inbox",
-          labelIds: ["INBOX", "UNREAD"],
-          isInbox: true,
-          isUnread: true,
-          messageId: "m_older_unread",
+    emailSearchMock.mockResolvedValue({
+      messages: [
+        {
+          id: "m_older_unread",
           threadId: "t_older_unread",
-        },
-      },
-      {
-        id: "doc_2",
-        connector: "email",
-        sourceType: "message",
-        sourceId: "m_read_newer",
-        sourceParentId: "t_read_newer",
-        title: "Read newer",
-        snippet: "two",
-        bodyText: "two",
-        url: null,
-        authorIdentity: "b@example.com",
-        occurredAt: new Date("2026-01-10T10:00:00.000Z"),
-        startAt: null,
-        endAt: null,
-        updatedSourceAt: new Date("2026-01-10T10:00:00.000Z"),
-        freshnessScore: 1,
-        authorityScore: 0.5,
-        metadata: {
-          mailbox: "inbox",
-          labelIds: ["INBOX"],
-          isInbox: true,
-          isUnread: false,
-          messageId: "m_read_newer",
-          threadId: "t_read_newer",
-        },
-      },
-      {
-        id: "doc_3",
-        connector: "email",
-        sourceType: "message",
-        sourceId: "m_newest_unread",
-        sourceParentId: "t_newest_unread",
-        title: "Newest unread",
-        snippet: "three",
-        bodyText: "three",
-        url: null,
-        authorIdentity: "c@example.com",
-        occurredAt: new Date("2026-02-10T10:00:00.000Z"),
-        startAt: null,
-        endAt: null,
-        updatedSourceAt: new Date("2026-02-10T10:00:00.000Z"),
-        freshnessScore: 1,
-        authorityScore: 0.5,
-        metadata: {
-          mailbox: "inbox",
+          subject: "Older unread",
+          snippet: "one",
+          date: new Date("2025-01-10T10:00:00.000Z"),
           labelIds: ["INBOX", "UNREAD"],
-          isInbox: true,
-          isUnread: true,
-          messageId: "m_newest_unread",
-          threadId: "t_newest_unread",
+          headers: { from: "a@example.com" },
+          attachments: [],
         },
-      },
-    ]);
+        {
+          id: "m_read_newer",
+          threadId: "t_read_newer",
+          subject: "Read newer",
+          snippet: "two",
+          date: new Date("2026-01-10T10:00:00.000Z"),
+          labelIds: ["INBOX"],
+          headers: { from: "b@example.com" },
+          attachments: [],
+        },
+        {
+          id: "m_newest_unread",
+          threadId: "t_newest_unread",
+          subject: "Newest unread",
+          snippet: "three",
+          date: new Date("2026-02-10T10:00:00.000Z"),
+          labelIds: ["INBOX", "UNREAD"],
+          headers: { from: "c@example.com" },
+          attachments: [],
+        },
+      ],
+      nextPageToken: null,
+    });
 
     const service = buildService();
     const result = await service.query({
@@ -196,60 +156,31 @@ describe("unified search service hard constraints", () => {
       terms: [],
     });
 
-    vi.mocked(listRecentIndexedDocuments).mockResolvedValue([
-      {
-        id: "doc_1",
-        connector: "email",
-        sourceType: "message",
-        sourceId: "m_old_unread",
-        sourceParentId: "t_old_unread",
-        title: "Older unread",
-        snippet: "old",
-        bodyText: "old",
-        url: null,
-        authorIdentity: "old@example.com",
-        occurredAt: new Date("2025-01-14T09:17:00.000Z"),
-        startAt: null,
-        endAt: null,
-        updatedSourceAt: new Date("2025-01-14T09:17:00.000Z"),
-        freshnessScore: 0.2,
-        authorityScore: 0.5,
-        metadata: {
-          mailbox: "inbox",
-          labelIds: ["INBOX", "UNREAD"],
-          isInbox: true,
-          isUnread: true,
-          messageId: "m_old_unread",
+    emailSearchMock.mockResolvedValue({
+      messages: [
+        {
+          id: "m_old_unread",
           threadId: "t_old_unread",
-        },
-      },
-      {
-        id: "doc_2",
-        connector: "email",
-        sourceType: "message",
-        sourceId: "m_new_unread",
-        sourceParentId: "t_new_unread",
-        title: "Newest unread",
-        snippet: "new",
-        bodyText: "new",
-        url: null,
-        authorIdentity: "new@example.com",
-        occurredAt: new Date("2026-02-19T03:27:00.000Z"),
-        startAt: null,
-        endAt: null,
-        updatedSourceAt: new Date("2026-02-19T03:27:00.000Z"),
-        freshnessScore: 1,
-        authorityScore: 0.5,
-        metadata: {
-          mailbox: "inbox",
+          subject: "Older unread",
+          snippet: "old",
+          date: new Date("2025-01-14T09:17:00.000Z"),
           labelIds: ["INBOX", "UNREAD"],
-          isInbox: true,
-          isUnread: true,
-          messageId: "m_new_unread",
-          threadId: "t_new_unread",
+          headers: { from: "old@example.com" },
+          attachments: [],
         },
-      },
-    ]);
+        {
+          id: "m_new_unread",
+          threadId: "t_new_unread",
+          subject: "Newest unread",
+          snippet: "new",
+          date: new Date("2026-02-19T03:27:00.000Z"),
+          labelIds: ["INBOX", "UNREAD"],
+          headers: { from: "new@example.com" },
+          attachments: [],
+        },
+      ],
+      nextPageToken: null,
+    });
 
     const service = buildService();
     const result = await service.query({
@@ -263,5 +194,40 @@ describe("unified search service hard constraints", () => {
     expect(result.items).toHaveLength(1);
     expect(result.items[0]?.id).toBe("email:m_new_unread");
     expect(result.queryPlan?.sort).toBe("newest");
+  });
+
+  it("defaults inbox searches to primary inbox scope unless user explicitly broadens scope", async () => {
+    vi.mocked(planUnifiedSearchQuery).mockResolvedValue({
+      query: "what's the first email in my inbox",
+      rewrittenQuery: "",
+      queryVariants: [],
+      scopes: ["email"],
+      mailbox: "inbox",
+      sort: "newest",
+      unread: undefined,
+      hasAttachment: undefined,
+      category: "primary",
+      categoryExplicit: false,
+      inferredLimit: 1,
+      aliasExpansions: [],
+      terms: [],
+    });
+
+    emailSearchMock.mockResolvedValue({ messages: [], nextPageToken: null });
+
+    const service = buildService();
+    await service.query({
+      query: "what's the first email in my inbox",
+      scopes: ["email"],
+      mailbox: "inbox",
+      limit: 1,
+    });
+
+    expect(emailSearchMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        includeNonPrimary: false,
+        category: "primary",
+      }),
+    );
   });
 });

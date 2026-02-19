@@ -14,6 +14,18 @@ export function buildRuntimeTurnContext(session: RuntimeSession): RuntimeTurnCon
   return { session };
 }
 
+function sanitizeRuntimeToolResult(result: RuntimeToolResult): RuntimeToolResult {
+  // Keep tool-layer messages only for hard error paths. For successful or
+  // clarification turns, response-writer should generate user-facing language.
+  if (result.success || result.clarification) {
+    if (result.message === undefined) return result;
+    const sanitized = { ...result };
+    delete sanitized.message;
+    return sanitized;
+  }
+  return result;
+}
+
 export async function executeToolCall(params: {
   context: RuntimeTurnContext;
   decision: RuntimeToolCall;
@@ -30,7 +42,8 @@ export async function executeToolCall(params: {
   }
 
   try {
-    return await tool.execute(decision.args);
+    const result = await tool.execute(decision.args);
+    return sanitizeRuntimeToolResult(result);
   } catch (error) {
     return {
       success: false,

@@ -1,4 +1,3 @@
-import { lookupSearchAliasExpansions } from "@/server/features/search/index/repository";
 import { z } from "zod";
 import { createGenerateObject } from "@/server/lib/llms";
 import { getModel, type ModelType } from "@/server/lib/llms/model";
@@ -323,15 +322,7 @@ export async function planUnifiedSearchQuery(params: {
     ...tokenize(normalize(params.request.attendeeEmail)),
   ]);
 
-  const aliasRows = await lookupSearchAliasExpansions({
-    userId: params.userId,
-    emailAccountId: params.emailAccountId,
-    terms,
-  });
-
-  const aliasExpansions = dedupe(
-    aliasRows.map((row) => row.canonicalValue).filter(Boolean),
-  );
+  const aliasExpansions: string[] = [];
 
   const queryVariants =
     rewrittenQuery.length > 0

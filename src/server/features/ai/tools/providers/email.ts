@@ -202,43 +202,6 @@ export async function createEmailProvider(
             .split(/[^a-z0-9@._-]+/u)
             .filter((token) => token.length > 0);
 
-    const tokenMatches = (candidateToken: string, valueToken: string): boolean => {
-        if (candidateToken === valueToken) return true;
-        if (valueToken.startsWith(candidateToken)) return true;
-        if (valueToken.includes(candidateToken)) return true;
-        // Supports short-form names/initials, e.g. "sun" matching sender token "s"
-        if (candidateToken.length >= 2 && valueToken.length === 1) {
-            return candidateToken.startsWith(valueToken);
-        }
-        // Lightweight typo tolerance for person/entity names.
-        // We keep this conservative to avoid broad false positives.
-        if (candidateToken.length < 4 || valueToken.length < 4) return false;
-        const maxDistance = candidateToken.length <= 6 ? 1 : 2;
-        if (Math.abs(candidateToken.length - valueToken.length) > maxDistance) return false;
-
-        const aLen = candidateToken.length;
-        const bLen = valueToken.length;
-        let prev = new Array<number>(bLen + 1);
-        let curr = new Array<number>(bLen + 1);
-        for (let j = 0; j <= bLen; j += 1) prev[j] = j;
-        for (let i = 1; i <= aLen; i += 1) {
-            curr[0] = i;
-            let minInRow = curr[0];
-            for (let j = 1; j <= bLen; j += 1) {
-                const cost = candidateToken[i - 1] === valueToken[j - 1] ? 0 : 1;
-                curr[j] = Math.min(
-                    prev[j] + 1,
-                    curr[j - 1] + 1,
-                    prev[j - 1] + cost,
-                );
-                if (curr[j] < minInRow) minInRow = curr[j];
-            }
-            if (minInRow > maxDistance) return false;
-            [prev, curr] = [curr, prev];
-        }
-        return prev[bLen] <= maxDistance;
-    };
-
     const includesLooseTerm = (value: string | undefined, term: string | undefined): boolean => {
         const normalizedTerm = normalizeText(term);
         if (!normalizedTerm) return true;
@@ -249,18 +212,8 @@ export async function createEmailProvider(
         const queryTokens = tokenize(normalizedTerm);
         const valueTokens = tokenize(normalizedValue);
         if (queryTokens.length === 0 || valueTokens.length === 0) return false;
-
-        const matched = queryTokens.filter((queryToken) =>
-            valueTokens.some((valueToken) => tokenMatches(queryToken, valueToken)),
-        ).length;
-        const valueLooksLikeAddress = valueTokens.some((token) => token.includes("@"));
-        const threshold =
-            queryTokens.length <= 2
-                ? valueLooksLikeAddress
-                    ? 1
-                    : queryTokens.length
-                : Math.max(2, Math.ceil(queryTokens.length * 0.7));
-        return matched >= threshold;
+        const valueTokenSet = new Set(valueTokens);
+        return queryTokens.every((queryToken) => valueTokenSet.has(queryToken));
     };
 
     const applyLocalSearchFilters = (

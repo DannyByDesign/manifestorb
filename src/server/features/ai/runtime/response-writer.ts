@@ -49,20 +49,11 @@ function formatEvidence(results: RuntimeToolResult[]): string {
   if (results.length === 0) return "[]";
   const payload = results.slice(-6).map((result) => ({
     success: result.success,
-    message: result.message ?? null,
     error: result.error ?? null,
     clarification: result.clarification ?? null,
     data: compact(result.data),
   }));
   return JSON.stringify(payload);
-}
-
-function latestClarificationResult(results: RuntimeToolResult[]): RuntimeToolResult | null {
-  for (let i = results.length - 1; i >= 0; i -= 1) {
-    const result = results[i];
-    if (result?.clarification) return result;
-  }
-  return null;
 }
 
 export async function generateRuntimeUserReply(params: {

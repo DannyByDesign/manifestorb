@@ -21,15 +21,6 @@ vi.mock("@/server/db/client", () => ({
   default: prismaMock,
 }));
 
-vi.mock("@/server/features/search/index/ingestors/rule", () => ({
-  enqueueRuleDocumentForIndexing: vi.fn(),
-  enqueueRuleDeleteForIndexing: vi.fn(),
-}));
-
-vi.mock("@/server/features/search/index/repository", () => ({
-  upsertSearchIngestionCheckpoint: vi.fn().mockResolvedValue(undefined),
-}));
-
 describe("policy-plane/repository", () => {
   beforeEach(() => {
     vi.clearAllMocks();

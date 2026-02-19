@@ -1,16 +1,11 @@
 import prisma from "@/server/db/client";
 import type { CalendarEvent } from "@/features/calendar/event-types";
 import { Prisma } from "@/generated/prisma/client";
-import { createScopedLogger } from "@/server/lib/logger";
 import { listEffectiveCanonicalRules } from "@/server/features/policy-plane/repository";
 import {
   isRuleActiveNow,
   type CanonicalRule,
 } from "@/server/features/policy-plane/canonical-schema";
-import {
-  enqueueCalendarEventDeleteForIndexing,
-  enqueueCalendarEventDocumentForIndexing,
-} from "@/server/features/search/index/ingestors/calendar";
 
 export type CalendarMutationSource = "ai" | "approval" | "webhook" | "reconcile" | "manual" | "system";
 type ReschedulePolicy = "FIXED" | "FLEXIBLE" | "APPROVAL_REQUIRED";
@@ -35,8 +30,6 @@ type CalendarPolicyRule = {
 
 const CALENDAR_POLICY_OPERATION = "calendar_policy";
 const CALENDAR_POLICY_LEGACY_REF = "calendar_policy";
-const logger = createScopedLogger("calendar/canonical-state");
-
 export type CalendarPolicyDecision = {
   policyId?: string;
   reschedulePolicy: ReschedulePolicy;
@@ -307,13 +300,6 @@ export async function upsertCalendarEventShadow(params: {
         select: { id: true },
       });
 
-  void enqueueCalendarEventDocumentForIndexing({
-    userId,
-    emailAccountId,
-    event,
-    logger,
-  });
-
   return { shadowId: shadow.id, remapped };
 }
 
@@ -363,16 +349,6 @@ export async function markCalendarEventShadowDeleted(params: {
       lastSyncedAt: new Date(),
       lastMutationSource: source,
     },
-  });
-
-  void enqueueCalendarEventDeleteForIndexing({
-    identity: {
-      userId,
-      connector: "calendar",
-      sourceType: "event",
-      sourceId: externalEventId,
-    },
-    logger,
   });
 
   return true;

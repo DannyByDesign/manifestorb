@@ -23,15 +23,9 @@ export function summarizeRuntimeResults(params: {
     }
     const failed = params.results[params.results.length - 1];
     return (
-      failed?.message ||
       failed?.error ||
       "I couldn't complete that request with the available tools yet."
     );
-  }
-
-  const latest = successful[successful.length - 1];
-  if (latest?.message && latest.message.trim().length > 0) {
-    return latest.message.trim();
   }
 
   const itemCount = successful

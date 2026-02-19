@@ -63,9 +63,6 @@ export async function POST(request: Request) {
       userId?: string;
       emailAccountId?: string;
       connectors?: SearchConnector[];
-      emailMaxMessages?: number;
-      calendarMaxEvents?: number;
-      ruleMaxRules?: number;
       memoryMaxItems?: number;
     };
     const action = body.action ?? "process";
@@ -101,13 +98,9 @@ export async function POST(request: Request) {
         userId: body.userId,
         emailAccountId:
           typeof body.emailAccountId === "string" ? body.emailAccountId : undefined,
-        connectors: Array.isArray(body.connectors) ? body.connectors : undefined,
-        emailMaxMessages:
-          typeof body.emailMaxMessages === "number" ? body.emailMaxMessages : undefined,
-        calendarMaxEvents:
-          typeof body.calendarMaxEvents === "number" ? body.calendarMaxEvents : undefined,
-        ruleMaxRules:
-          typeof body.ruleMaxRules === "number" ? body.ruleMaxRules : undefined,
+        connectors: Array.isArray(body.connectors)
+          ? body.connectors.filter((connector): connector is SearchConnector => connector === "memory")
+          : undefined,
         memoryMaxItems:
           typeof body.memoryMaxItems === "number" ? body.memoryMaxItems : undefined,
         logger,

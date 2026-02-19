@@ -10,10 +10,6 @@ import {
   markCalendarEventShadowDeleted,
   upsertCalendarEventShadow,
 } from "@/features/calendar/canonical-state";
-import {
-  markSearchIngestionCheckpointError,
-  upsertSearchIngestionCheckpoint,
-} from "@/server/features/search/index/repository";
 
 type CalendarConnectionTokens = {
   accessToken: string | null;
@@ -343,27 +339,6 @@ export async function syncGoogleCalendarChanges({
         where: { id: calendar.id },
         data: { googleSyncToken: nextSyncToken },
       });
-      if (userId) {
-        void upsertSearchIngestionCheckpoint({
-          userId,
-          emailAccountId: connection.emailAccountId,
-          connector: "calendar",
-          streamKey: `google_calendar:${calendar.calendarId}`,
-          cursor: nextSyncToken,
-          status: "active",
-          errorMessage: null,
-          lastSyncedAt: new Date(),
-          state: {
-            provider: "google",
-            calendarId: calendar.calendarId,
-          },
-        }).catch((error) => {
-          logger.warn("Failed to update calendar ingestion checkpoint", {
-            calendarId: calendar.calendarId,
-            error,
-          });
-        });
-      }
     }
 
     if (items.length > 0 && userId) {
@@ -395,28 +370,6 @@ export async function syncGoogleCalendarChanges({
         where: { id: calendar.id },
         data: { googleSyncToken: nextSyncToken ?? null },
       });
-      if (userId) {
-        void upsertSearchIngestionCheckpoint({
-          userId,
-          emailAccountId: connection.emailAccountId,
-          connector: "calendar",
-          streamKey: `google_calendar:${calendar.calendarId}`,
-          cursor: nextSyncToken ?? null,
-          status: "active",
-          errorMessage: null,
-          lastSyncedAt: new Date(),
-          state: {
-            provider: "google",
-            calendarId: calendar.calendarId,
-            resetOn410: true,
-          },
-        }).catch((error) => {
-          logger.warn("Failed to update calendar ingestion checkpoint after token reset", {
-            calendarId: calendar.calendarId,
-            error,
-          });
-        });
-      }
       if (retryItems.length > 0 && userId) {
         import("@/server/features/calendar/scheduling/insights")
           .then(({ updateSchedulingInsights }) => updateSchedulingInsights(userId))
@@ -432,20 +385,6 @@ export async function syncGoogleCalendarChanges({
           events: [],
         },
       };
-    }
-
-    if (userId) {
-      void markSearchIngestionCheckpointError({
-        userId,
-        connector: "calendar",
-        streamKey: `google_calendar:${calendar.calendarId}`,
-        errorMessage: error instanceof Error ? error.message : "calendar_sync_failed",
-      }).catch((checkpointError) => {
-        logger.warn("Failed to mark calendar ingestion checkpoint error", {
-          calendarId: calendar.calendarId,
-          error: checkpointError,
-        });
-      });
     }
 
     throw error;
