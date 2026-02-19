@@ -1,13 +1,12 @@
+import prisma from "@/server/db/client";
 import {
-  getSearchBehaviorScores,
   listRecentIndexedDocuments,
-  recordSearchSignals,
   searchIndexedDocuments,
 } from "@/server/features/search/index/repository";
-import { enqueueEmailDocumentForIndexing } from "@/server/features/search/index/ingestors/email";
 import { planUnifiedSearchQuery } from "@/server/features/search/unified/query";
 import { rankDocuments } from "@/server/features/search/unified/ranking";
 import { extractEmailAddresses } from "@/server/lib/email";
+import type { CalendarEvent } from "@/server/features/calendar/event-types";
 import type {
   RankingDocument,
   UnifiedSearchEnvironment,
@@ -81,24 +80,13 @@ function computeFreshnessScore(timestamp: string | undefined): number {
   return 0.1;
 }
 
-function toSurfaceId(row: {
+function toMemorySurfaceId(row: {
   connector: string;
   sourceType: string;
   sourceId: string;
-}): { surface: UnifiedSearchSurface; id: string } | null {
-  if (row.connector === "email") {
-    return { surface: "email", id: `email:${row.sourceId}` };
-  }
-  if (row.connector === "calendar") {
-    return { surface: "calendar", id: `calendar:${row.sourceId}` };
-  }
-  if (row.connector === "rule") {
-    return { surface: "rule", id: `rule:${row.sourceId}` };
-  }
-  if (row.connector === "memory") {
-    return { surface: "memory", id: `memory:${row.sourceType}:${row.sourceId}` };
-  }
-  return null;
+}): { surface: "memory"; id: string } | null {
+  if (row.connector !== "memory") return null;
+  return { surface: "memory", id: `memory:${row.sourceType}:${row.sourceId}` };
 }
 
 function asObject(value: unknown): Record<string, unknown> {
@@ -132,7 +120,6 @@ function normalizeEmailCategory(category: unknown): string | undefined {
   if (!value) return undefined;
   switch (value) {
     case "primary":
-      // Gmail "Primary" tab is typically CATEGORY_PERSONAL.
       return "CATEGORY_PERSONAL";
     case "promotions":
       return "CATEGORY_PROMOTIONS";
@@ -223,7 +210,11 @@ function matchDateRange(doc: RankingDocument, request: UnifiedSearchRequest): bo
   return true;
 }
 
-function matchesRequest(doc: RankingDocument, request: UnifiedSearchRequest, mailbox: UnifiedSearchMailbox | undefined): boolean {
+function matchesRequest(
+  doc: RankingDocument,
+  request: UnifiedSearchRequest,
+  mailbox: UnifiedSearchMailbox | undefined,
+): boolean {
   if (!mailboxMatches(doc, mailbox)) return false;
   if (!matchDateRange(doc, request)) return false;
 
@@ -288,11 +279,13 @@ function matchesRequest(doc: RankingDocument, request: UnifiedSearchRequest, mai
     const ccHeader = metadata.cc ?? "";
     if (!matchesAnyEmail(ccHeader, ccEmails)) return false;
     if (!matchesAnyDomain(ccHeader, ccDomains)) return false;
+
     const categoryLabel = normalizeEmailCategory(request.category);
     if (categoryLabel) {
       const labelIds = normalizeLabelIds(metadata.labelIds);
       if (!labelIds.includes(categoryLabel)) return false;
     }
+
     const mimeTypes = Array.isArray(request.attachmentMimeTypes)
       ? request.attachmentMimeTypes.map((value) => String(value).toLowerCase())
       : [];
@@ -305,6 +298,7 @@ function matchesRequest(doc: RankingDocument, request: UnifiedSearchRequest, mai
         return false;
       }
     }
+
     const filenameNeedle = normalizeString(request.attachmentFilenameContains);
     if (filenameNeedle) {
       const names = Array.isArray(metadata.attachmentNames)
@@ -351,232 +345,6 @@ function matchesRequest(doc: RankingDocument, request: UnifiedSearchRequest, mai
   return true;
 }
 
-async function searchIndexedSurface(params: {
-  env: UnifiedSearchEnvironment;
-  scopes: UnifiedSearchSurface[];
-  queryVariants: string[];
-  limit: number;
-}): Promise<RankingDocument[]> {
-  const docsById = new Map<string, RankingDocument>();
-  const queryVariants = Array.from(new Set(params.queryVariants.map((value) => value.trim()).filter(Boolean)));
-  const perVariantLimit = clampInt(params.limit * 4, 40, 1200);
-
-  if (queryVariants.length > 0) {
-    for (const query of queryVariants) {
-      const rows = await searchIndexedDocuments({
-        userId: params.env.userId,
-        emailAccountId: params.env.emailAccountId,
-        query,
-        connectors: params.scopes,
-        limit: perVariantLimit,
-      });
-
-      for (const row of rows) {
-        const mapped = toSurfaceId(row);
-        if (!mapped) continue;
-        docsById.set(mapped.id, {
-          id: mapped.id,
-          surface: mapped.surface,
-          title: row.title ?? "(Untitled)",
-          snippet: (row.snippet ?? row.bodyText ?? "").slice(0, 500),
-          timestamp: toIsoTimestamp(row.updatedSourceAt ?? row.occurredAt ?? row.startAt ?? undefined),
-          metadata: {
-            searchDocumentId: row.id,
-            connector: row.connector,
-            sourceType: row.sourceType,
-            sourceId: row.sourceId,
-            sourceParentId: row.sourceParentId,
-            url: row.url,
-            authorIdentity: row.authorIdentity,
-            freshnessScore: row.freshnessScore ?? 0,
-            authorityScore: row.authorityScore ?? 0,
-            eventId: row.sourceId,
-            start: toIsoTimestamp(row.startAt ?? undefined) ?? null,
-            end: toIsoTimestamp(row.endAt ?? undefined) ?? null,
-            ...(row.metadata ?? {}),
-          },
-        });
-      }
-    }
-  }
-
-  if (docsById.size === 0) {
-    const fallbackRows = await listRecentIndexedDocuments({
-      userId: params.env.userId,
-      emailAccountId: params.env.emailAccountId,
-      connectors: params.scopes,
-      limit: clampInt(params.limit * 6, 30, 1500),
-    });
-    for (const row of fallbackRows) {
-      const mapped = toSurfaceId(row);
-      if (!mapped) continue;
-      docsById.set(mapped.id, {
-        id: mapped.id,
-        surface: mapped.surface,
-        title: row.title ?? "(Untitled)",
-        snippet: (row.snippet ?? row.bodyText ?? "").slice(0, 500),
-        timestamp: toIsoTimestamp(row.updatedSourceAt ?? row.occurredAt ?? row.startAt ?? undefined),
-        metadata: {
-          searchDocumentId: row.id,
-          connector: row.connector,
-          sourceType: row.sourceType,
-          sourceId: row.sourceId,
-          sourceParentId: row.sourceParentId,
-          url: row.url,
-          authorIdentity: row.authorIdentity,
-          freshnessScore: row.freshnessScore ?? 0,
-          authorityScore: row.authorityScore ?? 0,
-          eventId: row.sourceId,
-          start: toIsoTimestamp(row.startAt ?? undefined) ?? null,
-          end: toIsoTimestamp(row.endAt ?? undefined) ?? null,
-          ...(row.metadata ?? {}),
-        },
-      });
-    }
-  }
-
-  return Array.from(docsById.values());
-}
-
-async function searchEmailProviderFallback(params: {
-  env: UnifiedSearchEnvironment;
-  request: UnifiedSearchRequest;
-  query: string;
-  mailbox: UnifiedSearchMailbox | undefined;
-  limit: number;
-}): Promise<RankingDocument[]> {
-  const queryHints: string[] = [];
-  if (typeof params.request.unread === "boolean") {
-    queryHints.push(params.request.unread ? "is:unread" : "is:read");
-  }
-  if (params.request.hasAttachment === true) {
-    queryHints.push("has:attachment");
-  }
-  const categoryLabel = normalizeEmailCategory(params.request.category);
-  if (categoryLabel) {
-    const lower = categoryLabel.toLowerCase();
-    if (lower === "category_personal") queryHints.push("category:primary");
-    else if (lower === "category_promotions") queryHints.push("category:promotions");
-    else if (lower === "category_social") queryHints.push("category:social");
-    else if (lower === "category_updates") queryHints.push("category:updates");
-    else if (lower === "category_forums") queryHints.push("category:forums");
-  }
-  const providerQuery = [params.query.trim(), ...queryHints].join(" ").trim();
-  const hasIdentityArrays =
-    (Array.isArray(params.request.fromEmails) && params.request.fromEmails.length > 0) ||
-    (Array.isArray(params.request.fromDomains) && params.request.fromDomains.length > 0) ||
-    (Array.isArray(params.request.toEmails) && params.request.toEmails.length > 0) ||
-    (Array.isArray(params.request.toDomains) && params.request.toDomains.length > 0) ||
-    (Array.isArray(params.request.ccEmails) && params.request.ccEmails.length > 0) ||
-    (Array.isArray(params.request.ccDomains) && params.request.ccDomains.length > 0);
-  if (!providerQuery && !params.request.from && !params.request.to && !params.request.cc && !hasIdentityArrays) {
-    return [];
-  }
-
-  const after = parseDate(params.request.dateRange?.after);
-  const before = parseDate(params.request.dateRange?.before);
-  const searchResult = await params.env.providers.email.search({
-    query: providerQuery,
-    text: params.request.text ?? params.query ?? providerQuery,
-    from: params.request.from,
-    to: params.request.to,
-    cc: params.request.cc,
-    fromEmails: params.request.fromEmails,
-    fromDomains: params.request.fromDomains,
-    toEmails: params.request.toEmails,
-    toDomains: params.request.toDomains,
-    ccEmails: params.request.ccEmails,
-    ccDomains: params.request.ccDomains,
-    category: params.request.category,
-    attachmentMimeTypes: params.request.attachmentMimeTypes,
-    attachmentFilenameContains: params.request.attachmentFilenameContains,
-    sentByMe: params.mailbox === "sent" ? true : undefined,
-    receivedByMe: params.mailbox === "inbox" ? true : undefined,
-    before,
-    after,
-    limit: clampInt(Math.max(params.limit * 3, 60), 60, 300),
-    fetchAll: Boolean(params.request.fetchAll),
-  });
-  const messages = Array.isArray(searchResult.messages)
-    ? searchResult.messages
-    : [];
-  if (messages.length === 0) return [];
-
-  const providerName =
-    params.env.providers.email.name === "microsoft" ? "microsoft" : "google";
-
-  await Promise.all(
-    messages.map((message) =>
-      enqueueEmailDocumentForIndexing({
-        userId: params.env.userId,
-        emailAccountId: params.env.emailAccountId,
-        provider: providerName,
-        message,
-        logger: params.env.logger,
-      }),
-    ),
-  );
-
-  return messages.map((message) => {
-    const timestamp = toIsoTimestamp(message.date as Date | string | undefined);
-    const labelIds = Array.isArray(message.labelIds) ? message.labelIds : [];
-    const isSent = labelIds.includes("SENT");
-    const isInbox = labelIds.includes("INBOX");
-    const isDraft = labelIds.includes("DRAFT");
-    const isSpam = labelIds.includes("SPAM");
-    const isTrash = labelIds.includes("TRASH");
-    const isUnread = labelIds.includes("UNREAD");
-
-    let mailbox = "all";
-    if (isSent) mailbox = "sent";
-    else if (isInbox) mailbox = "inbox";
-    else if (isDraft) mailbox = "draft";
-    else if (isSpam) mailbox = "spam";
-    else if (isTrash) mailbox = "trash";
-
-    return {
-      id: `email:${message.id}`,
-      surface: "email",
-      title:
-        message.subject ||
-        message.headers?.subject ||
-        "(No Subject)",
-      snippet:
-        message.snippet ||
-        message.textPlain ||
-        message.textHtml ||
-        "",
-      timestamp,
-      metadata: {
-        connector: "email",
-        sourceType: "message",
-        sourceId: message.id,
-        sourceParentId: message.threadId,
-        threadId: message.threadId,
-        messageId: message.id,
-        from: message.headers?.from ?? "",
-        to: message.headers?.to ?? "",
-        cc: message.headers?.cc ?? "",
-        bcc: message.headers?.bcc ?? "",
-        labelIds,
-        mailbox,
-        hasAttachment:
-          Array.isArray(message.attachments) &&
-          message.attachments.length > 0,
-        attachmentCount: message.attachments?.length ?? 0,
-        isSent,
-        isInbox,
-        isDraft,
-        isSpam,
-        isTrash,
-        isUnread,
-        freshnessScore: computeFreshnessScore(timestamp),
-        authorityScore: 0.5,
-      },
-    } satisfies RankingDocument;
-  });
-}
-
 function toUnifiedItem(entry: Awaited<ReturnType<typeof rankDocuments>>[number]): UnifiedSearchItem {
   return {
     surface: entry.doc.surface,
@@ -592,20 +360,16 @@ function toUnifiedItem(entry: Awaited<ReturnType<typeof rankDocuments>>[number])
   };
 }
 
-function resolveSort(
-  params: {
-    requestSort: UnifiedSearchSort | undefined;
-    plannedSort: UnifiedSearchSort | undefined;
-    scopes: UnifiedSearchSurface[];
-    mailbox: UnifiedSearchMailbox | undefined;
-    request: UnifiedSearchRequest;
-  },
-): UnifiedSearchSort {
+function resolveSort(params: {
+  requestSort: UnifiedSearchSort | undefined;
+  plannedSort: UnifiedSearchSort | undefined;
+  scopes: UnifiedSearchSurface[];
+  mailbox: UnifiedSearchMailbox | undefined;
+  request: UnifiedSearchRequest;
+}): UnifiedSearchSort {
   if (params.requestSort) return params.requestSort;
   if (params.plannedSort) return params.plannedSort;
 
-  // Contract default for mailbox retrieval: when the request is email-only and
-  // no explicit order is provided, return mailbox items in inbox-style order.
   const isEmailOnlyScope =
     params.scopes.length === 1 && params.scopes[0] === "email";
   if (!isEmailOnlyScope) return "relevance";
@@ -655,6 +419,395 @@ function sortRankedEntries(
     if (Math.abs(scoreDiff) > 1e-6) return scoreDiff;
     return a.doc.id.localeCompare(b.doc.id);
   });
+}
+
+function dedupeStrings(values: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    const normalized = value.trim();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  return out;
+}
+
+function buildEmailProviderQuery(params: {
+  query: string;
+  request: UnifiedSearchRequest;
+  mailbox: UnifiedSearchMailbox | undefined;
+}): string {
+  const parts = [params.query.trim()];
+  if (params.mailbox && params.mailbox !== "all") {
+    parts.push(`in:${params.mailbox}`);
+  }
+  if (params.request.unread === true) parts.push("is:unread");
+  if (params.request.unread === false) parts.push("is:read");
+  if (params.request.hasAttachment === true) parts.push("has:attachment");
+  if (params.request.category) parts.push(`category:${params.request.category}`);
+  return dedupeStrings(parts).join(" ").trim();
+}
+
+function shouldIncludeNonPrimary(request: UnifiedSearchRequest, mailbox: UnifiedSearchMailbox | undefined): boolean {
+  if (mailbox === "all") return true;
+  if (mailbox && mailbox !== "inbox") return true;
+  if (request.category && request.category !== "primary") return true;
+  return false;
+}
+
+function toEmailDocument(message: {
+  id: string;
+  threadId: string;
+  date?: Date | string;
+  snippet?: string;
+  textPlain?: string;
+  textHtml?: string;
+  subject?: string;
+  headers?: {
+    from?: string;
+    to?: string;
+    cc?: string;
+    bcc?: string;
+    subject?: string;
+  };
+  labelIds?: string[];
+  attachments?: Array<{
+    mimeType?: string;
+    filename?: string;
+    name?: string;
+  }>;
+}): RankingDocument {
+  const timestamp = toIsoTimestamp(message.date);
+  const labelIds = Array.isArray(message.labelIds) ? message.labelIds : [];
+  const isSent = labelIds.includes("SENT");
+  const isInbox = labelIds.includes("INBOX");
+  const isDraft = labelIds.includes("DRAFT");
+  const isSpam = labelIds.includes("SPAM");
+  const isTrash = labelIds.includes("TRASH");
+  const isUnread = labelIds.includes("UNREAD");
+
+  let mailbox = "all";
+  if (isSent) mailbox = "sent";
+  else if (isInbox) mailbox = "inbox";
+  else if (isDraft) mailbox = "draft";
+  else if (isSpam) mailbox = "spam";
+  else if (isTrash) mailbox = "trash";
+
+  const attachmentMimeTypes = (message.attachments ?? [])
+    .map((attachment) => attachment.mimeType?.trim())
+    .filter((value): value is string => Boolean(value));
+  const attachmentNames = (message.attachments ?? [])
+    .map((attachment) => attachment.filename?.trim() || attachment.name?.trim())
+    .filter((value): value is string => Boolean(value));
+
+  return {
+    id: `email:${message.id}`,
+    surface: "email",
+    title: message.subject || message.headers?.subject || "(No Subject)",
+    snippet: message.snippet || message.textPlain || message.textHtml || "",
+    timestamp,
+    metadata: {
+      connector: "email",
+      sourceType: "message",
+      sourceId: message.id,
+      sourceParentId: message.threadId,
+      threadId: message.threadId,
+      messageId: message.id,
+      from: message.headers?.from ?? "",
+      to: message.headers?.to ?? "",
+      cc: message.headers?.cc ?? "",
+      bcc: message.headers?.bcc ?? "",
+      labelIds,
+      mailbox,
+      hasAttachment: Array.isArray(message.attachments) && message.attachments.length > 0,
+      attachmentCount: message.attachments?.length ?? 0,
+      attachmentMimeTypes,
+      attachmentNames,
+      isSent,
+      isInbox,
+      isDraft,
+      isSpam,
+      isTrash,
+      isUnread,
+      freshnessScore: computeFreshnessScore(timestamp),
+      authorityScore: 0.5,
+    },
+  };
+}
+
+async function searchEmailSurface(params: {
+  env: UnifiedSearchEnvironment;
+  request: UnifiedSearchRequest;
+  queryPlan: {
+    queryVariants: string[];
+    rewrittenQuery: string;
+  };
+  rankingQuery: string;
+  mailbox: UnifiedSearchMailbox | undefined;
+  limit: number;
+}): Promise<RankingDocument[]> {
+  const before = parseDate(params.request.dateRange?.before);
+  const after = parseDate(params.request.dateRange?.after);
+  const includeNonPrimary = shouldIncludeNonPrimary(params.request, params.mailbox);
+  const providerLimit = clampInt(Math.max(params.limit * 3, 60), 20, 500);
+  const queries = dedupeStrings([
+    params.rankingQuery,
+    ...params.queryPlan.queryVariants,
+    params.queryPlan.rewrittenQuery,
+  ]);
+  const effectiveQueries = queries.length > 0 ? queries : [""];
+
+  const docsById = new Map<string, RankingDocument>();
+  for (const query of effectiveQueries) {
+    const providerQuery = buildEmailProviderQuery({
+      query,
+      request: params.request,
+      mailbox: params.mailbox,
+    });
+    const result = await params.env.providers.email.search({
+      query: providerQuery,
+      text: params.request.text ?? providerQuery,
+      from: params.request.from,
+      to: params.request.to,
+      cc: params.request.cc,
+      fromEmails: params.request.fromEmails,
+      fromDomains: params.request.fromDomains,
+      toEmails: params.request.toEmails,
+      toDomains: params.request.toDomains,
+      ccEmails: params.request.ccEmails,
+      ccDomains: params.request.ccDomains,
+      category: params.request.category,
+      hasAttachment: params.request.hasAttachment,
+      attachmentMimeTypes: params.request.attachmentMimeTypes,
+      attachmentFilenameContains: params.request.attachmentFilenameContains,
+      sentByMe: params.mailbox === "sent" ? true : undefined,
+      receivedByMe: params.mailbox === "inbox" ? true : undefined,
+      before,
+      after,
+      includeNonPrimary,
+      limit: providerLimit,
+      fetchAll: Boolean(params.request.fetchAll),
+    });
+    const messages = Array.isArray(result.messages) ? result.messages : [];
+    for (const message of messages) {
+      docsById.set(`email:${message.id}`, toEmailDocument(message));
+    }
+    if (docsById.size >= providerLimit) break;
+  }
+
+  return Array.from(docsById.values());
+}
+
+function resolveCalendarRange(request: UnifiedSearchRequest): { start: Date; end: Date } {
+  const now = new Date();
+  const after = parseDate(request.dateRange?.after);
+  const before = parseDate(request.dateRange?.before);
+  const start = after ?? new Date(now.getTime() - 180 * DAY_MS);
+  const end = before ?? new Date(now.getTime() + 365 * DAY_MS);
+  if (start.getTime() <= end.getTime()) {
+    return { start, end };
+  }
+  return { start: end, end: start };
+}
+
+function toCalendarDocument(event: CalendarEvent): RankingDocument {
+  const timestamp = toIsoTimestamp(event.startTime);
+  return {
+    id: `calendar:${event.id}`,
+    surface: "calendar",
+    title: event.title || "(Untitled Event)",
+    snippet: [event.description, event.location].filter(Boolean).join("\n"),
+    timestamp,
+    metadata: {
+      connector: "calendar",
+      sourceType: "event",
+      sourceId: event.id,
+      eventId: event.id,
+      calendarId: event.calendarId,
+      provider: event.provider,
+      iCalUid: event.iCalUid,
+      location: event.location,
+      attendees: (event.attendees ?? []).map((attendee) => attendee.email),
+      organizerEmail: event.organizerEmail,
+      start: toIsoTimestamp(event.startTime) ?? null,
+      end: toIsoTimestamp(event.endTime) ?? null,
+      freshnessScore: computeFreshnessScore(timestamp),
+      authorityScore: 0.45,
+    },
+  };
+}
+
+async function searchCalendarSurface(params: {
+  env: UnifiedSearchEnvironment;
+  request: UnifiedSearchRequest;
+  rankingQuery: string;
+  limit: number;
+}): Promise<RankingDocument[]> {
+  const range = resolveCalendarRange(params.request);
+  const events = await params.env.providers.calendar.searchEvents(
+    params.rankingQuery,
+    range,
+    params.request.attendeeEmail,
+  );
+
+  const docsById = new Map<string, RankingDocument>();
+  for (const event of events) {
+    docsById.set(`calendar:${event.id}`, toCalendarDocument(event));
+    if (docsById.size >= clampInt(params.limit * 4, 50, 1200)) break;
+  }
+  return Array.from(docsById.values());
+}
+
+async function searchRuleSurface(params: {
+  userId: string;
+  emailAccountId: string;
+  limit: number;
+}): Promise<RankingDocument[]> {
+  const rows = await prisma.canonicalRule.findMany({
+    where: {
+      userId: params.userId,
+      OR: [{ emailAccountId: params.emailAccountId }, { emailAccountId: null }],
+    },
+    orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+    take: clampInt(params.limit * 8, 40, 1000),
+    select: {
+      id: true,
+      type: true,
+      enabled: true,
+      priority: true,
+      name: true,
+      description: true,
+      sourceNl: true,
+      sourceMode: true,
+      sourceMessageId: true,
+      sourceConversationId: true,
+      updatedAt: true,
+      match: true,
+      actionPlan: true,
+      trigger: true,
+      decision: true,
+      expiresAt: true,
+      disabledUntil: true,
+    },
+  });
+
+  return rows.map((row) => {
+    const summaryText = [
+      row.description,
+      row.sourceNl,
+      typeof row.decision === "string" ? row.decision : "",
+      JSON.stringify(row.match ?? {}),
+      JSON.stringify(row.actionPlan ?? {}),
+      JSON.stringify(row.trigger ?? {}),
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    return {
+      id: `rule:${row.id}`,
+      surface: "rule",
+      title: row.name?.trim() || row.description?.trim() || `Rule ${row.id}`,
+      snippet: summaryText,
+      timestamp: toIsoTimestamp(row.updatedAt),
+      metadata: {
+        connector: "rule",
+        sourceType: "canonical_rule",
+        sourceId: row.id,
+        ruleId: row.id,
+        type: row.type,
+        enabled: row.enabled,
+        priority: row.priority,
+        sourceMode: row.sourceMode,
+        sourceMessageId: row.sourceMessageId,
+        sourceConversationId: row.sourceConversationId,
+        expiresAt: toIsoTimestamp(row.expiresAt),
+        disabledUntil: toIsoTimestamp(row.disabledUntil),
+        freshnessScore: computeFreshnessScore(toIsoTimestamp(row.updatedAt)),
+        authorityScore: row.enabled ? 0.55 : 0.35,
+      },
+    } satisfies RankingDocument;
+  });
+}
+
+async function searchMemorySurface(params: {
+  env: UnifiedSearchEnvironment;
+  queryVariants: string[];
+  limit: number;
+}): Promise<RankingDocument[]> {
+  const docsById = new Map<string, RankingDocument>();
+  const queryVariants = dedupeStrings(params.queryVariants);
+  const perVariantLimit = clampInt(params.limit * 4, 40, 1200);
+
+  if (queryVariants.length > 0) {
+    for (const query of queryVariants) {
+      const rows = await searchIndexedDocuments({
+        userId: params.env.userId,
+        emailAccountId: params.env.emailAccountId,
+        query,
+        connectors: ["memory"],
+        limit: perVariantLimit,
+      });
+
+      for (const row of rows) {
+        const mapped = toMemorySurfaceId(row);
+        if (!mapped) continue;
+        docsById.set(mapped.id, {
+          id: mapped.id,
+          surface: mapped.surface,
+          title: row.title ?? "(Untitled)",
+          snippet: (row.snippet ?? row.bodyText ?? "").slice(0, 500),
+          timestamp: toIsoTimestamp(row.updatedSourceAt ?? row.occurredAt ?? row.startAt ?? undefined),
+          metadata: {
+            searchDocumentId: row.id,
+            connector: row.connector,
+            sourceType: row.sourceType,
+            sourceId: row.sourceId,
+            sourceParentId: row.sourceParentId,
+            url: row.url,
+            authorIdentity: row.authorIdentity,
+            freshnessScore: row.freshnessScore ?? 0,
+            authorityScore: row.authorityScore ?? 0,
+            ...(row.metadata ?? {}),
+          },
+        });
+      }
+    }
+  }
+
+  if (docsById.size === 0) {
+    const fallbackRows = await listRecentIndexedDocuments({
+      userId: params.env.userId,
+      emailAccountId: params.env.emailAccountId,
+      connectors: ["memory"],
+      limit: clampInt(params.limit * 6, 30, 1500),
+    });
+    for (const row of fallbackRows) {
+      const mapped = toMemorySurfaceId(row);
+      if (!mapped) continue;
+      docsById.set(mapped.id, {
+        id: mapped.id,
+        surface: mapped.surface,
+        title: row.title ?? "(Untitled)",
+        snippet: (row.snippet ?? row.bodyText ?? "").slice(0, 500),
+        timestamp: toIsoTimestamp(row.updatedSourceAt ?? row.occurredAt ?? row.startAt ?? undefined),
+        metadata: {
+          searchDocumentId: row.id,
+          connector: row.connector,
+          sourceType: row.sourceType,
+          sourceId: row.sourceId,
+          sourceParentId: row.sourceParentId,
+          url: row.url,
+          authorIdentity: row.authorIdentity,
+          freshnessScore: row.freshnessScore ?? 0,
+          authorityScore: row.authorityScore ?? 0,
+          ...(row.metadata ?? {}),
+        },
+      });
+    }
+  }
+
+  return Array.from(docsById.values());
 }
 
 export interface UnifiedSearchService {
@@ -740,106 +893,65 @@ export function createUnifiedSearchService(env: UnifiedSearchEnvironment): Unifi
         };
       }
 
-      const indexedDocs = await searchIndexedSurface({
-        env,
-        scopes,
-        queryVariants: queryPlan.queryVariants,
-        limit,
-      });
-      const filteredIndexedDocs = indexedDocs.filter((doc) =>
-        matchesRequest(doc, effectiveRequest, mailbox),
-      );
-
-      const indexedDocumentIds = filteredIndexedDocs
-        .map((doc) => {
-          const metadata = asObject(doc.metadata);
-          const searchDocumentId = metadata.searchDocumentId;
-          return typeof searchDocumentId === "string" ? searchDocumentId : undefined;
-        })
-        .filter((id): id is string => Boolean(id));
-
-      const behaviorScores = new Map<string, number>();
-      if (indexedDocumentIds.length > 0) {
-        const scoreRows = await getSearchBehaviorScores({
-          userId: env.userId,
-          emailAccountId: env.emailAccountId,
-          documentIds: indexedDocumentIds,
-          days: 45,
-        });
-        for (const row of scoreRows) {
-          behaviorScores.set(row.documentId, row.score);
-        }
-      }
-
       const docsById = new Map<string, RankingDocument>();
-      for (const doc of filteredIndexedDocs) {
-        const metadata = asObject(doc.metadata);
-        const searchDocumentId =
-          typeof metadata.searchDocumentId === "string" ? metadata.searchDocumentId : undefined;
-        const behaviorScore =
-          searchDocumentId && behaviorScores.has(searchDocumentId)
-            ? behaviorScores.get(searchDocumentId)
-            : undefined;
-        const graphScore = computeGraphProximityScore(doc, [
-          ...queryPlan.terms,
-          ...queryPlan.aliasExpansions.map((value) => value.toLowerCase()),
-        ]);
 
-        docsById.set(doc.id, doc);
-        doc.metadata = {
-          ...metadata,
-          behaviorScore: behaviorScore ?? 0,
-          graphScore,
-        };
-      }
-
-      const hasEmailCandidate = Array.from(docsById.values()).some(
-        (doc) => doc.surface === "email",
-      );
-      const hasHardEmailConstraints =
-        typeof effectiveRequest.unread === "boolean" ||
-        typeof effectiveRequest.hasAttachment === "boolean" ||
-        Boolean(effectiveRequest.cc?.trim()) ||
-        Boolean(effectiveRequest.category) ||
-        (Array.isArray(effectiveRequest.attachmentMimeTypes) &&
-          effectiveRequest.attachmentMimeTypes.length > 0) ||
-        Boolean(effectiveRequest.attachmentFilenameContains?.trim());
-      const emailCandidateCount = Array.from(docsById.values()).filter(
-        (doc) => doc.surface === "email",
-      ).length;
-      const shouldRunEmailFallback =
-        scopes.includes("email") &&
-        (!hasEmailCandidate || (hasHardEmailConstraints && emailCandidateCount < limit));
-
-      if (shouldRunEmailFallback) {
-        const fallbackDocs = await searchEmailProviderFallback({
+      if (scopes.includes("email")) {
+        const emailDocs = await searchEmailSurface({
           env,
           request: effectiveRequest,
-          query: rankingQuery,
+          queryPlan,
+          rankingQuery,
           mailbox,
           limit,
         });
-        const filteredFallbackDocs = fallbackDocs.filter((doc) =>
-          matchesRequest(doc, effectiveRequest, mailbox),
-        );
-        for (const doc of filteredFallbackDocs) {
+        for (const doc of emailDocs) docsById.set(doc.id, doc);
+      }
+
+      if (scopes.includes("calendar")) {
+        const calendarDocs = await searchCalendarSurface({
+          env,
+          request: effectiveRequest,
+          rankingQuery,
+          limit,
+        });
+        for (const doc of calendarDocs) docsById.set(doc.id, doc);
+      }
+
+      if (scopes.includes("rule")) {
+        const ruleDocs = await searchRuleSurface({
+          userId: env.userId,
+          emailAccountId: env.emailAccountId,
+          limit,
+        });
+        for (const doc of ruleDocs) docsById.set(doc.id, doc);
+      }
+
+      if (scopes.includes("memory")) {
+        const memoryDocs = await searchMemorySurface({
+          env,
+          queryVariants: queryPlan.queryVariants,
+          limit,
+        });
+        for (const doc of memoryDocs) docsById.set(doc.id, doc);
+      }
+
+      const docs = Array.from(docsById.values())
+        .filter((doc) => matchesRequest(doc, effectiveRequest, mailbox))
+        .map((doc) => {
           const metadata = asObject(doc.metadata);
           const graphScore = computeGraphProximityScore(doc, [
             ...queryPlan.terms,
             ...queryPlan.aliasExpansions.map((value) => value.toLowerCase()),
           ]);
-          doc.metadata = {
-            ...metadata,
-            behaviorScore: 0,
-            graphScore,
-          };
-          if (!docsById.has(doc.id)) {
-            docsById.set(doc.id, doc);
-          }
-        }
-      }
-
-      const docs = Array.from(docsById.values());
+          return {
+            ...doc,
+            metadata: {
+              ...metadata,
+              behaviorScore: metadata.behaviorScore ?? 0,
+              graphScore,
+            },
+          } satisfies RankingDocument;
+        });
 
       const ranked = await rankDocuments({
         query: rankingQuery,
@@ -868,49 +980,6 @@ export function createUnifiedSearchService(env: UnifiedSearchEnvironment): Unifi
       };
       for (const item of top) {
         counts[item.surface] += 1;
-      }
-
-      const topSearchDocumentIds = top
-        .map((item) => {
-          const metadata = asObject(item.metadata);
-          const id = metadata.searchDocumentId;
-          return typeof id === "string" ? id : undefined;
-        })
-        .filter((id): id is string => Boolean(id));
-
-      if (topSearchDocumentIds.length > 0) {
-        void Promise.all([
-          recordSearchSignals({
-            userId: env.userId,
-            emailAccountId: env.emailAccountId,
-            signalType: "query_hit",
-            signalValue: 1,
-            documentIds: topSearchDocumentIds,
-            metadata: {
-              query: rankingQuery,
-              scopes,
-              mailbox: mailbox ?? null,
-            },
-          }),
-          recordSearchSignals({
-            userId: env.userId,
-            emailAccountId: env.emailAccountId,
-            signalType: "result_impression",
-            signalValue: 1,
-            documentIds: topSearchDocumentIds,
-            metadata: {
-              query: rankingQuery,
-              scopes,
-              mailbox: mailbox ?? null,
-            },
-          }),
-        ]).catch((error) => {
-          env.logger.warn("Failed to record unified search signals", {
-            userId: env.userId,
-            emailAccountId: env.emailAccountId,
-            error,
-          });
-        });
       }
 
       env.logger.info("Unified search completed", {
