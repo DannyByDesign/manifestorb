@@ -158,8 +158,8 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         colors: [derived.deepViolet, derived.midLavender, derived.paleLilac, derived.iceLavender],
       },
       {
-        size: 36,
-        pointSize: 13.4,
+        size: 42,
+        pointSize: 16.0,
         frequency: 0.3,
         blending: THREE.AdditiveBlending,
         densityBias: -0.04,
