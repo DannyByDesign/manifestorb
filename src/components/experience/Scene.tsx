@@ -174,19 +174,6 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         sparkleBoost: 2.35,
         colors: [derived.electricViolet, derived.iceLavender, derived.peachGlow, derived.rosePeach],
       },
-      {
-        size: 18,
-        pointSize: 12.2,
-        frequency: 2.8,
-        blending: THREE.AdditiveBlending,
-        densityBias: -0.12,
-        alphaBase: 0.2,
-        alphaBoost: 0.22,
-        darkTintMix: 0.18,
-        glintChance: 0.022,
-        depthFade: 0.19,
-        colors: [derived.iceLavender, derived.peachGlow, derived.whiteBloom, palette.baseLilac],
-      },
     ],
     [derived, palette]
   );
