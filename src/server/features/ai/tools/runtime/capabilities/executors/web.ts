@@ -10,6 +10,10 @@ export const webToolExecutors: RuntimeToolExecutorMap = {
       search_lang: asString(args.search_lang),
       ui_lang: asString(args.ui_lang),
       freshness: asString(args.freshness),
+      enrichTopK: typeof args.enrichTopK === "number" ? args.enrichTopK : undefined,
+      enrichExtractMode:
+        asString(args.enrichExtractMode) === "text" ? "text" : "markdown",
+      enrichMaxChars: typeof args.enrichMaxChars === "number" ? args.enrichMaxChars : undefined,
     }),
   "web.fetch": async ({ args, capabilities }) =>
     capabilities.web.fetch({

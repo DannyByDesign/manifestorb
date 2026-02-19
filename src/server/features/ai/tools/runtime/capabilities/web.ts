@@ -4,6 +4,9 @@
 import type { Dispatcher } from "undici";
 import type { CapabilityEnvironment } from "@/server/features/ai/tools/runtime/capabilities/types";
 import type { ToolResult } from "@/server/features/ai/tools/types";
+import { sleep } from "@/server/lib/sleep";
+import { computeExponentialBackoffDelay } from "@/server/features/ai/tools/common/backoff";
+import { capTimeoutToRuntimeBudget } from "@/server/features/ai/runtime/deadline-context";
 import {
   CacheEntry,
   DEFAULT_CACHE_TTL_MINUTES,
@@ -43,6 +46,12 @@ const OPENROUTER_KEY_PREFIXES = ["sk-or-"];
 
 const DEFAULT_SEARCH_COUNT = 5;
 const MAX_SEARCH_COUNT = 10;
+const MAX_SEARCH_ENRICH_TOP_K = 3;
+const DEFAULT_SEARCH_ENRICH_MAX_CHARS = 6_000;
+const DEFAULT_SEARCH_RETRY_ATTEMPTS = 3;
+const DEFAULT_SEARCH_RETRY_BASE_DELAY_MS = 500;
+const WEB_SEARCH_CIRCUIT_FAILURE_THRESHOLD = 3;
+const WEB_SEARCH_CIRCUIT_OPEN_MS = 90_000;
 const BRAVE_FRESHNESS_SHORTCUTS = new Set(["pd", "pw", "pm", "py"]);
 const BRAVE_FRESHNESS_RANGE = /^(\d{4}-\d{2}-\d{2})to(\d{4}-\d{2}-\d{2})$/;
 
@@ -57,6 +66,17 @@ const DEFAULT_FIRECRAWL_MAX_AGE_MS = 172_800_000;
 const WEB_DOCS_URL = "https://brave.com/search/api/";
 const FIRECRAWL_DOCS_URL = "https://docs.firecrawl.dev/";
 
+type SearchCircuitState = {
+  consecutiveFailures: number;
+  openUntilMs: number;
+  lastError?: string;
+};
+
+const SEARCH_CIRCUITS: Record<SearchProvider, SearchCircuitState> = {
+  brave: { consecutiveFailures: 0, openUntilMs: 0 },
+  perplexity: { consecutiveFailures: 0, openUntilMs: 0 },
+};
+
 type PerplexityApiKeySource = "config" | "perplexity_env" | "openrouter_env" | "none";
 
 type SearchSettings = {
@@ -65,6 +85,8 @@ type SearchSettings = {
   maxResults: number;
   timeoutSeconds: number;
   cacheTtlMs: number;
+  retryAttempts: number;
+  retryBaseDelayMs: number;
   braveApiKey?: string;
   perplexityApiKey?: string;
   perplexityApiKeySource: PerplexityApiKeySource;
@@ -117,6 +139,17 @@ type PerplexityBaseUrlHint = "direct" | "openrouter";
 const SEARCH_CACHE = new Map<string, CacheEntry<Record<string, unknown>>>();
 const FETCH_CACHE = new Map<string, CacheEntry<Record<string, unknown>>>();
 
+class WebSearchHttpError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly retryAfterMs?: number,
+  ) {
+    super(message);
+    this.name = "WebSearchHttpError";
+  }
+}
+
 export interface WebCapabilities {
   search(input: {
     query: string;
@@ -125,6 +158,9 @@ export interface WebCapabilities {
     search_lang?: string;
     ui_lang?: string;
     freshness?: string;
+    enrichTopK?: number;
+    enrichExtractMode?: "markdown" | "text";
+    enrichMaxChars?: number;
   }): Promise<ToolResult>;
   fetch(input: {
     url: string;
@@ -240,6 +276,23 @@ function resolveSearchSettings(): SearchSettings {
     parseNumber(process.env.TOOL_WEB_SEARCH_CACHE_TTL_MINUTES),
     DEFAULT_CACHE_TTL_MINUTES,
   );
+  const retryAttempts = Math.max(
+    1,
+    Math.min(
+      5,
+      Math.floor(parseNumber(process.env.TOOL_WEB_SEARCH_RETRY_ATTEMPTS) ?? DEFAULT_SEARCH_RETRY_ATTEMPTS),
+    ),
+  );
+  const retryBaseDelayMs = Math.max(
+    100,
+    Math.min(
+      5_000,
+      Math.floor(
+        parseNumber(process.env.TOOL_WEB_SEARCH_RETRY_BASE_DELAY_MS) ??
+          DEFAULT_SEARCH_RETRY_BASE_DELAY_MS,
+      ),
+    ),
+  );
 
   return {
     enabled: parseBoolean(process.env.TOOL_WEB_SEARCH_ENABLED, true),
@@ -247,6 +300,8 @@ function resolveSearchSettings(): SearchSettings {
     maxResults,
     timeoutSeconds,
     cacheTtlMs,
+    retryAttempts,
+    retryBaseDelayMs,
     braveApiKey,
     perplexityApiKey,
     perplexityApiKeySource,
@@ -371,6 +426,126 @@ function formatFailure(params: {
   };
 }
 
+function getExpiredCacheValue(
+  cache: Map<string, CacheEntry<Record<string, unknown>>>,
+  key: string,
+): { value: Record<string, unknown>; staleAgeMs: number } | null {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  const staleAgeMs = Date.now() - entry.expiresAt;
+  if (staleAgeMs <= 0) return null;
+  return {
+    value: entry.value,
+    staleAgeMs,
+  };
+}
+
+function resolveTimeoutSecondsWithRuntimeBudget(params: {
+  timeoutSeconds: number;
+  reserveMs: number;
+}): number {
+  const requestedMs = Math.max(1_000, Math.floor(params.timeoutSeconds * 1000));
+  const cappedMs = capTimeoutToRuntimeBudget({
+    requestedMs,
+    minimumMs: 1_000,
+    reserveMs: params.reserveMs,
+  });
+  return Math.max(1, Math.floor(cappedMs / 1000));
+}
+
+function isSearchCircuitOpen(provider: SearchProvider): boolean {
+  return SEARCH_CIRCUITS[provider].openUntilMs > Date.now();
+}
+
+function markSearchCircuitSuccess(provider: SearchProvider): void {
+  SEARCH_CIRCUITS[provider].consecutiveFailures = 0;
+  SEARCH_CIRCUITS[provider].openUntilMs = 0;
+  SEARCH_CIRCUITS[provider].lastError = undefined;
+}
+
+function markSearchCircuitFailure(params: {
+  provider: SearchProvider;
+  reason: string;
+  retryAfterMs?: number;
+}): void {
+  const state = SEARCH_CIRCUITS[params.provider];
+  state.consecutiveFailures += 1;
+  state.lastError = params.reason;
+  if (typeof params.retryAfterMs === "number" && params.retryAfterMs > 0) {
+    state.openUntilMs = Math.max(state.openUntilMs, Date.now() + params.retryAfterMs);
+    return;
+  }
+  if (state.consecutiveFailures >= WEB_SEARCH_CIRCUIT_FAILURE_THRESHOLD) {
+    state.openUntilMs = Date.now() + WEB_SEARCH_CIRCUIT_OPEN_MS;
+  }
+}
+
+function retryDelayFromHeaders(headers: Headers): number | undefined {
+  const retryAfter = headers.get("retry-after")?.trim();
+  if (retryAfter) {
+    const seconds = Number.parseInt(retryAfter, 10);
+    if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+    const dateMs = Date.parse(retryAfter);
+    if (Number.isFinite(dateMs)) {
+      const delay = dateMs - Date.now();
+      if (delay > 0) return delay;
+    }
+  }
+
+  const resetRaw =
+    headers.get("x-ratelimit-reset")?.trim() ??
+    headers.get("ratelimit-reset")?.trim();
+  if (!resetRaw) return undefined;
+
+  const resetSeconds = Number.parseFloat(resetRaw);
+  if (Number.isFinite(resetSeconds) && resetSeconds > 0) {
+    // Most providers expose this as seconds until reset.
+    if (resetSeconds < 86_400) return Math.round(resetSeconds * 1000);
+    // Some providers expose a unix timestamp.
+    const unixMs = Math.round(resetSeconds * 1000);
+    const delay = unixMs - Date.now();
+    return delay > 0 ? delay : undefined;
+  }
+  return undefined;
+}
+
+function isRetryableWebSearchError(error: unknown): boolean {
+  if (error instanceof WebSearchHttpError) {
+    return error.status === 429 || error.status >= 500;
+  }
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return message.includes("timeout") || message.includes("network") || message.includes("fetch failed");
+}
+
+async function runWebSearchWithRetry<T>(params: {
+  attempts: number;
+  baseDelayMs: number;
+  run: () => Promise<T>;
+}): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= params.attempts; attempt += 1) {
+    try {
+      return await params.run();
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableWebSearchError(error) || attempt >= params.attempts) {
+        throw error;
+      }
+      const retryAfterMs =
+        error instanceof WebSearchHttpError ? error.retryAfterMs : undefined;
+      const computed = computeExponentialBackoffDelay({
+        attempt,
+        baseDelayMs: params.baseDelayMs,
+        maxDelayMs: 8_000,
+        jitterMaxMs: 350,
+      });
+      const delayMs = Math.max(computed, retryAfterMs ?? 0);
+      await sleep(delayMs);
+    }
+  }
+  throw lastError;
+}
+
 function looksLikeHtml(value: string): boolean {
   const trimmed = value.trimStart();
   if (!trimmed) return false;
@@ -422,7 +597,11 @@ async function runPerplexitySearch(params: {
 
   if (!response.ok) {
     const detail = await readResponseText(response);
-    throw new Error(`Perplexity API error (${response.status}): ${detail || response.statusText}`);
+    throw new WebSearchHttpError(
+      `Perplexity API error (${response.status}): ${detail || response.statusText}`,
+      response.status,
+      retryDelayFromHeaders(response.headers),
+    );
   }
 
   const data = (await response.json()) as PerplexitySearchResponse;
@@ -452,70 +631,191 @@ async function runWebSearch(params: {
       params.freshness ?? "default",
     ].join(":"),
   );
+  const stale = getExpiredCacheValue(SEARCH_CACHE, cacheKey);
   const cached = readCache(SEARCH_CACHE, cacheKey);
   if (cached) return { ...cached.value, cached: true };
 
+  if (isSearchCircuitOpen(params.settings.provider)) {
+    if (stale) {
+      return {
+        ...stale.value,
+        cached: true,
+        stale: true,
+        staleAgeMs: stale.staleAgeMs,
+        fallback: "circuit_open",
+      };
+    }
+    throw new Error(`web_search_provider_circuit_open:${params.settings.provider}`);
+  }
+
   const startedAt = Date.now();
-  if (params.settings.provider === "perplexity") {
-    const result = await runPerplexitySearch({
-      query: params.query,
-      apiKey: params.settings.perplexityApiKey ?? "",
-      baseUrl: params.settings.perplexityBaseUrl,
-      model: params.settings.perplexityModel,
-      timeoutSeconds: params.settings.timeoutSeconds,
+  const timeoutSeconds = resolveTimeoutSecondsWithRuntimeBudget({
+    timeoutSeconds: params.settings.timeoutSeconds,
+    reserveMs: 2_000,
+  });
+
+  try {
+    const payload = await runWebSearchWithRetry({
+      attempts: params.settings.retryAttempts,
+      baseDelayMs: params.settings.retryBaseDelayMs,
+      run: async () => {
+        if (params.settings.provider === "perplexity") {
+          const result = await runPerplexitySearch({
+            query: params.query,
+            apiKey: params.settings.perplexityApiKey ?? "",
+            baseUrl: params.settings.perplexityBaseUrl,
+            model: params.settings.perplexityModel,
+            timeoutSeconds,
+          });
+          return {
+            query: params.query,
+            provider: "perplexity",
+            model: params.settings.perplexityModel,
+            tookMs: Date.now() - startedAt,
+            content: result.content,
+            citations: result.citations,
+          } satisfies Record<string, unknown>;
+        }
+
+        const url = new URL(BRAVE_SEARCH_ENDPOINT);
+        url.searchParams.set("q", params.query);
+        url.searchParams.set("count", String(params.count));
+        if (params.country) url.searchParams.set("country", params.country);
+        if (params.searchLang) url.searchParams.set("search_lang", params.searchLang);
+        if (params.uiLang) url.searchParams.set("ui_lang", params.uiLang);
+        if (params.freshness) url.searchParams.set("freshness", params.freshness);
+
+        const response = await fetch(url.toString(), {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+            "X-Subscription-Token": params.settings.braveApiKey ?? "",
+          },
+          signal: withTimeout(undefined, timeoutSeconds * 1000),
+        });
+        if (!response.ok) {
+          const detail = await readResponseText(response);
+          throw new WebSearchHttpError(
+            `Brave API error (${response.status}): ${detail || response.statusText}`,
+            response.status,
+            retryDelayFromHeaders(response.headers),
+          );
+        }
+
+        const data = (await response.json()) as BraveSearchResponse;
+        const results = Array.isArray(data.web?.results) ? data.web?.results ?? [] : [];
+        const mapped = results.map((entry) => ({
+          title: entry.title ?? "",
+          url: entry.url ?? "",
+          description: entry.description ?? "",
+          published: entry.age ?? undefined,
+          siteName: resolveSiteName(entry.url ?? ""),
+        }));
+        return {
+          query: params.query,
+          provider: "brave",
+          count: mapped.length,
+          tookMs: Date.now() - startedAt,
+          results: mapped,
+        } satisfies Record<string, unknown>;
+      },
     });
-    const payload = {
-      query: params.query,
-      provider: "perplexity",
-      model: params.settings.perplexityModel,
-      tookMs: Date.now() - startedAt,
-      content: result.content,
-      citations: result.citations,
-    };
+
+    markSearchCircuitSuccess(params.settings.provider);
     writeCache(SEARCH_CACHE, cacheKey, payload, params.settings.cacheTtlMs);
     return payload;
+  } catch (error) {
+    markSearchCircuitFailure({
+      provider: params.settings.provider,
+      reason: error instanceof Error ? error.message : "web_search_failed",
+      retryAfterMs: error instanceof WebSearchHttpError ? error.retryAfterMs : undefined,
+    });
+    if (stale) {
+      return {
+        ...stale.value,
+        cached: true,
+        stale: true,
+        staleAgeMs: stale.staleAgeMs,
+        fallback: "stale_if_error",
+      };
+    }
+    throw error;
+  }
+}
+
+function resolveSearchEnrichTopK(value: unknown): number {
+  const parsed = typeof value === "number" && Number.isFinite(value) ? Math.floor(value) : 0;
+  return Math.max(0, Math.min(MAX_SEARCH_ENRICH_TOP_K, parsed));
+}
+
+async function enrichWebSearchResults(params: {
+  data: Record<string, unknown>;
+  enrichTopK: number;
+  enrichExtractMode: ExtractMode;
+  enrichMaxChars: number;
+  fetchSettings: FetchSettings;
+}): Promise<Record<string, unknown>> {
+  if (params.enrichTopK <= 0) return params.data;
+  if (params.data.provider !== "brave") return params.data;
+  const results = Array.isArray(params.data.results)
+    ? (params.data.results as Array<Record<string, unknown>>)
+    : [];
+  if (results.length === 0) return params.data;
+
+  const enriched = [...results];
+  let enrichedCount = 0;
+
+  for (let i = 0; i < enriched.length; i += 1) {
+    if (enrichedCount >= params.enrichTopK) break;
+    const entry = enriched[i];
+    const url = typeof entry?.url === "string" ? entry.url.trim() : "";
+    if (!url) continue;
+
+    const timeoutSeconds = resolveTimeoutSecondsWithRuntimeBudget({
+      timeoutSeconds: Math.min(params.fetchSettings.timeoutSeconds, 8),
+      reserveMs: 1_200,
+    });
+    const remainingMaxChars = Math.max(500, Math.min(params.enrichMaxChars, 25_000));
+    try {
+      const fetched = await runWebFetch({
+        url,
+        extractMode: params.enrichExtractMode,
+        maxChars: remainingMaxChars,
+        settings: {
+          ...params.fetchSettings,
+          timeoutSeconds,
+          firecrawl: {
+            ...params.fetchSettings.firecrawl,
+            timeoutSeconds: resolveTimeoutSecondsWithRuntimeBudget({
+              timeoutSeconds: Math.min(params.fetchSettings.firecrawl.timeoutSeconds, 8),
+              reserveMs: 1_000,
+            }),
+          },
+        },
+      });
+      enriched[i] = {
+        ...entry,
+        fetchedPreview:
+          typeof fetched.content === "string"
+            ? fetched.content
+            : "",
+        fetchedExtractor:
+          typeof fetched.extractor === "string" ? fetched.extractor : undefined,
+        fetchedStatus:
+          typeof fetched.status === "number" ? fetched.status : undefined,
+      };
+      enrichedCount += 1;
+    } catch {
+      // Keep search results even if enrichment fetch fails.
+      continue;
+    }
   }
 
-  const url = new URL(BRAVE_SEARCH_ENDPOINT);
-  url.searchParams.set("q", params.query);
-  url.searchParams.set("count", String(params.count));
-  if (params.country) url.searchParams.set("country", params.country);
-  if (params.searchLang) url.searchParams.set("search_lang", params.searchLang);
-  if (params.uiLang) url.searchParams.set("ui_lang", params.uiLang);
-  if (params.freshness) url.searchParams.set("freshness", params.freshness);
-
-  const response = await fetch(url.toString(), {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-      "X-Subscription-Token": params.settings.braveApiKey ?? "",
-    },
-    signal: withTimeout(undefined, params.settings.timeoutSeconds * 1000),
-  });
-  if (!response.ok) {
-    const detail = await readResponseText(response);
-    throw new Error(`Brave API error (${response.status}): ${detail || response.statusText}`);
-  }
-
-  const data = (await response.json()) as BraveSearchResponse;
-  const results = Array.isArray(data.web?.results) ? data.web?.results ?? [] : [];
-  const mapped = results.map((entry) => ({
-    title: entry.title ?? "",
-    url: entry.url ?? "",
-    description: entry.description ?? "",
-    published: entry.age ?? undefined,
-    siteName: resolveSiteName(entry.url ?? ""),
-  }));
-
-  const payload = {
-    query: params.query,
-    provider: "brave",
-    count: mapped.length,
-    tookMs: Date.now() - startedAt,
-    results: mapped,
+  return {
+    ...params.data,
+    results: enriched,
+    enrichedCount,
   };
-  writeCache(SEARCH_CACHE, cacheKey, payload, params.settings.cacheTtlMs);
-  return payload;
 }
 
 async function fetchWithRedirects(params: {
@@ -829,6 +1129,7 @@ export function createWebCapabilities(env: CapabilityEnvironment): WebCapabiliti
   return {
     async search(input) {
       const settings = resolveSearchSettings();
+      const fetchSettings = resolveFetchSettings();
       if (!settings.enabled) {
         return formatFailure({
           code: "web_search_disabled",
@@ -887,7 +1188,7 @@ export function createWebCapabilities(env: CapabilityEnvironment): WebCapabiliti
       }
 
       try {
-        const data = await runWebSearch({
+        const baseData = await runWebSearch({
           query,
           count: resolveSearchCount(input.count, settings.maxResults),
           country: parseString(input.country),
@@ -895,6 +1196,24 @@ export function createWebCapabilities(env: CapabilityEnvironment): WebCapabiliti
           uiLang: parseString(input.ui_lang),
           freshness,
           settings,
+        });
+        const enrichTopK = resolveSearchEnrichTopK(input.enrichTopK);
+        const enrichExtractMode: ExtractMode =
+          input.enrichExtractMode === "text" ? "text" : "markdown";
+        const enrichMaxChars = Math.max(
+          500,
+          Math.floor(
+            typeof input.enrichMaxChars === "number" && Number.isFinite(input.enrichMaxChars)
+              ? input.enrichMaxChars
+              : DEFAULT_SEARCH_ENRICH_MAX_CHARS,
+          ),
+        );
+        const data = await enrichWebSearchResults({
+          data: baseData,
+          enrichTopK,
+          enrichExtractMode,
+          enrichMaxChars,
+          fetchSettings,
         });
 
         return {
@@ -919,6 +1238,15 @@ export function createWebCapabilities(env: CapabilityEnvironment): WebCapabiliti
           query: query.slice(0, 120),
           error: message,
         });
+        if (message.includes("web_search_provider_circuit_open")) {
+          return formatFailure({
+            code: "web_search_temporarily_unavailable",
+            message: "web.search provider is temporarily unavailable. Please try again shortly.",
+            detail: message,
+            docs: WEB_DOCS_URL,
+            resource: "knowledge",
+          });
+        }
         return formatFailure({
           code: "web_search_failed",
           message: "web.search failed while fetching results.",
@@ -986,11 +1314,25 @@ export function createWebCapabilities(env: CapabilityEnvironment): WebCapabiliti
       }
 
       try {
+        const effectiveSettings: FetchSettings = {
+          ...settings,
+          timeoutSeconds: resolveTimeoutSecondsWithRuntimeBudget({
+            timeoutSeconds: settings.timeoutSeconds,
+            reserveMs: 1_200,
+          }),
+          firecrawl: {
+            ...settings.firecrawl,
+            timeoutSeconds: resolveTimeoutSecondsWithRuntimeBudget({
+              timeoutSeconds: settings.firecrawl.timeoutSeconds,
+              reserveMs: 1_000,
+            }),
+          },
+        };
         const data = await runWebFetch({
           url,
           extractMode,
           maxChars,
-          settings,
+          settings: effectiveSettings,
         });
         return {
           success: true,
@@ -1039,5 +1381,10 @@ export const __testing = {
   clearCaches: () => {
     clearRuntimeWebCache(SEARCH_CACHE as Map<string, CacheEntry<unknown>>);
     clearRuntimeWebCache(FETCH_CACHE as Map<string, CacheEntry<unknown>>);
+    for (const provider of SEARCH_PROVIDERS) {
+      SEARCH_CIRCUITS[provider].consecutiveFailures = 0;
+      SEARCH_CIRCUITS[provider].openUntilMs = 0;
+      SEARCH_CIRCUITS[provider].lastError = undefined;
+    }
   },
 } as const;

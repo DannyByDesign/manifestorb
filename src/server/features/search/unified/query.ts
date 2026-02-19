@@ -350,7 +350,7 @@ export async function planUnifiedSearchQuery(params: {
     needsClarification,
     clarificationPrompt:
       semanticIntent?.clarificationPrompt ??
-      (needsClarification ? "What should I search for (keywords, person, or a date range)?" : undefined),
+      (needsClarification ? "search_target_unclear" : undefined),
     aliasExpansions,
     terms,
   };

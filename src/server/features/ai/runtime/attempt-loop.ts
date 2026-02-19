@@ -17,6 +17,10 @@ import type { RuntimeToolResult } from "@/server/features/ai/tools/contracts/too
 import { renderRuntimeContextForPrompt } from "@/server/features/ai/runtime/context/render";
 import { maybeRunDeterministicCrossSurfaceExecutor } from "@/server/features/ai/runtime/deterministic-cross-surface";
 import {
+  capTimeoutToRuntimeBudget,
+  runWithRuntimeDeadlineContext,
+} from "@/server/features/ai/runtime/deadline-context";
+import {
   pruneRuntimeMessages,
   resolveRuntimeMessagePruningConfig,
   estimateRuntimeMessagesChars,
@@ -62,6 +66,11 @@ async function withRuntimeTimeout<T>(params: {
   timeoutMs: number;
   run: () => Promise<T>;
 }): Promise<T> {
+  const timeoutMs = capTimeoutToRuntimeBudget({
+    requestedMs: params.timeoutMs,
+    minimumMs: 500,
+    reserveMs: 200,
+  });
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
 
   try {
@@ -69,8 +78,8 @@ async function withRuntimeTimeout<T>(params: {
       params.run(),
       new Promise<T>((_resolve, reject) => {
         timeoutHandle = setTimeout(() => {
-          reject(new RuntimeOperationTimeoutError(params.operation, params.timeoutMs));
-        }, params.timeoutMs);
+          reject(new RuntimeOperationTimeoutError(params.operation, timeoutMs));
+        }, timeoutMs);
       }),
     ]);
   } finally {
@@ -267,14 +276,20 @@ function resolveNativeMaxSteps(params: {
 }
 
 export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLoopResult> {
-  const context = buildRuntimeTurnContext(session);
   const startedAt = Date.now();
-  const routingPlan = await buildRuntimeRoutingPlan({ session });
+  return runWithRuntimeDeadlineContext(
+    {
+      startedAtMs: startedAt,
+      deadlineMs: startedAt + RUNTIME_TURN_BUDGET_MS,
+    },
+    async () => {
+      const context = buildRuntimeTurnContext(session);
+      const routingPlan = await buildRuntimeRoutingPlan({ session });
 
-  const collectedResults = (): RuntimeToolResult[] =>
-    context.session.summaries.map((summary) => summary.result);
+      const collectedResults = (): RuntimeToolResult[] =>
+        context.session.summaries.map((summary) => summary.result);
 
-  session.input.logger.info("Runtime route selected", {
+      session.input.logger.info("Runtime route selected", {
     lane: routingPlan.lane,
     profile: routingPlan.profile,
     reason: routingPlan.reason,
@@ -287,7 +302,7 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
     turnIntent: session.turn.intent,
     turnRouteHint: session.turn.routeHint,
   });
-  emitRuntimeTelemetry(session.input.logger, "openworld.runtime.route_selected", {
+      emitRuntimeTelemetry(session.input.logger, "openworld.runtime.route_selected", {
     userId: session.input.userId,
     provider: session.input.provider,
     lane: routingPlan.lane,
@@ -301,7 +316,7 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
     includeSkillGuidance: routingPlan.includeSkillGuidance,
   });
 
-  const composeAssistantReply = async (params: {
+      const composeAssistantReply = async (params: {
     mode: "final" | "clarification" | "approval_pending" | "error";
     fallbackText: string;
   }): Promise<string> => {
@@ -344,7 +359,7 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
     }
   };
 
-  const finalizeFromCurrentResults = async (): Promise<RuntimeLoopResult> => {
+      const finalizeFromCurrentResults = async (): Promise<RuntimeLoopResult> => {
     const approvalsCount = context.session.artifacts.approvals.length;
     const results = collectedResults();
     const clarificationPrompt = latestClarificationPrompt(results);
@@ -386,11 +401,11 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
     };
   };
 
-  if (routingPlan.lane === "conversation_only") {
+      if (routingPlan.lane === "conversation_only") {
     // Conversation lane is still a native model turn, just with tools disabled.
   }
 
-  if (routingPlan.lane === "single_tool" && routingPlan.singleToolCall) {
+      if (routingPlan.lane === "single_tool" && routingPlan.singleToolCall) {
     const toolStartedAt = Date.now();
     try {
       await withRuntimeTimeout({
@@ -424,11 +439,11 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
       };
     }
 
-    return finalizeFromCurrentResults();
-  }
+        return finalizeFromCurrentResults();
+      }
 
-  const modelOptions = getModel("economy");
-  const generate = createGenerateText({
+      const modelOptions = getModel("economy");
+      const generate = createGenerateText({
     emailAccount: {
       id: session.input.emailAccountId,
       email: session.input.email,
@@ -438,10 +453,10 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
     modelOptions,
   });
 
-  const slotBudget = resolveRuntimeContextSlotBudget(
+      const slotBudget = resolveRuntimeContextSlotBudget(
     routingPlan.lane as Parameters<typeof resolveRuntimeContextSlotBudget>[0],
   );
-  emitRuntimeTelemetry(session.input.logger, "openworld.runtime.context_slots", {
+      emitRuntimeTelemetry(session.input.logger, "openworld.runtime.context_slots", {
     userId: session.input.userId,
     provider: session.input.provider,
     lane: routingPlan.lane as Parameters<typeof resolveRuntimeContextSlotBudget>[0],
@@ -451,14 +466,14 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
     maxHistory: slotBudget.maxHistory,
   });
 
-  const baseMessages = buildRuntimeMessages(session);
-  const pruningConfig = resolveRuntimeMessagePruningConfig();
-  const softPrune = pruneRuntimeMessages({
+      const baseMessages = buildRuntimeMessages(session);
+      const pruningConfig = resolveRuntimeMessagePruningConfig();
+      const softPrune = pruneRuntimeMessages({
     messages: baseMessages,
     mode: "soft",
     config: pruningConfig,
   });
-  if (softPrune.pruned) {
+      if (softPrune.pruned) {
     emitRuntimeTelemetry(session.input.logger, "openworld.runtime.context_pruned", {
       userId: session.input.userId,
       provider: session.input.provider,
@@ -470,56 +485,56 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
       truncatedCount: softPrune.truncatedCount,
     });
   }
-  let messagesForGeneration = softPrune.messages;
+      let messagesForGeneration = softPrune.messages;
 
-  const flushThresholdRatio = resolveMemoryFlushThresholdRatio();
-  if (softPrune.afterChars > pruningConfig.hardLimitChars * flushThresholdRatio) {
-    await maybeRunPreCompactionMemoryFlush({
-      session,
-      reason: "threshold",
-    });
-  }
+      const flushThresholdRatio = resolveMemoryFlushThresholdRatio();
+      if (softPrune.afterChars > pruningConfig.hardLimitChars * flushThresholdRatio) {
+        await maybeRunPreCompactionMemoryFlush({
+          session,
+          reason: "threshold",
+        });
+      }
 
-  const resolvedTimeZone = await resolveDefaultCalendarTimeZone({
+      const resolvedTimeZone = await resolveDefaultCalendarTimeZone({
     userId: session.input.userId,
     emailAccountId: session.input.emailAccountId,
   });
-  const userTimeZone = "error" in resolvedTimeZone ? "UTC" : resolvedTimeZone.timeZone;
+      const userTimeZone = "error" in resolvedTimeZone ? "UTC" : resolvedTimeZone.timeZone;
 
-  if (routingPlan.lane === "planner") {
-    const deterministic = await maybeRunDeterministicCrossSurfaceExecutor({
-      session,
-      context,
-      userTimeZone,
-    });
-    if (deterministic.handled) {
-      return finalizeFromCurrentResults();
-    }
-  }
+      if (routingPlan.lane === "planner") {
+        const deterministic = await maybeRunDeterministicCrossSurfaceExecutor({
+          session,
+          context,
+          userTimeZone,
+        });
+        if (deterministic.handled) {
+          return finalizeFromCurrentResults();
+        }
+      }
 
-  const budgetBeforeGenerate = remainingBudgetMs(startedAt);
-  if (budgetBeforeGenerate <= 0) {
-    return {
-      text: await composeAssistantReply({
-        mode: "error",
-        fallbackText: "I couldn't complete that in time. Please try again.",
-      }),
-      stopReason: "runtime_error",
-      attempts: 1,
-    };
-  }
+      const budgetBeforeGenerate = remainingBudgetMs(startedAt);
+      if (budgetBeforeGenerate <= 0) {
+        return {
+          text: await composeAssistantReply({
+            mode: "error",
+            fallbackText: "I couldn't complete that in time. Please try again.",
+          }),
+          stopReason: "runtime_error",
+          attempts: 1,
+        };
+      }
 
-  const nativeMaxSteps = resolveNativeMaxSteps({
+      const nativeMaxSteps = resolveNativeMaxSteps({
     routeMaxSteps: routingPlan.nativeMaxSteps,
     userConfiguredMaxSteps: session.userPromptConfig?.maxSteps,
   });
-  const nativeTimeoutMs = Math.min(
+      const nativeTimeoutMs = Math.min(
     Math.max(10_000, routingPlan.nativeTurnTimeoutMs),
     budgetBeforeGenerate,
   );
 
-  const runNativeGeneration = (runtimeMessages: ModelMessage[]) =>
-    withRuntimeTimeout({
+      const runNativeGeneration = (runtimeMessages: ModelMessage[]) =>
+        withRuntimeTimeout({
       operation: "native_generate",
       timeoutMs: nativeTimeoutMs,
       run: () =>
@@ -537,12 +552,12 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
           customTools: session.toolHarness.customTools,
           toolChoice: session.turn.toolChoice,
         }),
-    });
+        });
 
-  let generation;
-  try {
-    generation = await runNativeGeneration(messagesForGeneration);
-  } catch (error) {
+      let generation;
+      try {
+        generation = await runNativeGeneration(messagesForGeneration);
+      } catch (error) {
     session.input.logger.error("Runtime native generation failed", {
       error,
       lane: routingPlan.lane,
@@ -550,7 +565,7 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
       nativeTimeoutMs,
     });
 
-    if (isOverflowLikeError(error)) {
+        if (isOverflowLikeError(error)) {
       const flushQueued = await maybeRunPreCompactionMemoryFlush({
         session,
         reason: "overflow",
@@ -586,7 +601,7 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
         });
       }
 
-      if (
+          if (
         hardPrune.afterChars < estimateRuntimeMessagesChars(messagesForGeneration) &&
         hardPrune.messages.length > 0
       ) {
@@ -610,96 +625,98 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
             lane: routingPlan.lane,
           });
         }
+          }
+        }
+
+        if (!generation) {
+          return {
+            text: await composeAssistantReply({
+              mode: "error",
+              fallbackText: "I hit a temporary issue while handling that. Please try again.",
+            }),
+            stopReason: "runtime_error",
+            attempts: 1,
+          };
+        }
       }
-    }
 
-    if (!generation) {
-      return {
-        text: await composeAssistantReply({
-          mode: "error",
-          fallbackText: "I hit a temporary issue while handling that. Please try again.",
-        }),
-        stopReason: "runtime_error",
-        attempts: 1,
-      };
-    }
-  }
+      emitToolLifecycleEvents({
+        session,
+        steps: generation.steps,
+      });
 
-  emitToolLifecycleEvents({
-    session,
-    steps: generation.steps,
-  });
-
-  const results = collectedResults();
-  const approvalsCount = context.session.artifacts.approvals.length;
-  const fallbackText = summarizeRuntimeResults({
+      const results = collectedResults();
+      const approvalsCount = context.session.artifacts.approvals.length;
+      const fallbackText = summarizeRuntimeResults({
     request: session.input.message,
     results,
     approvalsCount,
   });
 
-  const finalText = generation.text.trim();
-  const clarificationPrompt = latestClarificationPrompt(results);
+      const finalText = generation.text.trim();
+      const clarificationPrompt = latestClarificationPrompt(results);
 
-  if (approvalsCount > 0) {
-    return {
-      text:
-        finalText ||
-        (await composeAssistantReply({
-          mode: "approval_pending",
-          fallbackText,
-        })),
-      stopReason: "approval_pending",
-      attempts: Math.max(1, generation.steps.length),
-    };
-  }
+      if (approvalsCount > 0) {
+        return {
+          text:
+            finalText ||
+            (await composeAssistantReply({
+              mode: "approval_pending",
+              fallbackText,
+            })),
+          stopReason: "approval_pending",
+          attempts: Math.max(1, generation.steps.length),
+        };
+      }
 
-  if (clarificationPrompt) {
-    return {
-      text: await composeAssistantReply({
-        mode: "clarification",
-        fallbackText,
-      }),
-      stopReason: "needs_clarification",
-      attempts: Math.max(1, generation.steps.length),
-    };
-  }
+      if (clarificationPrompt) {
+        return {
+          text: await composeAssistantReply({
+            mode: "clarification",
+            fallbackText,
+          }),
+          stopReason: "needs_clarification",
+          attempts: Math.max(1, generation.steps.length),
+        };
+      }
 
-  if (generation.finishReason === "error") {
-    return {
-      text:
-        finalText ||
-        (await composeAssistantReply({
-          mode: "error",
-          fallbackText,
-        })),
-      stopReason: "runtime_error",
-      attempts: Math.max(1, generation.steps.length),
-    };
-  }
+      if (generation.finishReason === "error") {
+        return {
+          text:
+            finalText ||
+            (await composeAssistantReply({
+              mode: "error",
+              fallbackText,
+            })),
+          stopReason: "runtime_error",
+          attempts: Math.max(1, generation.steps.length),
+        };
+      }
 
-  if (
-    (generation.finishReason === "length" || generation.finishReason === "tool-calls") &&
-    finalText.length === 0
-  ) {
-    return {
-      text: await composeAssistantReply({
-        mode: "final",
-        fallbackText,
-      }),
-      stopReason: "max_attempts",
-      attempts: Math.max(1, generation.steps.length),
-    };
-  }
+      if (
+        (generation.finishReason === "length" || generation.finishReason === "tool-calls") &&
+        finalText.length === 0
+      ) {
+        return {
+          text: await composeAssistantReply({
+            mode: "final",
+            fallbackText,
+          }),
+          stopReason: "max_attempts",
+          attempts: Math.max(1, generation.steps.length),
+        };
+      }
 
-  return {
-    text:
-      finalText ||
-      (await composeAssistantReply({
-        mode: "final",
-        fallbackText,
-      })),
-    stopReason: "completed",
-    attempts: Math.max(1, generation.steps.length),
-  };
+      return {
+        text:
+          finalText ||
+          (await composeAssistantReply({
+            mode: "final",
+            fallbackText,
+          })),
+        stopReason: "completed",
+        attempts: Math.max(1, generation.steps.length),
+      };
+    },
+  );
 }

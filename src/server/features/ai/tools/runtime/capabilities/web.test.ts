@@ -59,6 +59,16 @@ function textResponse(body: string, contentType = "text/plain"): Response {
   } as Response;
 }
 
+function errorResponse(status: number, body: string): Response {
+  return {
+    ok: false,
+    status,
+    statusText: body,
+    headers: makeHeaders({ "content-type": "application/json" }),
+    text: async () => body,
+  } as Response;
+}
+
 function redirectResponse(location: string): Response {
   return {
     ok: false,
@@ -185,6 +195,88 @@ describe("web capabilities", () => {
     expect(second.success).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect((second.data as Record<string, unknown>).cached).toBe(true);
+  });
+
+  it("returns stale cached search results when provider fails after cache expiry", async () => {
+    vi.stubEnv("TOOL_WEB_SEARCH_PROVIDER", "brave");
+    vi.stubEnv("BRAVE_API_KEY", "brave-key");
+    vi.stubEnv("TOOL_WEB_SEARCH_CACHE_TTL_MINUTES", "0.0001");
+    vi.stubEnv("TOOL_WEB_SEARCH_RETRY_ATTEMPTS", "1");
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(async () =>
+        jsonResponse({
+          web: {
+            results: [{ title: "Example", url: "https://example.com", description: "cached" }],
+          },
+        }),
+      )
+      .mockImplementationOnce(async () => errorResponse(503, '{"error":"temporary"}'));
+    // @ts-expect-error mock fetch
+    global.fetch = fetchMock;
+
+    const caps = createWebCapabilities(buildEnv());
+    const first = await caps.search({ query: "stale cache test" });
+    expect(first.success).toBe(true);
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const second = await caps.search({ query: "stale cache test" });
+    expect(second.success).toBe(true);
+    expect((second.data as Record<string, unknown>).stale).toBe(true);
+    expect((second.data as Record<string, unknown>).fallback).toBe("stale_if_error");
+  });
+
+  it("supports staged enrichment by fetching top web results", async () => {
+    vi.stubEnv("TOOL_WEB_SEARCH_PROVIDER", "brave");
+    vi.stubEnv("BRAVE_API_KEY", "brave-key");
+    vi.stubEnv("TOOL_WEB_SEARCH_RETRY_ATTEMPTS", "1");
+    const resolveSpy = vi.spyOn(ssrf, "resolvePinnedHostname");
+    resolveSpy.mockImplementation(async (hostname: string) => ({
+      hostname,
+      addresses: ["93.184.216.34"],
+      lookup: ssrf.createPinnedLookup({
+        hostname,
+        addresses: ["93.184.216.34"],
+      }),
+    }));
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("https://api.search.brave.com/res/v1/web/search")) {
+        return jsonResponse({
+          web: {
+            results: [
+              {
+                title: "Example",
+                url: "https://example.com/page",
+                description: "sample",
+              },
+            ],
+          },
+        });
+      }
+      if (url === "https://example.com/page") {
+        return textResponse("<html><body><main>Deep context</main></body></html>", "text/html");
+      }
+      throw new Error(`unexpected url: ${url}`);
+    });
+    // @ts-expect-error mock fetch
+    global.fetch = fetchMock;
+
+    const caps = createWebCapabilities(buildEnv());
+    const result = await caps.search({
+      query: "enrichment test",
+      enrichTopK: 1,
+      enrichExtractMode: "text",
+      enrichMaxChars: 1200,
+    });
+
+    expect(result.success).toBe(true);
+    const data = result.data as Record<string, unknown>;
+    const results = data.results as Array<Record<string, unknown>>;
+    expect(Array.isArray(results)).toBe(true);
+    expect(results[0]?.fetchedPreview).toContain("Deep context");
+    expect(data.enrichedCount).toBe(1);
   });
 
   it("rejects non-http(s) URLs for web.fetch", async () => {

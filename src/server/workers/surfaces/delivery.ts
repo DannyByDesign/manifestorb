@@ -92,10 +92,6 @@ export async function acknowledgeSurfaceDelivery(params: {
   }
 }
 
-// Back-compat aliases while callers are migrated.
-export const hasSidecarResponseBeenDelivered = hasSurfaceResponseBeenDelivered;
-export const markSidecarResponseDelivered = markSurfaceResponseDelivered;
-export const acknowledgeSidecarDelivery = acknowledgeSurfaceDelivery;
 export const hasSurfacesWorkerResponseBeenDelivered = hasSurfaceResponseBeenDelivered;
 export const markSurfacesWorkerResponseDelivered = markSurfaceResponseDelivered;
 export const acknowledgeSurfacesWorkerDelivery = acknowledgeSurfaceDelivery;

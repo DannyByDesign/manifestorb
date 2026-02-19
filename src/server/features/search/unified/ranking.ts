@@ -1,4 +1,8 @@
 import { EmbeddingService } from "@/features/memory/embeddings/service";
+import {
+  capTimeoutToRuntimeBudget,
+  getRuntimeRemainingMs,
+} from "@/server/features/ai/runtime/deadline-context";
 import type {
   RankingDocument,
   UnifiedSearchIntentHints,
@@ -7,7 +11,21 @@ import type {
 import { resolveRuntimeUnifiedRankingWeights } from "@/server/features/search/unified/weights";
 
 const MAX_SEMANTIC_DOCS = 80;
+const MIN_SEMANTIC_DOCS = 12;
+const DEFAULT_SEMANTIC_TIMEOUT_MS = 5_500;
+const MAX_DOC_EMBED_CHARS = 1_600;
+const SEMANTIC_CIRCUIT_FAILURES_TO_OPEN = 3;
+const SEMANTIC_CIRCUIT_OPEN_MS = 90_000;
 const MIN_TOKEN_LENGTH = 2;
+
+const semanticCircuitState: {
+  consecutiveFailures: number;
+  openUntilMs: number;
+  lastError?: string;
+} = {
+  consecutiveFailures: 0,
+  openUntilMs: 0,
+};
 
 function tokenize(text: string): string[] {
   return text
@@ -19,6 +37,13 @@ function tokenize(text: string): string[] {
 
 function normalizeText(text: string | undefined): string {
   return (text ?? "").trim().toLowerCase();
+}
+
+function normalizeForEmbedding(text: string): string {
+  const compact = text.replace(/\s+/g, " ").trim();
+  return compact.length <= MAX_DOC_EMBED_CHARS
+    ? compact
+    : `${compact.slice(0, MAX_DOC_EMBED_CHARS)}…`;
 }
 
 function lexicalScore(query: string, docText: string): number {
@@ -74,6 +99,70 @@ function recencyBoost(timestamp: string | undefined): number {
   return 0;
 }
 
+function resolveSemanticTimeoutMs(): number {
+  const raw = Number.parseInt(
+    process.env.UNIFIED_SEARCH_SEMANTIC_TIMEOUT_MS ?? String(DEFAULT_SEMANTIC_TIMEOUT_MS),
+    10,
+  );
+  if (!Number.isFinite(raw)) return DEFAULT_SEMANTIC_TIMEOUT_MS;
+  return Math.max(1_500, Math.min(raw, 20_000));
+}
+
+function resolveSemanticDocLimit(totalDocs: number): number {
+  const envMax = (() => {
+    const raw = Number.parseInt(
+      process.env.UNIFIED_SEARCH_SEMANTIC_MAX_DOCS ?? String(MAX_SEMANTIC_DOCS),
+      10,
+    );
+    if (!Number.isFinite(raw)) return MAX_SEMANTIC_DOCS;
+    return Math.max(MIN_SEMANTIC_DOCS, Math.min(raw, MAX_SEMANTIC_DOCS));
+  })();
+
+  const remainingMs = getRuntimeRemainingMs();
+  if (typeof remainingMs !== "number") {
+    return Math.min(totalDocs, envMax);
+  }
+  if (remainingMs <= 3_000) return Math.min(totalDocs, MIN_SEMANTIC_DOCS);
+  if (remainingMs <= 6_000) return Math.min(totalDocs, Math.min(envMax, 24));
+  if (remainingMs <= 10_000) return Math.min(totalDocs, Math.min(envMax, 48));
+  return Math.min(totalDocs, envMax);
+}
+
+function isSemanticCircuitOpen(): boolean {
+  return semanticCircuitState.openUntilMs > Date.now();
+}
+
+function markSemanticFailure(message: string): void {
+  semanticCircuitState.consecutiveFailures += 1;
+  semanticCircuitState.lastError = message;
+  if (semanticCircuitState.consecutiveFailures >= SEMANTIC_CIRCUIT_FAILURES_TO_OPEN) {
+    semanticCircuitState.openUntilMs = Date.now() + SEMANTIC_CIRCUIT_OPEN_MS;
+  }
+}
+
+function markSemanticSuccess(): void {
+  semanticCircuitState.consecutiveFailures = 0;
+  semanticCircuitState.openUntilMs = 0;
+  semanticCircuitState.lastError = undefined;
+}
+
+async function withLocalTimeout<T>(params: {
+  timeoutMs: number;
+  run: () => Promise<T>;
+}): Promise<T | null> {
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      params.run(),
+      new Promise<null>((resolve) => {
+        timeoutHandle = setTimeout(() => resolve(null), params.timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  }
+}
+
 async function semanticScores(params: {
   query: string;
   docs: RankingDocument[];
@@ -82,25 +171,45 @@ async function semanticScores(params: {
   const query = normalizeText(params.query);
   if (!query) return scores;
   if (!EmbeddingService.isAvailable()) return scores;
+  if (isSemanticCircuitOpen()) return scores;
 
-  const candidateDocs = params.docs.slice(0, MAX_SEMANTIC_DOCS);
+  const candidateDocs = params.docs.slice(0, resolveSemanticDocLimit(params.docs.length));
   if (candidateDocs.length === 0) return scores;
 
-  const payloads = [query, ...candidateDocs.map((doc) => `${doc.title}\n${doc.snippet}`)];
-  const embeddings = await EmbeddingService.generateEmbeddings(payloads);
-  if (embeddings.length !== payloads.length) return scores;
+  const payloads = [
+    normalizeForEmbedding(query),
+    ...candidateDocs.map((doc) => normalizeForEmbedding(`${doc.title}\n${doc.snippet}`)),
+  ];
+  const timeoutMs = capTimeoutToRuntimeBudget({
+    requestedMs: resolveSemanticTimeoutMs(),
+    minimumMs: 1_500,
+    reserveMs: 2_500,
+  });
+  try {
+    const embeddings = await withLocalTimeout({
+      timeoutMs,
+      run: () => EmbeddingService.generateEmbeddings(payloads),
+    });
+    if (!embeddings || embeddings.length !== payloads.length) {
+      markSemanticFailure("semantic_embedding_timeout_or_mismatch");
+      return scores;
+    }
 
-  const queryEmbedding = embeddings[0];
-  for (let i = 0; i < candidateDocs.length; i += 1) {
-    const doc = candidateDocs[i]!;
-    const docEmbedding = embeddings[i + 1];
-    const similarity = EmbeddingService.cosineSimilarity(queryEmbedding, docEmbedding);
-    // Map [-1,1] to [0,1]
-    const normalized = Math.max(0, Math.min(1, (similarity + 1) / 2));
-    scores.set(doc.id, normalized);
+    const queryEmbedding = embeddings[0];
+    for (let i = 0; i < candidateDocs.length; i += 1) {
+      const doc = candidateDocs[i]!;
+      const docEmbedding = embeddings[i + 1];
+      const similarity = EmbeddingService.cosineSimilarity(queryEmbedding, docEmbedding);
+      // Map [-1,1] to [0,1]
+      const normalized = Math.max(0, Math.min(1, (similarity + 1) / 2));
+      scores.set(doc.id, normalized);
+    }
+    markSemanticSuccess();
+    return scores;
+  } catch (error) {
+    markSemanticFailure(error instanceof Error ? error.message : "semantic_embedding_failed");
+    return scores;
   }
-
-  return scores;
 }
 
 export interface RankedDocument {
@@ -248,3 +357,11 @@ export async function rankDocuments(params: {
     return a.doc.id.localeCompare(b.doc.id);
   });
 }
+
+export const __testing = {
+  resetSemanticCircuit: () => {
+    semanticCircuitState.consecutiveFailures = 0;
+    semanticCircuitState.openUntilMs = 0;
+    semanticCircuitState.lastError = undefined;
+  },
+};
