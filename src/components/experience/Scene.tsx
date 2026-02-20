@@ -100,10 +100,10 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         densityBias: 0.1,
         alphaBase: 0.44,
         alphaBoost: 0.5,
-        darkTintMix: 0.82,
+        darkTintMix: 0.66,
         glintChance: 0.004,
         depthFade: 0.33,
-        colors: [derived.inkyViolet, derived.deepViolet, derived.richPlum, palette.coolLavender],
+        colors: ["#3E2492", "#5B36D9", "#7A55FF", "#5B36D9"],
       },
       {
         size: 240,
@@ -113,10 +113,10 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         densityBias: 0.04,
         alphaBase: 1,
         alphaBoost: 0.48,
-        darkTintMix: 0.76,
+        darkTintMix: 0.6,
         glintChance: 0.006,
         depthFade: 0.31,
-        colors: [derived.deepViolet, derived.richPlum, derived.rosePeach, derived.inkyViolet],
+        colors: ["#5B36D9", "#7A55FF", "#A17EFF", "#B58AFF"],
       },
       {
         size: 132,
@@ -126,10 +126,10 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         densityBias: 0.0,
         alphaBase: 0.4,
         alphaBoost: 0.44,
-        darkTintMix: 0.68,
+        darkTintMix: 0.52,
         glintChance: 0.008,
         depthFade: 0.28,
-        colors: [derived.richPlum, derived.midLavender, derived.paleLilac, derived.rosePeach],
+        colors: ["#7A55FF", "#A17EFF", "#8CA8FF", "#DEA2FF"],
       },
       {
         size: 72,
@@ -139,10 +139,10 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         densityBias: -0.01,
         alphaBase: 0.38,
         alphaBoost: 0.4,
-        darkTintMix: 0.62,
+        darkTintMix: 0.48,
         glintChance: 0.012,
         depthFade: 0.26,
-        colors: [derived.deepViolet, derived.midLavender, derived.paleLilac, derived.iceLavender],
+        colors: ["#5B36D9", "#8B66FF", "#C49BFF", "#E8DBFF"],
       },
       {
         size: 42,
@@ -152,17 +152,17 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         densityBias: -0.04,
         alphaBase: 0.18,
         alphaBoost: 0.22,
-        darkTintMix: 0.38,
+        darkTintMix: 0.28,
         glintChance: 0.02,
         depthFade: 0.22,
         clumpFlatten: 1.0,
         fieldMode: 1,
         glowBoost: 1.36,
         sparkleBoost: 2.35,
-        colors: [derived.electricViolet, derived.iceLavender, derived.peachGlow, derived.rosePeach],
+        colors: ["#8E5FFF", "#DEA2FF", "#F8EEFF", "#8CA8FF"],
       },
     ],
-    [derived, palette]
+    []
   );
 
   return (
