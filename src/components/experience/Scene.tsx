@@ -115,7 +115,7 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         colors: [derived.deepViolet, derived.midLavender, derived.deepViolet, derived.orchidLavender],
       },
       {
-        size: 132,
+        size: 71,
         pointSize: 16.0,
         frequency: 0.56,
         blending: THREE.NormalBlending,
@@ -127,15 +127,16 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         colors: [derived.midLavender, derived.orchidLavender, derived.paleLilac, derived.peachMist],
       },
       {
-        size: 72,
+        size: 41,
         pointSize: 15.9,
         frequency: 0.7,
-        blending: THREE.NormalBlending,
+        blending: THREE.AdditiveBlending,
         densityBias: -0.01,
         alphaBase: 0.38,
         alphaBoost: 0.4,
         darkTintMix: 0.5,
         depthFade: 0.26,
+        glowBoost: 1.36,
         colors: [derived.orchidLavender, derived.paleLilac, derived.iceLavender, derived.peachGlow],
       },
     ],
@@ -190,8 +191,8 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
           color2={derived.peachGlow}
           color3={derived.iceLavender}
           circleRadius={1.4}
-          mouseInfluenceRadius={0.5}
-          mouseRepelStrength={0.25}
+          mouseInfluenceRadius={0.15}
+          mouseRepelStrength={0.1}
           returnSpeed={0.18}
         />
       </group>
