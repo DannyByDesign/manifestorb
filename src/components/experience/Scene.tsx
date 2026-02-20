@@ -33,8 +33,6 @@ type ParticleConfig = {
   alphaBoost: number;
   darkTintMix: number;
   depthFade: number;
-  clumpFlatten?: number;
-  fieldMode?: number;
   glowBoost?: number;
   colors: [string, string, string, string];
 };
@@ -177,8 +175,6 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
             alphaBoost={config.alphaBoost}
             darkTintMix={config.darkTintMix}
             depthFade={config.depthFade}
-            clumpFlatten={config.clumpFlatten ?? 0}
-            fieldMode={config.fieldMode ?? 0}
             glowBoost={config.glowBoost ?? 0}
             simVertShader={simulationVertexShader}
             simFragShader={simulationFragmentShader}
