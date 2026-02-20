@@ -8,25 +8,16 @@ export const fragmentShader = `
   uniform float uAlphaBase;
   uniform float uAlphaBoost;
   uniform float uDarkTintMix;
-  uniform float uGlintChance;
   uniform float uDepthFade;
   uniform float uClumpFlatten;
   uniform float uFieldMode;
   uniform float uGlowBoost;
-  uniform float uSparkleBoost;
 
   varying float vSeed;
   varying float vRadial;
   varying float vDepth;
   varying float vClump;
   varying vec3 vParticlePos;
-
-  float hash11(float p) {
-    p = fract(p * 0.1031);
-    p *= p + 33.33;
-    p *= p + p;
-    return fract(p);
-  }
 
   void main() {
     vec2 p = gl_PointCoord - vec2(0.5);

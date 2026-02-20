@@ -32,12 +32,10 @@ type ParticleConfig = {
   alphaBase: number;
   alphaBoost: number;
   darkTintMix: number;
-  glintChance: number;
   depthFade: number;
   clumpFlatten?: number;
   fieldMode?: number;
   glowBoost?: number;
-  sparkleBoost?: number;
   colors: [string, string, string, string];
 };
 
@@ -72,9 +70,9 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
     const peachGlow = mixHex(palette.warmCoral, palette.baseLilac, 0.38);
     const rosePeach = mixHex(palette.warmCoral, palette.softMauve, 0.45);
     const whiteBloom = mixHex("#ffffff", palette.baseLilac, 0.35);
-    const inkyViolet = mixHex(palette.coolLavender, "#3a1f80", 0.68);
-    const electricViolet = mixHex(palette.plumMagenta, "#7b58ff", 0.45);
-    const richPlum = mixHex(palette.plumMagenta, "#5a2a85", 0.42);
+    const denseViolet = mixHex(palette.coolLavender, "#45258f", 0.54);
+    const orchidLavender = mixHex(palette.softMauve, palette.coolLavender, 0.58);
+    const peachMist = mixHex(palette.warmCoral, palette.baseLilac, 0.52);
 
     return {
       deepViolet,
@@ -84,9 +82,9 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
       peachGlow,
       rosePeach,
       whiteBloom,
-      inkyViolet,
-      electricViolet,
-      richPlum,
+      denseViolet,
+      orchidLavender,
+      peachMist,
     };
   }, [palette]);
 
@@ -100,10 +98,9 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         densityBias: 0.1,
         alphaBase: 0.44,
         alphaBoost: 0.5,
-        darkTintMix: 0.66,
-        glintChance: 0.004,
+        darkTintMix: 0.78,
         depthFade: 0.33,
-        colors: ["#3E2492", "#5B36D9", "#7A55FF", "#5B36D9"],
+        colors: [derived.denseViolet, derived.deepViolet, derived.denseViolet, derived.deepViolet],
       },
       {
         size: 240,
@@ -111,12 +108,11 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         frequency: 0.48,
         blending: THREE.NormalBlending,
         densityBias: 0.04,
-        alphaBase: 1,
+        alphaBase: 0.42,
         alphaBoost: 0.48,
-        darkTintMix: 0.6,
-        glintChance: 0.006,
+        darkTintMix: 0.7,
         depthFade: 0.31,
-        colors: ["#5B36D9", "#7A55FF", "#A17EFF", "#B58AFF"],
+        colors: [derived.deepViolet, derived.midLavender, derived.deepViolet, derived.orchidLavender],
       },
       {
         size: 132,
@@ -126,10 +122,9 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         densityBias: 0.0,
         alphaBase: 0.4,
         alphaBoost: 0.44,
-        darkTintMix: 0.52,
-        glintChance: 0.008,
+        darkTintMix: 0.58,
         depthFade: 0.28,
-        colors: ["#7A55FF", "#A17EFF", "#8CA8FF", "#DEA2FF"],
+        colors: [derived.midLavender, derived.orchidLavender, derived.paleLilac, derived.peachMist],
       },
       {
         size: 72,
@@ -139,10 +134,9 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         densityBias: -0.01,
         alphaBase: 0.38,
         alphaBoost: 0.4,
-        darkTintMix: 0.48,
-        glintChance: 0.012,
+        darkTintMix: 0.5,
         depthFade: 0.26,
-        colors: ["#5B36D9", "#8B66FF", "#C49BFF", "#E8DBFF"],
+        colors: [derived.orchidLavender, derived.paleLilac, derived.iceLavender, derived.peachGlow],
       },
       {
         size: 42,
@@ -152,17 +146,15 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         densityBias: -0.04,
         alphaBase: 0.18,
         alphaBoost: 0.22,
-        darkTintMix: 0.28,
-        glintChance: 0.02,
+        darkTintMix: 0.26,
         depthFade: 0.22,
         clumpFlatten: 1.0,
         fieldMode: 1,
         glowBoost: 1.36,
-        sparkleBoost: 2.35,
-        colors: ["#8E5FFF", "#DEA2FF", "#F8EEFF", "#8CA8FF"],
+        colors: [derived.iceLavender, derived.paleLilac, derived.whiteBloom, derived.peachMist],
       },
     ],
-    []
+    [derived]
   );
 
   return (
@@ -198,12 +190,10 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
             alphaBase={config.alphaBase}
             alphaBoost={config.alphaBoost}
             darkTintMix={config.darkTintMix}
-            glintChance={config.glintChance}
             depthFade={config.depthFade}
             clumpFlatten={config.clumpFlatten ?? 0}
             fieldMode={config.fieldMode ?? 0}
             glowBoost={config.glowBoost ?? 0}
-            sparkleBoost={config.sparkleBoost ?? 1}
             simVertShader={simulationVertexShader}
             simFragShader={simulationFragmentShader}
           />
