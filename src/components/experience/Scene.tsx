@@ -138,21 +138,6 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         depthFade: 0.26,
         colors: [derived.orchidLavender, derived.paleLilac, derived.iceLavender, derived.peachGlow],
       },
-      {
-        size: 42,
-        pointSize: 16.0,
-        frequency: 0.6,
-        blending: THREE.AdditiveBlending,
-        densityBias: -0.04,
-        alphaBase: 0.18,
-        alphaBoost: 0.22,
-        darkTintMix: 0.26,
-        depthFade: 0.22,
-        clumpFlatten: 1.0,
-        fieldMode: 1,
-        glowBoost: 1.36,
-        colors: [derived.iceLavender, derived.paleLilac, derived.whiteBloom, derived.peachMist],
-      },
     ],
     [derived]
   );
