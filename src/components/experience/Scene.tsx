@@ -113,7 +113,7 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         colors: [derived.deepViolet, derived.midLavender, derived.deepViolet, derived.orchidLavender],
       },
       {
-        size: 31,
+        size: 11,
         pointSize: 16.0,
         frequency: 0.56,
         blending: THREE.AdditiveBlending,
@@ -126,7 +126,7 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         colors: [derived.midLavender, derived.orchidLavender, derived.paleLilac, derived.peachMist],
       },
       {
-        size: 11,
+        size: 3,
         pointSize: 15.9,
         frequency: 0.7,
         blending: THREE.AdditiveBlending,
