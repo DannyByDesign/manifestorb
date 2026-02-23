@@ -52,7 +52,7 @@ export function EmailCaptureOverlay() {
   }
 
   return (
-    <section className="landing-overlay-enter pointer-events-none absolute inset-0 z-20 flex items-end justify-center px-5 pb-[16rem] md:pb-[22rem] lg:pb-[24rem]">
+    <section className="landing-overlay-enter pointer-events-none absolute inset-0 z-20 flex items-end justify-center px-5 pb-[14rem] md:pb-[20rem] lg:pb-[22rem]">
       <div className="pointer-events-auto w-full max-w-2xl text-center">
         <p className="font-[family-name:var(--font-body)] text-[10px] tracking-[0.2em] text-[#5E4A90]/82 uppercase">
           SIGN UP FOR EARLY ACCESS
