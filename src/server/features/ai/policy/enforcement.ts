@@ -3,6 +3,12 @@ import prisma from "@/server/db/client";
 import { evaluatePolicyDecision } from "@/server/features/policy-plane/pdp";
 import { ApprovalService, getApprovalExpiry } from "@/server/features/approvals/service";
 import type { CapabilityDefinition as RuntimeToolMetadata } from "@/server/features/ai/tools/runtime/capabilities/registry";
+import {
+  inferPolicyResource,
+  normalizeApprovalToolName,
+  normalizePolicyArgs,
+  type ApprovalToolName,
+} from "@/server/features/ai/policy/tool-targeting";
 
 export interface PolicyExecutionContext {
   userId: string;
@@ -44,23 +50,18 @@ function mapProvider(provider: string): "web" | "slack" | "discord" | "telegram"
   return "system";
 }
 
-function inferResource(definition: RuntimeToolMetadata): string {
-  const mutatingEffect = definition.effects.find((effect) => effect.mutates);
-  if (mutatingEffect) return mutatingEffect.resource;
-  const first = definition.effects[0];
-  return first ? first.resource : "workflow";
-}
-
 function approvalPayloadForTool(params: {
   toolName: string;
+  approvalToolName: ApprovalToolName;
   args: Record<string, unknown>;
   context: PolicyExecutionContext;
   definition: RuntimeToolMetadata;
 }) {
-  const { toolName, args, context, definition } = params;
+  const { toolName, approvalToolName, args, context, definition } = params;
   return {
     actionType: "tool_execute",
     description: `Tool ${toolName} requires approval`,
+    approvalToolName,
     tool: toolName,
     toolName,
     args,
@@ -70,17 +71,18 @@ function approvalPayloadForTool(params: {
     threadId: context.threadId,
     messageId: context.messageId,
     operation: definition.approvalOperation,
-    resource: inferResource(definition),
+    resource: inferPolicyResource(definition),
   };
 }
 
 async function createApprovalRequest(params: {
   context: PolicyExecutionContext;
   toolName: string;
+  approvalToolName: ApprovalToolName;
   args: Record<string, unknown>;
   definition: RuntimeToolMetadata;
 }): Promise<PolicyApprovalRecord> {
-  const { context, toolName, args, definition } = params;
+  const { context, toolName, approvalToolName, args, definition } = params;
   const approvalService = new ApprovalService(prisma);
   const expiresInSeconds = await getApprovalExpiry(context.userId);
   const idempotencyKey = createHash("sha256")
@@ -90,6 +92,7 @@ async function createApprovalRequest(params: {
         userId: context.userId,
         emailAccountId: context.emailAccountId,
         toolName,
+        approvalToolName,
         args,
         conversationId: context.conversationId,
         threadId: context.threadId,
@@ -99,6 +102,7 @@ async function createApprovalRequest(params: {
 
   const requestPayload = approvalPayloadForTool({
     toolName,
+    approvalToolName,
     args,
     context,
     definition,
@@ -132,6 +136,11 @@ export async function enforcePolicyForTool(params: {
   definition: RuntimeToolMetadata;
 }): Promise<PolicyEnforcementResult> {
   const { context, toolName, args, definition } = params;
+  const normalizedArgs = normalizePolicyArgs({ args, definition });
+  const approvalToolName = normalizeApprovalToolName({
+    runtimeToolName: toolName,
+    definition,
+  });
 
   if (definition.readOnly) {
     return { kind: "allow", args };
@@ -140,8 +149,9 @@ export async function enforcePolicyForTool(params: {
   const decision = await evaluatePolicyDecision({
     userId: context.userId,
     emailAccountId: context.emailAccountId,
-    toolName,
-    args,
+    toolName: approvalToolName,
+    args: normalizedArgs,
+    rawArgs: args,
     context: {
       source: context.source,
       provider: mapProvider(context.provider),
@@ -174,6 +184,7 @@ export async function enforcePolicyForTool(params: {
   const approval = await createApprovalRequest({
     context,
     toolName,
+    approvalToolName,
     args,
     definition,
   });

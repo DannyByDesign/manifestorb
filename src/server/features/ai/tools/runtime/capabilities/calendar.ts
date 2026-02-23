@@ -66,7 +66,6 @@ export interface CalendarCapabilities {
   setWorkingLocation(changes: Record<string, unknown>): Promise<ToolResult>;
   setOutOfOffice(data: Record<string, unknown>): Promise<ToolResult>;
   createFocusBlock(data: Record<string, unknown>): Promise<ToolResult>;
-  createBookingSchedule(data: Record<string, unknown>): Promise<ToolResult>;
 }
 
 function safeString(value: unknown): string | undefined {
@@ -482,7 +481,10 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
         const resolvedDateRange = await resolveUnifiedCalendarDateRange(filterRecord);
         if ("errorResult" in resolvedDateRange) return resolvedDateRange.errorResult;
 
-        const includeAllDay = Boolean((filterRecord as any).includeAllDay);
+        const includeAllDay =
+          typeof filterRecord.includeAllDay === "boolean"
+            ? filterRecord.includeAllDay
+            : Boolean(filterRecord.includeAllDay);
 
         const calendarIds = Array.from(
           new Set([
@@ -538,7 +540,10 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
               end,
               startMs,
               endMs,
-              allDay: Boolean((metadata as any).allDay),
+              allDay:
+                typeof metadata.allDay === "boolean"
+                  ? metadata.allDay
+                  : Boolean(metadata.allDay),
               snippet: typeof item.snippet === "string" ? item.snippet : null,
             } satisfies ConflictEvent;
           })
@@ -1736,77 +1741,6 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
       }
     },
 
-    async createBookingSchedule(data) {
-      const bookingLink =
-        typeof (data as Record<string, unknown>).bookingLink === "string"
-          ? String((data as Record<string, unknown>).bookingLink)
-          : typeof (data as Record<string, unknown>).booking_link === "string"
-            ? String((data as Record<string, unknown>).booking_link)
-            : null;
-
-      try {
-        const durationMinutesRaw =
-          typeof (data as Record<string, unknown>).durationMinutes === "number"
-            ? (data as Record<string, unknown>).durationMinutes
-            : typeof (data as Record<string, unknown>).meetingDurationMin === "number"
-              ? (data as Record<string, unknown>).meetingDurationMin
-              : undefined;
-        const durationMinutes =
-          typeof durationMinutesRaw === "number" && Number.isFinite(durationMinutesRaw)
-            ? Math.max(5, Math.min(240, Math.trunc(durationMinutesRaw)))
-            : undefined;
-        const slotCountRaw =
-          typeof (data as Record<string, unknown>).slotCount === "number"
-            ? (data as Record<string, unknown>).slotCount
-            : undefined;
-        const slotCount =
-          typeof slotCountRaw === "number" && Number.isFinite(slotCountRaw)
-            ? Math.max(1, Math.min(10, Math.trunc(slotCountRaw)))
-            : undefined;
-
-        const timeZone = safeString((data as Record<string, unknown>).timeZone);
-
-        const [accountUpdated, prefUpdated] = await prisma.$transaction([
-          bookingLink && bookingLink.trim().length > 0
-            ? prisma.emailAccount.update({
-                where: { id: env.runtime.emailAccountId },
-                data: { calendarBookingLink: bookingLink.trim() },
-              })
-            : prisma.emailAccount.findUniqueOrThrow({
-                where: { id: env.runtime.emailAccountId },
-              }),
-          prisma.taskPreference.upsert({
-            where: { userId: env.runtime.userId },
-            create: {
-              userId: env.runtime.userId,
-              ...(durationMinutes !== undefined ? { defaultMeetingDurationMin: durationMinutes } : {}),
-              ...(slotCount !== undefined ? { meetingSlotCount: slotCount } : {}),
-              ...(timeZone ? { timeZone } : {}),
-            },
-            update: {
-              ...(durationMinutes !== undefined ? { defaultMeetingDurationMin: durationMinutes } : {}),
-              ...(slotCount !== undefined ? { meetingSlotCount: slotCount } : {}),
-              ...(timeZone ? { timeZone } : {}),
-            },
-          }),
-        ]);
-        return {
-          success: true,
-          data: {
-            calendarBookingLink: accountUpdated.calendarBookingLink ?? null,
-            defaultMeetingDurationMin: prefUpdated.defaultMeetingDurationMin,
-            meetingSlotCount: prefUpdated.meetingSlotCount,
-            timeZone: prefUpdated.timeZone,
-          },
-          message:
-            bookingLink && bookingLink.trim().length > 0
-              ? "Booking link and meeting slot preferences saved."
-              : "Meeting slot preferences saved. If you have a booking link, you can also provide it to save it.",
-        };
-      } catch (error) {
-        return calendarFailure(error, "I couldn't save your booking link right now.");
-      }
-    },
   };
 }
 

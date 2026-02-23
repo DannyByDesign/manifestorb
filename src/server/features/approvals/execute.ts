@@ -2,12 +2,14 @@ import prisma from "@/server/db/client";
 import { ApprovalService } from "@/features/approvals/service";
 import { createScopedLogger } from "@/server/lib/logger";
 import { executeStructuredApprovalAction } from "@/features/approvals/structured-execution";
+import { isApprovalToolName } from "@/server/features/ai/policy/tool-targeting";
 
 const logger = createScopedLogger("approvals/execute");
 
 type ToolExecutePayload = {
   actionType: "tool_execute";
   toolName: string;
+  approvalToolName?: string;
   args?: Record<string, unknown>;
   description?: string;
   emailAccountId?: string;
@@ -31,7 +33,21 @@ type RuleActionExecutePayload = {
   threadId?: string;
 };
 
-function mapToolToApprovalTool(toolName: string): "send" | "create" | "modify" | "delete" {
+function mapToolToApprovalTool(toolName: string): string {
+  if (toolName.startsWith("policy.")) return "rules";
+  if (toolName.startsWith("planner.")) return "workflow";
+  if (
+    toolName === "email.searchInbox" ||
+    toolName === "email.searchThreads" ||
+    toolName === "email.searchSent" ||
+    toolName === "email.getUnreadCount" ||
+    toolName === "calendar.listEvents" ||
+    toolName === "calendar.findAvailability" ||
+    toolName === "calendar.getEvent" ||
+    toolName === "search.query"
+  ) {
+    return "query";
+  }
   if (
     toolName === "email.sendNow" ||
     toolName === "email.sendDraft" ||
@@ -50,8 +66,7 @@ function mapToolToApprovalTool(toolName: string): "send" | "create" | "modify" |
   if (
     toolName === "email.createDraft" ||
     toolName === "calendar.createEvent" ||
-    toolName === "calendar.createFocusBlock" ||
-    toolName === "calendar.createBookingSchedule"
+    toolName === "calendar.createFocusBlock"
   ) {
     return "create";
   }
@@ -389,7 +404,10 @@ export async function executeApprovalRequest(params: {
           message: executionResult.message ?? "Approved action executed.",
           data: executionResult.data,
         },
-        toolName: mapToolToApprovalTool(toolPayload.toolName),
+        toolName:
+          isApprovalToolName(toolPayload.approvalToolName)
+            ? toolPayload.approvalToolName
+            : mapToolToApprovalTool(toolPayload.toolName),
         request,
       };
     }

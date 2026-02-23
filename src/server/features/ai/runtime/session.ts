@@ -30,6 +30,10 @@ export function resolveRuntimeToolCatalogMaxTools(turn: RuntimeTurnContract): nu
   return undefined;
 }
 
+export function shouldAdmitDangerousTools(turn: RuntimeTurnContract): boolean {
+  return turn.requestedOperation === "mutate" || turn.requestedOperation === "mixed";
+}
+
 export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<RuntimeSession> {
   const isSubagentSession = Boolean(
     input.agentId && input.agentId.toLowerCase().includes("subagent"),
@@ -179,7 +183,7 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
     turn.toolChoice === "none"
       ? null
       : await filterToolRegistryDetailed(fullRegistry, {
-          includeDangerous: turn.riskLevel === "high" && turn.requestedOperation !== "read",
+          includeDangerous: shouldAdmitDangerousTools(turn),
           message: input.message,
           embeddingEmail: input.email,
           turn,

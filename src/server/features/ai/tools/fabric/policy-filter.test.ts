@@ -141,7 +141,7 @@ describe("filterToolRegistry", () => {
     expect(names).not.toContain("email.batchTrash");
   });
 
-  it("allows dangerous tools only when semantic risk is high and includeDangerous is true", async () => {
+  it("allows dangerous tools for confident mutate turns when includeDangerous is true", async () => {
     const filtered = await filterToolRegistry(registry, {
       message: "delete this calendar event",
       includeDangerous: true,
@@ -155,7 +155,7 @@ describe("filterToolRegistry", () => {
         toolChoice: "auto",
         knowledgeSource: "internal",
         freshness: "low",
-        riskLevel: "high",
+        riskLevel: "medium",
         confidence: 0.87,
         toolHints: ["group:calendar_mutate"],
         source: "compiler_fallback",
@@ -168,5 +168,35 @@ describe("filterToolRegistry", () => {
 
     const names = filtered.map((definition) => definition.toolName);
     expect(names).toContain("calendar.deleteEvent");
+  });
+
+  it("excludes dangerous tools for low-confidence mutate turns", async () => {
+    const filtered = await filterToolRegistry(registry, {
+      message: "delete something",
+      includeDangerous: true,
+      turn: {
+        intent: "calendar_mutation",
+        domain: "calendar",
+        requestedOperation: "mutate",
+        complexity: "moderate",
+        routeProfile: "standard",
+        routeHint: "planner",
+        toolChoice: "auto",
+        knowledgeSource: "internal",
+        freshness: "low",
+        riskLevel: "medium",
+        confidence: 0.4,
+        toolHints: ["group:calendar_mutate"],
+        source: "compiler_fallback",
+        conversationClauses: [],
+        taskClauses: [],
+        metaConstraints: [],
+        needsClarification: false,
+      },
+    });
+
+    const names = filtered.map((definition) => definition.toolName);
+    expect(names).not.toContain("calendar.deleteEvent");
+    expect(names).not.toContain("email.batchTrash");
   });
 });

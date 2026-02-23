@@ -601,6 +601,7 @@ export async function startSurfacesWorker() {
             scheduler?.embeddingJob?.stop?.();
             scheduler?.decayJob?.stop?.();
             scheduler?.recordingBackupJob?.stop?.();
+            scheduler?.proactiveAttentionJob?.stop?.();
         } catch (error) {
             console.error("[Surfaces] Error stopping scheduler", error);
         }

@@ -40,6 +40,25 @@ export interface RuntimeCompiledTurn {
 }
 
 const ATTACHMENT_RE = /\battach(?:ment|ments|ed)?\b|\battatch(?:ment|ments|ed)?\b/u;
+const GREETING_ONLY_RE = /^(?:hi|hello|hey|yo|sup|good\s+(?:morning|afternoon|evening)|howdy|thanks|thank you)[!. ]*$/iu;
+const THOUGHT_PARTNER_RE =
+  /\b(thought partner|brainstorm|reason through|challenge my assumptions|think through|weigh options|play devil'?s advocate)\b/iu;
+const CAPABILITY_RE =
+  /\b(what can you do|your capabilities|help me with|how can you help)\b/iu;
+const WEB_SEARCH_RE =
+  /\b(search\s+(?:the\s+)?(?:web|internet)|browse\s+the\s+web|look\s+up|google|search\s+online)\b/iu;
+const RECENCY_HINT_RE =
+  /\b(latest|most recent|current|today(?:'s)?|right now|news|breaking)\b/iu;
+const INBOX_KEYWORD_RE =
+  /\b(inbox|email|emails|thread|threads|message|messages|draft|drafts|unread|sent)\b/iu;
+const CALENDAR_KEYWORD_RE =
+  /\b(calendar|event|events|meeting|meetings|availability|schedule|reschedule|time slot|timeslot)\b/iu;
+const POLICY_KEYWORD_RE =
+  /\b(policy|rule|rules|approval|guardrail|automation)\b/iu;
+const READ_VERB_RE =
+  /\b(find|show|list|search|get|check|count|summarize|what(?:'s| is)?|when(?:'s| is)?|which)\b/iu;
+const MUTATE_VERB_RE =
+  /\b(create|draft|send|reply|forward|delete|remove|trash|archive|unsubscribe|move|set|update|change|reschedule|schedule|block|allow|enable|disable)\b/iu;
 
 const META_CONSTRAINT_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /\b(?:fresh|new)\s+search\b/u, label: "fresh_search" },
@@ -575,6 +594,108 @@ async function compileWithModel(params: {
   }
 }
 
+function inferFallbackDomain(message: string): RuntimeTaskClause["domain"] {
+  const hasInbox = INBOX_KEYWORD_RE.test(message);
+  const hasCalendar = CALENDAR_KEYWORD_RE.test(message);
+  if (hasInbox && hasCalendar) return "cross_surface";
+  if (POLICY_KEYWORD_RE.test(message)) return "policy";
+  if (hasInbox) return "inbox";
+  if (hasCalendar) return "calendar";
+  return "general";
+}
+
+function inferFallbackAction(message: string): RuntimeTaskClause["action"] {
+  const hasMutate = MUTATE_VERB_RE.test(message);
+  const hasRead = READ_VERB_RE.test(message) || WEB_SEARCH_RE.test(message) || RECENCY_HINT_RE.test(message);
+  if (hasMutate && hasRead) return "mixed";
+  if (hasMutate) return "mutate";
+  if (hasRead) return "read";
+  return "meta";
+}
+
+function inferFallbackKnowledgeSource(params: {
+  message: string;
+  domain: RuntimeTaskClause["domain"];
+}): RuntimeKnowledgeSource {
+  if (WEB_SEARCH_RE.test(params.message)) return "web";
+  if (params.domain === "inbox" || params.domain === "calendar" || params.domain === "policy" || params.domain === "cross_surface") {
+    return "internal";
+  }
+  if (RECENCY_HINT_RE.test(params.message)) return "web";
+  return "either";
+}
+
+function buildDeterministicFallback(params: {
+  message: string;
+  metaConstraints: string[];
+}): RuntimeCompiledTurn {
+  const normalized = params.message.trim();
+  const lowered = normalized.toLowerCase();
+  const greetingLike = GREETING_ONLY_RE.test(lowered);
+  const thoughtPartnerLike = THOUGHT_PARTNER_RE.test(lowered);
+  const capabilityLike = CAPABILITY_RE.test(lowered);
+
+  const domain = inferFallbackDomain(lowered);
+  const action = inferFallbackAction(lowered);
+  const hasTaskSignal =
+    action !== "meta" ||
+    INBOX_KEYWORD_RE.test(lowered) ||
+    CALENDAR_KEYWORD_RE.test(lowered) ||
+    POLICY_KEYWORD_RE.test(lowered) ||
+    WEB_SEARCH_RE.test(lowered);
+
+  if (!hasTaskSignal && (greetingLike || thoughtPartnerLike || capabilityLike || normalized.length <= 24)) {
+    return {
+      toolChoice: "none",
+      knowledgeSource: "either",
+      freshness: "low",
+      routeHint: "conversation_only",
+      conversationClauses: [normalized],
+      taskClauses: [],
+      metaConstraints: params.metaConstraints,
+      needsClarification: false,
+      confidence: thoughtPartnerLike || capabilityLike ? 0.78 : 0.74,
+      source: "compiler_fallback",
+    };
+  }
+
+  const knowledgeSource = inferFallbackKnowledgeSource({ message: lowered, domain });
+  const freshness: RuntimeFreshness =
+    params.metaConstraints.includes("fresh_search") ||
+    knowledgeSource === "web"
+      ? "high"
+      : "low";
+
+  const needsClarification =
+    action === "mutate" && domain === "general";
+  const confidence =
+    !hasTaskSignal
+      ? 0.55
+      : needsClarification
+        ? 0.56
+        : domain === "cross_surface" || action === "mixed"
+          ? 0.6
+          : 0.68;
+
+  const taskClauses: RuntimeTaskClause[] =
+    hasTaskSignal && action !== "meta"
+      ? [{ domain, action, confidence: Math.max(0.45, Math.min(0.9, confidence)) }]
+      : [{ domain: "general", action: "meta", confidence: 0.45 }];
+
+  return {
+    toolChoice: "auto",
+    knowledgeSource,
+    freshness,
+    routeHint: "planner",
+    conversationClauses: [],
+    taskClauses,
+    metaConstraints: params.metaConstraints,
+    needsClarification,
+    confidence,
+    source: "compiler_fallback",
+  };
+}
+
 export async function compileRuntimeTurn(params: {
   message: string;
   userId: string;
@@ -665,18 +786,10 @@ export async function compileRuntimeTurn(params: {
     };
   }
 
-  return {
-    toolChoice: "auto",
-    knowledgeSource: "either",
-    freshness: metaConstraints.includes("fresh_search") ? "high" : "low",
-    routeHint: "planner",
-    conversationClauses: [],
-    taskClauses: [{ domain: "general", action: "meta", confidence: 0.45 }],
+  return buildDeterministicFallback({
+    message,
     metaConstraints,
-    needsClarification: false,
-    confidence: 0.45,
-    source: "compiler_fallback",
-  };
+  });
 }
 
 export function hasRecallSignals(message: string): boolean {

@@ -13,12 +13,14 @@ import { processEmbeddingQueue, recoverStaleJobs, getQueueStats } from './embedd
 import { runMemoryDecay, getDecayStats } from './decay-worker';
 import { processMemoryRecording, findUsersNeedingRecording } from './recording-worker';
 import { runCalendarReconcile } from './calendar-reconcile';
+import { runProactiveAttentionSweep } from '@/server/features/ai/proactive/orchestrator';
 
 // Track running jobs to prevent overlap
 let embeddingJobRunning = false;
 let decayJobRunning = false;
 let recordingBackupRunning = false;
 let calendarReconcileRunning = false;
+let proactiveAttentionRunning = false;
 
 /**
  * Start the background job scheduler
@@ -140,14 +142,35 @@ export function startScheduler() {
         }
     });
 
+    // Every 20 minutes: proactive attention notifications
+    const proactiveAttentionJob = Cron('*/20 * * * *', async () => {
+        if (proactiveAttentionRunning) {
+            console.log('[Scheduler] Proactive attention already running, skipping');
+            return;
+        }
+
+        proactiveAttentionRunning = true;
+        console.log('[Scheduler] Running proactive attention sweep');
+
+        try {
+            const stats = await runProactiveAttentionSweep();
+            console.log(`[Scheduler] Proactive attention complete - ${JSON.stringify(stats)}`);
+        } catch (error) {
+            console.error('[Scheduler] Proactive attention failed:', error);
+        } finally {
+            proactiveAttentionRunning = false;
+        }
+    });
+
     console.log('[Scheduler] Cron jobs registered:');
     console.log('  - Embedding queue: every 5 minutes');
     console.log('  - Memory decay: daily at 3:00 AM UTC');
     console.log('  - Memory recording backup: every 30 minutes');
     console.log('  - Calendar reconcile: every 15 minutes');
+    console.log('  - Proactive attention: every 20 minutes');
 
     // Return job handles for potential cleanup
-    return { embeddingJob, decayJob, recordingBackupJob, calendarReconcileJob };
+    return { embeddingJob, decayJob, recordingBackupJob, calendarReconcileJob, proactiveAttentionJob };
 }
 
 /**
@@ -188,5 +211,20 @@ export async function triggerDecayJob(): Promise<void> {
         console.log(`[Scheduler] Manual decay run - Result: ${JSON.stringify(result)}, Stats: ${JSON.stringify(stats)}`);
     } finally {
         decayJobRunning = false;
+    }
+}
+
+export async function triggerProactiveAttentionJob(): Promise<void> {
+    if (proactiveAttentionRunning) {
+        console.log('[Scheduler] Proactive attention job already running');
+        return;
+    }
+
+    proactiveAttentionRunning = true;
+    try {
+        const stats = await runProactiveAttentionSweep();
+        console.log(`[Scheduler] Manual proactive attention run - Stats: ${JSON.stringify(stats)}`);
+    } finally {
+        proactiveAttentionRunning = false;
     }
 }

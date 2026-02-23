@@ -976,27 +976,6 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       effects: [{ resource: "calendar", mutates: true }],
     },
     {
-      id: "calendar.createBookingSchedule",
-      description: "Store booking link/schedule preference.",
-      inputSchema: z.object({
-        bookingLink: z.string().url().optional(),
-        booking_link: z.string().url().optional(),
-        durationMinutes: z.number().int().min(5).max(240).optional(),
-        meetingDurationMin: z.number().int().min(5).max(240).optional(),
-        slotCount: z.number().int().min(1).max(10).optional(),
-        timeZone: z.string().optional(),
-        start: z.string().optional(),
-        end: z.string().optional(),
-      }).strict(),
-      outputSchema: z.unknown(),
-      readOnly: false,
-      riskLevel: "safe",
-      approvalOperation: "update_preferences",
-      intentFamilies: ["calendar_policy"],
-      tags: ["calendar", "booking", "appointments"],
-      effects: [{ resource: "preferences", mutates: true }],
-    },
-    {
       id: "memory.remember",
       description: "Persist a durable user memory fact for future recall.",
       inputSchema: z.object({

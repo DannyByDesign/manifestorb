@@ -69,6 +69,4 @@ export const calendarToolExecutors: RuntimeToolExecutorMap = {
     capabilities.calendar.setOutOfOffice(asObject(args)),
   "calendar.createFocusBlock": async ({ args, capabilities }) =>
     capabilities.calendar.createFocusBlock(asObject(args)),
-  "calendar.createBookingSchedule": async ({ args, capabilities }) =>
-    capabilities.calendar.createBookingSchedule(asObject(args)),
 };

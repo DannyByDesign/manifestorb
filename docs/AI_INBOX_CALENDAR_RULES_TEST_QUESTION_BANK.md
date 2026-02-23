@@ -261,13 +261,12 @@ Format:
 11. `CM-011` | "Set my working location to home for tomorrow." | `calendar.setWorkingLocation` | D7
 12. `CM-012` | "Set out of office next Friday 9am-5pm." | `calendar.setOutOfOffice` | D7
 13. `CM-013` | "Create a 2-hour focus block tomorrow morning." | `calendar.createFocusBlock` | D7
-14. `CM-014` | "Create a booking schedule for 30-min meetings next week." | `calendar.createBookingSchedule` | D7
-15. `CM-015` | "Reschedule my scaffold new portfolio task to next Tuesday." | `task.reschedule` | D8,D2
-16. `CM-016` | "Move my 'deep work' task by 90 minutes later." | `task.reschedule` | D8
-17. `CM-017` | "Reschedule all tasks due today into tomorrow morning slots." | planner + `task.reschedule` | D8,D2
-18. `CM-018` | "Create calendar event from task 'Write project brief' for 2 hours tomorrow." | task/event linking flow | D8,D7
-19. `CM-019` | "Reschedule task <task-id> and keep linked calendar event in sync." | `task.reschedule` + event update | D8
-20. `CM-020` | "Find a free slot and move event <event-id> there automatically." | `calendar.rescheduleEvent` + `calendar.findAvailability` | D7,D6
+14. `CM-015` | "Reschedule my scaffold new portfolio task to next Tuesday." | `task.reschedule` | D8,D2
+15. `CM-016` | "Move my 'deep work' task by 90 minutes later." | `task.reschedule` | D8
+16. `CM-017` | "Reschedule all tasks due today into tomorrow morning slots." | planner + `task.reschedule` | D8,D2
+17. `CM-018` | "Create calendar event from task 'Write project brief' for 2 hours tomorrow." | task/event linking flow | D8,D7
+18. `CM-019` | "Reschedule task <task-id> and keep linked calendar event in sync." | `task.reschedule` + event update | D8
+19. `CM-020` | "Find a free slot and move event <event-id> there automatically." | `calendar.rescheduleEvent` + `calendar.findAvailability` | D7,D6
 
 ### F. Rules / Policy Plane
 
@@ -529,7 +528,6 @@ Use this to ensure 100% expected capability coverage.
 13. `calendar.setWorkingLocation` -> CM-011
 14. `calendar.setOutOfOffice` -> CM-012
 15. `calendar.createFocusBlock` -> CM-013
-16. `calendar.createBookingSchedule` -> CM-014
 
 ### Planner capabilities
 

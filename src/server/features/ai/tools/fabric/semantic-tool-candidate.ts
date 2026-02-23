@@ -22,6 +22,9 @@ const PROFILE_LIMITS: Record<NonNullable<RuntimeTurnContract["routeProfile"]>, n
   deep: 72,
 };
 
+const DANGEROUS_MIN_CONFIDENCE = 0.62;
+const DANGEROUS_MIXED_MIN_CONFIDENCE = 0.7;
+
 function resolveAdaptiveToolLimit(params: ToolRankingParams): number {
   const turn = params.turn;
   const baseLimit = params.maxTools ?? (turn ? PROFILE_LIMITS[turn.routeProfile] : 32);
@@ -46,6 +49,20 @@ function intersectsIntentFamily(
   families: CapabilityIntentFamily[],
 ): boolean {
   return definition.metadata.intentFamilies.some((family) => families.includes(family));
+}
+
+function shouldIncludeDangerousTools(params: ToolRankingParams): boolean {
+  if (!params.includeDangerous) return false;
+  const turn = params.turn;
+  if (!turn) return false;
+  if (turn.needsClarification) return false;
+  const mutatingIntent =
+    turn.requestedOperation === "mutate" || turn.requestedOperation === "mixed";
+  if (!mutatingIntent) return false;
+  if (turn.requestedOperation === "mixed") {
+    return turn.confidence >= DANGEROUS_MIXED_MIN_CONFIDENCE;
+  }
+  return turn.confidence >= DANGEROUS_MIN_CONFIDENCE;
 }
 
 function familiesForSemanticContract(
@@ -180,7 +197,7 @@ export function rankAndLimitTools(
 ): { tools: RuntimeToolDefinition[]; afterRisk: number; afterLimit: number } {
   let working = [...registry];
 
-  if (!params.includeDangerous || params.turn?.riskLevel !== "high") {
+  if (!shouldIncludeDangerousTools(params)) {
     working = working.filter((definition) => definition.metadata.riskLevel !== "dangerous");
   }
   const afterRisk = working.length;
@@ -213,7 +230,7 @@ export async function rankAndLimitToolsAsync(
 ): Promise<{ tools: RuntimeToolDefinition[]; afterRisk: number; afterLimit: number }> {
   // Keep existing deterministic risk pruning semantics.
   let working = [...registry];
-  if (!params.includeDangerous || params.turn?.riskLevel !== "high") {
+  if (!shouldIncludeDangerousTools(params)) {
     working = working.filter((definition) => definition.metadata.riskLevel !== "dangerous");
   }
   const afterRisk = working.length;
