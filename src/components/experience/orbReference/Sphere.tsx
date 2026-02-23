@@ -94,20 +94,22 @@ export function RimSparkleSphere({
       float radialGradient = pow(clamp(centerToEdge, 0.0, 1.0), 0.72);
       float hemisphereGradient = clamp(N.y * 0.5 + 0.5, 0.0, 1.0);
       float azimuth = atan(N.z, N.x) / 6.28318530718 + 0.5;
-      float azimuthWarp =
-        sin(azimuth * 6.28318530718) * 0.03 +
-        sin(azimuth * 12.56637061436 + 0.4) * 0.012;
+      float azimuthWarp = sin(azimuth * 6.28318530718) * 0.06;
       float finalGradient = clamp(mix(hemisphereGradient, radialGradient, 0.72) + azimuthWarp, 0.0, 1.0);
 
-      // Smooth, layered transition for a premium center-to-peach blend.
-      float coreHold = 1.0 - smoothstep(0.16, 0.54, radialGradient);
-      float cToB = smoothstep(0.08, 0.62, finalGradient);
-      float bToA = smoothstep(0.34, 0.94, finalGradient);
+      vec3 blendedColor;
 
-      vec3 baseBlend = mix(uColorC, uColorB, cToB);
-      vec3 peachBlend = mix(baseBlend, uColorA, bToA);
-      vec3 coreTint = mix(uColorC, uColorB, 0.22);
-      vec3 blendedColor = mix(peachBlend, coreTint, coreHold * 0.85);
+      if (finalGradient < 0.33) {
+        float t = finalGradient * 3.0;
+        blendedColor = mix(uColorC, uColorB, t);
+      } else if (finalGradient < 0.66) {
+        float t = (finalGradient - 0.33) * 3.0;
+        blendedColor = mix(uColorB, uColorA, t);
+      } else {
+        // Slightly delay the outer transition to uColorC so the lavender ring reads thicker.
+        float t = pow((finalGradient - 0.66) * 3.0, 1.35);
+        blendedColor = mix(uColorA, uColorC, t);
+      }
 
       float viewGradient = clamp(dot(lightingN, V) * 0.5 + 0.5, 0.0, 1.0);
       blendedColor = mix(blendedColor, blendedColor * 1.1, viewGradient * 0.3);
