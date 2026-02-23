@@ -36,7 +36,7 @@ function SceneContent() {
   const particleConfigs = useMemo<ParticleConfig[]>(
     () => [
       {
-        size: 260,
+        size: 360,
         pointSize: 16,
         frequency: 0.24,
         blending: THREE.NormalBlending,
@@ -48,7 +48,7 @@ function SceneContent() {
         colors: ["#694EB4", "#9C66CA", "#694EB4", "#9C66CA"],
       },
       {
-        size: 140,
+        size: 240,
         pointSize: 16,
         frequency: 0.26,
         blending: THREE.NormalBlending,
