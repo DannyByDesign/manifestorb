@@ -101,6 +101,15 @@ export const fragmentShader = `
     float finalAlpha = alpha * (uAlphaBase + filament * uAlphaBoost);
     finalAlpha *= radialAlpha * depthAtten;
     finalAlpha += haloMask * (0.055 + 0.045 * uGlowBoost);
+
+    // Thick feather at the orb boundary: particles approaching the rim
+    // gradually dissolve into transparency without changing their color.
+    float featherJitter = (vSeed - 0.5) * 0.05;
+    float featherStart = 0.72 + featherJitter;
+    float featherEnd = 1.06 + featherJitter;
+    float outerFeather = 1.0 - smoothstep(featherStart, featherEnd, vRadial);
+    finalAlpha *= outerFeather;
+
     finalAlpha = clamp(finalAlpha, 0.0, 1.0);
 
     gl_FragColor = vec4(col, finalAlpha);
