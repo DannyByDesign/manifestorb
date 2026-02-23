@@ -110,7 +110,7 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         alphaBoost: 0.48,
         darkTintMix: 0.7,
         depthFade: 0.31,
-        colors: [derived.deepViolet, derived.midLavender, derived.deepViolet, derived.orchidLavender],
+        colors: ["#4D2AAE", "#6136CF", "#7A49E3", "#5630C1"],
       },
       {
         size: 21,
