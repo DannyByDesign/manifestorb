@@ -1,9 +1,3 @@
-if (!process.env.VITEST && process.env.NODE_ENV !== "test") {
-  // Avoid server-only enforcement in test runs.
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  require("server-only");
-}
-
 import pRetry from "p-retry";
 import { createScopedLogger } from "@/server/lib/logger";
 import { sleep } from "@/server/lib/sleep";
@@ -144,26 +138,65 @@ interface LLMErrorInfo {
   retryAfterMs?: number;
 }
 
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  return value as Record<string, unknown>;
+}
+
+function firstNumber(values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+  }
+  return undefined;
+}
+
+function firstString(values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string" && value.length > 0) return value;
+  }
+  return undefined;
+}
+
+function readHeaderValue(headers: unknown, key: string): string | undefined {
+  if (!headers) return undefined;
+  if (typeof Headers !== "undefined" && headers instanceof Headers) {
+    return headers.get(key) ?? undefined;
+  }
+  const record = asRecord(headers);
+  if (!record) return undefined;
+  const direct = record[key];
+  if (typeof direct === "string" && direct.length > 0) return direct;
+  const loweredKey = key.toLowerCase();
+  const caseInsensitiveEntry = Object.entries(record).find(
+    ([candidateKey]) => candidateKey.toLowerCase() === loweredKey,
+  );
+  const value = caseInsensitiveEntry?.[1];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
 /**
  * Extracts error information to detect LLM rate limits across providers.
  * Supports OpenAI and Google error formats.
  * Also handles p-retry's FailedAttemptError wrapper.
  */
 export function extractLLMErrorInfo(error: unknown): LLMErrorInfo {
-  // biome-ignore lint/suspicious/noExplicitAny: error shapes vary across providers
-  const err = error as any;
-  const original = err?.error ?? err;
-  const cause = original?.cause ?? original;
+  const err = asRecord(error);
+  const original = asRecord(err?.error) ?? err ?? {};
+  const cause = asRecord(original.cause) ?? original;
+  const causeResponse = asRecord(cause.response);
 
   const status: number | undefined =
-    cause?.status ??
-    cause?.statusCode ??
-    original?.status ??
-    original?.statusCode ??
-    cause?.response?.status;
-  const message: string = cause?.message ?? original?.message ?? "";
+    firstNumber([
+      cause.status,
+      cause.statusCode,
+      original.status,
+      original.statusCode,
+      causeResponse?.status,
+    ]);
+  const message: string = firstString([cause.message, original.message]) ?? "";
+  const causeError = asRecord(cause.error);
   const errorCode: string =
-    cause?.code ?? original?.code ?? cause?.error?.type ?? "";
+    firstString([cause.code, original.code, causeError?.type]) ?? "";
 
   const isRateLimit =
     status === 429 ||
@@ -182,12 +215,10 @@ export function extractLLMErrorInfo(error: unknown): LLMErrorInfo {
     /server.?error/i.test(message);
 
   let retryAfterMs: number | undefined;
-  const headers =
-    cause?.response?.headers ??
-    cause?.responseHeaders ??
-    original?.responseHeaders;
+  const headers = causeResponse?.headers ?? cause.responseHeaders ?? original.responseHeaders;
   const retryAfterHeader: string | undefined =
-    headers?.["retry-after"] ?? headers?.["x-ratelimit-reset-requests"];
+    readHeaderValue(headers, "retry-after") ??
+    readHeaderValue(headers, "x-ratelimit-reset-requests");
 
   if (retryAfterHeader) {
     const seconds = Number.parseInt(retryAfterHeader, 10);

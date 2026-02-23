@@ -1,8 +1,3 @@
-if (!process.env.VITEST && process.env.NODE_ENV !== "test") {
-  // Avoid server-only enforcement in test runs.
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  require("server-only");
-}
 import type { LanguageModelUsage } from "ai";
 import { redis } from "@/server/lib/redis";
 import { createScopedLogger } from "@/server/lib/logger";
