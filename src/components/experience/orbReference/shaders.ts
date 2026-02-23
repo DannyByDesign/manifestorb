@@ -349,49 +349,62 @@ export const simulationFragmentShader = `
     vec3 pos = texture2D(positions, vUv).rgb;
     vec3 curlPos = texture2D(positions, vUv).rgb;
 
-    // Separate, deterministic orbit field for bright accent particles.
+    // Keep bright accent particles on an independent flow field so they
+    // spread through the orb volume without collapsing into the main stream.
     if (uFieldMode > 0.5) {
       float texSize = max(uTextureSize, 1.0);
       vec2 cell = floor(vUv * texSize);
       float idx = cell.x + cell.y * texSize;
-      float count = texSize * texSize;
+      float s1 = hash11(idx * 0.73 + 0.19);
+      float s2 = hash11(idx * 1.31 + 2.17);
+      float s3 = hash11(idx * 1.9 + 5.7);
+      float s4 = hash11(idx * 2.43 + 7.11);
 
-      const float GOLDEN_ANGLE = 2.399963229728653;
-      float y = 1.0 - (2.0 * (idx + 0.5) / count);
-      float ring = sqrt(max(0.0, 1.0 - y * y));
-      float theta = GOLDEN_ANGLE * (idx + 0.5);
-      vec3 baseDir = vec3(cos(theta) * ring, y, sin(theta) * ring);
+      float phase = s1 * 6.28318530718;
+      vec3 baseDir = seededDirection(vec2(s1, s2));
+      vec3 axis = normalize(seededDirection(vec2(s3, s4)) + vec3(0.29, 0.47, -0.25));
+      vec3 orbitDir = rotateAroundAxis(baseDir, axis, uTime * (0.2 + 0.26 * s2) + phase);
 
-      float phase = hash11(idx * 0.73 + 0.19) * 6.28318530718;
-      float orbitSpeed = 0.30 + 0.24 * hash11(idx * 1.41 + 2.17);
-      vec3 orbitAxis = normalize(seededDirection(vec2(hash11(idx * 0.11), hash11(idx * 0.37))) + vec3(0.29, 0.47, -0.25));
-      vec3 orbitDir = rotateAroundAxis(baseDir, orbitAxis, uTime * orbitSpeed + phase);
-
-      float radiusSeed = hash11(idx * 1.9 + 5.7);
-      float targetRadius = 0.68 + 0.30 * pow(radiusSeed, 0.55);
+      // Radius distributed through almost the whole orb volume (not a shell).
+      float targetRadius = mix(0.08, 0.98, pow(s3, 0.3333333));
       vec3 targetPos = orbitDir * targetRadius;
 
-      vec3 accentCurl = curlNoise(
-        (pos + orbitDir * 0.28) * (uFrequency * 1.55) +
-        vec3(uTime * 0.082, -uTime * 0.069, uTime * 0.061)
+      // Use a blueyard-like curl recipe but with per-particle offsets so this
+      // group does not ride the exact same flow as the main particles.
+      float freq1 = uFrequency * (0.9 + sin((pos.x + s1) * 4.0) * 0.2);
+      float freq2 = uFrequency * (1.1 + cos((pos.y + s2) * 4.0) * 0.3);
+      float freq3 = uFrequency * (1.3 + sin((pos.z + s3) * 4.0) * 0.4);
+
+      vec3 seededPos = pos + vec3(s1 * 2.3, s2 * 2.9, s3 * 3.7);
+      vec3 seededCurl = curlPos + vec3(s3 * 2.1, s1 * 3.1, s2 * 2.7);
+
+      vec3 flowA = curlNoise(
+        seededPos * freq1 +
+        vec3(uTime * (0.08 + 0.025 * s1), -uTime * (0.07 + 0.03 * s2), uTime * (0.09 + 0.02 * s3))
+      );
+      vec3 flowB = curlNoise(
+        seededCurl * freq2 +
+        vec3(-uTime * (0.09 + 0.02 * s2), uTime * (0.1 + 0.03 * s3), -uTime * (0.08 + 0.02 * s1))
+      );
+      flowB += curlNoise(seededCurl * freq3) * 0.15;
+
+      vec3 randomOffset = vec3(
+        sin((flowA.y + phase) * 8.0 + uTime * (0.92 + 0.38 * s2)) * 0.08,
+        cos((flowA.z + phase) * 8.0 + uTime * (1.03 + 0.32 * s3)) * 0.08,
+        sin((flowA.x + phase) * 8.0 + uTime * (0.86 + 0.36 * s1)) * 0.08
       );
 
-      vec3 tangent = normalize(cross(orbitAxis, pos) + vec3(1e-4));
-      float wobble = sin(uTime * (1.25 + hash11(idx * 2.31) * 0.8) + phase);
-      float posLen = max(length(pos), 1e-4);
-      vec3 radialPull = normalize(targetPos - pos + vec3(1e-4)) * (abs(targetRadius - posLen) * 0.12);
+      vec3 nextPos = mix(flowA, flowB, 0.5) + randomOffset;
+      nextPos = mix(nextPos, targetPos, 0.12);
 
-      vec3 nextPos = pos;
-      nextPos += tangent * (0.04 + 0.022 * wobble);
-      nextPos += accentCurl * 0.084;
-      nextPos += radialPull;
-      nextPos = mix(nextPos, targetPos, 0.065);
+      float nextLen = max(length(nextPos), 1e-4);
+      nextPos += (nextPos / nextLen) * (targetRadius - nextLen) * 0.22;
 
-      float nextLen = length(nextPos);
-      if (nextLen > 1.00) {
-        nextPos *= 1.00 / nextLen;
-      } else if (nextLen < 0.62) {
-        nextPos = normalize(nextPos + targetPos * 1e-4) * (0.62 + 0.06 * hash11(idx * 3.1 + 1.7));
+      nextLen = length(nextPos);
+      if (nextLen > 1.0) {
+        nextPos *= 1.0 / nextLen;
+      } else if (nextLen < 0.04) {
+        nextPos = normalize(targetPos + vec3(1e-4)) * 0.04;
       }
 
       gl_FragColor = vec4(nextPos, 1.0);
@@ -403,14 +416,14 @@ export const simulationFragmentShader = `
     float freq2 = uFrequency * (1.1 + cos(pos.y * 4.0) * 0.3);
     float freq3 = uFrequency * (1.3 + sin(pos.z * 4.0) * 0.4);
 
-    pos = curlNoise(pos * freq1 + uTime * 0.058);
-    curlPos = curlNoise(curlPos * freq2 + uTime * 0.072);
-    curlPos += curlNoise(curlPos * freq3) * 0.11;
+    pos = curlNoise(pos * freq1 + uTime * 0.08);
+    curlPos = curlNoise(curlPos * freq2 + uTime * 0.1);
+    curlPos += curlNoise(curlPos * freq3) * 0.15;
 
     vec3 randomOffset = vec3(
-      sin(pos.y * 8.0 + uTime * 0.72) * 0.055,
-      cos(pos.z * 8.0 + uTime * 0.8) * 0.055,
-      sin(pos.x * 8.0 + uTime * 0.68) * 0.055
+      sin(pos.y * 8.0 + uTime) * 0.08,
+      cos(pos.z * 8.0 + uTime * 1.1) * 0.08,
+      sin(pos.x * 8.0 + uTime * 0.9) * 0.08
     );
 
     gl_FragColor = vec4(mix(pos, curlPos, 0.5) + randomOffset, 1.0);
