@@ -94,22 +94,27 @@ export function RimSparkleSphere({
       float radialGradient = pow(clamp(centerToEdge, 0.0, 1.0), 0.72);
       float hemisphereGradient = clamp(N.y * 0.5 + 0.5, 0.0, 1.0);
       float azimuth = atan(N.z, N.x) / 6.28318530718 + 0.5;
-      float azimuthWarp = sin(azimuth * 6.28318530718) * 0.06;
+      float azimuthWarp = sin(azimuth * 6.28318530718) * 0.045;
       float finalGradient = clamp(mix(hemisphereGradient, radialGradient, 0.72) + azimuthWarp, 0.0, 1.0);
 
-      vec3 blendedColor;
+      // Smooth palette crossfades with explicit protection of the center core.
+      vec3 cToB = mix(uColorC, uColorB, smoothstep(0.02, 0.52, finalGradient));
+      vec3 bToA = mix(uColorB, uColorA, smoothstep(0.30, 0.82, finalGradient));
+      vec3 aToC = mix(uColorA, uColorC, pow(smoothstep(0.62, 1.0, finalGradient), 1.25));
+      vec3 blendedColor = mix(cToB, bToA, smoothstep(0.22, 0.72, finalGradient));
+      blendedColor = mix(blendedColor, aToC, smoothstep(0.68, 0.98, finalGradient));
 
-      if (finalGradient < 0.33) {
-        float t = finalGradient * 3.0;
-        blendedColor = mix(uColorC, uColorB, t);
-      } else if (finalGradient < 0.66) {
-        float t = (finalGradient - 0.33) * 3.0;
-        blendedColor = mix(uColorB, uColorA, t);
-      } else {
-        // Slightly delay the outer transition to uColorC so the lavender ring reads thicker.
-        float t = pow((finalGradient - 0.66) * 3.0, 1.35);
-        blendedColor = mix(uColorA, uColorC, t);
-      }
+      // Keep the center decisively lavender/purple.
+      float coreMask = 1.0 - smoothstep(0.12, 0.40, radialGradient);
+      vec3 coreTone = mix(uColorC, uColorB, 0.14);
+      blendedColor = mix(blendedColor, coreTone, coreMask * 0.82);
+
+      // Pull peach inward with a long soft falloff from the outer/mid body.
+      float inwardPeach =
+        smoothstep(0.24, 0.92, radialGradient) *
+        smoothstep(0.20, 0.88, finalGradient) *
+        (1.0 - coreMask);
+      blendedColor = mix(blendedColor, uColorB, inwardPeach * 0.28);
 
       float viewGradient = clamp(dot(lightingN, V) * 0.5 + 0.5, 0.0, 1.0);
       blendedColor = mix(blendedColor, blendedColor * 1.1, viewGradient * 0.3);
