@@ -60,7 +60,7 @@ function SceneContent() {
       {
         size: 25,
         pointSize: 16.0,
-        frequency: 0.3,
+        frequency: 0.1,
         blending: THREE.AdditiveBlending,
         densityBias: -1,
         alphaBase: 0.4,
@@ -73,7 +73,7 @@ function SceneContent() {
       {
         size: 11,
         pointSize: 15.9,
-        frequency: 0.48,
+        frequency: 0.05,
         blending: THREE.AdditiveBlending,
         densityBias: -1,
         alphaBase: 0.38,
