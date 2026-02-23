@@ -55,7 +55,7 @@ function SceneContent() {
         alphaBoost: 0.48,
         darkTintMix: 0.7,
         depthFade: 0.31,
-        colors: ["#2C1563", "#391B70", "#361C5E", "#351870"],
+        colors: ["#4B00FF", "#5B00FF", "#6400FF", "#5500FF"],
       },
       {
         size: 21,
