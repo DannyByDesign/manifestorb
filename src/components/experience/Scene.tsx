@@ -1,97 +1,15 @@
 "use client";
 
-import { Suspense, useEffect, useMemo } from "react";
-import * as THREE from "three";
+import { Suspense, useEffect } from "react";
 import { Canvas } from "@react-three/fiber";
 import { Bloom, EffectComposer } from "@react-three/postprocessing";
 
 import { useDPRClamp, useQualityStore } from "@/lib/stores/qualityStore";
 import { ExternalSparkles2D } from "@/components/experience/orbReference/ExternalSparkles";
-import { FBOParticles } from "@/components/experience/orbReference/FboParticles";
 import { RimSparkleSphere } from "@/components/experience/orbReference/Sphere";
-import {
-  simulationFragmentShader,
-  simulationVertexShader,
-} from "@/components/experience/orbReference/shaders";
-
-type ParticleConfig = {
-  size: number;
-  pointSize: number;
-  frequency: number;
-  blending: THREE.Blending;
-  densityBias: number;
-  alphaBase: number;
-  alphaBoost: number;
-  darkTintMix: number;
-  depthFade: number;
-  clumpFlatten?: number;
-  fieldMode?: number;
-  glowBoost?: number;
-  colors: [string, string, string, string];
-};
 
 function SceneContent() {
   const sphereScale = 2.8;
-
-  const particleConfigs = useMemo<ParticleConfig[]>(
-    () => [
-      {
-        size: 260,
-        pointSize: 16,
-        frequency: 0.24,
-        blending: THREE.NormalBlending,
-        densityBias: 0.1,
-        alphaBase: 0.44,
-        alphaBoost: 0.5,
-        darkTintMix: 0.78,
-        depthFade: 0.33,
-        colors: ["#694EB4", "#9C66CA", "#694EB4", "#9C66CA"],
-      },
-      {
-        size: 140,
-        pointSize: 16,
-        frequency: 0.26,
-        blending: THREE.NormalBlending,
-        densityBias: 0.02,
-        alphaBase: 0.45,
-        alphaBoost: 0.48,
-        darkTintMix: 0.7,
-        depthFade: 0.31,
-        colors: ["#4C13EB", "#8A13F0", "#4C13EB", "#8A13F0"],
-      },
-      {
-        size: 25,
-        pointSize: 18,
-        frequency: 1.2,
-        blending: THREE.AdditiveBlending,
-        densityBias: -0.55,
-        alphaBase: 0.7,
-        alphaBoost: 0.44,
-        darkTintMix: 0.58,
-        depthFade: 0.28,
-        clumpFlatten: 1.0,
-        fieldMode: 1,
-        glowBoost: 1.36,
-        colors: ["#B37FD3", "#B07DD4", "#EEDDEE", "#F3D2CE"],
-      },
-      {
-        size: 11,
-        pointSize: 10,
-        frequency: 1.0,
-        blending: THREE.AdditiveBlending,
-        densityBias: -0.55,
-        alphaBase: 0.7,
-        alphaBoost: 0.4,
-        darkTintMix: 0.5,
-        depthFade: 0.26,
-        clumpFlatten: 1.0,
-        fieldMode: 1,
-        glowBoost: 1.36,
-        colors: ["#B07DD4", "#EEDDEE", "#ECF1FA", "#F3C8C0"],
-      },
-    ],
-    []
-  );
 
   return (
     <>
@@ -110,30 +28,6 @@ function SceneContent() {
           colorB="#E8A0B1"
           colorC="#9C66CA"
         />
-
-        {particleConfigs.map((config) => (
-          <FBOParticles
-            key={`${config.size}-${config.frequency}`}
-            size={config.size}
-            pointSize={config.pointSize}
-            frequency={config.frequency}
-            color1={config.colors[0]}
-            color2={config.colors[1]}
-            color3={config.colors[2]}
-            color4={config.colors[3]}
-            blending={config.blending}
-            densityBias={config.densityBias}
-            alphaBase={config.alphaBase}
-            alphaBoost={config.alphaBoost}
-            darkTintMix={config.darkTintMix}
-            depthFade={config.depthFade}
-            clumpFlatten={config.clumpFlatten ?? 0}
-            fieldMode={config.fieldMode ?? 0}
-            glowBoost={config.glowBoost ?? 0}
-            simVertShader={simulationVertexShader}
-            simFragShader={simulationFragmentShader}
-          />
-        ))}
 
         <ExternalSparkles2D
           count={3500}
