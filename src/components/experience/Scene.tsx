@@ -24,6 +24,8 @@ type ParticleConfig = {
   alphaBoost: number;
   darkTintMix: number;
   depthFade: number;
+  clumpFlatten?: number;
+  fieldMode?: number;
   glowBoost?: number;
   colors: [string, string, string, string];
 };
@@ -67,6 +69,8 @@ function SceneContent() {
         alphaBoost: 0.44,
         darkTintMix: 0.58,
         depthFade: 0.28,
+        clumpFlatten: 1.0,
+        fieldMode: 1,
         glowBoost: 1.36,
         colors: ["#B37FD3", "#B07DD4", "#EEDDEE", "#F3D2CE"],
       },
@@ -80,6 +84,8 @@ function SceneContent() {
         alphaBoost: 0.4,
         darkTintMix: 0.5,
         depthFade: 0.26,
+        clumpFlatten: 1.0,
+        fieldMode: 1,
         glowBoost: 1.36,
         colors: ["#B07DD4", "#EEDDEE", "#ECF1FA", "#F3C8C0"],
       },
@@ -121,6 +127,8 @@ function SceneContent() {
             alphaBoost={config.alphaBoost}
             darkTintMix={config.darkTintMix}
             depthFade={config.depthFade}
+            clumpFlatten={config.clumpFlatten ?? 0}
+            fieldMode={config.fieldMode ?? 0}
             glowBoost={config.glowBoost ?? 0}
             simVertShader={simulationVertexShader}
             simFragShader={simulationFragmentShader}
