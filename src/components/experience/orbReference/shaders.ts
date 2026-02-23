@@ -104,10 +104,11 @@ export const fragmentShader = `
 
     // Thick feather at the orb boundary: particles approaching the rim
     // gradually dissolve into transparency without changing their color.
-    float featherJitter = (vSeed - 0.5) * 0.05;
-    float featherStart = 0.72 + featherJitter;
-    float featherEnd = 1.06 + featherJitter;
+    float featherJitter = (vSeed - 0.5) * 0.04;
+    float featherStart = 0.64 + featherJitter;
+    float featherEnd = 1.02 + featherJitter;
     float outerFeather = 1.0 - smoothstep(featherStart, featherEnd, vRadial);
+    outerFeather = pow(outerFeather, 1.35);
     finalAlpha *= outerFeather;
 
     finalAlpha = clamp(finalAlpha, 0.0, 1.0);
