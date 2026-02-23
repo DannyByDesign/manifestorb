@@ -37,7 +37,7 @@ function SceneContent() {
     () => [
       {
         size: 260,
-        pointSize: 18,
+        pointSize: 16,
         frequency: 0.45,
         blending: THREE.NormalBlending,
         densityBias: 0.1,
@@ -49,7 +49,7 @@ function SceneContent() {
       },
       {
         size: 140,
-        pointSize: 20,
+        pointSize: 16,
         frequency: 0.48,
         blending: THREE.NormalBlending,
         densityBias: 0.02,
@@ -62,7 +62,7 @@ function SceneContent() {
       {
         size: 25,
         pointSize: 18,
-        frequency: 0.1,
+        frequency: 0.42,
         blending: THREE.AdditiveBlending,
         densityBias: -0.55,
         alphaBase: 0.4,
@@ -76,8 +76,8 @@ function SceneContent() {
       },
       {
         size: 11,
-        pointSize: 13,
-        frequency: 0.05,
+        pointSize: 10,
+        frequency: 0.36,
         blending: THREE.AdditiveBlending,
         densityBias: -0.55,
         alphaBase: 0.38,

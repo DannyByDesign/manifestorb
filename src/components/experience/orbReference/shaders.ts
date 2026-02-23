@@ -363,7 +363,7 @@ export const simulationFragmentShader = `
       vec3 baseDir = vec3(cos(theta) * ring, y, sin(theta) * ring);
 
       float phase = hash11(idx * 0.73 + 0.19) * 6.28318530718;
-      float orbitSpeed = 0.14 + 0.11 * hash11(idx * 1.41 + 2.17);
+      float orbitSpeed = 0.30 + 0.24 * hash11(idx * 1.41 + 2.17);
       vec3 orbitAxis = normalize(seededDirection(vec2(hash11(idx * 0.11), hash11(idx * 0.37))) + vec3(0.29, 0.47, -0.25));
       vec3 orbitDir = rotateAroundAxis(baseDir, orbitAxis, uTime * orbitSpeed + phase);
 
@@ -372,20 +372,20 @@ export const simulationFragmentShader = `
       vec3 targetPos = orbitDir * targetRadius;
 
       vec3 accentCurl = curlNoise(
-        (pos + orbitDir * 0.28) * (uFrequency * 1.45) +
-        vec3(uTime * 0.038, -uTime * 0.031, uTime * 0.027)
+        (pos + orbitDir * 0.28) * (uFrequency * 1.55) +
+        vec3(uTime * 0.082, -uTime * 0.069, uTime * 0.061)
       );
 
       vec3 tangent = normalize(cross(orbitAxis, pos) + vec3(1e-4));
-      float wobble = sin(uTime * (0.7 + hash11(idx * 2.31) * 0.5) + phase);
+      float wobble = sin(uTime * (1.25 + hash11(idx * 2.31) * 0.8) + phase);
       float posLen = max(length(pos), 1e-4);
-      vec3 radialPull = normalize(targetPos - pos + vec3(1e-4)) * (abs(targetRadius - posLen) * 0.08);
+      vec3 radialPull = normalize(targetPos - pos + vec3(1e-4)) * (abs(targetRadius - posLen) * 0.12);
 
       vec3 nextPos = pos;
-      nextPos += tangent * (0.024 + 0.014 * wobble);
-      nextPos += accentCurl * 0.054;
+      nextPos += tangent * (0.04 + 0.022 * wobble);
+      nextPos += accentCurl * 0.084;
       nextPos += radialPull;
-      nextPos = mix(nextPos, targetPos, 0.04);
+      nextPos = mix(nextPos, targetPos, 0.065);
 
       float nextLen = length(nextPos);
       if (nextLen > 1.00) {
