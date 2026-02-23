@@ -106,7 +106,7 @@ export function RimSparkleSphere({
 
       // Keep the center decisively lavender/purple, but feather its boundary
       // so it blends into the peach region more smoothly.
-      float coreMask = 1.0 - smoothstep(0.10, 0.46, radialGradient);
+      float coreMask = 1.0 - smoothstep(0.06, 0.56, radialGradient);
       float coreOpacity = pow(clamp(coreMask, 0.0, 1.0), 1.7);
       vec3 coreTone = mix(uColorC, uColorB, 0.14);
       blendedColor = mix(blendedColor, coreTone, coreOpacity * 0.9);
