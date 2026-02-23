@@ -58,7 +58,7 @@ function SceneContent() {
         colors: ["#FF7017", "#AE00FF", "#ED7C3B", "#BB00FF"],
       },
       {
-        size: 21,
+        size: 25,
         pointSize: 16.0,
         frequency: 0.3,
         blending: THREE.AdditiveBlending,
@@ -71,7 +71,7 @@ function SceneContent() {
         colors: ["#B37FD3", "#B07DD4", "#EEDDEE", "#F3D2CE"],
       },
       {
-        size: 7,
+        size: 11,
         pointSize: 15.9,
         frequency: 0.48,
         blending: THREE.AdditiveBlending,
