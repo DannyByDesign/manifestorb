@@ -51,7 +51,7 @@ function SceneContent() {
         frequency: 0.48,
         blending: THREE.NormalBlending,
         densityBias: 0.04,
-        alphaBase: 0.42,
+        alphaBase: 0.7,
         alphaBoost: 0.48,
         darkTintMix: 0.7,
         depthFade: 0.31,
