@@ -51,11 +51,11 @@ function SceneContent() {
         frequency: 0.48,
         blending: THREE.NormalBlending,
         densityBias: 0.04,
-        alphaBase: 0.7,
+        alphaBase: 0.45,
         alphaBoost: 0.48,
         darkTintMix: 0.7,
         depthFade: 0.31,
-        colors: ["#5A2BC9", "#7438E0", "#8B4AF0", "#6631D3"],
+        colors: ["#2C1563", "#391B70", "#361C5E", "#351870"],
       },
       {
         size: 21,
