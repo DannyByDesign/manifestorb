@@ -1,0 +1,196 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  --font-geist-sans: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-geist-mono: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+
+
+  --base-lilac: #F4EFF7;
+  --cool-lavender: #866AD6;
+  --soft-mauve: #DB93D0;
+  --plum-magenta: #C55AAA;
+  --warm-coral: #F2AA91;
+  --cyan-sheen: #DDF6FF;
+
+  /* Orb Tints (Mapped for Orb.tsx inputs) */
+  --orb-base: var(--base-lilac);
+  --orb-cool: var(--cyan-sheen);
+  --orb-warm: var(--warm-coral);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  min-height: 100vh;
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+
+  background-color: var(--base-lilac);
+
+  background-image:
+    /* 1) Diagonal purple/violet band (Softer, less linear feel) */
+    linear-gradient(135deg,
+      rgb(141 114 210 / 0.00) 0%,
+      rgb(129 98 205 / 0.52) 30%,
+      rgb(146 101 214 / 0.70) 50%,
+      rgb(146 101 214 / 0.00) 80%),
+
+    /* 2) ORGANIC LIGHT FLOW: Massive radial wash from top-left, curves slightly, reaches bottom-right */
+    /* Using ellipse at offset to simulated 'flow' vs straight line */
+    radial-gradient(2200px 1800px at 5% 5%,
+      rgb(251 249 252 / 1.00) 0%,
+      rgb(241 235 248 / 0.76) 30%,
+      rgb(244 239 247 / 0.24) 60%,
+      rgb(242 170 145 / 0.00) 90%),
+
+    /* 3) Deep Violet/Blue blob (Top-Right) */
+    radial-gradient(1100px 900px at 90% 10%,
+      rgb(112 92 210 / 0.90) 0%,
+      rgb(134 105 222 / 0.56) 45%,
+      rgb(134 105 222 / 0.00) 85%),
+
+    /* 4) Cool Blue-Purple Shadow (Center-Right) */
+    radial-gradient(900px 700px at 75% 50%,
+      rgb(125 102 201 / 0.60) 0%,
+      rgb(125 102 201 / 0.26) 50%,
+      rgb(125 102 201 / 0.00) 85%),
+
+    /* 5) Warm Peach/Pink (Strictly Bottom-Right) */
+    radial-gradient(1400px 1100px at 100% 100%,
+      rgb(248 181 153 / 1.00) 0%,
+      rgb(242 170 145 / 0.82) 34%,
+      rgb(232 136 159 / 0.54) 62%,
+      rgb(232 136 159 / 0.00) 88%),
+
+    /* 6) Cool Lavender/Blue Wash (Bottom-Left) */
+    radial-gradient(1400px 1000px at 0% 100%,
+      rgb(168 190 246 / 0.76) 0%,
+      rgb(168 190 246 / 0.44) 35%,
+      rgb(168 190 246 / 0.00) 70%),
+
+    /* 7) Cool cyan highlight (Top Edge) */
+    linear-gradient(180deg,
+      rgb(221 246 255 / 0.52) 0%,
+      rgb(221 246 255 / 0.00) 15%);
+
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  background-size: cover;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+
+  background-image:
+    /* Reinforce diagonal ribbon (subtle second pass) */
+    linear-gradient(125deg,
+      rgb(134 106 214 / 0.00) 0%,
+      rgb(134 106 214 / 0.32) 22%,
+      rgb(176 108 210 / 0.36) 38%,
+      rgb(208 97 179 / 0.24) 52%,
+      rgb(242 170 145 / 0.18) 64%,
+      rgb(242 170 145 / 0.00) 76%),
+
+    /* Soft center haze (keeps orb area lighter) */
+    radial-gradient(1200px 900px at 40% 40%,
+      rgb(244 239 247 / 0.52) 0%,
+      rgb(244 239 247 / 0.00) 60%);
+
+  background-repeat: no-repeat;
+  background-size: cover;
+
+  filter: saturate(1.14) contrast(1.02);
+  opacity: 0.94;
+}
+
+/* ---------------------------------------------------------
+   VIGNETTE + GRAIN (keep subtle; reference is clean)
+--------------------------------------------------------- */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 11;
+
+  background-image:
+    /* gentle vignette */
+    radial-gradient(120% 95% at 50% 45%,
+      rgb(0 0 0 / 0.00) 60%,
+      rgb(0 0 0 / 0.12) 100%),
+
+    /* Film grain - using soft-light blend which works better on light backgrounds */
+    url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+
+  background-repeat: no-repeat, repeat;
+  background-size: cover, 150px 150px;
+  /* soft-light blend is more visible on light backgrounds than overlay */
+  mix-blend-mode: soft-light;
+  opacity: .75;
+}
+
+@keyframes landingRiseScene {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 88px, 0) scale(0.985);
+    filter: blur(2px);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes landingRiseOverlay {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 64px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.landing-scene-enter {
+  animation: landingRiseScene 1400ms cubic-bezier(0.16, 0.84, 0.26, 1) both;
+  will-change: transform, opacity, filter;
+}
+
+.landing-overlay-enter {
+  animation: landingRiseOverlay 1500ms cubic-bezier(0.16, 0.84, 0.26, 1) 410ms both;
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-scene-enter,
+  .landing-overlay-enter {
+    animation: none;
+  }
+}
