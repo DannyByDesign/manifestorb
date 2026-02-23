@@ -14,15 +14,6 @@ import {
   simulationVertexShader,
 } from "@/components/experience/orbReference/shaders";
 
-type ThemePalette = {
-  baseLilac: string;
-  coolLavender: string;
-  softMauve: string;
-  plumMagenta: string;
-  warmCoral: string;
-  cyanSheen: string;
-};
-
 type ParticleConfig = {
   size: number;
   pointSize: number;
@@ -37,54 +28,8 @@ type ParticleConfig = {
   colors: [string, string, string, string];
 };
 
-const DEFAULT_PALETTE: ThemePalette = {
-  baseLilac: "#F4EFF7",
-  coolLavender: "#866AD6",
-  softMauve: "#DB93D0",
-  plumMagenta: "#C55AAA",
-  warmCoral: "#F2AA91",
-  cyanSheen: "#DDF6FF",
-};
-
-const readCssVar = (name: string, fallback: string): string => {
-  if (typeof window === "undefined") return fallback;
-  const value = getComputedStyle(document.body).getPropertyValue(name).trim();
-  return value || fallback;
-};
-
-const mixHex = (a: string, b: string, t: number): string => {
-  const c = new THREE.Color(a).lerp(new THREE.Color(b), t);
-  return `#${c.getHexString()}`;
-};
-
-function SceneContent({ palette }: { palette: ThemePalette }) {
+function SceneContent() {
   const sphereScale = 2.8;
-
-  const derived = useMemo(() => {
-    const deepViolet = mixHex(palette.coolLavender, palette.plumMagenta, 0.3);
-    const midLavender = mixHex(palette.coolLavender, palette.softMauve, 0.45);
-    const paleLilac = mixHex(palette.baseLilac, palette.softMauve, 0.25);
-    const iceLavender = mixHex(palette.baseLilac, palette.cyanSheen, 0.35);
-    const peachGlow = mixHex(palette.warmCoral, palette.baseLilac, 0.38);
-    const rosePeach = mixHex(palette.warmCoral, palette.softMauve, 0.45);
-    const whiteBloom = mixHex("#ffffff", palette.baseLilac, 0.35);
-    const denseViolet = mixHex(palette.coolLavender, "#45258f", 0.54);
-    const orchidLavender = mixHex(palette.softMauve, palette.coolLavender, 0.58);
-    const peachMist = mixHex(palette.warmCoral, palette.baseLilac, 0.52);
-
-    return {
-      deepViolet,
-      midLavender,
-      paleLilac,
-      iceLavender,
-      peachGlow,
-      rosePeach,
-      whiteBloom,
-      denseViolet,
-      orchidLavender,
-      peachMist,
-    };
-  }, [palette]);
 
   const particleConfigs = useMemo<ParticleConfig[]>(
     () => [
@@ -98,7 +43,7 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         alphaBoost: 0.5,
         darkTintMix: 0.78,
         depthFade: 0.33,
-        colors: [derived.denseViolet, derived.deepViolet, derived.denseViolet, derived.deepViolet],
+        colors: ["#694EB4", "#9C66CA", "#694EB4", "#9C66CA"],
       },
       {
         size: 240,
@@ -123,7 +68,7 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         darkTintMix: 0.58,
         depthFade: 0.28,
         glowBoost: 1.36,
-        colors: [derived.midLavender, derived.orchidLavender, derived.paleLilac, derived.peachMist],
+        colors: ["#B37FD3", "#B07DD4", "#EEDDEE", "#F3D2CE"],
       },
       {
         size: 7,
@@ -136,28 +81,28 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
         darkTintMix: 0.5,
         depthFade: 0.26,
         glowBoost: 1.36,
-        colors: [derived.orchidLavender, derived.paleLilac, derived.iceLavender, derived.peachGlow],
+        colors: ["#B07DD4", "#EEDDEE", "#ECF1FA", "#F3C8C0"],
       },
     ],
-    [derived]
+    []
   );
 
   return (
     <>
       <ambientLight intensity={0.8} />
       <pointLight position={[5, 5, 7]} intensity={0.8} />
-      <pointLight position={[-6, 4, 6]} intensity={0.6} color={derived.paleLilac} />
-      <pointLight position={[0, -5, 5]} intensity={0.4} color={derived.rosePeach} />
-      <pointLight position={[3, -2, 8]} intensity={0.3} color={derived.iceLavender} />
-      <directionalLight position={[-8, 5, 5]} intensity={0.7} color={palette.coolLavender} />
+      <pointLight position={[-6, 4, 6]} intensity={0.6} color="#EEDDEE" />
+      <pointLight position={[0, -5, 5]} intensity={0.4} color="#E8A0B1" />
+      <pointLight position={[3, -2, 8]} intensity={0.3} color="#ECF1FA" />
+      <directionalLight position={[-8, 5, 5]} intensity={0.7} color="#866AD6" />
 
       <group position={[0, 0, 0]} scale={sphereScale}>
         <RimSparkleSphere
           position={[0, 0, 0]}
           renderOrder={20}
-          colorA={derived.midLavender}
-          colorB={derived.rosePeach}
-          colorC={derived.deepViolet}
+          colorA="#B37FD3"
+          colorB="#E8A0B1"
+          colorC="#9C66CA"
         />
 
         {particleConfigs.map((config) => (
@@ -184,9 +129,9 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
 
         <ExternalSparkles2D
           count={3500}
-          color1={derived.whiteBloom}
-          color2={derived.peachGlow}
-          color3={derived.iceLavender}
+          color1="#FBFAFC"
+          color2="#F3C8C0"
+          color3="#ECF1FA"
           circleRadius={1.4}
           mouseInfluenceRadius={0.15}
           mouseRepelStrength={0.1}
@@ -209,17 +154,6 @@ function SceneContent({ palette }: { palette: ThemePalette }) {
 export function Scene() {
   const initialize = useQualityStore((state) => state.initialize);
   const dprClamp = useDPRClamp();
-  const palette = useMemo<ThemePalette>(
-    () => ({
-      baseLilac: readCssVar("--base-lilac", DEFAULT_PALETTE.baseLilac),
-      coolLavender: readCssVar("--cool-lavender", DEFAULT_PALETTE.coolLavender),
-      softMauve: readCssVar("--soft-mauve", DEFAULT_PALETTE.softMauve),
-      plumMagenta: readCssVar("--plum-magenta", DEFAULT_PALETTE.plumMagenta),
-      warmCoral: readCssVar("--warm-coral", DEFAULT_PALETTE.warmCoral),
-      cyanSheen: readCssVar("--cyan-sheen", DEFAULT_PALETTE.cyanSheen),
-    }),
-    []
-  );
 
   useEffect(() => {
     initialize();
@@ -240,7 +174,7 @@ export function Scene() {
         style={{ width: "100%", height: "100%" }}
       >
         <Suspense fallback={null}>
-          <SceneContent palette={palette} />
+          <SceneContent />
         </Suspense>
       </Canvas>
     </div>
