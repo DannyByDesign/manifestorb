@@ -3,6 +3,9 @@ import type { CapabilityEnvironment } from "@/server/features/ai/tools/runtime/c
 import { createEmailCapabilities } from "@/server/features/ai/tools/runtime/capabilities/email";
 import prisma from "@/server/db/client";
 
+const resolveDefaultCalendarTimeZoneMock = vi.hoisted(() => vi.fn());
+const resolveCalendarTimeZoneForRequestMock = vi.hoisted(() => vi.fn());
+
 vi.mock("@/server/db/client", () => ({
   default: {
     $queryRaw: vi.fn(),
@@ -10,10 +13,8 @@ vi.mock("@/server/db/client", () => ({
 }));
 
 vi.mock("@/server/features/ai/tools/calendar-time", () => ({
-  resolveDefaultCalendarTimeZone: vi.fn().mockResolvedValue({
-    timeZone: "America/Los_Angeles",
-    source: "integration",
-  }),
+  resolveDefaultCalendarTimeZone: resolveDefaultCalendarTimeZoneMock,
+  resolveCalendarTimeZoneForRequest: resolveCalendarTimeZoneForRequestMock,
 }));
 
 function buildEnv(options?: {
@@ -74,6 +75,15 @@ function buildEnv(options?: {
 describe("email unrepliedToSent", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    resolveDefaultCalendarTimeZoneMock.mockResolvedValue({
+      timeZone: "America/Los_Angeles",
+      source: "integration",
+    });
+    resolveCalendarTimeZoneForRequestMock.mockImplementation(
+      ({ requestedTimeZone, defaultTimeZone }) => ({
+        timeZone: requestedTimeZone ?? defaultTimeZone,
+      }),
+    );
   });
 
   it("returns clarification key when dateRange is missing", async () => {
