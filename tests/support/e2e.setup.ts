@@ -62,8 +62,7 @@ setDefaultEnv(
   "NEXT_PUBLIC_WORKOS_REDIRECT_URI",
   process.env.NEXT_PUBLIC_WORKOS_REDIRECT_URI ?? "http://localhost:3000/callback",
 );
-setDefaultEnv("UPSTASH_REDIS_URL", process.env.UPSTASH_REDIS_URL ?? "https://test-redis.upstash.io");
-setDefaultEnv("UPSTASH_REDIS_TOKEN", process.env.UPSTASH_REDIS_TOKEN ?? "test-redis-token");
+setDefaultEnv("REDIS_URL", process.env.REDIS_URL ?? "redis://localhost:6379");
 setDefaultEnv("NEXT_PUBLIC_CALENDAR_SCHEDULING_ENABLED", "true");
 
 // next/server after() runs synchronously in tests so callbacks complete

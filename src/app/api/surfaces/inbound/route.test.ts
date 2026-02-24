@@ -21,8 +21,7 @@ vi.mock("@/server/lib/redis", () => ({
 vi.mock("@/env", () => ({
   env: {
     SURFACES_SHARED_SECRET: "secret",
-    UPSTASH_REDIS_URL: "https://redis.example",
-    UPSTASH_REDIS_TOKEN: "token",
+    REDIS_URL: "redis://localhost:6379",
   },
 }));
 

@@ -52,7 +52,7 @@ const inboundMessageSchema = z.object({
 });
 
 function isRedisConfigured(): boolean {
-    return Boolean(env.UPSTASH_REDIS_URL && env.UPSTASH_REDIS_TOKEN);
+    return Boolean(env.REDIS_URL);
 }
 
 function cacheKeyForIdempotency(idempotencyKey: string): string {
@@ -159,9 +159,17 @@ export async function POST(req: NextRequest) {
 
         if (canUseRedis) {
             try {
-                const cached = await redis.get<string>(cacheKeyForIdempotency(idempotencyKey));
+                const cached = await redis.get<string | { responses?: OutboundMessage[] }>(
+                    cacheKeyForIdempotency(idempotencyKey),
+                );
                 if (cached) {
-                    const cachedPayload = JSON.parse(cached) as { responses: OutboundMessage[] };
+                    const cachedPayload =
+                        typeof cached === "string"
+                            ? (JSON.parse(cached) as { responses?: OutboundMessage[] })
+                            : cached;
+                    if (!Array.isArray(cachedPayload.responses)) {
+                        throw new Error("invalid_idempotency_cache_payload");
+                    }
                     logger.info("Returning cached surface response for idempotency key", {
                         provider: message.provider,
                         externalUserId: message.context.userId,

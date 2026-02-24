@@ -30,5 +30,5 @@ export async function isAnalyzingReplyTracker({
 }) {
   const key = getKey({ emailAccountId });
   const result = await redis.get(key);
-  return result === "true";
+  return result === "true" || result === true;
 }

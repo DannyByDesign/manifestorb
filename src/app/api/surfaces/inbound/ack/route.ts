@@ -22,7 +22,7 @@ function ackKey(responseId: string): string {
 }
 
 function isRedisConfigured(): boolean {
-    return Boolean(env.UPSTASH_REDIS_URL && env.UPSTASH_REDIS_TOKEN);
+    return Boolean(env.REDIS_URL);
 }
 
 export async function POST(req: NextRequest) {

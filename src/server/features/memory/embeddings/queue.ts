@@ -46,6 +46,17 @@ export interface EmbeddingJob {
 // ============================================================================
 
 export class EmbeddingQueue {
+  private static parseJob(payload: string | EmbeddingJob): EmbeddingJob {
+    if (typeof payload === "string") {
+      return JSON.parse(payload) as EmbeddingJob;
+    }
+    return payload;
+  }
+
+  private static serializeJob(payload: string | EmbeddingJob): string {
+    return typeof payload === "string" ? payload : JSON.stringify(payload);
+  }
+
   /**
    * Add a job to the embedding queue
    * 
@@ -78,17 +89,18 @@ export class EmbeddingQueue {
    * @returns True if a job was processed, false if queue is empty
    */
   static async processNext(): Promise<boolean> {
-    // Pop job from queue (Upstash doesn't support rpoplpush, so we do it in two steps)
-    const jobJson = await redis.rpop(QUEUE_KEY);
+    // Pop job from queue and move to processing in two steps.
+    const jobPayload = await redis.rpop<string | EmbeddingJob>(QUEUE_KEY);
     
-    if (!jobJson) {
+    if (!jobPayload) {
       return false; // Queue is empty
     }
+    const jobJson = this.serializeJob(jobPayload);
     
     // Add to processing queue
     await redis.lpush(PROCESSING_KEY, jobJson);
     
-    const job: EmbeddingJob = JSON.parse(jobJson as string);
+    const job = this.parseJob(jobPayload);
     
     logger.info("Processing embedding job", { id: job.id, table: job.table, recordId: job.recordId });
     
@@ -189,12 +201,12 @@ export class EmbeddingQueue {
     let count = 0;
     
     while (true) {
-      // Pop from failed queue (Upstash doesn't support rpoplpush)
-      const jobJson = await redis.rpop(FAILED_KEY);
-      if (!jobJson) break;
+      // Pop from failed queue and push back to main queue.
+      const jobPayload = await redis.rpop<string | EmbeddingJob>(FAILED_KEY);
+      if (!jobPayload) break;
       
       // Reset retry count
-      const job: EmbeddingJob = JSON.parse(jobJson as string);
+      const job = this.parseJob(jobPayload);
       job.retries = 0;
       job.lastError = undefined;
       
@@ -218,11 +230,12 @@ export class EmbeddingQueue {
    * @returns Number of jobs recovered
    */
   static async recoverStale(): Promise<number> {
-    const processingJobs = await redis.lrange(PROCESSING_KEY, 0, -1);
+    const processingJobs = await redis.lrange<string | EmbeddingJob>(PROCESSING_KEY, 0, -1);
     let recovered = 0;
     
-    for (const jobJson of processingJobs) {
-      const job: EmbeddingJob = JSON.parse(jobJson as string);
+    for (const jobPayload of processingJobs) {
+      const job = this.parseJob(jobPayload);
+      const jobJson = this.serializeJob(jobPayload);
       const age = Date.now() - job.createdAt;
       
       if (age > PROCESSING_TIMEOUT_MS) {

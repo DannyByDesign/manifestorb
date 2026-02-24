@@ -29,7 +29,7 @@ export const GET = async () => {
     db = "error";
   }
 
-  if (env.UPSTASH_REDIS_URL && env.UPSTASH_REDIS_TOKEN) {
+  if (env.REDIS_URL) {
     try {
       await withTimeout(redis.ping(), 1000);
       cache = "ok";

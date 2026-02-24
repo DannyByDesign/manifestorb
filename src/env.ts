@@ -105,20 +105,11 @@ export const env = createEnv({
 
     OPENAI_ZERO_DATA_RETENTION: booleanString.default(false),
 
-    // Support both legacy variable names (UPSTASH_REDIS_URL/TOKEN) and Upstash's
-    // standard REST names (UPSTASH_REDIS_REST_URL/TOKEN).
-    UPSTASH_REDIS_URL: z.preprocess(
+    REDIS_URL: z.preprocess(
       (value) =>
         value ??
-        process.env.UPSTASH_REDIS_REST_URL ??
-        process.env.UPSTASH_REDIS_REST_ENDPOINT,
-      z.string().optional(),
-    ),
-    UPSTASH_REDIS_TOKEN: z.preprocess(
-      (value) =>
-        value ??
-        process.env.UPSTASH_REDIS_REST_TOKEN ??
-        process.env.UPSTASH_REDIS_REST_PASSWORD,
+        process.env.REDIS_PRIVATE_URL ??
+        process.env.REDIS_TLS_URL,
       z.string().optional(),
     ),
 
