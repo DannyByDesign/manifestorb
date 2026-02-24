@@ -170,7 +170,7 @@ function buildEmailComposingPatterns(): TaxonomyPattern[] {
           {
             tool: "create",
             resource: "email",
-            description: "Create draft email with sendOnApproval",
+            description: "Create draft email that is sent after approval workflow",
           },
         ],
         ["email_compose_draft", "email_send_on_approval"]

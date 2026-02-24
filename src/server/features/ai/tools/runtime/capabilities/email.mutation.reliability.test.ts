@@ -166,6 +166,32 @@ describe("email mutation reliability repros", () => {
     });
   });
 
+  it("repro: restore should untrash targets via deterministic label mutation", async () => {
+    modifyEmailMessagesMock.mockResolvedValue({
+      success: true,
+      count: 1,
+      succeededIds: ["message-1"],
+      failedIds: [],
+      retriable: false,
+    });
+    const caps = createEmailCapabilities(buildEnv());
+    const result = await caps.restore({
+      ids: ["message-1"],
+    });
+
+    expect(result.success).toBe(true);
+    expect(modifyEmailMessagesMock).toHaveBeenCalledWith(
+      expect.anything(),
+      ["message-1"],
+      {
+        labels: {
+          add: ["INBOX"],
+          remove: ["TRASH"],
+        },
+      },
+    );
+  });
+
   it("repro: scheduleSend publish failures should mark schedule row as FAILED", async () => {
     publishJsonMock.mockRejectedValue(new Error("qstash unavailable"));
     const caps = createEmailCapabilities(buildEnv());

@@ -312,6 +312,18 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       effects: [{ resource: "email", mutates: true }],
     },
     {
+      id: "email.restore",
+      description: "Restore target messages/threads from trash.",
+      inputSchema: emailBulkTargetSchema,
+      outputSchema: z.unknown(),
+      readOnly: false,
+      riskLevel: "caution",
+      approvalOperation: "restore_email",
+      intentFamilies: ["inbox_mutate", "inbox_controls"],
+      tags: ["email", "restore", "untrash", "bulk"],
+      effects: [{ resource: "email", mutates: true }],
+    },
+    {
       id: "email.markReadUnread",
       description: "Change read state for messages/threads.",
       inputSchema: withEmailBulkTargetGuard(
@@ -540,7 +552,6 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
         body: z.string().min(1),
         type: z.enum(["new", "reply", "forward"]).optional(),
         parentId: z.string().optional(),
-        sendOnApproval: z.boolean().optional(),
       }).strict(),
       outputSchema: z.unknown(),
       readOnly: false,

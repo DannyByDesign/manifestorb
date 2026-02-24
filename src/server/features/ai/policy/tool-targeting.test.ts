@@ -48,6 +48,18 @@ describe("tool-targeting", () => {
     expect(mapped).toBe("modify");
   });
 
+  it("maps restore operations to modify approval tool", () => {
+    const mapped = normalizeApprovalToolName({
+      runtimeToolName: "email.restore",
+      definition: definition({
+        id: "email.restore",
+        approvalOperation: "restore_email",
+        effects: [{ resource: "email", mutates: true }],
+      }),
+    });
+    expect(mapped).toBe("modify");
+  });
+
   it("infers automation resource from operation when effect is generic", () => {
     const def = definition({
       id: "policy.updateRule",

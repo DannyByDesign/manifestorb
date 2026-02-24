@@ -35,6 +35,12 @@ export const emailToolExecutors: RuntimeToolExecutorMap = {
       filter: args.filter ? asObject(args.filter) : undefined,
       limit: typeof args.limit === "number" ? args.limit : undefined,
     }),
+  "email.restore": async ({ args, capabilities }) =>
+    capabilities.email.restore({
+      ids: asStringArray(args.ids),
+      filter: args.filter ? asObject(args.filter) : undefined,
+      limit: typeof args.limit === "number" ? args.limit : undefined,
+    }),
   "email.markReadUnread": async ({ args, capabilities }) =>
     capabilities.email.markReadUnread({
       ids: asStringArray(args.ids),
@@ -114,7 +120,6 @@ export const emailToolExecutors: RuntimeToolExecutorMap = {
           ? args.type
           : undefined,
       parentId: asString(args.parentId),
-      sendOnApproval: asBoolean(args.sendOnApproval),
     }),
   "email.updateDraft": async ({ args, capabilities }) =>
     capabilities.email.updateDraft({

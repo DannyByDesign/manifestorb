@@ -43,7 +43,7 @@ Legend: `OPEN`, `IN_PROGRESS`, `BLOCKED`, `DONE`
    - Status: DONE
    - Covers: previous-audit orchestration gaps
 10. WP-09 Contract cleanup and missing capability completion
-   - Status: OPEN
+   - Status: DONE
    - Covers: `sendOnApproval` drift, restore/untrash capability
 11. WP-10 Final hardening and rollout docs
    - Status: OPEN

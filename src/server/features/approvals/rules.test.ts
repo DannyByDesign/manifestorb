@@ -113,6 +113,32 @@ describe("approval rules engine", () => {
     expect(decision.requiresApproval).toBe(true);
   });
 
+  it("keeps email.restore mapping in parity with restore approval rule", async () => {
+    const definition = listToolDefinitions().find(
+      (entry) => entry.id === "email.restore",
+    );
+    expect(definition).toBeDefined();
+    expect(definition?.approvalOperation).toBe("restore_email");
+
+    const toolName = normalizeApprovalToolName({
+      runtimeToolName: definition!.id,
+      definition: definition!,
+    });
+    const normalizedArgs = normalizePolicyArgs({
+      args: { ids: ["msg-1"] },
+      definition: definition!,
+    });
+    const decision = await evaluateApprovalRequirement({
+      userId: "u1",
+      toolName,
+      args: normalizedArgs,
+    });
+
+    expect(toolName).toBe("modify");
+    expect(decision.target.operation).toBe("restore_email");
+    expect(decision.requiresApproval).toBe(true);
+  });
+
   it("requires approval only for bulk email delete by default", async () => {
     await expect(
       evaluateApprovalRequirement({

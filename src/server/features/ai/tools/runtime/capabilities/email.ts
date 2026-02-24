@@ -35,6 +35,7 @@ export interface EmailCapabilities {
   getLatestMessage(threadId: string): Promise<ToolResult>;
   batchArchive(input: { ids?: string[]; filter?: Record<string, unknown>; limit?: number }): Promise<ToolResult>;
   batchTrash(input: { ids?: string[]; filter?: Record<string, unknown>; limit?: number }): Promise<ToolResult>;
+  restore(input: { ids?: string[]; filter?: Record<string, unknown>; limit?: number }): Promise<ToolResult>;
   markReadUnread(input: { ids?: string[]; filter?: Record<string, unknown>; limit?: number; read: boolean }): Promise<ToolResult>;
   applyLabels(input: { ids?: string[]; filter?: Record<string, unknown>; limit?: number; labelIds: string[] }): Promise<ToolResult>;
   removeLabels(input: { ids?: string[]; filter?: Record<string, unknown>; limit?: number; labelIds: string[] }): Promise<ToolResult>;
@@ -70,7 +71,6 @@ export interface EmailCapabilities {
     body: string;
     type?: "new" | "reply" | "forward";
     parentId?: string;
-    sendOnApproval?: boolean;
   }): Promise<ToolResult>;
   updateDraft(input: {
     draftId: string;
@@ -1542,6 +1542,55 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         };
       } catch (error) {
         return capabilityFailureResult(error, "I couldn't trash those emails right now.", {
+          resource: "email",
+        });
+      }
+    },
+
+    async restore(input) {
+      const resolved = await resolveMutationTargets(input);
+      if (!resolved.ok) return resolved.result;
+      const messageIds = await coerceToMessageIds(capEnv, resolved.ids);
+      if (messageIds.length === 0) {
+        return {
+          success: false,
+          error: "invalid_input:no message ids",
+          clarification: {
+            kind: "missing_fields",
+            prompt: "email_restore_target_required",
+            missingFields: ["thread_ids"],
+          },
+        };
+      }
+      try {
+        const result = await modifyEmailMessages(provider, messageIds, {
+          labels: {
+            remove: ["TRASH"],
+            add: ["INBOX"],
+          },
+        });
+        const outcome = normalizeBulkMutationOutcome({
+          requestedIds: messageIds,
+          result,
+        });
+        const succeededCount = outcome.succeededIds.length;
+        return {
+          success: outcome.success,
+          data: {
+            count: result.count,
+            succeededIds: outcome.succeededIds,
+            failedIds: outcome.failedIds,
+            retriable: outcome.retriable,
+          },
+          message: outcome.success
+            ? `Restored ${succeededCount} thread${succeededCount === 1 ? "" : "s"} from trash.`
+            : outcome.partial
+              ? `Restored ${succeededCount} thread${succeededCount === 1 ? "" : "s"} from trash; ${outcome.failedIds.length} failed.`
+              : "I couldn't restore those emails right now.",
+          meta: asMetaItemCount(succeededCount),
+        };
+      } catch (error) {
+        return capabilityFailureResult(error, "I couldn't restore those emails right now.", {
           resource: "email",
         });
       }

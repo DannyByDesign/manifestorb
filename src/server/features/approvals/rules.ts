@@ -64,6 +64,7 @@ const APPROVAL_OPERATION_LABELS: Record<string, string> = {
   delete_knowledge: "Delete knowledge entries",
   update_email: "Update email state",
   trash_email: "Move email to trash",
+  restore_email: "Restore email from trash",
   archive_email: "Archive email",
   unsubscribe_sender: "Unsubscribe sender",
   bulk_trash_senders: "Trash emails by sender",
@@ -194,6 +195,14 @@ const DEFAULT_TOOL_CONFIG: Record<string, ApprovalRuleConfig> = {
         resource: "email",
         operation: "trash_email",
         priority: 100,
+      },
+      {
+        id: "default-modify-email-restore",
+        name: "Restoring email from trash requires approval",
+        policy: "always",
+        resource: "email",
+        operation: "restore_email",
+        priority: 98,
       },
       {
         id: "default-modify-email-bulk-trash",
@@ -482,7 +491,6 @@ function deriveOperation(
 
   if (toolName === "create") {
     if (resource === "email") {
-      if (data?.sendOnApproval === true) return "draft_and_send";
       if (args?.type === "reply") return "create_reply_draft";
       if (args?.type === "forward") return "create_forward_draft";
       return "create_email_draft";
@@ -505,6 +513,7 @@ function deriveOperation(
       if (changes?.bulk_archive_senders) return "bulk_archive_senders";
       if (changes?.bulk_label_senders) return "bulk_label_senders";
       if (changes?.trash === true) return "trash_email";
+      if (changes?.restore === true) return "restore_email";
       if (changes?.archive === true) return "archive_email";
       return "update_email";
     }
