@@ -25,7 +25,7 @@ Legend: `OPEN`, `IN_PROGRESS`, `BLOCKED`, `DONE`
    - Status: DONE
    - Covers: partial failure reporting for bulk email mutations
 4. WP-03 Approval mapping and expiry hardening
-   - Status: OPEN
+   - Status: DONE
    - Covers: trash approval parity, expired approval rejection
 5. WP-04 Multi-account deterministic routing
    - Status: OPEN

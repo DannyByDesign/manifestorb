@@ -103,13 +103,18 @@ export class ApprovalService {
             }
 
             if (new Date() > request.expiresAt) {
-                logger.warn("Approval request past expiry at decision time; honoring explicit user decision", {
+                logger.warn("Approval request past expiry at decision time; rejecting decision", {
                     approvalRequestId,
                     decidedByUserId,
                     decision,
                     expiredAt: request.expiresAt.toISOString(),
                     decidedAt: new Date().toISOString(),
                 });
+                await tx.approvalRequest.update({
+                    where: { id: approvalRequestId },
+                    data: { status: "EXPIRED" },
+                });
+                throw new Error("Cannot decide on request in status: EXPIRED");
             }
 
             // Update Request Status

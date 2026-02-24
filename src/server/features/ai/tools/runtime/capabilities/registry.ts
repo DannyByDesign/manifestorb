@@ -306,7 +306,7 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       outputSchema: z.unknown(),
       readOnly: false,
       riskLevel: "dangerous",
-      approvalOperation: "delete_email",
+      approvalOperation: "trash_email",
       intentFamilies: ["inbox_mutate", "inbox_controls"],
       tags: ["email", "trash", "delete", "bulk"],
       effects: [{ resource: "email", mutates: true }],

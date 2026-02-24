@@ -38,6 +38,11 @@ import {
   setApprovalToolDefaultPolicy,
   upsertApprovalRule,
 } from "@/features/approvals/rules";
+import { listToolDefinitions } from "@/server/features/ai/tools/runtime/capabilities/registry";
+import {
+  normalizeApprovalToolName,
+  normalizePolicyArgs,
+} from "@/server/features/ai/policy/tool-targeting";
 
 describe("approval rules engine", () => {
   beforeEach(() => {
@@ -80,6 +85,32 @@ describe("approval rules engine", () => {
         args: { resource: "email", ids: ["m1"], changes: { trash: true } },
       }),
     ).resolves.toMatchObject({ requiresApproval: true, source: "rule" });
+  });
+
+  it("keeps email.batchTrash mapping in parity with default always-approval trash rule", async () => {
+    const definition = listToolDefinitions().find(
+      (entry) => entry.id === "email.batchTrash",
+    );
+    expect(definition).toBeDefined();
+    expect(definition?.approvalOperation).toBe("trash_email");
+
+    const toolName = normalizeApprovalToolName({
+      runtimeToolName: definition!.id,
+      definition: definition!,
+    });
+    const normalizedArgs = normalizePolicyArgs({
+      args: { ids: ["msg-1"] },
+      definition: definition!,
+    });
+    const decision = await evaluateApprovalRequirement({
+      userId: "u1",
+      toolName,
+      args: normalizedArgs,
+    });
+
+    expect(toolName).toBe("modify");
+    expect(decision.target.operation).toBe("trash_email");
+    expect(decision.requiresApproval).toBe(true);
   });
 
   it("requires approval only for bulk email delete by default", async () => {
