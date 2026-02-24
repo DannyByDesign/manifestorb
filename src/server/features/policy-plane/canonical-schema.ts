@@ -29,7 +29,6 @@ export const canonicalConditionSchema = z
       "in",
       "not_in",
       "contains",
-      "regex",
       "gt",
       "gte",
       "lt",

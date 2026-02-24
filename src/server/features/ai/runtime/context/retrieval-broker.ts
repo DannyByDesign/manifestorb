@@ -14,12 +14,6 @@ export interface RuntimeProgressiveContextResult {
 const BOOTSTRAP_TIMEOUT_MS_DEFAULT = 250;
 const TARGETED_TIMEOUT_MS_DEFAULT = 700;
 const EXPANDED_TIMEOUT_MS_DEFAULT = 3_000;
-const RECALL_SIGNAL_RE =
-  /\b(second|first|third|that one|those|the previous|earlier|before|again|same as|as above|last result|follow up)\b/iu;
-
-function hasRecallSignals(message: string): boolean {
-  return RECALL_SIGNAL_RE.test(message);
-}
 
 async function withTimeout<T>(params: {
   timeoutMs: number;
@@ -46,12 +40,9 @@ function resolveTimeoutMs(envName: string, fallback: number, min: number, max: n
   return Math.min(Math.max(parsed, min), max);
 }
 
-function needsTargetedTier(params: {
-  message: string;
-  turn: RuntimeTurnContract;
-}): boolean {
-  if (hasRecallSignals(params.message)) return true;
-  if (params.turn.routeHint === "conversation_only") return false;
+function needsTargetedTier(turn: RuntimeTurnContract): boolean {
+  if (turn.followUpLikely) return true;
+  if (turn.routeHint === "conversation_only") return false;
   return true;
 }
 
@@ -149,7 +140,7 @@ export async function buildProgressiveRuntimeContext(params: {
     issues.push("context_bootstrap_failed");
   }
 
-  if (needsTargetedTier({ message: params.message, turn: params.turn })) {
+  if (needsTargetedTier(params.turn)) {
     try {
       const targeted = await buildTierContext({
         userId: params.userId,

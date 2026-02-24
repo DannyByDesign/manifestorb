@@ -28,7 +28,6 @@ const compilerOutputSchema = z
               "in",
               "not_in",
               "contains",
-              "regex",
               "gt",
               "gte",
               "lt",

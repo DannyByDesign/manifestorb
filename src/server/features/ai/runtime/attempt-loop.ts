@@ -251,6 +251,15 @@ function resolveNativeTimeoutMs(lane: RuntimeLane): number {
   return lane === "conversation_only" ? 18_000 : 120_000;
 }
 
+function requiresToolEvidenceForFinalAnswer(session: RuntimeSession): boolean {
+  if (session.turn.requestedOperation !== "read") return false;
+  return (
+    session.turn.domain === "inbox" ||
+    session.turn.domain === "calendar" ||
+    session.turn.domain === "cross_surface"
+  );
+}
+
 function resolveGenerationUsage(generation: unknown): RuntimeLoopResult["usage"] | undefined {
   if (!generation || typeof generation !== "object") return undefined;
   const usage =
@@ -521,6 +530,26 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
       const finalText = generation.text.trim();
       const clarificationPrompt = latestClarificationPrompt(results);
       const usage = resolveGenerationUsage(generation);
+      const hasToolEvidence = session.summaries.length > 0;
+
+      if (requiresToolEvidenceForFinalAnswer(session) && !hasToolEvidence) {
+        session.input.logger.warn("Runtime read turn finished without required tool evidence", {
+          userId: session.input.userId,
+          provider: session.input.provider,
+          domain: session.turn.domain,
+          requestedOperation: session.turn.requestedOperation,
+        });
+        return {
+          text: await composeAssistantReply({
+            mode: "clarification",
+            fallbackText:
+              "I couldn't verify that yet because I need to run inbox/calendar checks first. Please retry so I can fetch the latest data.",
+          }),
+          stopReason: "needs_clarification",
+          attempts: Math.max(1, generation.steps.length),
+          usage,
+        };
+      }
 
       if (approvalsCount > 0) {
         return {

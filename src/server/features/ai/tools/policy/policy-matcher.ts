@@ -5,17 +5,16 @@ import { expandToolGroups, normalizeToolName } from "@/server/features/ai/tools/
 type CompiledPattern =
   | { kind: "all" }
   | { kind: "exact"; value: string }
-  | { kind: "regex"; value: RegExp };
+  | { kind: "glob"; segments: string[] };
 
 export function compilePattern(pattern: string): CompiledPattern {
   const normalized = normalizeToolName(pattern);
   if (!normalized) return { kind: "exact", value: "" };
   if (normalized === "*") return { kind: "all" };
   if (!normalized.includes("*")) return { kind: "exact", value: normalized };
-  const escaped = normalized.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return {
-    kind: "regex",
-    value: new RegExp(`^${escaped.replaceAll("\\*", ".*")}$`),
+    kind: "glob",
+    segments: normalized.split("*"),
   };
 }
 
@@ -29,11 +28,26 @@ export function compilePatterns(
     .filter((pattern) => pattern.kind !== "exact" || pattern.value);
 }
 
+function matchesGlob(name: string, segments: string[]): boolean {
+  if (segments.length === 0) return name.length === 0;
+  let cursor = 0;
+  for (let i = 0; i < segments.length; i += 1) {
+    const segment = segments[i] ?? "";
+    if (!segment) continue;
+    if (i === 0 && !name.startsWith(segment)) return false;
+    if (i === segments.length - 1 && !name.endsWith(segment)) return false;
+    const foundAt = name.indexOf(segment, cursor);
+    if (foundAt < 0) return false;
+    cursor = foundAt + segment.length;
+  }
+  return true;
+}
+
 function matchesAny(name: string, patterns: CompiledPattern[]): boolean {
   for (const pattern of patterns) {
     if (pattern.kind === "all") return true;
     if (pattern.kind === "exact" && name === pattern.value) return true;
-    if (pattern.kind === "regex" && pattern.value.test(name)) return true;
+    if (pattern.kind === "glob" && matchesGlob(name, pattern.segments)) return true;
   }
   return false;
 }
