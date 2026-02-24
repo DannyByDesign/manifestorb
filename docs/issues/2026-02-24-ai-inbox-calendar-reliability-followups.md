@@ -79,8 +79,8 @@ Close this follow-up only when:
 ## Final Verification Notes (2026-02-24)
 
 1. Work packages `WP-00` through `WP-10` are implemented and committed.
-2. Repository-wide quality gates are currently blocked by pre-existing project issues outside the reliability package scope:
-   - `bun run lint`: fails with large pre-existing lint backlog (generated and legacy files).
-   - `bun run test`: no `test` script exists in `package.json` (falls back to `/bin/test`).
-   - `bun run test-ai`: remaining non-package failures include unresolved import paths in legacy suites and unrelated proactive scanner expectation drift.
-   - `bun run test:e2e`: fails due unresolved legacy import in `tests/e2e/nothing-else-matters.test.ts`.
+2. Post-WP reliability gate blockers have been remediated (see `docs/issues/2026-02-24-reliability-gate-blockers.md`).
+3. Repository-wide quality gates pass:
+   - `bun run lint` ✅
+   - `bun run test` ✅
+   - `bun run test:e2e` ✅
