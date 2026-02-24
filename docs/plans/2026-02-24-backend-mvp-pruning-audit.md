@@ -1,4 +1,4 @@
-# Backend MVP Launch Audit (Gmail + Google Calendar + Conversational Secretary + Rule Plane + Web Search)
+# Backend MVP Launch Audit (Gmail + Google Calendar + Slack + Conversational Secretary + Rule Plane + Web Search)
 
 **Date:** 2026-02-24
 **Scope audited:** `src/server/**/*`, `src/app/api/**/*`, `src/env.ts`
@@ -6,7 +6,7 @@
 
 ## 1. MVP Contract Used For Audit
 
-1. Gmail + Google Calendar only (no Microsoft/Slack/Discord/Telegram).
+1. Gmail + Google Calendar + Slack (no Microsoft, no Discord, no Telegram).
 2. Conversational AI secretary for inbox + calendar execution.
 3. Web search/fetch remains first-class (automation + reasoning support).
 4. Rule plane is the control system for automations, approvals, guardrails, and preferences via natural language.
@@ -16,10 +16,10 @@
 
 | Classification | Files | Lines | Meaning |
 |---|---:|---:|---|
-| KEEP_MVP_CORE | 495 | 62614 | Fits launch scope as-is |
-| KEEP_REFACTOR_MVP | 90 | 18051 | Needed for MVP but has non-MVP branches to strip |
+| KEEP_MVP_CORE | 523 | 66324 | Fits launch scope as-is |
+| KEEP_REFACTOR_MVP | 111 | 21761 | Needed for MVP but has non-MVP branches to strip |
 | DEFER_POST_MVP | 25 | 5987 | Optional for launch; move to post-MVP backlog |
-| PRUNE_MVP | 198 | 33872 | Outside launch scope; prune/delete |
+| PRUNE_MVP | 149 | 26452 | Outside launch scope; prune/delete |
 
 ## 3. What Is Kept (Launch-Critical)
 
@@ -29,6 +29,7 @@
 4. Rule plane core and APIs (`src/server/features/policy-plane/*`, `src/app/api/rule-plane/*`).
 5. Approval/guardrail enforcement (`src/server/features/approvals/*`, policy enforcement in tool execution pipeline).
 6. Google integration surfaces (`src/server/integrations/google/*`, `src/app/api/google/*`, plus Gmail/Calendar webhook and callback plumbing).
+7. Slack channel path (`src/server/integrations/slack/*`, `src/app/api/slack/*`, and Slack-focused surfaces/channels runtime after refactor).
 
 ## 4. Guardrails & Tool Gating Kept
 
@@ -40,24 +41,22 @@
 ## 5. Critical Misalignment Found (Needs Fix To Match Product Statement)
 
 1. `policy.*` tools exist but are currently excluded from secretary runtime tool admission by hard prefix filter in `src/server/features/ai/runtime/session.ts` (currently only `email.`, `calendar.`, `task.`, `web.`).
-2. Core email/calendar/provider files still include Microsoft/Outlook branches in multiple keep-path files; these must be stripped for true Gmail/Google-only launch.
-3. Rule-plane learning path currently has coupling to groups subsystem (`src/server/features/policy-plane/learning-patterns.ts`), while groups is out-of-scope for launch and flagged prune.
-4. Non-MVP surfaces/channel workers and APIs still occupy large backend footprint and should be removed to prevent drift and accidental routing.
+2. Core email/calendar/provider files still include Microsoft/Outlook branches in multiple keep-path files; these must be stripped for true Gmail/Google-only providers in MVP.
+3. Rule-plane learning path currently has coupling to groups subsystem (`src/server/features/policy-plane/learning-patterns.ts`), while groups is flagged prune.
+4. Slack MVP path currently shares generic surfaces/channels code that still includes Discord/Telegram branches; this needs hard narrowing to Slack-only runtime behavior.
 
 ## 6. PRUNE_MVP (Top Modules)
 
 | Module | Files | Lines | Why not aligned |
 |---|---:|---:|---|
 | src/server/integrations/microsoft | 34 | 7183 | Microsoft/Outlook provider surface |
-| src/server/workers | 26 | 5066 | Cross-surface runtime/transport not in MVP |
 | src/server/features/search | 22 | 4570 | Unified search/index plane outside provider-first MVP path |
 | src/server/features/reply-tracker | 19 | 3019 | Non-secretary vertical feature drift |
 | src/server/features/email | 1 | 2059 | Out of launch scope |
 | src/server/features/meeting-briefs | 8 | 1874 | Non-secretary vertical feature drift |
-| src/server/features/channels | 9 | 1493 | Cross-surface runtime/transport not in MVP |
-| src/app/api/surfaces | 12 | 1431 | Cross-surface runtime/transport not in MVP |
 | src/server/features/follow-up | 7 | 1199 | Non-secretary vertical feature drift |
 | src/server/features/calendar | 5 | 1099 | Out of launch scope |
+| src/server/workers | 4 | 933 | Worker files not needed after Slack-only narrowing (non-Slack portions) |
 | src/server/features/tasks | 6 | 791 | Task triage vertical outside inbox/calendar launch scope |
 | src/server/features/categorize | 6 | 616 | Auxiliary classification/knowledge subsystem outside MVP |
 | src/server/features/groups | 8 | 611 | Auxiliary classification/knowledge subsystem outside MVP |
@@ -65,10 +64,8 @@
 | src/server/features/knowledge | 5 | 575 | Auxiliary classification/knowledge subsystem outside MVP |
 | src/server/features/notifications | 5 | 546 | Notification subsystem outside chat-first MVP requirement |
 | src/server/features/assistant-email | 4 | 422 | Out of launch scope |
-| src/app/api/slack | 3 | 253 | Out of launch scope |
 | src/app/api/search | 1 | 221 | Unified search/index plane outside provider-first MVP path |
 | src/app/api/tasks | 3 | 142 | Task triage vertical outside inbox/calendar launch scope |
-| src/server/integrations/slack | 3 | 110 | Out of launch scope |
 | src/server/features/referrals | 1 | 7 | Out of launch scope |
 
 ## 7. DEFER_POST_MVP (Top Modules)
@@ -85,25 +82,23 @@
 
 | Module | Files | Lines | Required cleanup for MVP alignment |
 |---|---:|---:|---|
-| src/server/features/ai | 16 | 5685 | Remove non-MVP surface/provider conditionals and tests; keep secretary core. |
-| src/server/lib | 22 | 3414 | Strip cross-surface and non-Google helper branches from shared infra. |
+| src/server/workers | 22 | 4133 | Keep Slack worker path and remove non-Slack connectors/paths. |
+| src/server/features/ai | 9 | 3873 | Remove non-MVP provider/channel conditionals and tests; keep secretary core. |
+| src/server/lib | 17 | 2878 | Strip non-MVP provider/channel helper branches from shared infra. |
 | src/server/features/calendar | 14 | 2430 | Remove Microsoft pathways while keeping Google calendar behavior. |
-| src/server/features/policy-plane | 4 | 1455 | Decouple from pruned group/surface dependencies while preserving rule-plane. |
-| src/app/api/approvals | 6 | 840 | Keep approval authority, remove non-MVP integration hooks. |
+| src/server/features/channels | 9 | 1493 | Keep Slack channel flow and remove Discord/Telegram behavior. |
+| src/server/features/policy-plane | 4 | 1455 | Decouple from pruned group dependencies while preserving rule-plane. |
+| src/app/api/surfaces | 12 | 1431 | Keep Slack-facing surfaces transport contract and remove non-Slack branches. |
 | src/server/features/email | 7 | 765 | Remove Outlook pathways while keeping Gmail behavior. |
-| src/server/features/webhooks | 4 | 752 | Keep Gmail webhook automations, delete Outlook/assistant-email branches. |
+| src/server/features/webhooks | 4 | 752 | Keep Gmail webhook automations; remove non-MVP side branches. |
 | src/server/packages | 1 | 681 | In-scope core that needs branch cleanup. |
-| src/server/features/approvals | 3 | 380 | Keep approval authority, remove non-MVP integration hooks. |
+| src/app/api/approvals | 3 | 557 | In-scope core that needs branch cleanup. |
 | src/server/integrations/google | 1 | 351 | In-scope core that needs branch cleanup. |
 | src/env.ts | 1 | 314 | In-scope core that needs branch cleanup. |
-| src/app/api/drafts | 2 | 229 | In-scope core that needs branch cleanup. |
+| src/server/features/approvals | 2 | 205 | In-scope core that needs branch cleanup. |
 | src/app/api/calendar | 1 | 184 | In-scope core that needs branch cleanup. |
 | src/server/features/integrations | 2 | 184 | In-scope core that needs branch cleanup. |
-| src/server/scripts | 1 | 143 | In-scope core that needs branch cleanup. |
-| src/app/api/integrations | 1 | 78 | In-scope core that needs branch cleanup. |
 | src/server | 1 | 63 | In-scope core that needs branch cleanup. |
-| src/app/api/schedule-proposal | 1 | 50 | In-scope core that needs branch cleanup. |
-| src/app/api/ambiguous-time | 1 | 41 | In-scope core that needs branch cleanup. |
 | src/server/features/drafts | 1 | 12 | In-scope core that needs branch cleanup. |
 
 ## 9. Exhaustive File/Line-Level Appendices
