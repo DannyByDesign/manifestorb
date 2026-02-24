@@ -3,11 +3,12 @@ import type { ParsedMessage } from "@/server/lib/types";
 import type { CapabilityEnvironment } from "@/server/features/ai/tools/runtime/capabilities/types";
 import { createEmailCapabilities } from "@/server/features/ai/tools/runtime/capabilities/email";
 
+const resolveDefaultCalendarTimeZoneMock = vi.hoisted(() => vi.fn());
+const resolveCalendarTimeZoneForRequestMock = vi.hoisted(() => vi.fn());
+
 vi.mock("@/server/features/ai/tools/calendar-time", () => ({
-  resolveDefaultCalendarTimeZone: vi.fn().mockResolvedValue({
-    timeZone: "America/Los_Angeles",
-    source: "integration",
-  }),
+  resolveDefaultCalendarTimeZone: resolveDefaultCalendarTimeZoneMock,
+  resolveCalendarTimeZoneForRequest: resolveCalendarTimeZoneForRequestMock,
 }));
 
 vi.mock("@/server/features/ai/tools/email/primitives", () => ({
@@ -101,6 +102,15 @@ function buildEnv(options?: {
 describe("runtime email provider search routing", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    resolveDefaultCalendarTimeZoneMock.mockResolvedValue({
+      timeZone: "America/Los_Angeles",
+      source: "integration",
+    });
+    resolveCalendarTimeZoneForRequestMock.mockImplementation(
+      ({ requestedTimeZone, defaultTimeZone }) => ({
+        timeZone: requestedTimeZone ?? defaultTimeZone,
+      }),
+    );
   });
 
   it("routes inbox search through provider with mailbox and date bounds", async () => {
@@ -170,6 +180,25 @@ describe("runtime email provider search routing", () => {
 
     const arg = search.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(arg.receivedByMe).toBe(true);
+  });
+
+  it("normalizes natural-language today into provider date bounds", async () => {
+    const search = vi.fn().mockResolvedValue({
+      messages: [],
+      nextPageToken: undefined,
+      totalEstimate: 0,
+    });
+    const caps = createEmailCapabilities(buildEnv({ search }));
+
+    await caps.search({
+      mailbox: "inbox",
+      query: "today",
+      unread: true,
+    });
+
+    const arg = search.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(arg.after).toBeInstanceOf(Date);
+    expect(arg.before).toBeInstanceOf(Date);
   });
 
   it("does not inject raw user-turn text into provider query when query/text is missing", async () => {

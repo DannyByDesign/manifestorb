@@ -215,6 +215,10 @@ function buildNativeRuntimeSystemPrompt(params: {
 }
 
 export function latestClarificationPrompt(results: RuntimeToolResult[]): string | null {
+  if (results.some((result) => result?.success === true)) {
+    return null;
+  }
+
   let clarificationPrompt: string | null = null;
   let clarificationIndex = -1;
 

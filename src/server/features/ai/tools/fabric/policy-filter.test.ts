@@ -80,6 +80,13 @@ const registry: RuntimeToolDefinition[] = [
     families: ["cross_surface_planning"],
     tags: ["planner", "schedule"],
   }),
+  tool({
+    toolName: "web.search",
+    readOnly: true,
+    riskLevel: "safe",
+    families: ["web_read"],
+    tags: ["web", "search"],
+  }),
 ];
 
 describe("filterToolRegistry", () => {
@@ -143,6 +150,37 @@ describe("filterToolRegistry", () => {
     const names = filtered.map((definition) => definition.toolName);
     expect(names).toContain("email.search");
     expect(names).not.toContain("email.batchTrash");
+  });
+
+  it("keeps internal inbox/calendar read tools for general factual reads even when web tools are available", async () => {
+    const filtered = await filterToolRegistry(registry, {
+      message: "what arrived today and what meetings do i have?",
+      turn: {
+        intent: "general",
+        domain: "general",
+        requestedOperation: "read",
+        complexity: "moderate",
+        routeProfile: "standard",
+        routeHint: "planner",
+        toolChoice: "auto",
+        knowledgeSource: "either",
+        freshness: "low",
+        riskLevel: "low",
+        confidence: 0.92,
+        toolHints: [],
+        source: "model",
+        conversationClauses: [],
+        taskClauses: [],
+        metaConstraints: [],
+        needsClarification: false,
+        followUpLikely: false,
+      },
+      includeDangerous: false,
+    });
+
+    const names = filtered.map((definition) => definition.toolName);
+    expect(names).toContain("email.search");
+    expect(names).toContain("calendar.listEvents");
   });
 
   it("keeps inbox read tools and excludes unrelated domain tools", async () => {

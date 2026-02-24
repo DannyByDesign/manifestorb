@@ -104,10 +104,6 @@ describe("latestClarificationPrompt", () => {
   it("returns clarification prompt when no later success exists", () => {
     const results: RuntimeToolResult[] = [
       {
-        success: true,
-        data: { count: 4 },
-      },
-      {
         success: false,
         clarification: {
           kind: "missing_fields",
@@ -117,5 +113,23 @@ describe("latestClarificationPrompt", () => {
     ];
 
     expect(latestClarificationPrompt(results)).toBe("email_date_range_missing");
+  });
+
+  it("does not return clarification when any successful evidence exists", () => {
+    const results: RuntimeToolResult[] = [
+      {
+        success: true,
+        data: { count: 1 },
+      },
+      {
+        success: false,
+        clarification: {
+          kind: "missing_fields",
+          prompt: "calendar_event_id_required",
+        },
+      },
+    ];
+
+    expect(latestClarificationPrompt(results)).toBeNull();
   });
 });

@@ -40,7 +40,7 @@ Legend: `OPEN`, `IN_PROGRESS`, `BLOCKED`, `DONE`
    - Status: DONE
    - Covers: orphaned pending schedule states
 9. WP-08 Temporal/routing/evidence consolidation
-   - Status: OPEN
+   - Status: DONE
    - Covers: previous-audit orchestration gaps
 10. WP-09 Contract cleanup and missing capability completion
    - Status: OPEN

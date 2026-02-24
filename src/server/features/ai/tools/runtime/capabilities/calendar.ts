@@ -12,6 +12,7 @@ import {
   formatDateTimeForUser,
   parseDateBoundInTimeZone,
 } from "@/server/features/ai/tools/timezone";
+import { normalizeTemporalRange } from "@/server/features/ai/runtime/temporal/normalize";
 import {
   createCalendarEvent,
   deleteCalendarEvent,
@@ -261,30 +262,28 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
       }
     | { errorResult: ToolResult }
   > => {
-    const nestedDateRange =
-      source.dateRange && typeof source.dateRange === "object"
-        ? (source.dateRange as Record<string, unknown>)
-        : undefined;
-    const after = safeString(nestedDateRange?.after) ?? safeString(source.after);
-    const before = safeString(nestedDateRange?.before) ?? safeString(source.before);
-    const requestedTimeZone = resolveRequestedTimeZone(source, nestedDateRange);
-
-    const resolvedWindow = await resolveCalendarTimeRange({
+    const resolvedWindow = await normalizeTemporalRange({
       userId: env.runtime.userId,
       emailAccountId: env.runtime.emailAccountId,
-      requestedTimeZone,
-      dateRange: { after, before },
-      relativeDateHintText: safeString(source.query) ?? safeString(source.text),
+      source: {
+        ...source,
+        referenceText:
+          safeString(source.query) ??
+          safeString(source.text) ??
+          env.runtime.currentMessage,
+      },
       defaultWindow: "today",
       missingBoundDurationMs: rescheduleWindowDurationMs,
     });
 
-    if ("error" in resolvedWindow) {
+    if (!resolvedWindow.ok || !resolvedWindow.start || !resolvedWindow.end) {
       return {
         errorResult: {
           success: false,
           error: "invalid_event_window",
-          message: resolvedWindow.error,
+          message: !resolvedWindow.ok
+            ? resolvedWindow.error
+            : "I couldn't resolve the requested calendar window.",
           clarification: {
             kind: "invalid_fields",
             prompt: "calendar_date_range_invalid",
@@ -1614,25 +1613,29 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
         };
       }
 
-      const startRaw =
-        safeString(changes.start) ??
-        safeString(changes.date) ??
-        (env.toolContext.currentMessage?.toLowerCase().includes("tomorrow")
-          ? "tomorrow"
-          : env.toolContext.currentMessage?.toLowerCase().includes("today")
-            ? "today"
-            : undefined);
-      const endRaw =
-        safeString(changes.end) ??
-        safeString(changes.date) ??
-        (startRaw ? startRaw : undefined);
+      const workingLocationWindow = await normalizeTemporalRange({
+        userId: env.runtime.userId,
+        emailAccountId: env.runtime.emailAccountId,
+        source: {
+          after: safeString(changes.start) ?? safeString(changes.date),
+          before: safeString(changes.end) ?? safeString(changes.date),
+          timeZone: resolvedTimeZone.timeZone,
+          referenceText:
+            safeString(changes.date) ??
+            safeString(changes.start) ??
+            env.toolContext.currentMessage,
+        },
+        defaultWindow: "today",
+        missingBoundDurationMs: 24 * 60 * 60 * 1_000,
+      });
 
-      const start = parseDateBoundInTimeZone(startRaw, resolvedTimeZone.timeZone, "start");
-      const end = parseDateBoundInTimeZone(endRaw, resolvedTimeZone.timeZone, "end");
-      if (!start || !end || start.getTime() >= end.getTime()) {
+      if (!workingLocationWindow.ok || !workingLocationWindow.start || !workingLocationWindow.end) {
         return {
           success: false,
           error: "invalid_working_location_window",
+          message: !workingLocationWindow.ok
+            ? workingLocationWindow.error
+            : "I couldn't resolve that date window.",
           clarification: {
             kind: "missing_fields",
             prompt: "calendar_working_location_time_invalid",
@@ -1640,6 +1643,8 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           },
         };
       }
+      const start = workingLocationWindow.start;
+      const end = workingLocationWindow.end;
 
       try {
         const event = await createCalendarEvent(provider, {

@@ -94,7 +94,9 @@ function familiesForSemanticContract(
         "memory_mutate",
       ];
     case "general":
-      return op === "read" ? ["web_read"] : [];
+      return op === "mutate"
+        ? ["cross_surface_planning", "memory_read", "memory_mutate", "web_read"]
+        : ["inbox_read", "calendar_read", "cross_surface_planning", "memory_read", "web_read"];
     default:
       return [];
   }

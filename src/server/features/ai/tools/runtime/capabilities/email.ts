@@ -7,6 +7,7 @@ import { getCronSecretHeader } from "@/server/lib/cron";
 import {
   resolveDefaultCalendarTimeZone,
 } from "@/server/features/ai/tools/calendar-time";
+import { normalizeTemporalRange } from "@/server/features/ai/runtime/temporal/normalize";
 import { parseDateBoundInTimeZone } from "@/server/features/ai/tools/timezone";
 import {
   capabilityFailureResult,
@@ -235,76 +236,36 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
     return defaultTimeZonePromise;
   };
 
-  const resolveRequestedTimeZone = (
-    source: Record<string, unknown>,
-    dateRange?: Record<string, unknown>,
-  ): string | undefined =>
-    (typeof dateRange?.timeZone === "string" ? dateRange.timeZone : undefined) ??
-    (typeof dateRange?.timezone === "string" ? dateRange.timezone : undefined) ??
-    (typeof source.timeZone === "string" ? source.timeZone : undefined) ??
-    (typeof source.timezone === "string" ? source.timezone : undefined);
-
   const resolveProviderDateBounds = async (source: Record<string, unknown>) => {
-    const dateRange =
-      source.dateRange && typeof source.dateRange === "object"
-        ? (source.dateRange as Record<string, unknown>)
-        : undefined;
-    const afterRaw =
-      (typeof dateRange?.after === "string" ? dateRange.after : undefined) ??
-      (typeof source.after === "string" ? source.after : undefined);
-    const beforeRaw =
-      (typeof dateRange?.before === "string" ? dateRange.before : undefined) ??
-      (typeof source.before === "string" ? source.before : undefined);
-    if (!afterRaw && !beforeRaw) {
+    const normalized = await normalizeTemporalRange({
+      userId: capEnv.runtime.userId,
+      emailAccountId: capEnv.runtime.emailAccountId,
+      source: {
+        ...source,
+        referenceText:
+          (typeof source.query === "string" ? source.query : undefined) ??
+          (typeof source.text === "string" ? source.text : undefined) ??
+          capEnv.runtime.currentMessage,
+      },
+      defaultWindow: "none",
+      missingBoundDurationMs: 24 * 60 * 60 * 1_000,
+    });
+
+    if (!normalized.ok) {
+      return {
+        ok: false as const,
+        error: normalized.error,
+      };
+    }
+
+    if (!normalized.start || !normalized.end) {
       return { ok: true as const, after: undefined, before: undefined };
-    }
-
-    const requestedTimeZone = resolveRequestedTimeZone(source, dateRange);
-    const resolvedTimeZone =
-      requestedTimeZone && requestedTimeZone.trim().length > 0
-        ? requestedTimeZone.trim()
-        : (() => null)();
-
-    const fallbackTimeZone = async () => {
-      const defaultTimeZone = await getDefaultTimeZone();
-      if ("error" in defaultTimeZone) {
-        return { ok: false as const, error: defaultTimeZone.error };
-      }
-      return { ok: true as const, timeZone: defaultTimeZone.timeZone };
-    };
-
-    const resolved =
-      resolvedTimeZone !== null
-        ? { ok: true as const, timeZone: resolvedTimeZone }
-        : await fallbackTimeZone();
-    if (!resolved.ok) return resolved;
-
-    const after = afterRaw
-      ? parseDateBoundInTimeZone(afterRaw, resolved.timeZone, "start")
-      : null;
-    if (afterRaw && !after) {
-      return {
-        ok: false as const,
-        error:
-          `Invalid start date "${afterRaw}". Use ISO-8601 or local datetime in timezone ${resolved.timeZone}.`,
-      };
-    }
-
-    const before = beforeRaw
-      ? parseDateBoundInTimeZone(beforeRaw, resolved.timeZone, "end")
-      : null;
-    if (beforeRaw && !before) {
-      return {
-        ok: false as const,
-        error:
-          `Invalid end date "${beforeRaw}". Use ISO-8601 or local datetime in timezone ${resolved.timeZone}.`,
-      };
     }
 
     return {
       ok: true as const,
-      after: after ?? undefined,
-      before: before ?? undefined,
+      after: normalized.start,
+      before: normalized.end,
     };
   };
 

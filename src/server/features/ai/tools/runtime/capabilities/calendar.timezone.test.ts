@@ -6,6 +6,7 @@ import {
   resolveCalendarTimeZoneForRequest,
   resolveDefaultCalendarTimeZone,
 } from "@/server/features/ai/tools/calendar-time";
+import { normalizeTemporalRange } from "@/server/features/ai/runtime/temporal/normalize";
 import {
   createCalendarEvent,
   deleteCalendarEvent,
@@ -37,6 +38,10 @@ vi.mock("@/server/features/ai/tools/calendar/primitives", () => ({
   findCalendarAvailability: vi.fn(),
   getCalendarEvent: vi.fn(),
   updateCalendarEvent: vi.fn(),
+}));
+
+vi.mock("@/server/features/ai/runtime/temporal/normalize", () => ({
+  normalizeTemporalRange: vi.fn(),
 }));
 
 function buildEnv(): CapabilityEnvironment {
@@ -93,6 +98,13 @@ describe("runtime calendar timezone handling", () => {
       end: new Date("2026-02-17T07:59:59.999Z"),
       timeZone: "America/Los_Angeles",
     });
+    vi.mocked(normalizeTemporalRange).mockResolvedValue({
+      ok: true,
+      start: new Date("2026-02-16T08:00:00.000Z"),
+      end: new Date("2026-02-17T07:59:59.999Z"),
+      timeZone: "America/Los_Angeles",
+      source: "explicit",
+    });
     mockSearchEvents.mockResolvedValue([]);
     vi.mocked(findCalendarAvailability).mockResolvedValue([]);
     vi.mocked(getCalendarEvent).mockResolvedValue(null);
@@ -124,11 +136,11 @@ describe("runtime calendar timezone handling", () => {
       dateRange: { after: "2026-02-16", before: "2026-02-16" },
     });
 
-    expect(resolveCalendarTimeRange).toHaveBeenCalledWith(
+    expect(normalizeTemporalRange).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: "user-1",
         emailAccountId: "account-1",
-        dateRange: { after: "2026-02-16", before: "2026-02-16" },
+        defaultWindow: "today",
       }),
     );
     expect(mockSearchEvents).toHaveBeenCalledWith(
