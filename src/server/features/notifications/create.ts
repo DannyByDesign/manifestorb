@@ -14,6 +14,14 @@ function isUniqueDedupeError(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 }
 
+function toNullableJson(
+  value: Record<string, unknown> | null | undefined,
+): Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return Prisma.JsonNull;
+  return value as Prisma.InputJsonValue;
+}
+
 export async function createInAppNotification(input: CreateInAppNotificationInput) {
   const dedupeKey = input.dedupeKey?.trim() || null;
   const data = {
@@ -21,7 +29,7 @@ export async function createInAppNotification(input: CreateInAppNotificationInpu
     title: input.title,
     body: input.body ?? null,
     type: input.type ?? "info",
-    metadata: input.metadata ?? undefined,
+    metadata: toNullableJson(input.metadata),
     dedupeKey,
   };
 

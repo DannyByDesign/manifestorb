@@ -164,8 +164,8 @@ export async function runMutationWithIdempotency(params: {
           status: finalResult.success ? "RESOLVED" : "FAILED",
           payload: {
             capability: params.capability,
-            toolResult: finalResult,
-          },
+            toolResult: finalResult as unknown as Prisma.InputJsonValue,
+          } as Prisma.InputJsonValue,
           expiresAt,
         },
       });

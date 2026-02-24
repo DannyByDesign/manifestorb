@@ -43,6 +43,7 @@ export async function aiCheckIfNeedsReply(params: {
     ].join("\n");
 
     const { object } = await generateObject({
+      model: modelOptions.model,
       schema: outputSchema,
       prompt,
     });

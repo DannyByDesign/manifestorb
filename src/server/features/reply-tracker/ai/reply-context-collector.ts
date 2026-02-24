@@ -38,6 +38,7 @@ export async function aiCollectReplyContext(params: {
       modelOptions,
     });
     await generateText({
+      model: modelOptions.model,
       prompt: `Summarize recent thread context for subject "${subject}".`,
     });
   } catch {
