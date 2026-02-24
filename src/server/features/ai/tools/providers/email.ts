@@ -147,9 +147,22 @@ export interface EmailProvider {
         totalEstimate?: number;
     }>;
     get(ids: string[]): Promise<ParsedMessage[]>;
-    modify(ids: string[], changes: EmailChanges): Promise<{ success: boolean; count: number; data?: unknown }>;
+    modify(ids: string[], changes: EmailChanges): Promise<{
+        success: boolean;
+        count: number;
+        succeededIds: string[];
+        failedIds: string[];
+        retriable: boolean;
+        data?: unknown;
+    }>;
     createDraft(params: DraftParams): Promise<{ draftId: string; preview: unknown }>;
-    trash(ids: string[]): Promise<{ success: boolean; count: number }>;
+    trash(ids: string[]): Promise<{
+        success: boolean;
+        count: number;
+        succeededIds: string[];
+        failedIds: string[];
+        retriable: boolean;
+    }>;
     sendDraft(draftId: string): Promise<{ messageId: string; threadId: string }>;
     getDrafts(options?: { maxResults?: number }): Promise<ParsedMessage[]>;
     getDraft(draftId: string): Promise<ParsedMessage | null>;
@@ -834,11 +847,17 @@ export async function createEmailProvider(
         }),
 
         modify: async (ids: string[], changes: EmailChanges) => runThrottled("modify", async () => {
+            const normalizedIds = Array.from(
+                new Set(ids.map((id) => id.trim()).filter((id) => id.length > 0)),
+            );
             let count = 0;
+            const succeededIds: string[] = [];
+            const failedIds = new Set<string>();
+            let retriable = false;
 
             let messages: ParsedMessage[];
             try {
-                messages = await service.getMessagesBatch(ids);
+                messages = await service.getMessagesBatch(normalizedIds);
             } catch (err: unknown) {
                 if (isGmailAuthError(err)) {
                     throw new Error(GMAIL_RECONNECT_MESSAGE);
@@ -846,6 +865,9 @@ export async function createEmailProvider(
                 throw err;
             }
             const messageToThread = new Map(messages.map(m => [m.id, m.threadId]));
+            for (const id of normalizedIds) {
+                if (!messageToThread.has(id)) failedIds.add(id);
+            }
 
             // Track which threads we've already processed to avoid duplicate operations
             const processedThreads = new Set<string>();
@@ -866,7 +888,7 @@ export async function createEmailProvider(
                 }),
               );
 
-            await runInBatches(ids, 3, async (id) => {
+            await runInBatches(normalizedIds, 3, async (id) => {
                 try {
                     await withRetries(
                       async () => {
@@ -959,12 +981,23 @@ export async function createEmailProvider(
                       },
                     );
                     count++;
+                    succeededIds.push(id);
                 } catch (e) {
                     logger.error("Failed to modify item", { id, error: e });
+                    failedIds.add(id);
+                    if (isProviderRateLimitError(e)) {
+                        retriable = true;
+                    }
                 }
             });
 
-            return { success: true, count };
+            return {
+                success: failedIds.size === 0,
+                count,
+                succeededIds,
+                failedIds: Array.from(failedIds),
+                retriable: failedIds.size > 0 ? retriable : false,
+            };
         }),
 
         createDraft: async (params: DraftParams) => {
@@ -1030,15 +1063,50 @@ export async function createEmailProvider(
 
         trash: async (ids: string[]) => runThrottled("trash", async () => {
             try {
-            const messages = await service.getMessagesBatch(ids);
-            const threadIds = [...new Set(messages.map(m => m.threadId))];
+            const normalizedIds = Array.from(
+                new Set(ids.map((id) => id.trim()).filter((id) => id.length > 0)),
+            );
+            const messages = await service.getMessagesBatch(normalizedIds);
+            const messageToThread = new Map(messages.map((message) => [message.id, message.threadId]));
+            const threadToMessageIds = new Map<string, string[]>();
+            const failedIds = new Set<string>();
+            const succeededIds: string[] = [];
+            let retriable = false;
+
+            for (const id of normalizedIds) {
+                const threadId = messageToThread.get(id);
+                if (!threadId) {
+                    failedIds.add(id);
+                    continue;
+                }
+                const existing = threadToMessageIds.get(threadId) ?? [];
+                existing.push(id);
+                threadToMessageIds.set(threadId, existing);
+            }
 
             let count = 0;
-            await runInBatches(threadIds, 5, async (tid) => {
-                await service.trashThread(tid, account.email, "ai");
-                count++;
+            await runInBatches(Array.from(threadToMessageIds.keys()), 5, async (tid) => {
+                try {
+                    await service.trashThread(tid, account.email, "ai");
+                    count++;
+                    succeededIds.push(...(threadToMessageIds.get(tid) ?? []));
+                } catch (error) {
+                    logger.error("Failed to trash thread", { threadId: tid, error });
+                    for (const id of threadToMessageIds.get(tid) ?? []) {
+                        failedIds.add(id);
+                    }
+                    if (isProviderRateLimitError(error)) {
+                        retriable = true;
+                    }
+                }
             });
-            return { success: true, count };
+            return {
+                success: failedIds.size === 0,
+                count,
+                succeededIds,
+                failedIds: Array.from(failedIds),
+                retriable: failedIds.size > 0 ? retriable : false,
+            };
             } catch (err: unknown) {
                 if (isGmailAuthError(err)) {
                     throw new Error(GMAIL_RECONNECT_MESSAGE);

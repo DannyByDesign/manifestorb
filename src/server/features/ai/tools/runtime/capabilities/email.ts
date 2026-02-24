@@ -107,6 +107,63 @@ function asMetaItemCount(count: number): ToolResult["meta"] {
   return { resource: "email", itemCount: count };
 }
 
+type BulkMutationOutcomeInput = {
+  success: boolean;
+  count: number;
+  succeededIds?: string[];
+  failedIds?: string[];
+  retriable?: boolean;
+};
+
+type BulkMutationOutcome = {
+  success: boolean;
+  partial: boolean;
+  count: number;
+  succeededIds: string[];
+  failedIds: string[];
+  retriable: boolean;
+};
+
+function normalizeBulkMutationOutcome(params: {
+  requestedIds: string[];
+  result: BulkMutationOutcomeInput;
+}): BulkMutationOutcome {
+  const requestedIds = uniqueIds(params.requestedIds);
+  const explicitSucceeded = uniqueIds(
+    Array.isArray(params.result.succeededIds) ? params.result.succeededIds : [],
+  );
+  const inferredSucceeded =
+    explicitSucceeded.length > 0
+      ? explicitSucceeded
+      : params.result.success
+        ? requestedIds.slice(0, Math.min(requestedIds.length, params.result.count))
+        : [];
+  const succeededSet = new Set(inferredSucceeded);
+  const failedFromResult = uniqueIds(
+    Array.isArray(params.result.failedIds) ? params.result.failedIds : [],
+  );
+  const failedInferred =
+    failedFromResult.length > 0
+      ? failedFromResult
+      : params.result.success
+        ? []
+        : requestedIds.filter((id) => !succeededSet.has(id));
+
+  const failedSet = new Set(failedInferred);
+  const succeededIds = inferredSucceeded.filter((id) => !failedSet.has(id));
+  const failedIds = Array.from(failedSet);
+  const hasFailure = failedIds.length > 0 || params.result.success === false;
+
+  return {
+    success: !hasFailure,
+    partial: hasFailure && succeededIds.length > 0,
+    count: params.result.count,
+    succeededIds,
+    failedIds,
+    retriable: hasFailure ? Boolean(params.result.retriable) : false,
+  };
+}
+
 async function coerceToMessageIds(
   env: CapabilityEnvironment,
   ids: string[],
@@ -1457,11 +1514,25 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       }
       try {
         const result = await modifyEmailMessages(provider, messageIds, { archive: true });
+        const outcome = normalizeBulkMutationOutcome({
+          requestedIds: messageIds,
+          result,
+        });
+        const succeededCount = outcome.succeededIds.length;
         return {
-          success: result.success,
-          data: { count: result.count },
-          message: `Archived ${result.count} thread${result.count === 1 ? "" : "s"}.`,
-          meta: asMetaItemCount(result.count),
+          success: outcome.success,
+          data: {
+            count: result.count,
+            succeededIds: outcome.succeededIds,
+            failedIds: outcome.failedIds,
+            retriable: outcome.retriable,
+          },
+          message: outcome.success
+            ? `Archived ${succeededCount} thread${succeededCount === 1 ? "" : "s"}.`
+            : outcome.partial
+              ? `Archived ${succeededCount} thread${succeededCount === 1 ? "" : "s"}; ${outcome.failedIds.length} failed.`
+              : "I couldn't archive those emails right now.",
+          meta: asMetaItemCount(succeededCount),
         };
       } catch (error) {
         return capabilityFailureResult(error, "I couldn't archive those emails right now.", {
@@ -1487,11 +1558,25 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       }
       try {
         const result = await trashEmailMessages(provider, messageIds);
+        const outcome = normalizeBulkMutationOutcome({
+          requestedIds: messageIds,
+          result,
+        });
+        const succeededCount = outcome.succeededIds.length;
         return {
-          success: result.success,
-          data: { count: result.count },
-          message: `Moved ${result.count} thread${result.count === 1 ? "" : "s"} to trash.`,
-          meta: asMetaItemCount(result.count),
+          success: outcome.success,
+          data: {
+            count: result.count,
+            succeededIds: outcome.succeededIds,
+            failedIds: outcome.failedIds,
+            retriable: outcome.retriable,
+          },
+          message: outcome.success
+            ? `Moved ${succeededCount} thread${succeededCount === 1 ? "" : "s"} to trash.`
+            : outcome.partial
+              ? `Moved ${succeededCount} thread${succeededCount === 1 ? "" : "s"} to trash; ${outcome.failedIds.length} failed.`
+              : "I couldn't trash those emails right now.",
+          meta: asMetaItemCount(succeededCount),
         };
       } catch (error) {
         return capabilityFailureResult(error, "I couldn't trash those emails right now.", {
@@ -1518,13 +1603,28 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       }
       try {
         const result = await modifyEmailMessages(provider, messageIds, { read });
+        const outcome = normalizeBulkMutationOutcome({
+          requestedIds: messageIds,
+          result,
+        });
+        const succeededCount = outcome.succeededIds.length;
         return {
-          success: result.success,
-          data: { count: result.count, read },
-          message: read
-            ? `Marked ${result.count} thread${result.count === 1 ? "" : "s"} as read.`
-            : `Marked ${result.count} thread${result.count === 1 ? "" : "s"} as unread.`,
-          meta: asMetaItemCount(result.count),
+          success: outcome.success,
+          data: {
+            count: result.count,
+            read,
+            succeededIds: outcome.succeededIds,
+            failedIds: outcome.failedIds,
+            retriable: outcome.retriable,
+          },
+          message: outcome.success
+            ? read
+              ? `Marked ${succeededCount} thread${succeededCount === 1 ? "" : "s"} as read.`
+              : `Marked ${succeededCount} thread${succeededCount === 1 ? "" : "s"} as unread.`
+            : outcome.partial
+              ? `Updated read state for ${succeededCount} thread${succeededCount === 1 ? "" : "s"}; ${outcome.failedIds.length} failed.`
+              : "I couldn't update read state right now.",
+          meta: asMetaItemCount(succeededCount),
         };
       } catch (error) {
         return capabilityFailureResult(error, "I couldn't update read state right now.", {
@@ -1553,11 +1653,26 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         const result = await modifyEmailMessages(provider, messageIds, {
           labels: { add: normalizedLabels },
         });
+        const outcome = normalizeBulkMutationOutcome({
+          requestedIds: messageIds,
+          result,
+        });
+        const succeededCount = outcome.succeededIds.length;
         return {
-          success: result.success,
-          data: { count: result.count, labels: normalizedLabels },
-          message: `Applied labels to ${result.count} thread${result.count === 1 ? "" : "s"}.`,
-          meta: asMetaItemCount(result.count),
+          success: outcome.success,
+          data: {
+            count: result.count,
+            labels: normalizedLabels,
+            succeededIds: outcome.succeededIds,
+            failedIds: outcome.failedIds,
+            retriable: outcome.retriable,
+          },
+          message: outcome.success
+            ? `Applied labels to ${succeededCount} thread${succeededCount === 1 ? "" : "s"}.`
+            : outcome.partial
+              ? `Applied labels to ${succeededCount} thread${succeededCount === 1 ? "" : "s"}; ${outcome.failedIds.length} failed.`
+              : "I couldn't apply labels right now.",
+          meta: asMetaItemCount(succeededCount),
         };
       } catch (error) {
         return capabilityFailureResult(error, "I couldn't apply labels right now.", {
@@ -1586,11 +1701,26 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         const result = await modifyEmailMessages(provider, messageIds, {
           labels: { remove: normalizedLabels },
         });
+        const outcome = normalizeBulkMutationOutcome({
+          requestedIds: messageIds,
+          result,
+        });
+        const succeededCount = outcome.succeededIds.length;
         return {
-          success: result.success,
-          data: { count: result.count, labels: normalizedLabels },
-          message: `Removed labels from ${result.count} thread${result.count === 1 ? "" : "s"}.`,
-          meta: asMetaItemCount(result.count),
+          success: outcome.success,
+          data: {
+            count: result.count,
+            labels: normalizedLabels,
+            succeededIds: outcome.succeededIds,
+            failedIds: outcome.failedIds,
+            retriable: outcome.retriable,
+          },
+          message: outcome.success
+            ? `Removed labels from ${succeededCount} thread${succeededCount === 1 ? "" : "s"}.`
+            : outcome.partial
+              ? `Removed labels from ${succeededCount} thread${succeededCount === 1 ? "" : "s"}; ${outcome.failedIds.length} failed.`
+              : "I couldn't remove labels right now.",
+          meta: asMetaItemCount(succeededCount),
         };
       } catch (error) {
         return capabilityFailureResult(error, "I couldn't remove labels right now.", {

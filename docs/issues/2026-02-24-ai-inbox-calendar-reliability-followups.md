@@ -22,7 +22,7 @@ Legend: `OPEN`, `IN_PROGRESS`, `BLOCKED`, `DONE`
    - Status: DONE
    - Covers: move false-success, recurring single-instance target, calendar 410 canonical replay
 3. WP-02 Mutation outcome contract hardening
-   - Status: OPEN
+   - Status: DONE
    - Covers: partial failure reporting for bulk email mutations
 4. WP-03 Approval mapping and expiry hardening
    - Status: OPEN
