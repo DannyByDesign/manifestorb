@@ -16,7 +16,6 @@ const TOOL_GROUPS: Record<string, string[]> = {
     "email.getThreadMessages",
     "email.getMessagesBatch",
     "email.getLatestMessage",
-    "search.query",
     "email.listFilters",
     "email.listDrafts",
     "email.getDraft",
@@ -48,7 +47,6 @@ const TOOL_GROUPS: Record<string, string[]> = {
     "calendar.findEvents",
     "calendar.getEvent",
     "calendar.getAvailability",
-    "search.query",
   ],
   "group:calendar_mutate": [
     "calendar.createEvent",
@@ -66,7 +64,6 @@ const TOOL_GROUPS: Record<string, string[]> = {
   "group:cross_surface_planning": [
     "planner.planDay",
     "planner.prioritizeWork",
-    "search.query",
   ],
   "group:web": [
     "web.search",

@@ -21,7 +21,7 @@
     "prisma:migrate:deploy": "bunx prisma migrate deploy --schema prisma/schema.prisma",
     "lint": "eslint",
     "lint:changed": "./scripts/lint-changed.sh",
-    "lint:critical": "bunx eslint src/server/features/search/unified src/server/features/search/index src/server/features/ai/tools/runtime/capabilities/search.ts src/server/features/ai/tools/runtime/capabilities/executors/search.ts src/server/features/ai/tools/runtime/capabilities/memory.ts src/server/features/ai/tools/runtime/capabilities/executors/memory.ts src/server/features/ai/tools/runtime/capabilities/registry.ts --max-warnings=0",
+    "lint:critical": "bunx eslint src/server/features/search/unified src/server/features/search/index src/server/features/ai/tools/runtime/capabilities/memory.ts src/server/features/ai/tools/runtime/capabilities/executors/memory.ts src/server/features/ai/tools/runtime/capabilities/registry.ts --max-warnings=0",
     "lint:baseline": "./scripts/lint-baseline.sh",
     "test-ai": "vitest run --config vitest.config.ts",
     "test:integration": "vitest run --config vitest.config.ts tests/integration/**/*.integration.test.ts",

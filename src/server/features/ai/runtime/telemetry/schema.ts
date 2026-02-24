@@ -15,7 +15,7 @@ export const runtimePlanTelemetrySchema = baseSchema.extend({
 });
 
 export const runtimeRouteSelectedTelemetrySchema = baseSchema.extend({
-  lane: z.enum(["conversation_only", "single_tool", "planner"]),
+  lane: z.enum(["conversation_only", "planner"]),
   profile: z.enum(["fast", "standard", "deep"]),
   reason: z.string().min(1).max(120),
   nativeMaxSteps: z.number().int().nonnegative(),
@@ -47,6 +47,10 @@ export const runtimeTurnCompletedTelemetrySchema = baseSchema.extend({
   failed: z.number().int().nonnegative(),
   approvalsCount: z.number().int().nonnegative(),
   interactivePayloadsCount: z.number().int().nonnegative(),
+  inputTokens: z.number().int().nonnegative().optional(),
+  outputTokens: z.number().int().nonnegative().optional(),
+  totalTokens: z.number().int().nonnegative().optional(),
+  turnCostUsd: z.number().nonnegative().optional(),
   stopReason: z.enum([
     "completed",
     "needs_clarification",
@@ -55,6 +59,34 @@ export const runtimeTurnCompletedTelemetrySchema = baseSchema.extend({
     "max_attempts",
   ]),
   failureReason: z.string().min(1).max(160).optional(),
+});
+
+export const runtimeEmailSearchSuccessMetricSchema = baseSchema.extend({
+  attempts: z.number().int().positive(),
+  successes: z.number().int().nonnegative(),
+  failures: z.number().int().nonnegative(),
+  successRate: z.number().min(0).max(1),
+});
+
+export const runtimeTaskRescheduleSuccessMetricSchema = baseSchema.extend({
+  attempts: z.number().int().positive(),
+  successes: z.number().int().nonnegative(),
+  failures: z.number().int().nonnegative(),
+  successRate: z.number().min(0).max(1),
+});
+
+export const runtimeToolFailureRateByToolMetricSchema = baseSchema.extend({
+  toolName: z.string().min(1).max(120),
+  totalCalls: z.number().int().positive(),
+  failedCalls: z.number().int().nonnegative(),
+  failureRate: z.number().min(0).max(1),
+});
+
+export const runtimeTurnCostUsdMetricSchema = baseSchema.extend({
+  turnCostUsd: z.number().nonnegative(),
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  totalTokens: z.number().int().nonnegative(),
 });
 
 export const runtimePrecheckFailedTelemetrySchema = baseSchema.extend({
@@ -79,7 +111,7 @@ export const runtimeContextHydratedTelemetrySchema = baseSchema.extend({
 });
 
 export const runtimeContextPrunedTelemetrySchema = baseSchema.extend({
-  lane: z.enum(["conversation_only", "single_tool", "planner"]),
+  lane: z.enum(["conversation_only", "planner"]),
   mode: z.enum(["soft", "hard"]),
   beforeChars: z.number().int().nonnegative(),
   afterChars: z.number().int().nonnegative(),
@@ -88,7 +120,7 @@ export const runtimeContextPrunedTelemetrySchema = baseSchema.extend({
 });
 
 export const runtimeCompactionRetryTelemetrySchema = baseSchema.extend({
-  lane: z.enum(["conversation_only", "single_tool", "planner"]),
+  lane: z.enum(["conversation_only", "planner"]),
   overflowDetected: z.boolean(),
   retryAttempted: z.boolean(),
   retrySucceeded: z.boolean(),
@@ -98,7 +130,7 @@ export const runtimeCompactionRetryTelemetrySchema = baseSchema.extend({
 });
 
 export const runtimeContextSlotsTelemetrySchema = baseSchema.extend({
-  lane: z.enum(["conversation_only", "single_tool", "planner"]),
+  lane: z.enum(["conversation_only", "planner"]),
   maxChars: z.number().int().positive(),
   maxFacts: z.number().int().positive(),
   maxKnowledge: z.number().int().positive(),
@@ -114,6 +146,12 @@ const runtimeTelemetrySchemas = {
   "openworld.runtime.context_pruned": runtimeContextPrunedTelemetrySchema,
   "openworld.runtime.compaction_retry": runtimeCompactionRetryTelemetrySchema,
   "openworld.runtime.context_slots": runtimeContextSlotsTelemetrySchema,
+  "openworld.metric.email_search_success_rate": runtimeEmailSearchSuccessMetricSchema,
+  "openworld.metric.task_reschedule_success_rate":
+    runtimeTaskRescheduleSuccessMetricSchema,
+  "openworld.metric.tool_call_failure_rate_by_tool":
+    runtimeToolFailureRateByToolMetricSchema,
+  "openworld.metric.turn_cost_usd": runtimeTurnCostUsdMetricSchema,
   "openworld.turn.completed": runtimeTurnCompletedTelemetrySchema,
   "openworld.runtime.precheck_failed": runtimePrecheckFailedTelemetrySchema,
   "openworld.runtime.clarification_required":

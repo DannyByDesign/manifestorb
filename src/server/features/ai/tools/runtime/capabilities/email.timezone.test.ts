@@ -1,15 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ParsedMessage } from "@/server/lib/types";
 import type { CapabilityEnvironment } from "@/server/features/ai/tools/runtime/capabilities/types";
 import { createEmailCapabilities } from "@/server/features/ai/tools/runtime/capabilities/email";
-import { createUnifiedSearchService } from "@/server/features/search/unified/service";
-
-const unifiedQuery = vi.fn();
-
-vi.mock("@/server/features/search/unified/service", () => ({
-  createUnifiedSearchService: vi.fn(() => ({
-    query: unifiedQuery,
-  })),
-}));
 
 vi.mock("@/server/features/ai/tools/calendar-time", () => ({
   resolveDefaultCalendarTimeZone: vi.fn().mockResolvedValue({
@@ -25,10 +17,48 @@ vi.mock("@/server/features/ai/tools/email/primitives", () => ({
   trashEmailMessages: vi.fn().mockResolvedValue({ success: true, count: 0 }),
 }));
 
+function message(overrides: Partial<ParsedMessage> = {}): ParsedMessage {
+  return {
+    id: overrides.id ?? "m-1",
+    threadId: overrides.threadId ?? "t-1",
+    snippet: overrides.snippet ?? "",
+    historyId: overrides.historyId ?? "h-1",
+    inline: overrides.inline ?? [],
+    headers: overrides.headers ?? {
+      subject: "Subject",
+      from: "sender@example.com",
+      to: "user@example.com",
+      date: "Tue, 16 Feb 2026 12:00:00 +0000",
+    },
+    subject: overrides.subject ?? "Subject",
+    date: overrides.date ?? "2026-02-16T12:00:00.000Z",
+    internalDate: overrides.internalDate ?? "2026-02-16T12:00:00.000Z",
+    attachments: overrides.attachments,
+    textPlain: overrides.textPlain,
+    textHtml: overrides.textHtml,
+    labelIds: overrides.labelIds,
+  };
+}
+
 function buildEnv(options?: {
-  emailProvider?: CapabilityEnvironment["toolContext"]["providers"]["email"];
   currentMessage?: string;
+  search?: CapabilityEnvironment["toolContext"]["providers"]["email"]["search"];
+  getUnreadCount?: CapabilityEnvironment["toolContext"]["providers"]["email"]["getUnreadCount"];
 }): CapabilityEnvironment {
+  const search =
+    options?.search ??
+    vi.fn().mockResolvedValue({
+      messages: [],
+      nextPageToken: undefined,
+      totalEstimate: 0,
+    });
+  const getUnreadCount =
+    options?.getUnreadCount ??
+    vi.fn().mockResolvedValue({
+      count: 0,
+      exact: true,
+    });
+
   return {
     runtime: {
       userId: "user-1",
@@ -58,29 +88,28 @@ function buildEnv(options?: {
         with: vi.fn().mockReturnThis(),
       },
       providers: {
-        email: options?.emailProvider ?? ({} as never),
+        email: {
+          search,
+          getUnreadCount,
+        } as never,
         calendar: {} as never,
       },
     },
   };
 }
 
-describe("runtime email unified search routing", () => {
+describe("runtime email provider search routing", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.mocked(createUnifiedSearchService).mockReturnValue({
-      query: unifiedQuery,
-    } as never);
-    unifiedQuery.mockResolvedValue({
-      items: [],
-      counts: { email: 0, calendar: 0, rule: 0, memory: 0 },
-      total: 0,
-      truncated: false,
-    });
   });
 
-  it("routes inbox search through unified search with mailbox override", async () => {
-    const caps = createEmailCapabilities(buildEnv());
+  it("routes inbox search through provider with mailbox and date bounds", async () => {
+    const search = vi.fn().mockResolvedValue({
+      messages: [],
+      nextPageToken: undefined,
+      totalEstimate: 0,
+    });
+    const caps = createEmailCapabilities(buildEnv({ search }));
 
     await caps.searchInbox({
       query: "portfolio review",
@@ -93,119 +122,99 @@ describe("runtime email unified search routing", () => {
       fetchAll: true,
     });
 
-    expect(unifiedQuery).toHaveBeenCalledWith(
+    expect(search).toHaveBeenCalledWith(
       expect.objectContaining({
-        scopes: ["email"],
-        mailbox: "inbox",
         query: "portfolio review",
-        dateRange: {
-          after: "2026-02-16",
-          before: "2026-02-16",
-          timeZone: "America/Los_Angeles",
-        },
+        receivedByMe: true,
         limit: 25,
         fetchAll: true,
       }),
     );
+    const arg = search.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(arg.after).toBeInstanceOf(Date);
+    expect(arg.before).toBeInstanceOf(Date);
   });
 
-  it("routes sent search through unified search with sent mailbox", async () => {
-    const caps = createEmailCapabilities(buildEnv());
+  it("routes sent search through provider sentByMe", async () => {
+    const search = vi.fn().mockResolvedValue({
+      messages: [],
+      nextPageToken: undefined,
+      totalEstimate: 0,
+    });
+    const caps = createEmailCapabilities(buildEnv({ search }));
     await caps.searchSent({ query: "portfolio review", limit: 10 });
 
-    expect(unifiedQuery).toHaveBeenCalledWith(
+    expect(search).toHaveBeenCalledWith(
       expect.objectContaining({
-        mailbox: "sent",
         query: "portfolio review",
+        sentByMe: true,
         limit: 10,
       }),
     );
   });
 
   it("preserves user-turn semantic query context when explicit query/text is missing", async () => {
+    const search = vi.fn().mockResolvedValue({
+      messages: [],
+      nextPageToken: undefined,
+      totalEstimate: 0,
+    });
     const caps = createEmailCapabilities(
       buildEnv({
+        search,
         currentMessage: "Show me my 10 most recent unread emails",
       }),
     );
+
     await caps.searchInbox({
       unread: true,
       limit: 10,
     });
 
-    expect(unifiedQuery).toHaveBeenCalledWith(
+    expect(search).toHaveBeenCalledWith(
       expect.objectContaining({
-        mailbox: "inbox",
-        query: "Show me my 10 most recent unread emails",
-        unread: true,
+        query: "Show me my 10 most recent unread emails is:unread",
+        receivedByMe: true,
         limit: 10,
       }),
     );
   });
 
-  it("preserves sender filters exactly without validator-side rewrites", async () => {
-    const caps = createEmailCapabilities(buildEnv());
-    await caps.searchInbox({
-      from: "our conversation memory",
-      query: "",
-    });
-
-    expect(unifiedQuery).toHaveBeenCalledWith(
-      expect.objectContaining({
-        mailbox: "inbox",
-        from: "our conversation memory",
-        text: undefined,
-      }),
-    );
-  });
-
-  it("does not strip temporal suffixes from sender filters", async () => {
-    const caps = createEmailCapabilities(buildEnv());
-    await caps.searchInbox({
-      from: "Haseeb in the last 7 days",
-      query: "",
-    });
-
-    expect(unifiedQuery).toHaveBeenCalledWith(
-      expect.objectContaining({
-        mailbox: "inbox",
-        from: "Haseeb in the last 7 days",
-      }),
-    );
-  });
-
-  it("maps unified email items into capability response items", async () => {
-    unifiedQuery.mockResolvedValueOnce({
-      items: [
-        {
-          surface: "email",
-          id: "email:m-1",
-          title: "Portfolio review",
+  it("maps provider email messages into capability response items", async () => {
+    const search = vi.fn().mockResolvedValue({
+      messages: [
+        message({
+          id: "m-1",
+          threadId: "t-1",
+          subject: "Portfolio review",
           snippet: "Let's discuss tomorrow",
-          timestamp: "2026-02-16T12:00:00.000Z",
-          score: 0.99,
-          metadata: {
-            messageId: "m-1",
-            threadId: "t-1",
+          headers: {
+            subject: "Portfolio review",
             from: "sender@example.com",
             to: "user@example.com",
-            hasAttachment: true,
+            date: "Tue, 16 Feb 2026 12:00:00 +0000",
           },
-        },
-        {
-          surface: "calendar",
-          id: "calendar:e-1",
-          title: "Calendar event",
-          snippet: "",
-          score: 0.2,
-        },
+          attachments: [
+            {
+              filename: "brief.pdf",
+              mimeType: "application/pdf",
+              size: 5,
+              attachmentId: "a-1",
+              headers: {
+                "content-type": "application/pdf",
+                "content-description": "",
+                "content-transfer-encoding": "base64",
+                "content-id": "",
+              },
+            },
+          ],
+        }),
       ],
-      counts: { email: 1, calendar: 1, rule: 0, memory: 0 },
-      total: 2,
-      truncated: true,
+      nextPageToken: "next-1",
+      totalEstimate: 2,
     });
 
-    const caps = createEmailCapabilities(buildEnv());
+    const caps = createEmailCapabilities(buildEnv({ search }));
     const result = await caps.searchInbox({ query: "portfolio review" });
 
     expect(result.success).toBe(true);
@@ -216,70 +225,67 @@ describe("runtime email unified search routing", () => {
       threadId: "t-1",
       title: "Portfolio review",
       snippet: "Let's discuss tomorrow",
-      date: "2026-02-16T12:00:00.000Z",
       from: "sender@example.com",
       to: "user@example.com",
       hasAttachment: true,
+      attachmentNames: ["brief.pdf"],
     });
     expect(result.truncated).toBe(true);
     expect(result.paging).toEqual({
-      nextPageToken: null,
+      nextPageToken: "next-1",
       totalEstimate: 2,
     });
   });
 
-  it("derives sender/domain facets from unified search results", async () => {
-    unifiedQuery.mockResolvedValueOnce({
-      items: [
-        {
-          surface: "email",
-          id: "email:m-1",
-          title: "Subject A",
-          snippet: "",
-          timestamp: "2026-02-15T12:00:00.000Z",
-          score: 0.8,
-          metadata: { from: "Alice <alice@alpha.com>", threadId: "t-1" },
-        },
-        {
-          surface: "email",
-          id: "email:m-2",
-          title: "Subject B",
-          snippet: "",
-          timestamp: "2026-02-15T11:00:00.000Z",
-          score: 0.7,
-          metadata: { from: "alice@alpha.com", threadId: "t-2" },
-        },
-        {
-          surface: "email",
-          id: "email:m-3",
-          title: "Subject C",
-          snippet: "",
-          timestamp: "2026-02-15T10:00:00.000Z",
-          score: 0.6,
-          metadata: { from: "bob@beta.com", threadId: "t-3" },
-        },
+  it("derives sender/domain facets from provider search results", async () => {
+    const search = vi.fn().mockResolvedValue({
+      messages: [
+        message({
+          id: "m-1",
+          threadId: "t-1",
+          headers: {
+            subject: "A",
+            from: "Alice <alice@alpha.com>",
+            to: "user@example.com",
+            date: "Tue, 16 Feb 2026 12:00:00 +0000",
+          },
+        }),
+        message({
+          id: "m-2",
+          threadId: "t-2",
+          headers: {
+            subject: "B",
+            from: "alice@alpha.com",
+            to: "user@example.com",
+            date: "Tue, 16 Feb 2026 12:00:00 +0000",
+          },
+        }),
+        message({
+          id: "m-3",
+          threadId: "t-3",
+          headers: {
+            subject: "C",
+            from: "bob@beta.com",
+            to: "user@example.com",
+            date: "Tue, 16 Feb 2026 12:00:00 +0000",
+          },
+        }),
       ],
-      counts: { email: 3, calendar: 0, rule: 0, memory: 0 },
-      total: 3,
-      truncated: false,
     });
-
-    const caps = createEmailCapabilities(buildEnv());
+    const caps = createEmailCapabilities(buildEnv({ search }));
     const result = await caps.facetThreads({
       filter: { query: "invoices" },
       maxFacets: 5,
       scanLimit: 100,
     });
 
-    expect(unifiedQuery).toHaveBeenCalledWith(
+    expect(search).toHaveBeenCalledWith(
       expect.objectContaining({
-        scopes: ["email"],
         query: "invoices",
-        sort: "newest",
         limit: 100,
+        fetchAll: false,
       }),
     );
-
     expect(result.success).toBe(true);
     expect(result.data).toEqual(
       expect.objectContaining({
@@ -301,8 +307,9 @@ describe("runtime email unified search routing", () => {
       count: 1234,
       exact: true,
     });
+    const search = vi.fn();
     const caps = createEmailCapabilities(
-      buildEnv({ emailProvider: { getUnreadCount } as never }),
+      buildEnv({ search, getUnreadCount }),
     );
 
     const result = await caps.getUnreadCount({});
@@ -310,45 +317,45 @@ describe("runtime email unified search routing", () => {
     expect(result.success).toBe(true);
     expect((result.data as { count: number; exact: boolean }).count).toBe(1234);
     expect((result.data as { count: number; exact: boolean }).exact).toBe(true);
-    expect(unifiedQuery).not.toHaveBeenCalled();
+    expect(search).not.toHaveBeenCalled();
   });
 
-  it("falls back to unified unread search when provider counters fail", async () => {
+  it("falls back to provider search when provider counters fail", async () => {
     const getUnreadCount = vi.fn().mockRejectedValue(new Error("provider down"));
-    unifiedQuery.mockResolvedValueOnce({
-      items: [],
-      counts: { email: 0, calendar: 0, rule: 0, memory: 0 },
-      total: 9876,
-      truncated: true,
+    const search = vi.fn().mockResolvedValue({
+      messages: [],
+      nextPageToken: "next-1",
+      totalEstimate: 9876,
     });
     const caps = createEmailCapabilities(
-      buildEnv({ emailProvider: { getUnreadCount } as never }),
+      buildEnv({ search, getUnreadCount }),
     );
 
     const result = await caps.getUnreadCount({});
     expect(result.success).toBe(true);
     expect((result.data as { count: number; exact: boolean }).count).toBe(9876);
     expect((result.data as { count: number; exact: boolean }).exact).toBe(false);
-    expect(unifiedQuery).toHaveBeenCalledWith(
+    expect(search).toHaveBeenCalledWith(
       expect.objectContaining({
-        scopes: ["email"],
-        mailbox: "inbox",
-        query: "unread",
-        unread: true,
-        sort: "newest",
+        query: "unread is:unread",
+        receivedByMe: true,
         limit: 100,
         fetchAll: false,
       }),
     );
   });
 
-  it("uses unified search for sender bulk actions without duplicate search paths", async () => {
-    const caps = createEmailCapabilities(buildEnv());
+  it("uses provider search for sender bulk actions without duplicate search paths", async () => {
+    const search = vi.fn().mockResolvedValue({
+      messages: [],
+      nextPageToken: undefined,
+      totalEstimate: 0,
+    });
+    const caps = createEmailCapabilities(buildEnv({ search }));
     const result = await caps.bulkSenderArchive({ from: "Haseeb" });
 
-    expect(unifiedQuery).toHaveBeenCalledWith(
+    expect(search).toHaveBeenCalledWith(
       expect.objectContaining({
-        scopes: ["email"],
         from: "Haseeb",
         limit: 1000,
         fetchAll: true,

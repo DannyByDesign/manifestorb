@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { z } from "zod";
 import { enforcePolicyForTool } from "@/server/features/ai/policy/enforcement";
-import { toToolDefinitions } from "@/server/features/ai/tools/harness/tool-definition-adapter";
+import { assembleRuntimeSessionTools } from "@/server/features/ai/runtime/mcp-tools";
 import type { RuntimeToolDefinition } from "@/server/features/ai/tools/fabric/types";
 
 vi.mock("@/server/features/ai/policy/enforcement", () => ({
@@ -38,7 +38,7 @@ function buildDefinition(): RuntimeToolDefinition {
   };
 }
 
-describe("tool definition adapter", () => {
+describe("runtime mcp tools", () => {
   beforeEach(() => {
     vi.mocked(enforcePolicyForTool).mockReset();
   });
@@ -60,7 +60,7 @@ describe("tool definition adapter", () => {
       result: unknown;
     }> = [];
 
-    const [tool] = toToolDefinitions({
+    const { tools } = assembleRuntimeSessionTools({
       registry: [buildDefinition()],
       context: {
         policy: {
@@ -75,7 +75,7 @@ describe("tool definition adapter", () => {
       summaries,
     });
 
-    const result = await tool.execute({ query: "latest" });
+    const result = await tools[0]!.execute({ query: "latest" });
     expect(result.success).toBe(true);
     expect(artifacts.interactivePayloads).toHaveLength(1);
     expect(artifacts.approvals).toHaveLength(0);
@@ -105,7 +105,7 @@ describe("tool definition adapter", () => {
       result: unknown;
     }> = [];
 
-    const [tool] = toToolDefinitions({
+    const { tools } = assembleRuntimeSessionTools({
       registry: [buildDefinition()],
       context: {
         policy: {
@@ -120,7 +120,7 @@ describe("tool definition adapter", () => {
       summaries,
     });
 
-    const result = await tool.execute({ query: "latest" });
+    const result = await tools[0]!.execute({ query: "latest" });
     expect(result.success).toBe(false);
     expect(result.error).toBe("approval_required");
     expect(artifacts.approvals).toEqual([{ id: "approval-1" }]);

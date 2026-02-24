@@ -46,16 +46,16 @@ Do not edit files under `generated/` directly; regenerate instead.
 
 1. `src/app/api/chat/route.ts`
 2. `src/server/features/ai/message-processor.ts`
-3. `src/server/features/ai/runtime/*` (turn compilation, tool admission, attempt loop, response contract)
-4. Turn compilation (context-aware):
-   - Lightweight context hydration: `src/server/features/ai/runtime/context/hydrator.ts` (`purpose: "compiler"`)
-   - Compiler context slice: `src/server/features/ai/runtime/compiler-context.ts`
-   - Turn compiler + contract: `src/server/features/ai/runtime/turn-compiler.ts`, `src/server/features/ai/runtime/turn-contract.ts`
+3. `src/server/features/ai/runtime/*` (deterministic turn contract, tool admission, session loop, response contract)
+4. Runtime context hydration:
+   - Progressive hydration + context tiers: `src/server/features/ai/runtime/context/hydrator.ts`, `src/server/features/ai/runtime/context/retrieval-broker.ts`
+   - Deterministic turn contract from message: `src/server/features/ai/runtime/turn-contract.ts`
 5. Tool admission/pruning:
    - Registry + policy layers: `src/server/features/ai/tools/fabric/registry.ts`, `src/server/features/ai/tools/fabric/policy-filter.ts`
    - Candidate filtering + ranking (semantic when embeddings are available, lexical fallback): `src/server/features/ai/tools/fabric/semantic-tool-candidate.ts`
-6. Capability execution via `src/server/features/ai/tools/runtime/capabilities/executors/*`
-7. Mutations are guarded by policy + approvals (below)
+6. Session execution loop + response composition: `src/server/features/ai/runtime/attempt-loop.ts`, `src/server/features/ai/runtime/response-writer.ts`
+7. Capability execution via `src/server/features/ai/tools/runtime/capabilities/executors/*`
+8. Mutations are guarded by policy + approvals (below)
 
 Conversation-only turns are handled as native generation with tools disabled (no tool forcing), while tool-eligible turns run through the standard tool loop.
 

@@ -44,7 +44,8 @@ function mapToolToApprovalTool(toolName: string): string {
     toolName === "calendar.listEvents" ||
     toolName === "calendar.findAvailability" ||
     toolName === "calendar.getEvent" ||
-    toolName === "search.query"
+    toolName === "web.search" ||
+    toolName === "web.fetch"
   ) {
     return "query";
   }
@@ -155,6 +156,17 @@ export async function executeApprovalRequest(params: {
     if (!request || !request.user) {
       throw new Error("Approval request or user not found");
     }
+
+    const approvalRoundtripLatencyMs = Math.max(
+      0,
+      Date.now() - request.createdAt.getTime(),
+    );
+    logger.info("openworld.metric.approval_roundtrip_latency_ms", {
+      userId: request.userId,
+      provider: request.provider,
+      approvalRequestId,
+      latencyMs: approvalRoundtripLatencyMs,
+    });
 
     const payload = request.requestPayload as {
       actionType?: string;

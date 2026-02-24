@@ -13,7 +13,6 @@ import {
   classifyCapabilityError,
 } from "@/server/features/ai/tools/runtime/capabilities/errors";
 import { validateEmailSearchFilter } from "@/server/features/ai/tools/runtime/capabilities/validators/email-search";
-import { createUnifiedSearchService } from "@/server/features/search/unified/service";
 import { createCapabilityIdempotencyKey } from "@/server/features/ai/tools/runtime/capabilities/idempotency";
 import {
   getEmailMessages,
@@ -181,13 +180,78 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
     return defaultTimeZonePromise;
   };
 
-  const unifiedSearch = createUnifiedSearchService({
-    userId: capEnv.runtime.userId,
-    emailAccountId: capEnv.runtime.emailAccountId,
-    email: capEnv.runtime.email,
-    logger: capEnv.runtime.logger,
-    providers: capEnv.toolContext.providers,
-  });
+  const resolveRequestedTimeZone = (
+    source: Record<string, unknown>,
+    dateRange?: Record<string, unknown>,
+  ): string | undefined =>
+    (typeof dateRange?.timeZone === "string" ? dateRange.timeZone : undefined) ??
+    (typeof dateRange?.timezone === "string" ? dateRange.timezone : undefined) ??
+    (typeof source.timeZone === "string" ? source.timeZone : undefined) ??
+    (typeof source.timezone === "string" ? source.timezone : undefined);
+
+  const resolveProviderDateBounds = async (source: Record<string, unknown>) => {
+    const dateRange =
+      source.dateRange && typeof source.dateRange === "object"
+        ? (source.dateRange as Record<string, unknown>)
+        : undefined;
+    const afterRaw =
+      (typeof dateRange?.after === "string" ? dateRange.after : undefined) ??
+      (typeof source.after === "string" ? source.after : undefined);
+    const beforeRaw =
+      (typeof dateRange?.before === "string" ? dateRange.before : undefined) ??
+      (typeof source.before === "string" ? source.before : undefined);
+    if (!afterRaw && !beforeRaw) {
+      return { ok: true as const, after: undefined, before: undefined };
+    }
+
+    const requestedTimeZone = resolveRequestedTimeZone(source, dateRange);
+    const resolvedTimeZone =
+      requestedTimeZone && requestedTimeZone.trim().length > 0
+        ? requestedTimeZone.trim()
+        : (() => null)();
+
+    const fallbackTimeZone = async () => {
+      const defaultTimeZone = await getDefaultTimeZone();
+      if ("error" in defaultTimeZone) {
+        return { ok: false as const, error: defaultTimeZone.error };
+      }
+      return { ok: true as const, timeZone: defaultTimeZone.timeZone };
+    };
+
+    const resolved =
+      resolvedTimeZone !== null
+        ? { ok: true as const, timeZone: resolvedTimeZone }
+        : await fallbackTimeZone();
+    if (!resolved.ok) return resolved;
+
+    const after = afterRaw
+      ? parseDateBoundInTimeZone(afterRaw, resolved.timeZone, "start")
+      : null;
+    if (afterRaw && !after) {
+      return {
+        ok: false as const,
+        error:
+          `Invalid start date "${afterRaw}". Use ISO-8601 or local datetime in timezone ${resolved.timeZone}.`,
+      };
+    }
+
+    const before = beforeRaw
+      ? parseDateBoundInTimeZone(beforeRaw, resolved.timeZone, "end")
+      : null;
+    if (beforeRaw && !before) {
+      return {
+        ok: false as const,
+        error:
+          `Invalid end date "${beforeRaw}". Use ISO-8601 or local datetime in timezone ${resolved.timeZone}.`,
+      };
+    }
+
+    return {
+      ok: true as const,
+      after: after ?? undefined,
+      before: before ?? undefined,
+    };
+  };
 
   const runUnifiedSearchThreads = async (
     filter: Record<string, unknown>,
@@ -402,13 +466,27 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           meta: asMetaItemCount(rows.length),
         };
       } catch (error) {
-        capEnv.runtime.logger.warn("unrepliedToSent query failed; falling back to unified search scan", {
+        capEnv.runtime.logger.warn("unrepliedToSent query failed; falling back to provider scan", {
           userId: capEnv.runtime.userId,
           emailAccountId: capEnv.runtime.emailAccountId,
           error,
         });
 
         try {
+          const resolvedBounds = await resolveProviderDateBounds(requestFilter);
+          if (!resolvedBounds.ok) {
+            return {
+              success: false,
+              error: "invalid_date_range",
+              message: resolvedBounds.error,
+              clarification: {
+                kind: "invalid_fields",
+                prompt: "email_date_range_invalid",
+                missingFields: ["dateRange.after", "dateRange.before"],
+              },
+            };
+          }
+
           const requestQuery =
             typeof requestFilter.query === "string" && requestFilter.query.trim().length > 0
               ? requestFilter.query.trim()
@@ -419,11 +497,8 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
               : undefined;
           const semanticQuery =
             requestQuery ?? requestText ?? (fallbackQuery.length > 0 ? fallbackQuery : undefined);
-
-          const search = await unifiedSearch.query({
-            scopes: ["email"],
-            mailbox: "sent",
-            query: semanticQuery,
+          const providerResult = await provider.search({
+            query: semanticQuery ?? "",
             text: requestText,
             from: requestFrom,
             fromEmails,
@@ -453,25 +528,9 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
               typeof requestFilter.attachmentFilenameContains === "string"
                 ? requestFilter.attachmentFilenameContains
                 : undefined,
-            dateRange: dateRange
-              ? {
-                  after:
-                    typeof dateRange.after === "string" ? dateRange.after : undefined,
-                  before:
-                    typeof dateRange.before === "string" ? dateRange.before : undefined,
-                  timeZone:
-                    typeof dateRange.timeZone === "string"
-                      ? dateRange.timeZone
-                      : typeof dateRange.timezone === "string"
-                        ? dateRange.timezone
-                        : typeof requestFilter.timeZone === "string"
-                          ? requestFilter.timeZone
-                          : typeof requestFilter.timezone === "string"
-                            ? requestFilter.timezone
-                            : undefined,
-                }
-              : undefined,
-            sort: "newest",
+            sentByMe: true,
+            ...(resolvedBounds.after ? { after: resolvedBounds.after } : {}),
+            ...(resolvedBounds.before ? { before: resolvedBounds.before } : {}),
             limit: 120,
             fetchAll: false,
           });
@@ -479,21 +538,12 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           const ownerEmail = (capEnv.runtime.email ?? "").trim().toLowerCase();
           const threadIds = Array.from(
             new Set(
-              search.items
-                .filter((item) => item.surface === "email")
-                .map((item) => {
-                  const metadata =
-                    item.metadata && typeof item.metadata === "object"
-                      ? (item.metadata as Record<string, unknown>)
-                      : {};
-                  const threadId =
-                    typeof metadata.threadId === "string"
-                      ? metadata.threadId
-                      : typeof metadata.sourceParentId === "string"
-                        ? metadata.sourceParentId
-                        : null;
-                  return threadId;
-                })
+              providerResult.messages
+                .map((message) =>
+                  typeof message.threadId === "string" && message.threadId.length > 0
+                    ? message.threadId
+                    : null,
+                )
                 .filter((threadId): threadId is string => Boolean(threadId)),
             ),
           );
@@ -581,14 +631,29 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       // This prevents ranking/filter constraints (e.g. recency/unread) from being dropped.
       const semanticQuery =
         requestQuery ?? requestText ?? (fallbackQuery.length > 0 ? fallbackQuery : undefined);
+      const unread = typeof requestFilter.unread === "boolean" ? requestFilter.unread : undefined;
+      const unreadToken = unread === true ? "is:unread" : unread === false ? "-is:unread" : "";
+      const queryWithUnread =
+        unreadToken.length > 0
+          ? [semanticQuery, unreadToken].filter(Boolean).join(" ").trim()
+          : semanticQuery;
 
-      const result = await unifiedSearch.query({
-        scopes: ["email"],
-        mailbox:
-          mailbox === "inbox" || mailbox === "sent"
-            ? mailbox
-            : undefined,
-        query: semanticQuery,
+      const resolvedBounds = await resolveProviderDateBounds(requestFilter);
+      if (!resolvedBounds.ok) {
+        return {
+          success: false,
+          error: "invalid_date_range",
+          message: resolvedBounds.error,
+          clarification: {
+            kind: "invalid_fields",
+            prompt: "email_date_range_invalid",
+            missingFields: ["dateRange.after", "dateRange.before"],
+          },
+        };
+      }
+
+      const result = await provider.search({
+        query: queryWithUnread ?? "",
         text: requestText,
         from: requestFrom,
         to: requestTo,
@@ -607,10 +672,6 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           requestFilter.category === "forums"
             ? requestFilter.category
             : undefined,
-        unread:
-          typeof requestFilter.unread === "boolean"
-            ? requestFilter.unread
-            : undefined,
         hasAttachment:
           typeof requestFilter.hasAttachment === "boolean"
             ? requestFilter.hasAttachment
@@ -622,30 +683,10 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           typeof requestFilter.attachmentFilenameContains === "string"
             ? requestFilter.attachmentFilenameContains
             : undefined,
-        sort:
-          requestFilter.sort === "relevance" ||
-          requestFilter.sort === "newest" ||
-          requestFilter.sort === "oldest"
-            ? requestFilter.sort
-            : undefined,
-        dateRange: dateRange
-          ? {
-              after:
-                typeof dateRange.after === "string" ? dateRange.after : undefined,
-              before:
-                typeof dateRange.before === "string" ? dateRange.before : undefined,
-              timeZone:
-                typeof dateRange.timeZone === "string"
-                  ? dateRange.timeZone
-                  : typeof dateRange.timezone === "string"
-                    ? dateRange.timezone
-                    : typeof requestFilter.timeZone === "string"
-                      ? requestFilter.timeZone
-                      : typeof requestFilter.timezone === "string"
-                        ? requestFilter.timezone
-                        : undefined,
-            }
-          : undefined,
+        sentByMe: mailbox === "sent" || requestFilter.sentByMe === true,
+        receivedByMe: mailbox === "inbox",
+        ...(resolvedBounds.after ? { after: resolvedBounds.after } : {}),
+        ...(resolvedBounds.before ? { before: resolvedBounds.before } : {}),
         limit:
           typeof requestFilter.limit === "number" && Number.isFinite(requestFilter.limit)
             ? requestFilter.limit
@@ -653,47 +694,23 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         fetchAll: Boolean(requestFilter.fetchAll),
       });
 
-      if (result.queryPlan?.needsClarification) {
-        return {
-          success: false,
-          error: "clarification_required",
-          clarification: {
-            kind: "missing_fields",
-            prompt: result.queryPlan.clarificationPrompt ?? "search_target_unclear",
-            missingFields: ["query"],
-          },
-        };
-      }
-
-      const data = result.items
-        .filter((item) => item.surface === "email")
-        .map((item) => {
-          const metadata =
-            item.metadata && typeof item.metadata === "object"
-              ? (item.metadata as Record<string, unknown>)
-              : {};
-          return {
-            id:
-              typeof metadata.messageId === "string"
-                ? metadata.messageId
-                : item.id,
-            threadId:
-              typeof metadata.threadId === "string"
-                ? metadata.threadId
-                : null,
-            title: item.title,
-            snippet: item.snippet,
-            date: item.timestamp ?? null,
-            from:
-              typeof metadata.from === "string" ? metadata.from : "",
-            to: typeof metadata.to === "string" ? metadata.to : "",
-            hasAttachment: metadata.hasAttachment === true,
-            attachmentNames: Array.isArray(metadata.attachmentNames)
-              ? metadata.attachmentNames
-              : [],
-            score: item.score,
-          };
-        });
+      const data = result.messages.map((message) => ({
+        id: message.id,
+        threadId: message.threadId || null,
+        title: message.subject || message.headers?.subject || "(No subject)",
+        snippet: message.snippet ?? "",
+        date: message.internalDate ?? message.date ?? null,
+        from: message.headers?.from ?? "",
+        to: message.headers?.to ?? "",
+        hasAttachment: Array.isArray(message.attachments) && message.attachments.length > 0,
+        attachmentNames: Array.isArray(message.attachments)
+          ? message.attachments
+              .map((attachment) =>
+                typeof attachment.filename === "string" ? attachment.filename : "",
+              )
+              .filter((filename) => filename.length > 0)
+          : [],
+      }));
 
       return {
         success: true,
@@ -702,10 +719,13 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           data.length === 0
             ? "No matching emails found."
             : `Found ${data.length} matching email${data.length === 1 ? "" : "s"}.`,
-        truncated: result.truncated,
+        truncated: Boolean(result.nextPageToken),
         paging: {
-          nextPageToken: null,
-          totalEstimate: result.total,
+          nextPageToken: result.nextPageToken ?? null,
+          totalEstimate:
+            typeof result.totalEstimate === "number" && Number.isFinite(result.totalEstimate)
+              ? result.totalEstimate
+              : data.length,
         },
         meta: asMetaItemCount(data.length),
       };
@@ -952,11 +972,6 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         };
       }
 
-      const dateRange =
-        filter.dateRange && typeof filter.dateRange === "object"
-          ? (filter.dateRange as Record<string, unknown>)
-          : undefined;
-
       const scanLimit =
         typeof input.scanLimit === "number" && Number.isFinite(input.scanLimit)
           ? Math.max(20, Math.min(800, Math.trunc(input.scanLimit)))
@@ -975,10 +990,22 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         requestQuery ??
         requestText ??
         (fallbackFacetQuery && fallbackFacetQuery.length > 0 ? fallbackFacetQuery : undefined);
+      const resolvedBounds = await resolveProviderDateBounds(filter);
+      if (!resolvedBounds.ok) {
+        return {
+          success: false,
+          error: "invalid_date_range",
+          message: resolvedBounds.error,
+          clarification: {
+            kind: "invalid_fields",
+            prompt: "email_date_range_invalid",
+            missingFields: ["dateRange.after", "dateRange.before"],
+          },
+        };
+      }
 
-      const search = await unifiedSearch.query({
-        scopes: ["email"],
-        query: semanticQuery,
+      const search = await provider.search({
+        query: semanticQuery ?? "",
         text: requestText,
         from: typeof filter.from === "string" ? filter.from : undefined,
         to: typeof filter.to === "string" ? filter.to : undefined,
@@ -1000,42 +1027,16 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         hasAttachment: typeof filter.hasAttachment === "boolean" ? (filter.hasAttachment as boolean) : undefined,
         attachmentMimeTypes: Array.isArray(filter.attachmentMimeTypes) ? (filter.attachmentMimeTypes as string[]) : undefined,
         attachmentFilenameContains: typeof filter.attachmentFilenameContains === "string" ? filter.attachmentFilenameContains : undefined,
-        dateRange: dateRange
-          ? {
-              after:
-                typeof dateRange.after === "string" ? dateRange.after : undefined,
-              before:
-                typeof dateRange.before === "string" ? dateRange.before : undefined,
-              timeZone:
-                typeof dateRange.timeZone === "string"
-                  ? dateRange.timeZone
-                  : typeof dateRange.timezone === "string"
-                    ? dateRange.timezone
-                    : undefined,
-            }
-          : undefined,
-        sort: "newest",
+        ...(resolvedBounds.after ? { after: resolvedBounds.after } : {}),
+        ...(resolvedBounds.before ? { before: resolvedBounds.before } : {}),
         limit: scanLimit,
         fetchAll: false,
       });
 
-      const messages = search.items
-        .filter((item) => item.surface === "email")
-        .map((item) => {
-          const metadata =
-            item.metadata && typeof item.metadata === "object"
-              ? (item.metadata as Record<string, unknown>)
-              : {};
-          return {
-            from: typeof metadata.from === "string" ? metadata.from : "",
-            threadId:
-              typeof metadata.threadId === "string"
-                ? metadata.threadId
-                : typeof metadata.sourceParentId === "string"
-                  ? metadata.sourceParentId
-                  : "",
-          };
-        });
+      const messages = search.messages.map((message) => ({
+        from: message.headers?.from ?? "",
+        threadId: message.threadId ?? "",
+      }));
       const maxFacets =
         typeof input.maxFacets === "number" && Number.isFinite(input.maxFacets)
           ? Math.max(3, Math.min(25, Math.trunc(input.maxFacets)))

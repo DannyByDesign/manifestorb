@@ -5,17 +5,14 @@ import { buildAgentSystemPrompt, type Platform } from "@/server/features/ai/syst
 import { env } from "@/env";
 import type { RuntimeSession } from "@/server/features/ai/runtime/types";
 import type { RuntimeLoopResult } from "@/server/features/ai/runtime/response-contract";
-import { buildRuntimeTurnContext, executeToolCall } from "@/server/features/ai/runtime/tool-runtime";
 import { summarizeRuntimeResults } from "@/server/features/ai/runtime/result-summarizer";
 import { generateRuntimeUserReply } from "@/server/features/ai/runtime/response-writer";
-import { buildRuntimeRoutingPlan } from "@/server/features/ai/runtime/router";
 import { resolveDefaultCalendarTimeZone } from "@/server/features/ai/tools/calendar-time";
 import { emitRuntimeTelemetry } from "@/server/features/ai/runtime/telemetry/schema";
 import { runRuntimeSessionRunner } from "@/server/features/ai/runtime/harness/session-runner";
 import { emitToolLifecycleEvents } from "@/server/features/ai/runtime/harness/tool-events";
 import type { RuntimeToolResult } from "@/server/features/ai/tools/contracts/tool-result";
 import { renderRuntimeContextForPrompt } from "@/server/features/ai/runtime/context/render";
-import { maybeRunDeterministicCrossSurfaceExecutor } from "@/server/features/ai/runtime/deterministic-cross-surface";
 import {
   capTimeoutToRuntimeBudget,
   runWithRuntimeDeadlineContext,
@@ -29,23 +26,10 @@ import {
   maybeRunPreCompactionMemoryFlush,
   resolveMemoryFlushThresholdRatio,
 } from "@/server/features/ai/runtime/context/memory-flush";
-import { resolveRuntimeContextSlotBudget } from "@/server/features/ai/runtime/context/slot-budget";
+import { resolveRuntimeContextSlotBudget, type RuntimeLane } from "@/server/features/ai/runtime/context/slot-budget";
 
 const RUNTIME_TURN_BUDGET_MS = 180_000;
 const MAX_SKILL_PROMPT_CHARS = 2_200;
-const SINGLE_TOOL_TIMEOUT_MIN_MS = 3_000;
-const SINGLE_TOOL_TIMEOUT_MAX_MS = 15_000;
-
-function resolveSingleToolTimeoutMs(): number {
-  const raw = process.env.RUNTIME_SINGLE_TOOL_TIMEOUT_MS;
-  if (typeof raw === "string" && raw.trim().length > 0) {
-    const parsed = Number.parseInt(raw, 10);
-    if (Number.isFinite(parsed)) {
-      return Math.min(Math.max(parsed, SINGLE_TOOL_TIMEOUT_MIN_MS), SINGLE_TOOL_TIMEOUT_MAX_MS);
-    }
-  }
-  return 9_000;
-}
 
 class RuntimeOperationTimeoutError extends Error {
   constructor(
@@ -120,8 +104,7 @@ function normalizeRuntimeHistoryForProvider(history: ModelMessage[]): ModelMessa
     const systemText = extractMessageTextContent(message.content);
     if (!systemText) continue;
     const compact = systemText.replace(/\s+/g, " ").trim();
-    const clipped =
-      compact.length > 320 ? `${compact.slice(0, 317)}...` : compact;
+    const clipped = compact.length > 320 ? `${compact.slice(0, 317)}...` : compact;
     normalized.push({
       role: "assistant",
       content: `Context note: ${clipped}`,
@@ -181,7 +164,7 @@ function formatNowInTimeZone(timeZone: string): string {
 function buildNativeRuntimeSystemPrompt(params: {
   session: RuntimeSession;
   userTimeZone: string;
-  lane: string;
+  lane: RuntimeLane;
 }): string {
   const { session, userTimeZone, lane } = params;
   const basePrompt = buildAgentSystemPrompt({
@@ -192,7 +175,7 @@ function buildNativeRuntimeSystemPrompt(params: {
   const skillSection = session.skillSnapshot.promptSection
     ? session.skillSnapshot.promptSection.slice(0, MAX_SKILL_PROMPT_CHARS)
     : "";
-  const slotBudget = resolveRuntimeContextSlotBudget(lane as Parameters<typeof resolveRuntimeContextSlotBudget>[0]);
+  const slotBudget = resolveRuntimeContextSlotBudget(lane);
   const contextSection = renderRuntimeContextForPrompt(session.input.runtimeContextPack, {
     maxChars: slotBudget.maxChars,
     maxFacts: slotBudget.maxFacts,
@@ -204,38 +187,26 @@ function buildNativeRuntimeSystemPrompt(params: {
 
   return [
     basePrompt,
-    "Runtime loop policy:",
-    `- Route lane: ${lane}.`,
+    "Runtime session policy:",
+    `- Session lane: ${lane}.`,
     `- User timezone: ${userTimeZone}.`,
     `- Current local time for the user: ${formatNowInTimeZone(userTimeZone)}.`,
     "- Interpret relative dates (today, tomorrow, monday, next week) in the user timezone.",
-    "- Prefer the minimum necessary tool calls for simple requests.",
-    "- For greetings/capability questions, answer directly without tools.",
     "- For inbox/calendar facts, call tools rather than guessing.",
-    "- For public facts that may be time-sensitive or unfamiliar (news, prices, latest changes), use web.search instead of guessing.",
-    "- If you need details from a specific URL returned by web.search, use web.fetch on that URL.",
-    "- For follow-up questions about prior results (for example: 'the second one' or 'why that email'), ground your answer in the latest turn evidence before running a new search.",
-    "- Reuse prior grounded tool evidence for follow-ups to avoid redundant retrieval, unless the user disputes correctness or asks to re-check.",
-    "- If the user says the prior factual answer is wrong/inaccurate, run fresh retrieval tools instead of defending the prior answer.",
-    "- Treat scheduled tasks as valid calendar rescheduling targets when the user asks to move/reschedule a task.",
-    "- Do not claim missing capability for task/calendar rescheduling when runtime tools are available; ask a clarifying question if identifiers are missing.",
+    "- Treat task rescheduling as valid calendar rescheduling when task/calendar tools are available.",
     "- If a tool indicates missing fields, ask one precise follow-up question.",
-    "- Keep output concise and natural in assistant voice; avoid rigid templated phrasing.",
+    "- Keep output concise and natural in assistant voice.",
     ...(contextStatus && contextStatus !== "ready"
-      ? [`- Runtime memory context status: ${contextStatus}${contextIssues.length > 0 ? ` (${contextIssues.join(", ")})` : ""}.`]
+      ? [
+          `- Runtime memory context status: ${contextStatus}${
+            contextIssues.length > 0 ? ` (${contextIssues.join(", ")})` : ""
+          }.`,
+        ]
       : []),
     ...(contextSection.promptBlock
-      ? [
-          "Runtime memory context (read-only):",
-          contextSection.promptBlock,
-        ]
+      ? ["Runtime memory context (read-only):", contextSection.promptBlock]
       : []),
-    ...(skillSection
-      ? [
-          "Active skill guidance:",
-          skillSection,
-        ]
-      : []),
+    ...(skillSection ? ["Active skill guidance:", skillSection] : []),
   ].join("\n");
 }
 
@@ -261,232 +232,145 @@ function isOverflowLikeError(error: unknown): boolean {
   );
 }
 
-function resolveNativeMaxSteps(params: {
-  routeMaxSteps: number;
-  userConfiguredMaxSteps?: number;
-}): number {
-  const base = Math.max(1, params.routeMaxSteps);
-  const userMax = params.userConfiguredMaxSteps;
-
-  if (typeof userMax !== "number" || !Number.isFinite(userMax)) {
-    return base;
+function resolveLane(session: RuntimeSession): RuntimeLane {
+  if (session.turn.routeHint === "conversation_only" || session.turn.toolChoice === "none") {
+    return "conversation_only";
   }
+  return "planner";
+}
 
-  return Math.max(1, Math.min(base, Math.trunc(userMax)));
+function resolveNativeMaxSteps(session: RuntimeSession, lane: RuntimeLane): number {
+  const configured = session.userPromptConfig?.maxSteps;
+  if (typeof configured === "number" && Number.isFinite(configured) && configured > 0) {
+    return Math.min(Math.max(1, Math.trunc(configured)), 24);
+  }
+  return lane === "conversation_only" ? 1 : 8;
+}
+
+function resolveNativeTimeoutMs(lane: RuntimeLane): number {
+  return lane === "conversation_only" ? 18_000 : 120_000;
+}
+
+function resolveGenerationUsage(generation: unknown): RuntimeLoopResult["usage"] | undefined {
+  if (!generation || typeof generation !== "object") return undefined;
+  const usage =
+    "usage" in generation && generation.usage && typeof generation.usage === "object"
+      ? (generation.usage as Record<string, unknown>)
+      : undefined;
+  if (!usage) return undefined;
+
+  const inputTokens =
+    typeof usage.inputTokens === "number" && Number.isFinite(usage.inputTokens)
+      ? Math.max(0, Math.trunc(usage.inputTokens))
+      : 0;
+  const outputTokens =
+    typeof usage.outputTokens === "number" && Number.isFinite(usage.outputTokens)
+      ? Math.max(0, Math.trunc(usage.outputTokens))
+      : 0;
+  const totalTokens =
+    typeof usage.totalTokens === "number" && Number.isFinite(usage.totalTokens)
+      ? Math.max(0, Math.trunc(usage.totalTokens))
+      : inputTokens + outputTokens;
+
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+  };
 }
 
 export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLoopResult> {
   const startedAt = Date.now();
+
   return runWithRuntimeDeadlineContext(
     {
       startedAtMs: startedAt,
       deadlineMs: startedAt + RUNTIME_TURN_BUDGET_MS,
     },
     async () => {
-      const context = buildRuntimeTurnContext(session);
-      const routingPlan = await buildRuntimeRoutingPlan({ session });
+      const lane = resolveLane(session);
+      const nativeMaxSteps = resolveNativeMaxSteps(session, lane);
+      const nativeTurnTimeoutMs = resolveNativeTimeoutMs(lane);
+
+      emitRuntimeTelemetry(session.input.logger, "openworld.runtime.route_selected", {
+        userId: session.input.userId,
+        provider: session.input.provider,
+        lane,
+        profile: session.turn.routeProfile,
+        reason: "session_turn_contract",
+        nativeMaxSteps,
+        nativeTurnTimeoutMs,
+        maxAttempts: 1,
+        decisionTimeoutMs: 0,
+        toolCatalogLimit: session.toolRegistry.length,
+        includeSkillGuidance: true,
+      });
 
       const collectedResults = (): RuntimeToolResult[] =>
-        context.session.summaries.map((summary) => summary.result);
-
-      session.input.logger.info("Runtime route selected", {
-    lane: routingPlan.lane,
-    profile: routingPlan.profile,
-    reason: routingPlan.reason,
-    nativeMaxSteps: routingPlan.nativeMaxSteps,
-    nativeTurnTimeoutMs: routingPlan.nativeTurnTimeoutMs,
-    maxAttempts: routingPlan.maxAttempts,
-    decisionTimeoutMs: routingPlan.decisionTimeoutMs,
-    toolCatalogLimit: routingPlan.decisionToolCatalogLimit,
-    includeSkillGuidance: routingPlan.includeSkillGuidance,
-    turnIntent: session.turn.intent,
-    turnRouteHint: session.turn.routeHint,
-  });
-      emitRuntimeTelemetry(session.input.logger, "openworld.runtime.route_selected", {
-    userId: session.input.userId,
-    provider: session.input.provider,
-    lane: routingPlan.lane,
-    profile: routingPlan.profile,
-    reason: routingPlan.reason,
-    nativeMaxSteps: routingPlan.nativeMaxSteps,
-    nativeTurnTimeoutMs: routingPlan.nativeTurnTimeoutMs,
-    maxAttempts: routingPlan.maxAttempts,
-    decisionTimeoutMs: routingPlan.decisionTimeoutMs,
-    toolCatalogLimit: routingPlan.decisionToolCatalogLimit,
-    includeSkillGuidance: routingPlan.includeSkillGuidance,
-  });
+        session.summaries.map((summary) => summary.result);
 
       const composeAssistantReply = async (params: {
-    mode: "final" | "clarification" | "approval_pending" | "error";
-    fallbackText: string;
-  }): Promise<string> => {
-    const runWriter = () =>
-      generateRuntimeUserReply({
-        session,
-        request: session.input.message,
-        results: collectedResults(),
-        approvalsCount: context.session.artifacts.approvals.length,
-        mode: params.mode,
-        fallbackText: params.fallbackText,
-      });
+        mode: "final" | "clarification" | "approval_pending" | "error";
+        fallbackText: string;
+      }): Promise<string> => {
+        const runWriter = () =>
+          generateRuntimeUserReply({
+            session,
+            request: session.input.message,
+            results: collectedResults(),
+            approvalsCount: session.artifacts.approvals.length,
+            mode: params.mode,
+            fallbackText: params.fallbackText,
+          });
 
-    try {
-      return await withRuntimeTimeout({
-        operation: "response_write",
-        timeoutMs: Math.max(5_000, routingPlan.responseWriteTimeoutMs),
-        run: runWriter,
-      });
-    } catch (error) {
-      session.input.logger.warn("Runtime response writer failed", {
-        error,
-        mode: params.mode,
-        phase: "primary",
-      });
-
-      try {
-        return await withRuntimeTimeout({
-          operation: "response_write_retry",
-          timeoutMs: Math.max(routingPlan.responseWriteTimeoutMs, 25_000),
-          run: runWriter,
-        });
-      } catch (retryError) {
-        session.input.logger.error("Runtime response writer failed after retry", {
-          error: retryError,
-          mode: params.mode,
-        });
-        return "I ran into a temporary issue on my side. Please try again, and I'll pick it up from there.";
-      }
-    }
-  };
-
-      const finalizeFromCurrentResults = async (): Promise<RuntimeLoopResult> => {
-    const approvalsCount = context.session.artifacts.approvals.length;
-    const results = collectedResults();
-    const clarificationPrompt = latestClarificationPrompt(results);
-    const fallbackText = summarizeRuntimeResults({
-      request: session.input.message,
-      results,
-      approvalsCount,
-    });
-
-    if (approvalsCount > 0) {
-      return {
-        text: await composeAssistantReply({
-          mode: "approval_pending",
-          fallbackText,
-        }),
-        stopReason: "approval_pending",
-        attempts: 1,
+        try {
+          return await withRuntimeTimeout({
+            operation: "response_write",
+            timeoutMs: 12_000,
+            run: runWriter,
+          });
+        } catch (error) {
+          session.input.logger.warn("Runtime response writer failed", {
+            error,
+            mode: params.mode,
+          });
+          return "I ran into a temporary issue on my side. Please try again, and I'll pick it up from there.";
+        }
       };
-    }
-
-    if (clarificationPrompt) {
-      return {
-        text: await composeAssistantReply({
-          mode: "clarification",
-          fallbackText,
-        }),
-        stopReason: "needs_clarification",
-        attempts: 1,
-      };
-    }
-
-    return {
-      text: await composeAssistantReply({
-        mode: "final",
-        fallbackText,
-      }),
-      stopReason: "completed",
-      attempts: 1,
-    };
-  };
-
-      if (routingPlan.lane === "conversation_only") {
-    // Conversation lane is still a native model turn, just with tools disabled.
-  }
-
-      if (routingPlan.lane === "single_tool" && routingPlan.singleToolCall) {
-    const toolStartedAt = Date.now();
-    try {
-      await withRuntimeTimeout({
-        operation: "single_tool_execution",
-        timeoutMs: resolveSingleToolTimeoutMs(),
-        run: () =>
-          executeToolCall({
-            context,
-            decision: {
-              toolName: routingPlan.singleToolCall!.toolName,
-              args: routingPlan.singleToolCall!.args,
-            },
-          }),
-      });
-    } catch (error) {
-      session.input.logger.warn("Single-tool lane execution failed", {
-        error,
-        toolName: routingPlan.singleToolCall.toolName,
-        reason: routingPlan.singleToolCall.reason,
-        latencyMs: Date.now() - toolStartedAt,
-      });
-      return {
-        text: await composeAssistantReply({
-          mode: "error",
-          fallbackText:
-            routingPlan.singleToolCall.onFailureText ??
-            "I hit a temporary issue while handling that. Please try again.",
-        }),
-        stopReason: "runtime_error",
-        attempts: 1,
-      };
-    }
-
-        return finalizeFromCurrentResults();
-      }
 
       const modelOptions = getModel("economy");
       const generate = createGenerateText({
-    emailAccount: {
-      id: session.input.emailAccountId,
-      email: session.input.email,
-      userId: session.input.userId,
-    },
-    label: "openworld-runtime-native-turn",
-    modelOptions,
-  });
-
-      const slotBudget = resolveRuntimeContextSlotBudget(
-    routingPlan.lane as Parameters<typeof resolveRuntimeContextSlotBudget>[0],
-  );
-      emitRuntimeTelemetry(session.input.logger, "openworld.runtime.context_slots", {
-    userId: session.input.userId,
-    provider: session.input.provider,
-    lane: routingPlan.lane as Parameters<typeof resolveRuntimeContextSlotBudget>[0],
-    maxChars: slotBudget.maxChars,
-    maxFacts: slotBudget.maxFacts,
-    maxKnowledge: slotBudget.maxKnowledge,
-    maxHistory: slotBudget.maxHistory,
-  });
+        emailAccount: {
+          id: session.input.emailAccountId,
+          email: session.input.email,
+          userId: session.input.userId,
+        },
+        label: "openworld-runtime-session-turn",
+        modelOptions,
+      });
 
       const baseMessages = buildRuntimeMessages(session);
       const pruningConfig = resolveRuntimeMessagePruningConfig();
       const softPrune = pruneRuntimeMessages({
-    messages: baseMessages,
-    mode: "soft",
-    config: pruningConfig,
-  });
-      if (softPrune.pruned) {
-    emitRuntimeTelemetry(session.input.logger, "openworld.runtime.context_pruned", {
-      userId: session.input.userId,
-      provider: session.input.provider,
-      lane: routingPlan.lane as Parameters<typeof resolveRuntimeContextSlotBudget>[0],
-      mode: "soft",
-      beforeChars: softPrune.beforeChars,
-      afterChars: softPrune.afterChars,
-      removedCount: softPrune.removedCount,
-      truncatedCount: softPrune.truncatedCount,
-    });
-  }
-      let messagesForGeneration = softPrune.messages;
+        messages: baseMessages,
+        mode: "soft",
+        config: pruningConfig,
+      });
 
+      if (softPrune.pruned) {
+        emitRuntimeTelemetry(session.input.logger, "openworld.runtime.context_pruned", {
+          userId: session.input.userId,
+          provider: session.input.provider,
+          lane,
+          mode: "soft",
+          beforeChars: softPrune.beforeChars,
+          afterChars: softPrune.afterChars,
+          removedCount: softPrune.removedCount,
+          truncatedCount: softPrune.truncatedCount,
+        });
+      }
+
+      let messagesForGeneration = softPrune.messages;
       const flushThresholdRatio = resolveMemoryFlushThresholdRatio();
       if (softPrune.afterChars > pruningConfig.hardLimitChars * flushThresholdRatio) {
         await maybeRunPreCompactionMemoryFlush({
@@ -496,21 +380,10 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
       }
 
       const resolvedTimeZone = await resolveDefaultCalendarTimeZone({
-    userId: session.input.userId,
-    emailAccountId: session.input.emailAccountId,
-  });
+        userId: session.input.userId,
+        emailAccountId: session.input.emailAccountId,
+      });
       const userTimeZone = "error" in resolvedTimeZone ? "UTC" : resolvedTimeZone.timeZone;
-
-      if (routingPlan.lane === "planner") {
-        const deterministic = await maybeRunDeterministicCrossSurfaceExecutor({
-          session,
-          context,
-          userTimeZone,
-        });
-        if (deterministic.handled) {
-          return finalizeFromCurrentResults();
-        }
-      }
 
       const budgetBeforeGenerate = remainingBudgetMs(startedAt);
       if (budgetBeforeGenerate <= 0) {
@@ -524,107 +397,99 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
         };
       }
 
-      const nativeMaxSteps = resolveNativeMaxSteps({
-    routeMaxSteps: routingPlan.nativeMaxSteps,
-    userConfiguredMaxSteps: session.userPromptConfig?.maxSteps,
-  });
-      const nativeTimeoutMs = Math.min(
-    Math.max(10_000, routingPlan.nativeTurnTimeoutMs),
-    budgetBeforeGenerate,
-  );
+      const generationTimeoutMs = Math.min(nativeTurnTimeoutMs, budgetBeforeGenerate);
 
       const runNativeGeneration = (runtimeMessages: ModelMessage[]) =>
         withRuntimeTimeout({
-      operation: "native_generate",
-      timeoutMs: nativeTimeoutMs,
-      run: () =>
-        runRuntimeSessionRunner({
-          generate,
-          model: modelOptions.model,
-          system: buildNativeRuntimeSystemPrompt({
-            session,
-            userTimeZone,
-            lane: routingPlan.lane,
-          }),
-          messages: runtimeMessages,
-          maxSteps: nativeMaxSteps,
-          builtInTools: session.toolHarness.builtInTools,
-          customTools: session.toolHarness.customTools,
-          toolChoice: session.turn.toolChoice,
-        }),
+          operation: "native_generate",
+          timeoutMs: generationTimeoutMs,
+          run: () =>
+            runRuntimeSessionRunner({
+              generate,
+              model: modelOptions.model,
+              system: buildNativeRuntimeSystemPrompt({
+                session,
+                userTimeZone,
+                lane,
+              }),
+              messages: runtimeMessages,
+              maxSteps: nativeMaxSteps,
+              tools: session.tools,
+              toolChoice: session.turn.toolChoice,
+            }),
         });
 
       let generation;
       try {
         generation = await runNativeGeneration(messagesForGeneration);
       } catch (error) {
-    session.input.logger.error("Runtime native generation failed", {
-      error,
-      lane: routingPlan.lane,
-      nativeMaxSteps,
-      nativeTimeoutMs,
-    });
+        session.input.logger.error("Runtime native generation failed", {
+          error,
+          lane,
+          nativeMaxSteps,
+          generationTimeoutMs,
+        });
 
         if (isOverflowLikeError(error)) {
-      const flushQueued = await maybeRunPreCompactionMemoryFlush({
-        session,
-        reason: "overflow",
-      });
-      const hardPrune = pruneRuntimeMessages({
-        messages: messagesForGeneration,
-        mode: "hard",
-        config: pruningConfig,
-      });
+          const flushQueued = await maybeRunPreCompactionMemoryFlush({
+            session,
+            reason: "overflow",
+          });
+          const hardPrune = pruneRuntimeMessages({
+            messages: messagesForGeneration,
+            mode: "hard",
+            config: pruningConfig,
+          });
 
-      emitRuntimeTelemetry(session.input.logger, "openworld.runtime.compaction_retry", {
-        userId: session.input.userId,
-        provider: session.input.provider,
-        lane: routingPlan.lane as Parameters<typeof resolveRuntimeContextSlotBudget>[0],
-        overflowDetected: true,
-        retryAttempted: true,
-        retrySucceeded: false,
-        beforeChars: estimateRuntimeMessagesChars(messagesForGeneration),
-        afterChars: hardPrune.afterChars,
-        memoryFlushQueued: flushQueued,
-      });
-
-      if (hardPrune.pruned) {
-        emitRuntimeTelemetry(session.input.logger, "openworld.runtime.context_pruned", {
-          userId: session.input.userId,
-          provider: session.input.provider,
-          lane: routingPlan.lane as Parameters<typeof resolveRuntimeContextSlotBudget>[0],
-          mode: "hard",
-          beforeChars: hardPrune.beforeChars,
-          afterChars: hardPrune.afterChars,
-          removedCount: hardPrune.removedCount,
-          truncatedCount: hardPrune.truncatedCount,
-        });
-      }
-
-          if (
-        hardPrune.afterChars < estimateRuntimeMessagesChars(messagesForGeneration) &&
-        hardPrune.messages.length > 0
-      ) {
-        try {
-          messagesForGeneration = hardPrune.messages;
-          generation = await runNativeGeneration(messagesForGeneration);
           emitRuntimeTelemetry(session.input.logger, "openworld.runtime.compaction_retry", {
             userId: session.input.userId,
             provider: session.input.provider,
-            lane: routingPlan.lane as Parameters<typeof resolveRuntimeContextSlotBudget>[0],
+            lane,
             overflowDetected: true,
             retryAttempted: true,
-            retrySucceeded: true,
-            beforeChars: hardPrune.beforeChars,
+            retrySucceeded: false,
+            beforeChars: estimateRuntimeMessagesChars(messagesForGeneration),
             afterChars: hardPrune.afterChars,
             memoryFlushQueued: flushQueued,
           });
-        } catch (retryError) {
-          session.input.logger.error("Runtime compaction retry failed", {
-            error: retryError,
-            lane: routingPlan.lane,
-          });
-        }
+
+          if (hardPrune.pruned) {
+            emitRuntimeTelemetry(session.input.logger, "openworld.runtime.context_pruned", {
+              userId: session.input.userId,
+              provider: session.input.provider,
+              lane,
+              mode: "hard",
+              beforeChars: hardPrune.beforeChars,
+              afterChars: hardPrune.afterChars,
+              removedCount: hardPrune.removedCount,
+              truncatedCount: hardPrune.truncatedCount,
+            });
+          }
+
+          if (
+            hardPrune.afterChars < estimateRuntimeMessagesChars(messagesForGeneration) &&
+            hardPrune.messages.length > 0
+          ) {
+            try {
+              messagesForGeneration = hardPrune.messages;
+              generation = await runNativeGeneration(messagesForGeneration);
+              emitRuntimeTelemetry(session.input.logger, "openworld.runtime.compaction_retry", {
+                userId: session.input.userId,
+                provider: session.input.provider,
+                lane,
+                overflowDetected: true,
+                retryAttempted: true,
+                retrySucceeded: true,
+                beforeChars: hardPrune.beforeChars,
+                afterChars: hardPrune.afterChars,
+                memoryFlushQueued: flushQueued,
+              });
+            } catch (retryError) {
+              session.input.logger.error("Runtime compaction retry failed", {
+                error: retryError,
+                lane,
+              });
+            }
           }
         }
 
@@ -646,15 +511,16 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
       });
 
       const results = collectedResults();
-      const approvalsCount = context.session.artifacts.approvals.length;
+      const approvalsCount = session.artifacts.approvals.length;
       const fallbackText = summarizeRuntimeResults({
-    request: session.input.message,
-    results,
-    approvalsCount,
-  });
+        request: session.input.message,
+        results,
+        approvalsCount,
+      });
 
       const finalText = generation.text.trim();
       const clarificationPrompt = latestClarificationPrompt(results);
+      const usage = resolveGenerationUsage(generation);
 
       if (approvalsCount > 0) {
         return {
@@ -663,9 +529,10 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
             (await composeAssistantReply({
               mode: "approval_pending",
               fallbackText,
-            })),
+          })),
           stopReason: "approval_pending",
           attempts: Math.max(1, generation.steps.length),
+          usage,
         };
       }
 
@@ -677,6 +544,7 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
           }),
           stopReason: "needs_clarification",
           attempts: Math.max(1, generation.steps.length),
+          usage,
         };
       }
 
@@ -690,6 +558,7 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
             })),
           stopReason: "runtime_error",
           attempts: Math.max(1, generation.steps.length),
+          usage,
         };
       }
 
@@ -704,6 +573,7 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
           }),
           stopReason: "max_attempts",
           attempts: Math.max(1, generation.steps.length),
+          usage,
         };
       }
 
@@ -716,6 +586,7 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
           })),
         stopReason: "completed",
         attempts: Math.max(1, generation.steps.length),
+        usage,
       };
     },
   );

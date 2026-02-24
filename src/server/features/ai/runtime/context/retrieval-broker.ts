@@ -1,7 +1,6 @@
 import type { EmailAccount } from "@/generated/prisma/client";
 import { ContextManager, type ContextPack } from "@/server/features/memory/context-manager";
 import type { RuntimeTurnContract } from "@/server/features/ai/runtime/turn-contract";
-import { hasRecallSignals } from "@/server/features/ai/runtime/turn-compiler";
 import type { Logger } from "@/server/lib/logger";
 
 export type RuntimeHydrationTier = "bootstrap" | "targeted" | "expanded";
@@ -15,6 +14,12 @@ export interface RuntimeProgressiveContextResult {
 const BOOTSTRAP_TIMEOUT_MS_DEFAULT = 250;
 const TARGETED_TIMEOUT_MS_DEFAULT = 700;
 const EXPANDED_TIMEOUT_MS_DEFAULT = 3_000;
+const RECALL_SIGNAL_RE =
+  /\b(second|first|third|that one|those|the previous|earlier|before|again|same as|as above|last result|follow up)\b/iu;
+
+function hasRecallSignals(message: string): boolean {
+  return RECALL_SIGNAL_RE.test(message);
+}
 
 async function withTimeout<T>(params: {
   timeoutMs: number;

@@ -19,7 +19,7 @@ function baseTurn(overrides: Partial<RuntimeTurnContract> = {}): RuntimeTurnCont
     riskLevel: "low",
     confidence: 0.9,
     toolHints: [],
-    source: "compiler_fallback",
+    source: "deterministic",
     conversationClauses: [],
     taskClauses: [],
     metaConstraints: [],
@@ -34,7 +34,6 @@ describe("resolveRuntimeToolCatalogMaxTools", () => {
   });
 
   it("does not force a max tool count for non-planner turns", () => {
-    expect(resolveRuntimeToolCatalogMaxTools(baseTurn({ routeHint: "single_tool" }))).toBeUndefined();
     expect(resolveRuntimeToolCatalogMaxTools(baseTurn({ routeHint: "conversation_only" }))).toBeUndefined();
   });
 });

@@ -2,19 +2,19 @@ import { describe, expect, it } from "vitest";
 import { validateEmailSearchFilter } from "@/server/features/ai/tools/runtime/capabilities/validators/email-search";
 
 describe("email search filter validator", () => {
-  it("strips trailing temporal phrases from sender scope", () => {
+  it("preserves trailing temporal phrases in sender scope", () => {
     const result = validateEmailSearchFilter({ from: "Haseeb in the last 7 days" });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.filter.from).toBe("Haseeb");
+    expect(result.filter.from).toBe("Haseeb in the last 7 days");
   });
 
-  it("converts conversation-metadata sender scopes into free text", () => {
+  it("preserves conversation-metadata sender scopes as sender filters", () => {
     const result = validateEmailSearchFilter({ from: "our conversation memory" });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.filter.from).toBeUndefined();
-    expect(result.filter.text).toBe("our conversation memory");
+    expect(result.filter.from).toBe("our conversation memory");
+    expect(result.filter.text).toBeUndefined();
   });
 
   it("passes through concrete sender scopes", () => {

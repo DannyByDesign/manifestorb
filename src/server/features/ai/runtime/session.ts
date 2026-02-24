@@ -2,14 +2,11 @@ import { createCapabilities } from "@/server/features/ai/tools/runtime/capabilit
 import { loadRuntimeSkills } from "@/server/features/ai/skills/loader";
 import { buildSkillPromptSnapshot } from "@/server/features/ai/skills/snapshot";
 import { filterToolRegistryDetailed } from "@/server/features/ai/tools/fabric/policy-filter";
+import { buildRuntimeToolRegistryContext } from "@/server/features/ai/tools/fabric/registry";
 import {
-  buildRuntimeToolRegistryContext,
-  buildToolNameLookup,
-} from "@/server/features/ai/tools/fabric/registry";
-import { toToolDefinitions } from "@/server/features/ai/tools/harness/tool-definition-adapter";
-import { splitSdkTools } from "@/server/features/ai/tools/harness/tool-split";
-import { classifyRuntimeTurnContract } from "@/server/features/ai/runtime/turn-contract";
-import type { RuntimeTurnContract } from "@/server/features/ai/runtime/turn-contract";
+  buildRuntimeTurnContractFromMessage,
+  type RuntimeTurnContract,
+} from "@/server/features/ai/runtime/turn-contract";
 import { resolveEffectiveToolPolicy } from "@/server/features/ai/tools/policy/policy-resolver";
 import {
   expandPolicyWithPluginGroups,
@@ -17,15 +14,18 @@ import {
   stripPluginOnlyAllowlist,
 } from "@/server/features/ai/tools/policy/tool-policy";
 import { getModel } from "@/server/lib/llms/model";
+import { assembleRuntimeSessionTools } from "@/server/features/ai/runtime/mcp-tools";
 import prisma from "@/server/db/client";
 import type { RuntimeSession, OpenWorldTurnInput } from "@/server/features/ai/runtime/types";
 import type { ToolExecutionSummary } from "@/server/features/ai/tools/fabric/types";
 
+const SECRETARY_TOOL_PREFIXES = ["email.", "calendar.", "task.", "web."] as const;
+
+function isSecretaryCoreTool(toolName: string): boolean {
+  return SECRETARY_TOOL_PREFIXES.some((prefix) => toolName.startsWith(prefix));
+}
+
 export function resolveRuntimeToolCatalogMaxTools(turn: RuntimeTurnContract): number | undefined {
-  // The planner lane can require multi-step orchestration across inbox/calendar/rules. If we prune the
-  // runtime tool catalog too aggressively, deterministic execution can fail simply because required
-  // tools were ranked out. This does not bypass allow/deny policies; it only avoids accidental ranking
-  // drops for planner turns.
   if (turn.routeHint === "planner") return 96;
   return undefined;
 }
@@ -39,7 +39,7 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
     input.agentId && input.agentId.toLowerCase().includes("subagent"),
   );
 
-  const [capabilities, userAiConfig, turn] = await Promise.all([
+  const [capabilities, userAiConfig] = await Promise.all([
     createCapabilities({
       userId: input.userId,
       emailAccountId: input.emailAccountId,
@@ -69,25 +69,21 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
         toolSubagentPolicy: true,
       },
     }),
-    input.runtimeTurnContract
-      ? Promise.resolve(input.runtimeTurnContract)
-      : classifyRuntimeTurnContract({
-          message: input.message,
-          userId: input.userId,
-          email: input.email,
-          emailAccountId: input.emailAccountId,
-          logger: input.logger,
-        }),
   ]);
+
+  const turn = buildRuntimeTurnContractFromMessage(input.message);
 
   const loadedSkills = loadRuntimeSkills();
   const skillSnapshot = buildSkillPromptSnapshot({
-    message: input.message,
+    turn,
     skills: loadedSkills,
   });
 
   const registryContext = buildRuntimeToolRegistryContext();
   const fullRegistry = registryContext.registry;
+  const secretaryRegistry = fullRegistry.filter((definition) =>
+    isSecretaryCoreTool(definition.toolName),
+  );
 
   const routingModel = getModel("economy");
   const resolvedLayers = resolveEffectiveToolPolicy({
@@ -114,8 +110,11 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
   });
 
   const coreToolNames = new Set(
-    fullRegistry.map((definition) => normalizeToolName(definition.toolName)).filter(Boolean),
+    secretaryRegistry
+      .map((definition) => normalizeToolName(definition.toolName))
+      .filter(Boolean),
   );
+
   const resolvePolicyLayer = (
     policy: typeof resolvedLayers.profilePolicy,
     label: string,
@@ -182,7 +181,7 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
   const filtered =
     turn.toolChoice === "none"
       ? null
-      : await filterToolRegistryDetailed(fullRegistry, {
+      : await filterToolRegistryDetailed(secretaryRegistry, {
           includeDangerous: shouldAdmitDangerousTools(turn),
           message: input.message,
           embeddingEmail: input.email,
@@ -191,32 +190,17 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
           layeredPolicies,
           additionalGroups: registryContext.additionalGroups,
         });
-  const registry = filtered ? filtered.tools : [];
-  const toolLookup = buildToolNameLookup(registry);
 
-  input.logger.info("Runtime turn gate applied", {
-    turnIntent: turn.intent,
-    turnDomain: turn.domain,
-    turnOperation: turn.requestedOperation,
-    turnComplexity: turn.complexity,
-    turnRouteProfile: turn.routeProfile,
-    turnRouteHint: turn.routeHint,
-    turnRiskLevel: turn.riskLevel,
-    turnConfidence: turn.confidence,
-    turnSource: turn.source,
+  const registry = filtered ? filtered.tools : [];
+
+  input.logger.info("Runtime tool catalog resolved", {
     toolCountBefore: fullRegistry.length,
-    toolCountSemanticCandidate: filtered?.diagnostics.counts.semanticCandidate ?? 0,
-    toolCountAfterProfile: filtered?.diagnostics.counts.afterProfile ?? 0,
-    toolCountAfterProviderProfile: filtered?.diagnostics.counts.afterProviderProfile ?? 0,
-    toolCountAfterGlobal: filtered?.diagnostics.counts.afterGlobal ?? 0,
-    toolCountAfterGlobalProvider: filtered?.diagnostics.counts.afterGlobalProvider ?? 0,
-    toolCountAfterAgent: filtered?.diagnostics.counts.afterAgent ?? 0,
-    toolCountAfterAgentProvider: filtered?.diagnostics.counts.afterAgentProvider ?? 0,
-    toolCountAfterGroup: filtered?.diagnostics.counts.afterGroup ?? 0,
-    toolCountAfterSandbox: filtered?.diagnostics.counts.afterSandbox ?? 0,
-    toolCountAfterSubagent: filtered?.diagnostics.counts.afterSubagent ?? 0,
-    toolCountAfterRisk: filtered?.diagnostics.counts.afterRisk ?? 0,
+    toolCountSecretaryScope: secretaryRegistry.length,
     toolCountAfter: registry.length,
+    routeHint: turn.routeHint,
+    requestedOperation: turn.requestedOperation,
+    toolChoice: turn.toolChoice,
+    source: turn.source,
   });
 
   const artifacts = {
@@ -226,7 +210,7 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
 
   const summaries: ToolExecutionSummary[] = [];
 
-  const toolDefinitions = toToolDefinitions({
+  const assembledTools = assembleRuntimeSessionTools({
     registry,
     context: {
       policy: {
@@ -244,10 +228,6 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
     artifacts,
     summaries,
   });
-  const toolHarness = splitSdkTools({
-    tools: toolDefinitions,
-    sandboxEnabled: false,
-  });
 
   return {
     input,
@@ -259,12 +239,12 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
           maxSteps: userAiConfig.maxSteps ?? undefined,
           approvalInstructions: userAiConfig.approvalInstructions ?? undefined,
           customInstructions: userAiConfig.customInstructions ?? undefined,
-        conversationCategories: userAiConfig.conversationCategories ?? undefined,
-      }
-    : undefined,
-    toolHarness,
+          conversationCategories: userAiConfig.conversationCategories ?? undefined,
+        }
+      : undefined,
+    tools: assembledTools.tools,
+    sessionToolLookup: assembledTools.toolLookup,
     toolRegistry: registry,
-    toolLookup,
     artifacts,
     summaries,
   };

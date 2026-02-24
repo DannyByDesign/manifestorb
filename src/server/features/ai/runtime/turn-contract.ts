@@ -1,18 +1,3 @@
-import type { Logger } from "@/server/lib/logger";
-import { createScopedLogger } from "@/server/lib/logger";
-import {
-  compileRuntimeTurn,
-  inferDomainFromTaskClauses,
-  inferOperationFromTaskClauses,
-  inferRouteProfileFromComplexity,
-  inferToolHints,
-  type RuntimeCompiledTurn,
-  type RuntimeSingleToolCall,
-  type RuntimeToolChoice,
-  type RuntimeKnowledgeSource,
-  type RuntimeFreshness,
-} from "@/server/features/ai/runtime/turn-compiler";
-
 export type RuntimeTurnIntent =
   | "greeting"
   | "capabilities"
@@ -43,177 +28,109 @@ export interface RuntimeTurnContract {
   requestedOperation: RuntimeRequestedOperation;
   complexity: RuntimeComplexity;
   routeProfile: RuntimeRouteProfile;
-  routeHint: "conversation_only" | "single_tool" | "planner";
-  toolChoice: RuntimeToolChoice;
-  knowledgeSource: RuntimeKnowledgeSource;
-  freshness: RuntimeFreshness;
+  routeHint: "conversation_only" | "planner";
+  toolChoice: "none" | "auto";
+  knowledgeSource: "internal" | "web" | "either";
+  freshness: "low" | "high";
   riskLevel: RuntimeRiskLevel;
   confidence: number;
   toolHints: string[];
-  source: "compiler_model" | "compiler_fallback";
+  source: "deterministic";
   conversationClauses: string[];
-  taskClauses: RuntimeCompiledTurn["taskClauses"];
+  taskClauses: Array<{ domain: string; action: string; confidence: number }>;
   metaConstraints: string[];
   needsClarification: boolean;
-  singleToolCall?: RuntimeSingleToolCall;
 }
 
-function inferIntent(params: {
-  domain: RuntimeTurnDomain;
-  requestedOperation: RuntimeRequestedOperation;
-  routeHint: RuntimeCompiledTurn["routeHint"];
-  toolChoice: RuntimeCompiledTurn["toolChoice"];
-}): RuntimeTurnIntent {
-  if (params.routeHint === "conversation_only" && params.toolChoice === "none") {
-    return "general";
-  }
+const GREETING_ONLY_RE =
+  /^(?:hi|hello|hey|yo|sup|good\s+(?:morning|afternoon|evening)|howdy|thanks|thank you)[!. ]*$/iu;
+const INBOX_KEYWORD_RE =
+  /\b(inbox|email|emails|thread|threads|message|messages|draft|drafts|unread|sent)\b/iu;
+const CALENDAR_KEYWORD_RE =
+  /\b(calendar|event|events|meeting|meetings|availability|schedule|reschedule|time slot|timeslot|task|tasks)\b/iu;
+const POLICY_KEYWORD_RE = /\b(policy|rule|rules|approval|guardrail|automation)\b/iu;
+const READ_VERB_RE =
+  /\b(find|show|list|search|get|check|count|summarize|what(?:'s| is)?|when(?:'s| is)?|which)\b/iu;
+const MUTATE_VERB_RE =
+  /\b(create|draft|send|reply|forward|delete|remove|trash|archive|unsubscribe|move|set|update|change|reschedule|schedule|block|allow|enable|disable)\b/iu;
 
-  if (params.domain === "cross_surface") return "cross_surface_plan";
-  if (params.domain === "inbox") {
-    if (params.requestedOperation === "mutate" || params.requestedOperation === "mixed") {
-      return "inbox_mutation";
-    }
-    return "inbox_read";
-  }
-  if (params.domain === "calendar") {
-    if (params.requestedOperation === "mutate" || params.requestedOperation === "mixed") {
-      return "calendar_mutation";
-    }
-    return "calendar_read";
-  }
-  if (params.domain === "policy") return "policy_controls";
-  return "general";
-}
+export function buildRuntimeTurnContractFromMessage(message: string): RuntimeTurnContract {
+  const normalized = message.trim();
+  const greetingOnly = GREETING_ONLY_RE.test(normalized);
+  const hasReadVerb = READ_VERB_RE.test(normalized);
+  const hasMutateVerb = MUTATE_VERB_RE.test(normalized);
 
-function inferComplexity(params: {
-  taskClauses: RuntimeCompiledTurn["taskClauses"];
-  domain: RuntimeTurnDomain;
-  requestedOperation: RuntimeRequestedOperation;
-  routeHint: RuntimeCompiledTurn["routeHint"];
-  needsClarification: boolean;
-}): RuntimeComplexity {
-  if (params.routeHint === "conversation_only") return "simple";
-  if (
-    params.domain === "cross_surface" ||
-    params.requestedOperation === "mixed" ||
-    params.taskClauses.length >= 3
-  ) {
-    return "complex";
-  }
-  if (
-    params.requestedOperation === "mutate" ||
-    params.taskClauses.length >= 1 ||
-    params.needsClarification
-  ) {
-    return "moderate";
-  }
-  return "simple";
-}
+  const requestedOperation: RuntimeRequestedOperation = greetingOnly
+    ? "meta"
+    : hasMutateVerb && hasReadVerb
+      ? "mixed"
+      : hasMutateVerb
+        ? "mutate"
+        : hasReadVerb
+          ? "read"
+          : "meta";
 
-function inferRisk(params: {
-  domain: RuntimeTurnDomain;
-  requestedOperation: RuntimeRequestedOperation;
-}): RuntimeRiskLevel {
-  if (params.requestedOperation === "meta" || params.requestedOperation === "read") return "low";
-  if (params.domain === "cross_surface" && params.requestedOperation === "mixed") {
-    return "high";
-  }
-  return "medium";
-}
+  const domain: RuntimeTurnDomain = POLICY_KEYWORD_RE.test(normalized)
+    ? "policy"
+    : INBOX_KEYWORD_RE.test(normalized) && CALENDAR_KEYWORD_RE.test(normalized)
+      ? "cross_surface"
+      : INBOX_KEYWORD_RE.test(normalized)
+        ? "inbox"
+        : CALENDAR_KEYWORD_RE.test(normalized)
+          ? "calendar"
+          : "general";
 
-export async function classifyRuntimeTurnContract(params: {
-  message: string;
-  userId: string;
-  email: string;
-  emailAccountId: string;
-  contextPack?: import("@/server/features/memory/context-manager").ContextPack;
-  logger?: Logger;
-}): Promise<RuntimeTurnContract> {
-  const message = params.message.trim();
-  const logger = params.logger ?? createScopedLogger("RuntimeTurnContract");
+  const complexity: RuntimeComplexity =
+    requestedOperation === "mixed" || domain === "cross_surface"
+      ? "complex"
+      : requestedOperation === "mutate"
+        ? "moderate"
+        : "simple";
 
-  if (!message) {
-    return {
-      intent: "general",
-      domain: "general",
-      requestedOperation: "meta",
-      complexity: "simple",
-      routeProfile: "fast",
-      routeHint: "conversation_only",
-      toolChoice: "none",
-      knowledgeSource: "either",
-      freshness: "low",
-      riskLevel: "low",
-      confidence: 0.6,
-      toolHints: [],
-      source: "compiler_fallback",
-      conversationClauses: [],
-      taskClauses: [],
-      metaConstraints: [],
-      needsClarification: false,
-    };
-  }
+  const routeProfile: RuntimeRouteProfile =
+    complexity === "complex" ? "deep" : complexity === "moderate" ? "standard" : "fast";
 
-  const compiled = await compileRuntimeTurn({
-    message,
-    userId: params.userId,
-    email: params.email,
-    emailAccountId: params.emailAccountId,
-    logger,
-    contextPack: params.contextPack,
-  });
+  const riskLevel: RuntimeRiskLevel =
+    requestedOperation === "meta" || requestedOperation === "read"
+      ? "low"
+      : requestedOperation === "mixed"
+        ? "high"
+        : "medium";
 
-  const domain = inferDomainFromTaskClauses(compiled.taskClauses) as RuntimeTurnDomain;
-  const requestedOperation = inferOperationFromTaskClauses(compiled.taskClauses);
-  const complexity = inferComplexity({
-    taskClauses: compiled.taskClauses,
-    domain,
-    requestedOperation,
-    routeHint: compiled.routeHint,
-    needsClarification: compiled.needsClarification,
-  });
-  const routeProfile = inferRouteProfileFromComplexity(complexity);
-  const riskLevel = inferRisk({ domain, requestedOperation });
-  const intent = inferIntent({
-    domain,
-    requestedOperation,
-    routeHint: compiled.routeHint,
-    toolChoice: compiled.toolChoice,
-  });
+  const intent: RuntimeTurnIntent =
+    domain === "inbox"
+      ? requestedOperation === "mutate" || requestedOperation === "mixed"
+        ? "inbox_mutation"
+        : "inbox_read"
+      : domain === "calendar"
+        ? requestedOperation === "mutate" || requestedOperation === "mixed"
+          ? "calendar_mutation"
+          : "calendar_read"
+        : domain === "policy"
+          ? "policy_controls"
+          : domain === "cross_surface"
+            ? "cross_surface_plan"
+            : greetingOnly
+              ? "greeting"
+              : "general";
 
-  const contract: RuntimeTurnContract = {
+  return {
     intent,
     domain,
     requestedOperation,
     complexity,
     routeProfile,
-    routeHint: compiled.routeHint,
-    toolChoice: compiled.toolChoice,
-    knowledgeSource: compiled.knowledgeSource,
-    freshness: compiled.freshness,
+    routeHint: greetingOnly ? "conversation_only" : "planner",
+    toolChoice: greetingOnly ? "none" : "auto",
+    knowledgeSource: "either",
+    freshness: "low",
     riskLevel,
-    confidence: Number(compiled.confidence.toFixed(4)),
-    toolHints: inferToolHints({ domain, requestedOperation }),
-    source: compiled.source,
-    conversationClauses: compiled.conversationClauses,
-    taskClauses: compiled.taskClauses,
-    metaConstraints: compiled.metaConstraints,
-    needsClarification: compiled.needsClarification,
-    ...(compiled.singleToolCall ? { singleToolCall: compiled.singleToolCall } : {}),
+    confidence: 0.65,
+    toolHints: [],
+    source: "deterministic",
+    conversationClauses: [],
+    taskClauses: [],
+    metaConstraints: [],
+    needsClarification: false,
   };
-
-  logger.trace("Runtime turn contract resolved", {
-    intent: contract.intent,
-    domain: contract.domain,
-    requestedOperation: contract.requestedOperation,
-    complexity: contract.complexity,
-    routeProfile: contract.routeProfile,
-    routeHint: contract.routeHint,
-    confidence: contract.confidence,
-    source: contract.source,
-    metaConstraints: contract.metaConstraints,
-    hasSingleToolCall: Boolean(contract.singleToolCall),
-  });
-
-  return contract;
 }

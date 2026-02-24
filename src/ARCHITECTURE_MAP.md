@@ -24,8 +24,8 @@ src/
 3. `src/server/features/channels/executor.ts`
 4. `src/server/features/ai/message-processor.ts`
 5. `src/server/features/ai/runtime/*`
-   - turn compilation: `src/server/features/ai/runtime/turn-contract.ts`, `src/server/features/ai/runtime/turn-compiler.ts`
-   - compiler context slice (follow-up resolution): `src/server/features/ai/runtime/compiler-context.ts`
+   - deterministic turn contract: `src/server/features/ai/runtime/turn-contract.ts`
+   - session execution loop: `src/server/features/ai/runtime/attempt-loop.ts`
    - tool admission/pruning: `src/server/features/ai/runtime/session.ts`, `src/server/features/ai/tools/fabric/policy-filter.ts`
 6. `src/server/features/ai/tools/*`
    - registry: `src/server/features/ai/tools/runtime/capabilities/registry.ts`

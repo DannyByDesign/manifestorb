@@ -15,44 +15,38 @@ The runtime is "open-world": the model produces tool calls, those tool calls are
 
 - Runtime kernel: `runtime/index.ts`
   - `runOpenWorldRuntimeTurn(...)` is the main orchestration entrypoint
-  - hydrates a lightweight ContextPack first for turn compilation (follow-up resolution)
-  - classifies the turn contract (conversation vs tool-eligible, domain/operation, web vs internal knowledge)
-  - hydrates the full runtime ContextPack for execution
+  - hydrates the runtime ContextPack for execution
+  - builds a deterministic turn contract for session/tool policy
+  - runs a single session execution loop with bounded steps and tool policies
 
 ## Runtime Layout
 
 Key subdirectories/files:
 - `system-prompt.ts`: minimal global policy/style shell (identity, safety, formatting)
-- `runtime/`: budgets, attempt loop, response contract, and tool-runtime glue
+- `runtime/`: budgets, session attempt loop, response contract, and MCP-style tool assembly
 - `tools/`: tool registry + executors
   - `tools/runtime/capabilities/registry.ts`: canonical tool metadata (source of truth)
   - `tools/runtime/capabilities/executors/*`: actual implementations (email/calendar/memory/search/etc.)
 - `security.ts`: prompt-injection protection and other safety hardening
 
-## Turn Compilation (Context-Aware)
+## Turn Contract (Deterministic)
 
-The runtime compiles each user turn into a `RuntimeTurnContract` which drives:
+The runtime converts each user turn into a deterministic `RuntimeTurnContract` which drives:
 - whether tools are allowed (`toolChoice`)
 - whether the turn is conversation-only vs tool-eligible (`routeHint`)
 - whether the turn should prefer internal knowledge vs web (`knowledgeSource`)
 - whether freshness matters (`freshness`)
-- optional single-tool fast path (`singleToolCall`) for simple, high-confidence reads
 
 Relevant files:
 - contract: `src/server/features/ai/runtime/turn-contract.ts`
-- compiler: `src/server/features/ai/runtime/turn-compiler.ts`
-- compiler context slice: `src/server/features/ai/runtime/compiler-context.ts`
-
-To prevent "each message is a new task" behavior on follow-ups (for example "do the second one" or "yes, send it"), the compiler is given a clipped slice of the same `ContextPack` used for execution. This avoids a separate compiler-only memory system while keeping the compiler prompt small and stable.
 
 ## Routing Lanes
 
-Routing is determined primarily by the compiled turn contract:
-- `conversation_only`: native generation with tools disabled (no tool forcing).
-- `single_tool`: deterministic execution of an admitted `singleToolCall` when available.
-- `planner`: normal tool loop with a pruned tool catalog and bounded attempts.
+Execution is determined by the turn contract:
+- `conversation_only`: native generation with tools disabled.
+- `planner`: normal tool loop with a pruned tool catalog and bounded steps.
 
-See `src/server/features/ai/runtime/router.ts`.
+Routing is handled directly in `src/server/features/ai/runtime/attempt-loop.ts`.
 
 ## Tool Admission (Pruning + Policy Layers)
 
@@ -72,7 +66,7 @@ Session wiring and telemetry: `src/server/features/ai/runtime/session.ts`.
 
 Web tools are implemented under `src/server/features/ai/tools/runtime/capabilities/web.ts` and registered in `src/server/features/ai/tools/runtime/capabilities/registry.ts`.
 
-Explicit user requests to search the web are routed deterministically to `web.search` (single-tool lane). Otherwise, web tools are admitted only when the compiled turn contract sets `knowledgeSource` to `web` or `either`.
+Explicit user requests to search the web are admitted through the session tool catalog and handled by the same session loop.
 
 ## Safety Model
 

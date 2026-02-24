@@ -1,6 +1,5 @@
 export type RuntimeLane =
   | "conversation_only"
-  | "single_tool"
   | "planner";
 
 export interface RuntimeContextSlotBudget {
@@ -16,12 +15,6 @@ const DEFAULT_BUDGETS: Record<RuntimeLane, RuntimeContextSlotBudget> = {
     maxFacts: 4,
     maxKnowledge: 3,
     maxHistory: 3,
-  },
-  single_tool: {
-    maxChars: 2_200,
-    maxFacts: 6,
-    maxKnowledge: 3,
-    maxHistory: 4,
   },
   planner: {
     maxChars: 4_200,

@@ -28,6 +28,13 @@ export function summarizeRuntimeResults(params: {
     );
   }
 
+  for (let i = successful.length - 1; i >= 0; i -= 1) {
+    const message = successful[i]?.message;
+    if (typeof message === "string" && message.trim().length > 0) {
+      return message.trim();
+    }
+  }
+
   const itemCount = successful
     .map((result) => extractList(result.data).length)
     .find((count) => count > 0);

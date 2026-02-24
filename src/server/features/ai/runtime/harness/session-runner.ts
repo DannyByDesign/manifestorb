@@ -1,23 +1,11 @@
 import { type ModelMessage, type ToolSet } from "ai";
 import type { createGenerateText } from "@/server/lib/llms";
-import type { RuntimeCustomToolDefinition } from "@/server/features/ai/tools/harness/types";
+import { toAiToolSet, type RuntimeSessionTool } from "@/server/features/ai/runtime/mcp-tools";
 
 type GenerateTextCall = Parameters<ReturnType<typeof createGenerateText>>[0];
 type GenerateTextWithMaxSteps = (
   params: GenerateTextCall & { maxSteps?: number },
 ) => ReturnType<ReturnType<typeof createGenerateText>>;
-
-function toAiSdkToolSet(customTools: RuntimeCustomToolDefinition[]): ToolSet {
-  const tools: Record<string, ToolSet[string]> = {};
-  for (const tool of customTools) {
-    tools[tool.name] = {
-      description: tool.description,
-      inputSchema: tool.inputSchema,
-      execute: tool.execute,
-    };
-  }
-  return tools;
-}
 
 export async function runRuntimeSessionRunner(params: {
   generate: ReturnType<typeof createGenerateText>;
@@ -25,8 +13,7 @@ export async function runRuntimeSessionRunner(params: {
   system: string;
   messages: ModelMessage[];
   maxSteps: number;
-  builtInTools: RuntimeCustomToolDefinition[];
-  customTools: RuntimeCustomToolDefinition[];
+  tools: RuntimeSessionTool[];
   toolChoice?: GenerateTextCall["toolChoice"];
 }) {
   const generateWithMaxSteps = params.generate as unknown as GenerateTextWithMaxSteps;
@@ -35,10 +22,7 @@ export async function runRuntimeSessionRunner(params: {
   const tools =
     toolChoice === "none"
       ? undefined
-      : toAiSdkToolSet([
-          ...params.builtInTools,
-          ...params.customTools,
-        ]);
+      : (toAiToolSet(params.tools) as ToolSet);
 
   return await generateWithMaxSteps({
     model: params.model,

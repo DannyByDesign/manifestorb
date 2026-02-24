@@ -1,154 +1,39 @@
-// Fork-adapted from OpenClaw web tooling:
-// /Users/dannywang/Projects/openclaw/src/agents/tools/web-search.ts
-// /Users/dannywang/Projects/openclaw/src/agents/tools/web-fetch.ts
-import type { Dispatcher } from "undici";
 import type { CapabilityEnvironment } from "@/server/features/ai/tools/runtime/capabilities/types";
 import type { ToolResult } from "@/server/features/ai/tools/types";
-import { sleep } from "@/server/lib/sleep";
 import { computeExponentialBackoffDelay } from "@/server/features/ai/tools/common/backoff";
 import { capTimeoutToRuntimeBudget } from "@/server/features/ai/runtime/deadline-context";
-import {
-  CacheEntry,
-  DEFAULT_CACHE_TTL_MINUTES,
-  DEFAULT_TIMEOUT_SECONDS,
-  clearRuntimeWebCache,
-  normalizeCacheKey,
-  readCache,
-  readResponseText,
-  resolveCacheTtlMs,
-  resolveTimeoutSeconds,
-  withTimeout,
-  writeCache,
-} from "@/server/features/ai/tools/runtime/capabilities/web-shared";
-import {
-  type ExtractMode,
-  extractReadableContent,
-  htmlToMarkdown,
-  markdownToText,
-  truncateText,
-} from "@/server/features/ai/tools/runtime/capabilities/web-fetch-utils";
-import {
-  closeDispatcher,
-  createPinnedDispatcher,
-  resolvePinnedHostname,
-  SsrfBlockedError,
-} from "@/server/features/ai/tools/runtime/capabilities/web-ssrf";
+import { sleep } from "@/server/lib/sleep";
 
-const SEARCH_PROVIDERS = ["brave", "perplexity"] as const;
-type SearchProvider = (typeof SEARCH_PROVIDERS)[number];
+type CacheEntry<T> = {
+  value: T;
+  expiresAt: number;
+  insertedAt: number;
+};
 
-const BRAVE_SEARCH_ENDPOINT = "https://api.search.brave.com/res/v1/web/search";
-const DEFAULT_PERPLEXITY_BASE_URL = "https://openrouter.ai/api/v1";
-const PERPLEXITY_DIRECT_BASE_URL = "https://api.perplexity.ai";
-const DEFAULT_PERPLEXITY_MODEL = "perplexity/sonar-pro";
-const PERPLEXITY_KEY_PREFIXES = ["pplx-"];
-const OPENROUTER_KEY_PREFIXES = ["sk-or-"];
+const ANTHROPIC_MESSAGES_ENDPOINT = "https://api.anthropic.com/v1/messages";
+const ANTHROPIC_VERSION_HEADER = "2023-06-01";
+const ANTHROPIC_WEB_SEARCH_DOCS_URL =
+  "https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/web-search-tool";
+const ANTHROPIC_WEB_FETCH_DOCS_URL =
+  "https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/web-fetch-tool";
 
-const DEFAULT_SEARCH_COUNT = 5;
-const MAX_SEARCH_COUNT = 10;
-const MAX_SEARCH_ENRICH_TOP_K = 3;
-const DEFAULT_SEARCH_ENRICH_MAX_CHARS = 6_000;
+const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-5";
+const DEFAULT_ANTHROPIC_WEB_SEARCH_TOOL = "web_search_20260209";
+const FALLBACK_ANTHROPIC_WEB_SEARCH_TOOL = "web_search_20250305";
+const DEFAULT_ANTHROPIC_WEB_FETCH_TOOL = "web_fetch_20260209";
+const FALLBACK_ANTHROPIC_WEB_FETCH_TOOL = "web_fetch_20250910";
+
+const DEFAULT_TIMEOUT_SECONDS = 30;
+const DEFAULT_CACHE_TTL_MINUTES = 15;
 const DEFAULT_SEARCH_RETRY_ATTEMPTS = 3;
 const DEFAULT_SEARCH_RETRY_BASE_DELAY_MS = 500;
-const WEB_SEARCH_CIRCUIT_FAILURE_THRESHOLD = 3;
-const WEB_SEARCH_CIRCUIT_OPEN_MS = 90_000;
-const BRAVE_FRESHNESS_SHORTCUTS = new Set(["pd", "pw", "pm", "py"]);
-const BRAVE_FRESHNESS_RANGE = /^(\d{4}-\d{2}-\d{2})to(\d{4}-\d{2}-\d{2})$/;
-
+const DEFAULT_SEARCH_COUNT = 5;
+const MAX_SEARCH_COUNT = 10;
 const DEFAULT_FETCH_MAX_CHARS = 50_000;
-const DEFAULT_FETCH_MAX_REDIRECTS = 3;
 const DEFAULT_ERROR_MAX_CHARS = 4_000;
-const DEFAULT_FETCH_USER_AGENT =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
-const DEFAULT_FIRECRAWL_BASE_URL = "https://api.firecrawl.dev";
-const DEFAULT_FIRECRAWL_MAX_AGE_MS = 172_800_000;
-
-const WEB_DOCS_URL = "https://brave.com/search/api/";
-const FIRECRAWL_DOCS_URL = "https://docs.firecrawl.dev/";
-
-type SearchCircuitState = {
-  consecutiveFailures: number;
-  openUntilMs: number;
-  lastError?: string;
-};
-
-const SEARCH_CIRCUITS: Record<SearchProvider, SearchCircuitState> = {
-  brave: { consecutiveFailures: 0, openUntilMs: 0 },
-  perplexity: { consecutiveFailures: 0, openUntilMs: 0 },
-};
-
-type PerplexityApiKeySource = "config" | "perplexity_env" | "openrouter_env" | "none";
-
-type SearchSettings = {
-  enabled: boolean;
-  provider: SearchProvider;
-  maxResults: number;
-  timeoutSeconds: number;
-  cacheTtlMs: number;
-  retryAttempts: number;
-  retryBaseDelayMs: number;
-  braveApiKey?: string;
-  perplexityApiKey?: string;
-  perplexityApiKeySource: PerplexityApiKeySource;
-  perplexityBaseUrl: string;
-  perplexityModel: string;
-};
-
-type FetchSettings = {
-  enabled: boolean;
-  maxChars: number;
-  timeoutSeconds: number;
-  cacheTtlMs: number;
-  maxRedirects: number;
-  userAgent: string;
-  readability: boolean;
-  firecrawl: {
-    enabled: boolean;
-    apiKey?: string;
-    baseUrl: string;
-    onlyMainContent: boolean;
-    maxAgeMs: number;
-    timeoutSeconds: number;
-  };
-};
-
-type BraveSearchResult = {
-  title?: string;
-  url?: string;
-  description?: string;
-  age?: string;
-};
-
-type BraveSearchResponse = {
-  web?: {
-    results?: BraveSearchResult[];
-  };
-};
-
-type PerplexitySearchResponse = {
-  choices?: Array<{
-    message?: {
-      content?: string;
-    };
-  }>;
-  citations?: string[];
-};
-
-type PerplexityBaseUrlHint = "direct" | "openrouter";
 
 const SEARCH_CACHE = new Map<string, CacheEntry<Record<string, unknown>>>();
 const FETCH_CACHE = new Map<string, CacheEntry<Record<string, unknown>>>();
-
-class WebSearchHttpError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-    readonly retryAfterMs?: number,
-  ) {
-    super(message);
-    this.name = "WebSearchHttpError";
-  }
-}
 
 export interface WebCapabilities {
   search(input: {
@@ -167,6 +52,63 @@ export interface WebCapabilities {
     extractMode?: "markdown" | "text";
     maxChars?: number;
   }): Promise<ToolResult>;
+}
+
+type SearchSettings = {
+  enabled: boolean;
+  maxResults: number;
+  timeoutSeconds: number;
+  cacheTtlMs: number;
+  retryAttempts: number;
+  retryBaseDelayMs: number;
+  anthropicApiKey?: string;
+  anthropicModel: string;
+  toolType: string;
+  fallbackToolType: string;
+};
+
+type FetchSettings = {
+  enabled: boolean;
+  maxChars: number;
+  timeoutSeconds: number;
+  cacheTtlMs: number;
+  anthropicApiKey?: string;
+  anthropicModel: string;
+  toolType: string;
+  fallbackToolType: string;
+};
+
+type AnthropicContentBlock = {
+  type?: string;
+  text?: string;
+  citations?: unknown;
+  [key: string]: unknown;
+};
+
+type AnthropicMessageResponse = {
+  id?: string;
+  model?: string;
+  content?: AnthropicContentBlock[];
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+  };
+};
+
+type AnthropicCitation = {
+  url: string;
+  title?: string;
+};
+
+class AnthropicHttpError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly retryAfterMs?: number,
+  ) {
+    super(message);
+    this.name = "AnthropicHttpError";
+  }
 }
 
 function parseBoolean(value: unknown, fallback: boolean): boolean {
@@ -194,236 +136,46 @@ function parseString(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function resolveSearchProvider(value: unknown): SearchProvider {
-  const normalized = parseString(value)?.toLowerCase();
-  if (normalized && (SEARCH_PROVIDERS as readonly string[]).includes(normalized)) {
-    return normalized as SearchProvider;
-  }
-  return "brave";
+function resolveTimeoutSeconds(value: unknown, fallback: number): number {
+  const parsed = typeof value === "number" && Number.isFinite(value) ? value : fallback;
+  return Math.max(1, Math.floor(parsed));
 }
 
-function resolveSearchCount(value: unknown, fallback: number): number {
-  const parsed = parseNumber(value);
-  const effective = typeof parsed === "number" ? parsed : fallback;
-  return Math.max(1, Math.min(MAX_SEARCH_COUNT, Math.floor(effective)));
+function resolveCacheTtlMs(value: unknown, fallbackMinutes: number): number {
+  const minutes =
+    typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : fallbackMinutes;
+  return Math.round(minutes * 60_000);
 }
 
-function inferPerplexityBaseUrlFromApiKey(apiKey?: string): PerplexityBaseUrlHint | undefined {
-  if (!apiKey) return undefined;
-  const normalized = apiKey.toLowerCase();
-  if (PERPLEXITY_KEY_PREFIXES.some((prefix) => normalized.startsWith(prefix))) {
-    return "direct";
-  }
-  if (OPENROUTER_KEY_PREFIXES.some((prefix) => normalized.startsWith(prefix))) {
-    return "openrouter";
-  }
-  return undefined;
+function normalizeCacheKey(value: string): string {
+  return value.trim().toLowerCase();
 }
 
-function resolvePerplexityBaseUrl(params: {
-  explicitBaseUrl?: string;
-  apiKeySource: PerplexityApiKeySource;
-  apiKey?: string;
-}): string {
-  if (params.explicitBaseUrl) return params.explicitBaseUrl;
-  if (params.apiKeySource === "perplexity_env") return PERPLEXITY_DIRECT_BASE_URL;
-  if (params.apiKeySource === "openrouter_env") return DEFAULT_PERPLEXITY_BASE_URL;
-  if (params.apiKeySource === "config") {
-    const inferred = inferPerplexityBaseUrlFromApiKey(params.apiKey);
-    if (inferred === "direct") return PERPLEXITY_DIRECT_BASE_URL;
-    if (inferred === "openrouter") return DEFAULT_PERPLEXITY_BASE_URL;
+function readCache<T>(
+  cache: Map<string, CacheEntry<T>>,
+  key: string,
+): { value: T; cached: boolean } | null {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    cache.delete(key);
+    return null;
   }
-  return DEFAULT_PERPLEXITY_BASE_URL;
+  return { value: entry.value, cached: true };
 }
 
-function resolveSearchSettings(): SearchSettings {
-  const provider = resolveSearchProvider(process.env.TOOL_WEB_SEARCH_PROVIDER);
-  const braveApiKey =
-    parseString(process.env.TOOL_WEB_SEARCH_BRAVE_API_KEY) ?? parseString(process.env.BRAVE_API_KEY);
-  const perplexityFromConfig = parseString(process.env.TOOL_WEB_SEARCH_PERPLEXITY_API_KEY);
-  const perplexityFromEnv = parseString(process.env.PERPLEXITY_API_KEY);
-  const openRouterFromEnv = parseString(process.env.OPENROUTER_API_KEY);
-
-  let perplexityApiKey = perplexityFromConfig;
-  let perplexityApiKeySource: PerplexityApiKeySource = "none";
-  if (perplexityApiKey) {
-    perplexityApiKeySource = "config";
-  } else if (perplexityFromEnv) {
-    perplexityApiKey = perplexityFromEnv;
-    perplexityApiKeySource = "perplexity_env";
-  } else if (openRouterFromEnv) {
-    perplexityApiKey = openRouterFromEnv;
-    perplexityApiKeySource = "openrouter_env";
-  }
-
-  const perplexityBaseUrl = resolvePerplexityBaseUrl({
-    explicitBaseUrl: parseString(process.env.TOOL_WEB_SEARCH_PERPLEXITY_BASE_URL),
-    apiKeySource: perplexityApiKeySource,
-    apiKey: perplexityApiKey,
+function writeCache<T>(
+  cache: Map<string, CacheEntry<T>>,
+  key: string,
+  value: T,
+  ttlMs: number,
+): void {
+  if (ttlMs <= 0) return;
+  cache.set(key, {
+    value,
+    expiresAt: Date.now() + ttlMs,
+    insertedAt: Date.now(),
   });
-
-  const perplexityModel =
-    parseString(process.env.TOOL_WEB_SEARCH_PERPLEXITY_MODEL) ?? DEFAULT_PERPLEXITY_MODEL;
-  const maxResults = resolveSearchCount(
-    parseNumber(process.env.TOOL_WEB_SEARCH_MAX_RESULTS),
-    DEFAULT_SEARCH_COUNT,
-  );
-  const timeoutSeconds = resolveTimeoutSeconds(
-    parseNumber(process.env.TOOL_WEB_SEARCH_TIMEOUT_SECONDS),
-    DEFAULT_TIMEOUT_SECONDS,
-  );
-  const cacheTtlMs = resolveCacheTtlMs(
-    parseNumber(process.env.TOOL_WEB_SEARCH_CACHE_TTL_MINUTES),
-    DEFAULT_CACHE_TTL_MINUTES,
-  );
-  const retryAttempts = Math.max(
-    1,
-    Math.min(
-      5,
-      Math.floor(parseNumber(process.env.TOOL_WEB_SEARCH_RETRY_ATTEMPTS) ?? DEFAULT_SEARCH_RETRY_ATTEMPTS),
-    ),
-  );
-  const retryBaseDelayMs = Math.max(
-    100,
-    Math.min(
-      5_000,
-      Math.floor(
-        parseNumber(process.env.TOOL_WEB_SEARCH_RETRY_BASE_DELAY_MS) ??
-          DEFAULT_SEARCH_RETRY_BASE_DELAY_MS,
-      ),
-    ),
-  );
-
-  return {
-    enabled: parseBoolean(process.env.TOOL_WEB_SEARCH_ENABLED, true),
-    provider,
-    maxResults,
-    timeoutSeconds,
-    cacheTtlMs,
-    retryAttempts,
-    retryBaseDelayMs,
-    braveApiKey,
-    perplexityApiKey,
-    perplexityApiKeySource,
-    perplexityBaseUrl,
-    perplexityModel,
-  };
-}
-
-function resolveFetchSettings(): FetchSettings {
-  const firecrawlApiKey =
-    parseString(process.env.TOOL_WEB_FETCH_FIRECRAWL_API_KEY) ??
-    parseString(process.env.FIRECRAWL_API_KEY);
-
-  const timeoutSeconds = resolveTimeoutSeconds(
-    parseNumber(process.env.TOOL_WEB_FETCH_TIMEOUT_SECONDS),
-    DEFAULT_TIMEOUT_SECONDS,
-  );
-
-  return {
-    enabled: parseBoolean(process.env.TOOL_WEB_FETCH_ENABLED, true),
-    maxChars: Math.max(
-      100,
-      Math.floor(parseNumber(process.env.TOOL_WEB_FETCH_MAX_CHARS) ?? DEFAULT_FETCH_MAX_CHARS),
-    ),
-    timeoutSeconds,
-    cacheTtlMs: resolveCacheTtlMs(
-      parseNumber(process.env.TOOL_WEB_FETCH_CACHE_TTL_MINUTES),
-      DEFAULT_CACHE_TTL_MINUTES,
-    ),
-    maxRedirects: Math.max(
-      0,
-      Math.floor(parseNumber(process.env.TOOL_WEB_FETCH_MAX_REDIRECTS) ?? DEFAULT_FETCH_MAX_REDIRECTS),
-    ),
-    userAgent: parseString(process.env.TOOL_WEB_FETCH_USER_AGENT) ?? DEFAULT_FETCH_USER_AGENT,
-    readability: parseBoolean(process.env.TOOL_WEB_FETCH_READABILITY, true),
-    firecrawl: {
-      enabled: parseBoolean(process.env.TOOL_WEB_FETCH_FIRECRAWL_ENABLED, Boolean(firecrawlApiKey)),
-      apiKey: firecrawlApiKey,
-      baseUrl: parseString(process.env.TOOL_WEB_FETCH_FIRECRAWL_BASE_URL) ?? DEFAULT_FIRECRAWL_BASE_URL,
-      onlyMainContent: parseBoolean(process.env.TOOL_WEB_FETCH_FIRECRAWL_ONLY_MAIN_CONTENT, true),
-      maxAgeMs: Math.max(
-        0,
-        Math.floor(
-          parseNumber(process.env.TOOL_WEB_FETCH_FIRECRAWL_MAX_AGE_MS) ?? DEFAULT_FIRECRAWL_MAX_AGE_MS,
-        ),
-      ),
-      timeoutSeconds: resolveTimeoutSeconds(
-        parseNumber(process.env.TOOL_WEB_FETCH_FIRECRAWL_TIMEOUT_SECONDS),
-        timeoutSeconds,
-      ),
-    },
-  };
-}
-
-function sanitizeUrlForLog(url: string): string {
-  try {
-    const parsed = new URL(url);
-    return `${parsed.origin}${parsed.pathname}`;
-  } catch {
-    return url.slice(0, 200);
-  }
-}
-
-function resolveSiteName(url: string | undefined): string | undefined {
-  if (!url) return undefined;
-  try {
-    const parsed = new URL(url);
-    return parsed.hostname.replace(/^www\./, "");
-  } catch {
-    return undefined;
-  }
-}
-
-function normalizeFreshness(value: string | undefined): string | undefined {
-  if (!value) return undefined;
-  const trimmed = value.trim();
-  if (!trimmed) return undefined;
-
-  const lower = trimmed.toLowerCase();
-  if (BRAVE_FRESHNESS_SHORTCUTS.has(lower)) return lower;
-
-  const match = trimmed.match(BRAVE_FRESHNESS_RANGE);
-  if (!match) return undefined;
-
-  const [, start, end] = match;
-  if (!isValidIsoDate(start) || !isValidIsoDate(end)) return undefined;
-  if (start > end) return undefined;
-  return `${start}to${end}`;
-}
-
-function isValidIsoDate(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const [year, month, day] = value.split("-").map((part) => Number.parseInt(part, 10));
-  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return false;
-
-  const date = new Date(Date.UTC(year, month - 1, day));
-  return (
-    date.getUTCFullYear() === year &&
-    date.getUTCMonth() === month - 1 &&
-    date.getUTCDate() === day
-  );
-}
-
-function formatFailure(params: {
-  code: string;
-  message: string;
-  docs?: string;
-  resource?: string;
-  detail?: string;
-}): ToolResult {
-  return {
-    success: false,
-    error: params.code,
-    message: params.message,
-    data: {
-      docs: params.docs,
-      detail: params.detail,
-    },
-    meta: {
-      resource: params.resource ?? "knowledge",
-    },
-  };
 }
 
 function getExpiredCacheValue(
@@ -440,6 +192,38 @@ function getExpiredCacheValue(
   };
 }
 
+function withTimeout(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal {
+  if (timeoutMs <= 0) return signal ?? new AbortController().signal;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  if (signal) {
+    signal.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(timer);
+        controller.abort();
+      },
+      { once: true },
+    );
+  }
+  controller.signal.addEventListener(
+    "abort",
+    () => {
+      clearTimeout(timer);
+    },
+    { once: true },
+  );
+  return controller.signal;
+}
+
+async function readResponseText(response: Response): Promise<string> {
+  try {
+    return await response.text();
+  } catch {
+    return "";
+  }
+}
+
 function resolveTimeoutSecondsWithRuntimeBudget(params: {
   timeoutSeconds: number;
   reserveMs: number;
@@ -453,31 +237,88 @@ function resolveTimeoutSecondsWithRuntimeBudget(params: {
   return Math.max(1, Math.floor(cappedMs / 1000));
 }
 
-function isSearchCircuitOpen(provider: SearchProvider): boolean {
-  return SEARCH_CIRCUITS[provider].openUntilMs > Date.now();
+function resolveSearchCount(value: unknown, fallback: number): number {
+  const parsed = parseNumber(value);
+  const effective = typeof parsed === "number" ? parsed : fallback;
+  return Math.max(1, Math.min(MAX_SEARCH_COUNT, Math.floor(effective)));
 }
 
-function markSearchCircuitSuccess(provider: SearchProvider): void {
-  SEARCH_CIRCUITS[provider].consecutiveFailures = 0;
-  SEARCH_CIRCUITS[provider].openUntilMs = 0;
-  SEARCH_CIRCUITS[provider].lastError = undefined;
+function resolveSearchSettings(): SearchSettings {
+  return {
+    enabled: parseBoolean(process.env.TOOL_WEB_SEARCH_ENABLED, true),
+    maxResults: resolveSearchCount(
+      parseNumber(process.env.TOOL_WEB_SEARCH_MAX_RESULTS),
+      DEFAULT_SEARCH_COUNT,
+    ),
+    timeoutSeconds: resolveTimeoutSeconds(
+      parseNumber(process.env.TOOL_WEB_SEARCH_TIMEOUT_SECONDS),
+      DEFAULT_TIMEOUT_SECONDS,
+    ),
+    cacheTtlMs: resolveCacheTtlMs(
+      parseNumber(process.env.TOOL_WEB_SEARCH_CACHE_TTL_MINUTES),
+      DEFAULT_CACHE_TTL_MINUTES,
+    ),
+    retryAttempts: Math.max(
+      1,
+      Math.min(
+        5,
+        Math.floor(
+          parseNumber(process.env.TOOL_WEB_SEARCH_RETRY_ATTEMPTS) ??
+            DEFAULT_SEARCH_RETRY_ATTEMPTS,
+        ),
+      ),
+    ),
+    retryBaseDelayMs: Math.max(
+      100,
+      Math.min(
+        5_000,
+        Math.floor(
+          parseNumber(process.env.TOOL_WEB_SEARCH_RETRY_BASE_DELAY_MS) ??
+            DEFAULT_SEARCH_RETRY_BASE_DELAY_MS,
+        ),
+      ),
+    ),
+    anthropicApiKey:
+      parseString(process.env.TOOL_WEB_SEARCH_ANTHROPIC_API_KEY) ??
+      parseString(process.env.ANTHROPIC_API_KEY),
+    anthropicModel:
+      parseString(process.env.TOOL_WEB_SEARCH_ANTHROPIC_MODEL) ?? DEFAULT_ANTHROPIC_MODEL,
+    toolType:
+      parseString(process.env.TOOL_WEB_SEARCH_ANTHROPIC_TOOL_TYPE) ??
+      DEFAULT_ANTHROPIC_WEB_SEARCH_TOOL,
+    fallbackToolType:
+      parseString(process.env.TOOL_WEB_SEARCH_ANTHROPIC_FALLBACK_TOOL_TYPE) ??
+      FALLBACK_ANTHROPIC_WEB_SEARCH_TOOL,
+  };
 }
 
-function markSearchCircuitFailure(params: {
-  provider: SearchProvider;
-  reason: string;
-  retryAfterMs?: number;
-}): void {
-  const state = SEARCH_CIRCUITS[params.provider];
-  state.consecutiveFailures += 1;
-  state.lastError = params.reason;
-  if (typeof params.retryAfterMs === "number" && params.retryAfterMs > 0) {
-    state.openUntilMs = Math.max(state.openUntilMs, Date.now() + params.retryAfterMs);
-    return;
-  }
-  if (state.consecutiveFailures >= WEB_SEARCH_CIRCUIT_FAILURE_THRESHOLD) {
-    state.openUntilMs = Date.now() + WEB_SEARCH_CIRCUIT_OPEN_MS;
-  }
+function resolveFetchSettings(): FetchSettings {
+  return {
+    enabled: parseBoolean(process.env.TOOL_WEB_FETCH_ENABLED, true),
+    maxChars: Math.max(
+      100,
+      Math.floor(parseNumber(process.env.TOOL_WEB_FETCH_MAX_CHARS) ?? DEFAULT_FETCH_MAX_CHARS),
+    ),
+    timeoutSeconds: resolveTimeoutSeconds(
+      parseNumber(process.env.TOOL_WEB_FETCH_TIMEOUT_SECONDS),
+      DEFAULT_TIMEOUT_SECONDS,
+    ),
+    cacheTtlMs: resolveCacheTtlMs(
+      parseNumber(process.env.TOOL_WEB_FETCH_CACHE_TTL_MINUTES),
+      DEFAULT_CACHE_TTL_MINUTES,
+    ),
+    anthropicApiKey:
+      parseString(process.env.TOOL_WEB_FETCH_ANTHROPIC_API_KEY) ??
+      parseString(process.env.ANTHROPIC_API_KEY),
+    anthropicModel:
+      parseString(process.env.TOOL_WEB_FETCH_ANTHROPIC_MODEL) ?? DEFAULT_ANTHROPIC_MODEL,
+    toolType:
+      parseString(process.env.TOOL_WEB_FETCH_ANTHROPIC_TOOL_TYPE) ??
+      DEFAULT_ANTHROPIC_WEB_FETCH_TOOL,
+    fallbackToolType:
+      parseString(process.env.TOOL_WEB_FETCH_ANTHROPIC_FALLBACK_TOOL_TYPE) ??
+      FALLBACK_ANTHROPIC_WEB_FETCH_TOOL,
+  };
 }
 
 function retryDelayFromHeaders(headers: Headers): number | undefined {
@@ -491,33 +332,27 @@ function retryDelayFromHeaders(headers: Headers): number | undefined {
       if (delay > 0) return delay;
     }
   }
-
-  const resetRaw =
-    headers.get("x-ratelimit-reset")?.trim() ??
-    headers.get("ratelimit-reset")?.trim();
-  if (!resetRaw) return undefined;
-
-  const resetSeconds = Number.parseFloat(resetRaw);
-  if (Number.isFinite(resetSeconds) && resetSeconds > 0) {
-    // Most providers expose this as seconds until reset.
-    if (resetSeconds < 86_400) return Math.round(resetSeconds * 1000);
-    // Some providers expose a unix timestamp.
-    const unixMs = Math.round(resetSeconds * 1000);
-    const delay = unixMs - Date.now();
-    return delay > 0 ? delay : undefined;
-  }
   return undefined;
 }
 
-function isRetryableWebSearchError(error: unknown): boolean {
-  if (error instanceof WebSearchHttpError) {
+function isRetryableAnthropicError(error: unknown): boolean {
+  if (error instanceof AnthropicHttpError) {
     return error.status === 429 || error.status >= 500;
   }
   const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
   return message.includes("timeout") || message.includes("network") || message.includes("fetch failed");
 }
 
-async function runWebSearchWithRetry<T>(params: {
+function isUnknownToolTypeError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return (
+    message.includes("tool") &&
+    (message.includes("unknown") || message.includes("invalid")) &&
+    message.includes("type")
+  );
+}
+
+async function runAnthropicWithRetry<T>(params: {
   attempts: number;
   baseDelayMs: number;
   run: () => Promise<T>;
@@ -528,125 +363,158 @@ async function runWebSearchWithRetry<T>(params: {
       return await params.run();
     } catch (error) {
       lastError = error;
-      if (!isRetryableWebSearchError(error) || attempt >= params.attempts) {
+      if (!isRetryableAnthropicError(error) || attempt >= params.attempts) {
         throw error;
       }
       const retryAfterMs =
-        error instanceof WebSearchHttpError ? error.retryAfterMs : undefined;
+        error instanceof AnthropicHttpError ? error.retryAfterMs : undefined;
       const computed = computeExponentialBackoffDelay({
         attempt,
         baseDelayMs: params.baseDelayMs,
         maxDelayMs: 8_000,
         jitterMaxMs: 350,
       });
-      const delayMs = Math.max(computed, retryAfterMs ?? 0);
-      await sleep(delayMs);
+      await sleep(Math.max(computed, retryAfterMs ?? 0));
     }
   }
   throw lastError;
 }
 
-function looksLikeHtml(value: string): boolean {
-  const trimmed = value.trimStart();
-  if (!trimmed) return false;
-  const head = trimmed.slice(0, 256).toLowerCase();
-  return head.startsWith("<!doctype html") || head.startsWith("<html");
-}
-
-function isRedirectStatus(status: number): boolean {
-  return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
-}
-
-function resolveFirecrawlEndpoint(baseUrl: string): string {
-  const trimmed = baseUrl.trim();
-  if (!trimmed) return `${DEFAULT_FIRECRAWL_BASE_URL}/v2/scrape`;
-  try {
-    const url = new URL(trimmed);
-    if (url.pathname && url.pathname !== "/") {
-      return url.toString();
-    }
-    url.pathname = "/v2/scrape";
-    return url.toString();
-  } catch {
-    return `${DEFAULT_FIRECRAWL_BASE_URL}/v2/scrape`;
-  }
-}
-
-async function runPerplexitySearch(params: {
-  query: string;
+async function runAnthropicToolCall(params: {
   apiKey: string;
-  baseUrl: string;
   model: string;
+  prompt: string;
   timeoutSeconds: number;
-}): Promise<{ content: string; citations: string[] }> {
-  const endpoint = `${params.baseUrl.replace(/\/$/, "")}/chat/completions`;
-  const response = await fetch(endpoint, {
+  toolType: string;
+}): Promise<AnthropicMessageResponse> {
+  const response = await fetch(ANTHROPIC_MESSAGES_ENDPOINT, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${params.apiKey}`,
-      "HTTP-Referer": "https://app.getamodel.com",
-      "X-Title": "Amodel Web Search",
+      "content-type": "application/json",
+      "x-api-key": params.apiKey,
+      "anthropic-version": ANTHROPIC_VERSION_HEADER,
     },
     body: JSON.stringify({
       model: params.model,
-      messages: [{ role: "user", content: params.query }],
+      max_tokens: 1_200,
+      messages: [{ role: "user", content: params.prompt }],
+      tools: [{
+        type: params.toolType,
+        name: "web",
+        max_uses: 1,
+      }],
     }),
     signal: withTimeout(undefined, params.timeoutSeconds * 1000),
   });
 
   if (!response.ok) {
     const detail = await readResponseText(response);
-    throw new WebSearchHttpError(
-      `Perplexity API error (${response.status}): ${detail || response.statusText}`,
+    throw new AnthropicHttpError(
+      `Anthropic API error (${response.status}): ${detail || response.statusText}`,
       response.status,
       retryDelayFromHeaders(response.headers),
     );
   }
 
-  const data = (await response.json()) as PerplexitySearchResponse;
+  return (await response.json()) as AnthropicMessageResponse;
+}
+
+function collectResponseText(content: AnthropicContentBlock[]): string {
+  const text = content
+    .map((block) => (block.type === "text" && typeof block.text === "string" ? block.text : ""))
+    .join("\n")
+    .trim();
+  if (text.length > 0) return text;
+  return JSON.stringify(content, null, 2);
+}
+
+function toCitation(value: unknown): AnthropicCitation | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const url =
+    (typeof record.url === "string" ? record.url : undefined) ??
+    (typeof record.source === "string" ? record.source : undefined);
+  if (!url || !/^https?:\/\//iu.test(url)) return null;
   return {
-    content: data.choices?.[0]?.message?.content ?? "",
-    citations: data.citations ?? [],
+    url,
+    title: typeof record.title === "string" ? record.title : undefined,
   };
 }
 
-async function runWebSearch(params: {
+function collectCitations(content: AnthropicContentBlock[]): AnthropicCitation[] {
+  const out: AnthropicCitation[] = [];
+  for (const block of content) {
+    const candidates: unknown[] = [];
+    if (Array.isArray(block.citations)) candidates.push(...block.citations);
+    if (Array.isArray(block.sources)) candidates.push(...block.sources);
+    for (const candidate of candidates) {
+      const citation = toCitation(candidate);
+      if (citation) out.push(citation);
+    }
+  }
+  const byUrl = new Map<string, AnthropicCitation>();
+  for (const citation of out) {
+    byUrl.set(citation.url, citation);
+  }
+  return Array.from(byUrl.values());
+}
+
+function extractUrls(text: string): string[] {
+  const matches = text.match(/https?:\/\/[^\s)\]]+/giu) ?? [];
+  return Array.from(new Set(matches));
+}
+
+function truncateText(value: string, maxChars: number): { text: string; truncated: boolean } {
+  if (value.length <= maxChars) return { text: value, truncated: false };
+  return { text: value.slice(0, maxChars), truncated: true };
+}
+
+function formatFailure(params: {
+  code: string;
+  message: string;
+  docs?: string;
+  detail?: string;
+}): ToolResult {
+  return {
+    success: false,
+    error: params.code,
+    message: params.message,
+    data: {
+      docs: params.docs,
+      detail: params.detail,
+    },
+    meta: {
+      resource: "knowledge",
+    },
+  };
+}
+
+function sanitizeUrlForLog(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return url.slice(0, 200);
+  }
+}
+
+async function runAnthropicSearch(params: {
   query: string;
   count: number;
-  country?: string;
-  searchLang?: string;
-  uiLang?: string;
-  freshness?: string;
   settings: SearchSettings;
 }): Promise<Record<string, unknown>> {
   const cacheKey = normalizeCacheKey(
     [
-      params.settings.provider,
       params.query,
       params.count,
-      params.country ?? "default",
-      params.searchLang ?? "default",
-      params.uiLang ?? "default",
-      params.freshness ?? "default",
+      params.settings.anthropicModel,
+      params.settings.toolType,
     ].join(":"),
   );
+
   const stale = getExpiredCacheValue(SEARCH_CACHE, cacheKey);
   const cached = readCache(SEARCH_CACHE, cacheKey);
   if (cached) return { ...cached.value, cached: true };
-
-  if (isSearchCircuitOpen(params.settings.provider)) {
-    if (stale) {
-      return {
-        ...stale.value,
-        cached: true,
-        stale: true,
-        staleAgeMs: stale.staleAgeMs,
-        fallback: "circuit_open",
-      };
-    }
-    throw new Error(`web_search_provider_circuit_open:${params.settings.provider}`);
-  }
 
   const startedAt = Date.now();
   const timeoutSeconds = resolveTimeoutSecondsWithRuntimeBudget({
@@ -654,82 +522,69 @@ async function runWebSearch(params: {
     reserveMs: 2_000,
   });
 
-  try {
-    const payload = await runWebSearchWithRetry({
+  const runWithToolType = async (toolType: string) => {
+    const prompt = [
+      `Search the public web for: ${params.query}`,
+      "Use the web search tool.",
+      `Return up to ${params.count} relevant results with title, URL, and a brief snippet.`,
+      "Include source links in the answer.",
+    ].join("\n");
+
+    const response = await runAnthropicWithRetry({
       attempts: params.settings.retryAttempts,
       baseDelayMs: params.settings.retryBaseDelayMs,
-      run: async () => {
-        if (params.settings.provider === "perplexity") {
-          const result = await runPerplexitySearch({
-            query: params.query,
-            apiKey: params.settings.perplexityApiKey ?? "",
-            baseUrl: params.settings.perplexityBaseUrl,
-            model: params.settings.perplexityModel,
-            timeoutSeconds,
-          });
-          return {
-            query: params.query,
-            provider: "perplexity",
-            model: params.settings.perplexityModel,
-            tookMs: Date.now() - startedAt,
-            content: result.content,
-            citations: result.citations,
-          } satisfies Record<string, unknown>;
-        }
-
-        const url = new URL(BRAVE_SEARCH_ENDPOINT);
-        url.searchParams.set("q", params.query);
-        url.searchParams.set("count", String(params.count));
-        if (params.country) url.searchParams.set("country", params.country);
-        if (params.searchLang) url.searchParams.set("search_lang", params.searchLang);
-        if (params.uiLang) url.searchParams.set("ui_lang", params.uiLang);
-        if (params.freshness) url.searchParams.set("freshness", params.freshness);
-
-        const response = await fetch(url.toString(), {
-          method: "GET",
-          headers: {
-            Accept: "application/json",
-            "X-Subscription-Token": params.settings.braveApiKey ?? "",
-          },
-          signal: withTimeout(undefined, timeoutSeconds * 1000),
-        });
-        if (!response.ok) {
-          const detail = await readResponseText(response);
-          throw new WebSearchHttpError(
-            `Brave API error (${response.status}): ${detail || response.statusText}`,
-            response.status,
-            retryDelayFromHeaders(response.headers),
-          );
-        }
-
-        const data = (await response.json()) as BraveSearchResponse;
-        const results = Array.isArray(data.web?.results) ? data.web?.results ?? [] : [];
-        const mapped = results.map((entry) => ({
-          title: entry.title ?? "",
-          url: entry.url ?? "",
-          description: entry.description ?? "",
-          published: entry.age ?? undefined,
-          siteName: resolveSiteName(entry.url ?? ""),
-        }));
-        return {
-          query: params.query,
-          provider: "brave",
-          count: mapped.length,
-          tookMs: Date.now() - startedAt,
-          results: mapped,
-        } satisfies Record<string, unknown>;
-      },
+      run: async () =>
+        runAnthropicToolCall({
+          apiKey: params.settings.anthropicApiKey ?? "",
+          model: params.settings.anthropicModel,
+          prompt,
+          timeoutSeconds,
+          toolType,
+        }),
     });
 
-    markSearchCircuitSuccess(params.settings.provider);
+    const content = Array.isArray(response.content) ? response.content : [];
+    const answer = collectResponseText(content);
+    const citations = collectCitations(content);
+    const fallbackUrls = extractUrls(answer).map((url) => ({ url, title: undefined }));
+    const sources = citations.length > 0 ? citations : fallbackUrls;
+
+    return {
+      provider: "anthropic",
+      model: response.model ?? params.settings.anthropicModel,
+      toolType,
+      query: params.query,
+      count: Math.min(params.count, sources.length > 0 ? sources.length : params.count),
+      results: sources.slice(0, params.count).map((source) => ({
+        title: source.title ?? source.url,
+        url: source.url,
+        description: undefined,
+      })),
+      answer,
+      citations: sources,
+      rawContent: content,
+      usage: response.usage ?? undefined,
+      tookMs: Date.now() - startedAt,
+    } satisfies Record<string, unknown>;
+  };
+
+  try {
+    const payload = await runWithToolType(params.settings.toolType);
     writeCache(SEARCH_CACHE, cacheKey, payload, params.settings.cacheTtlMs);
     return payload;
   } catch (error) {
-    markSearchCircuitFailure({
-      provider: params.settings.provider,
-      reason: error instanceof Error ? error.message : "web_search_failed",
-      retryAfterMs: error instanceof WebSearchHttpError ? error.retryAfterMs : undefined,
-    });
+    if (
+      isUnknownToolTypeError(error) &&
+      params.settings.fallbackToolType !== params.settings.toolType
+    ) {
+      try {
+        const payload = await runWithToolType(params.settings.fallbackToolType);
+        writeCache(SEARCH_CACHE, cacheKey, payload, params.settings.cacheTtlMs);
+        return payload;
+      } catch {
+        // fallthrough and handle original error path below
+      }
+    }
     if (stale) {
       return {
         ...stale.value,
@@ -743,385 +598,86 @@ async function runWebSearch(params: {
   }
 }
 
-function resolveSearchEnrichTopK(value: unknown): number {
-  const parsed = typeof value === "number" && Number.isFinite(value) ? Math.floor(value) : 0;
-  return Math.max(0, Math.min(MAX_SEARCH_ENRICH_TOP_K, parsed));
-}
-
-async function enrichWebSearchResults(params: {
-  data: Record<string, unknown>;
-  enrichTopK: number;
-  enrichExtractMode: ExtractMode;
-  enrichMaxChars: number;
-  fetchSettings: FetchSettings;
-}): Promise<Record<string, unknown>> {
-  if (params.enrichTopK <= 0) return params.data;
-  if (params.data.provider !== "brave") return params.data;
-  const results = Array.isArray(params.data.results)
-    ? (params.data.results as Array<Record<string, unknown>>)
-    : [];
-  if (results.length === 0) return params.data;
-
-  const enriched = [...results];
-  let enrichedCount = 0;
-
-  for (let i = 0; i < enriched.length; i += 1) {
-    if (enrichedCount >= params.enrichTopK) break;
-    const entry = enriched[i];
-    const url = typeof entry?.url === "string" ? entry.url.trim() : "";
-    if (!url) continue;
-
-    const timeoutSeconds = resolveTimeoutSecondsWithRuntimeBudget({
-      timeoutSeconds: Math.min(params.fetchSettings.timeoutSeconds, 8),
-      reserveMs: 1_200,
-    });
-    const remainingMaxChars = Math.max(500, Math.min(params.enrichMaxChars, 25_000));
-    try {
-      const fetched = await runWebFetch({
-        url,
-        extractMode: params.enrichExtractMode,
-        maxChars: remainingMaxChars,
-        settings: {
-          ...params.fetchSettings,
-          timeoutSeconds,
-          firecrawl: {
-            ...params.fetchSettings.firecrawl,
-            timeoutSeconds: resolveTimeoutSecondsWithRuntimeBudget({
-              timeoutSeconds: Math.min(params.fetchSettings.firecrawl.timeoutSeconds, 8),
-              reserveMs: 1_000,
-            }),
-          },
-        },
-      });
-      enriched[i] = {
-        ...entry,
-        fetchedPreview:
-          typeof fetched.content === "string"
-            ? fetched.content
-            : "",
-        fetchedExtractor:
-          typeof fetched.extractor === "string" ? fetched.extractor : undefined,
-        fetchedStatus:
-          typeof fetched.status === "number" ? fetched.status : undefined,
-      };
-      enrichedCount += 1;
-    } catch {
-      // Keep search results even if enrichment fetch fails.
-      continue;
-    }
-  }
-
-  return {
-    ...params.data,
-    results: enriched,
-    enrichedCount,
-  };
-}
-
-async function fetchWithRedirects(params: {
+async function runAnthropicFetch(params: {
   url: string;
-  maxRedirects: number;
-  timeoutSeconds: number;
-  userAgent: string;
-}): Promise<{ response: Response; finalUrl: string; dispatcher: Dispatcher }> {
-  const signal = withTimeout(undefined, params.timeoutSeconds * 1000);
-  const visited = new Set<string>();
-  let currentUrl = params.url;
-  let redirectCount = 0;
-
-  while (true) {
-    const parsedUrl = new URL(currentUrl);
-    if (!["http:", "https:"].includes(parsedUrl.protocol)) {
-      throw new Error("Invalid URL: must be http or https");
-    }
-
-    const pinned = await resolvePinnedHostname(parsedUrl.hostname);
-    const dispatcher = createPinnedDispatcher(pinned);
-
-    let response: Response;
-    try {
-      response = await fetch(parsedUrl.toString(), {
-        method: "GET",
-        headers: {
-          Accept: "*/*",
-          "User-Agent": params.userAgent,
-          "Accept-Language": "en-US,en;q=0.9",
-        },
-        signal,
-        redirect: "manual",
-        dispatcher,
-      } as RequestInit);
-    } catch (error) {
-      await closeDispatcher(dispatcher);
-      throw error;
-    }
-
-    if (isRedirectStatus(response.status)) {
-      const location = response.headers.get("location");
-      if (!location) {
-        await closeDispatcher(dispatcher);
-        throw new Error(`Redirect missing location header (${response.status})`);
-      }
-      redirectCount += 1;
-      if (redirectCount > params.maxRedirects) {
-        await closeDispatcher(dispatcher);
-        throw new Error(`Too many redirects (limit: ${params.maxRedirects})`);
-      }
-
-      const nextUrl = new URL(location, parsedUrl).toString();
-      if (visited.has(nextUrl)) {
-        await closeDispatcher(dispatcher);
-        throw new Error("Redirect loop detected");
-      }
-      visited.add(nextUrl);
-      void response.body?.cancel();
-      await closeDispatcher(dispatcher);
-      currentUrl = nextUrl;
-      continue;
-    }
-
-    return { response, finalUrl: currentUrl, dispatcher };
-  }
-}
-
-function formatWebFetchErrorDetail(params: {
-  detail: string;
-  contentType?: string | null;
   maxChars: number;
-}): string {
-  if (!params.detail) return "";
-  let text = params.detail;
-  const contentTypeLower = params.contentType?.toLowerCase();
-  if (contentTypeLower?.includes("text/html") || looksLikeHtml(text)) {
-    const rendered = htmlToMarkdown(text);
-    const withTitle = rendered.title ? `${rendered.title}\n${rendered.text}` : rendered.text;
-    text = markdownToText(withTitle);
-  }
-  const truncated = truncateText(text.trim(), params.maxChars);
-  return truncated.text;
-}
-
-async function fetchFirecrawlContent(params: {
-  url: string;
-  extractMode: ExtractMode;
-  apiKey: string;
-  baseUrl: string;
-  onlyMainContent: boolean;
-  maxAgeMs: number;
-  timeoutSeconds: number;
-}): Promise<{ content: string; title?: string; finalUrl?: string; status?: number; warning?: string }> {
-  const endpoint = resolveFirecrawlEndpoint(params.baseUrl);
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${params.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      url: params.url,
-      formats: ["markdown"],
-      onlyMainContent: params.onlyMainContent,
-      timeout: params.timeoutSeconds * 1000,
-      maxAge: params.maxAgeMs,
-      proxy: "auto",
-      storeInCache: true,
-    }),
-    signal: withTimeout(undefined, params.timeoutSeconds * 1000),
-  });
-
-  const payload = (await response.json()) as {
-    success?: boolean;
-    data?: {
-      markdown?: string;
-      content?: string;
-      metadata?: {
-        title?: string;
-        sourceURL?: string;
-        statusCode?: number;
-      };
-    };
-    warning?: string;
-    error?: string;
-  };
-
-  if (!response.ok || payload.success === false) {
-    const detail = payload.error || response.statusText;
-    throw new Error(`Firecrawl fetch failed (${response.status}): ${detail}`.trim());
-  }
-
-  const rawContent =
-    typeof payload.data?.markdown === "string"
-      ? payload.data.markdown
-      : typeof payload.data?.content === "string"
-        ? payload.data.content
-        : "";
-  const content = params.extractMode === "text" ? markdownToText(rawContent) : rawContent;
-  return {
-    content,
-    title: payload.data?.metadata?.title,
-    finalUrl: payload.data?.metadata?.sourceURL,
-    status: payload.data?.metadata?.statusCode,
-    warning: payload.warning,
-  };
-}
-
-async function runWebFetch(params: {
-  url: string;
-  extractMode: ExtractMode;
-  maxChars: number;
+  extractMode: "markdown" | "text";
   settings: FetchSettings;
 }): Promise<Record<string, unknown>> {
-  const cacheKey = normalizeCacheKey(`fetch:${params.url}:${params.extractMode}:${params.maxChars}`);
+  const cacheKey = normalizeCacheKey(
+    [params.url, params.extractMode, params.maxChars, params.settings.toolType].join(":"),
+  );
+  const stale = getExpiredCacheValue(FETCH_CACHE, cacheKey);
   const cached = readCache(FETCH_CACHE, cacheKey);
   if (cached) return { ...cached.value, cached: true };
 
-  const parsedUrl = new URL(params.url);
-  if (!["http:", "https:"].includes(parsedUrl.protocol)) {
-    throw new Error("Invalid URL: must be http or https");
-  }
-
   const startedAt = Date.now();
-  let response: Response;
-  let dispatcher: Dispatcher | null = null;
-  let finalUrl = params.url;
+  const timeoutSeconds = resolveTimeoutSecondsWithRuntimeBudget({
+    timeoutSeconds: params.settings.timeoutSeconds,
+    reserveMs: 1_000,
+  });
 
-  try {
-    const fetched = await fetchWithRedirects({
-      url: params.url,
-      maxRedirects: params.settings.maxRedirects,
-      timeoutSeconds: params.settings.timeoutSeconds,
-      userAgent: params.settings.userAgent,
+  const runWithToolType = async (toolType: string) => {
+    const prompt = [
+      `Fetch this URL: ${params.url}`,
+      "Use the web fetch tool.",
+      `Return extracted ${params.extractMode} content only.`,
+      `Keep the extracted content under about ${params.maxChars} characters.`,
+    ].join("\n");
+
+    const response = await runAnthropicToolCall({
+      apiKey: params.settings.anthropicApiKey ?? "",
+      model: params.settings.anthropicModel,
+      prompt,
+      timeoutSeconds,
+      toolType,
     });
-    response = fetched.response;
-    finalUrl = fetched.finalUrl;
-    dispatcher = fetched.dispatcher;
-  } catch (error) {
-    if (error instanceof SsrfBlockedError) throw error;
-    if (params.settings.firecrawl.enabled && params.settings.firecrawl.apiKey) {
-      const firecrawl = await fetchFirecrawlContent({
-        url: finalUrl,
-        extractMode: params.extractMode,
-        apiKey: params.settings.firecrawl.apiKey,
-        baseUrl: params.settings.firecrawl.baseUrl,
-        onlyMainContent: params.settings.firecrawl.onlyMainContent,
-        maxAgeMs: params.settings.firecrawl.maxAgeMs,
-        timeoutSeconds: params.settings.firecrawl.timeoutSeconds,
-      });
-      const truncated = truncateText(firecrawl.content, params.maxChars);
-      const payload = {
-        url: params.url,
-        finalUrl: firecrawl.finalUrl || finalUrl,
-        status: firecrawl.status ?? 200,
-        extractor: "firecrawl",
-        content: truncated.text,
-        tookMs: Date.now() - startedAt,
-        truncated: truncated.truncated,
-        warning: firecrawl.warning,
-      };
-      writeCache(FETCH_CACHE, cacheKey, payload, params.settings.cacheTtlMs);
-      return payload;
-    }
-    throw error;
-  }
+    const content = Array.isArray(response.content) ? response.content : [];
+    const extracted = collectResponseText(content);
+    const truncated = truncateText(extracted, params.maxChars);
+
+    return {
+      url: params.url,
+      finalUrl: params.url,
+      status: 200,
+      extractor: "anthropic_web_fetch",
+      content: truncated.text,
+      truncated: truncated.truncated,
+      model: response.model ?? params.settings.anthropicModel,
+      toolType,
+      rawContent: content,
+      usage: response.usage ?? undefined,
+      tookMs: Date.now() - startedAt,
+    } satisfies Record<string, unknown>;
+  };
 
   try {
-    if (!response.ok) {
-      if (params.settings.firecrawl.enabled && params.settings.firecrawl.apiKey) {
-        const firecrawl = await fetchFirecrawlContent({
-          url: params.url,
-          extractMode: params.extractMode,
-          apiKey: params.settings.firecrawl.apiKey,
-          baseUrl: params.settings.firecrawl.baseUrl,
-          onlyMainContent: params.settings.firecrawl.onlyMainContent,
-          maxAgeMs: params.settings.firecrawl.maxAgeMs,
-          timeoutSeconds: params.settings.firecrawl.timeoutSeconds,
-        });
-        const truncated = truncateText(firecrawl.content, params.maxChars);
-        const payload = {
-          url: params.url,
-          finalUrl: firecrawl.finalUrl || finalUrl,
-          status: firecrawl.status ?? response.status,
-          extractor: "firecrawl",
-          content: truncated.text,
-          tookMs: Date.now() - startedAt,
-          truncated: truncated.truncated,
-          warning: firecrawl.warning,
-        };
-        writeCache(FETCH_CACHE, cacheKey, payload, params.settings.cacheTtlMs);
-        return payload;
-      }
-
-      const rawDetail = await readResponseText(response);
-      const detail = formatWebFetchErrorDetail({
-        detail: rawDetail,
-        contentType: response.headers.get("content-type"),
-        maxChars: DEFAULT_ERROR_MAX_CHARS,
-      });
-      throw new Error(`Web fetch failed (${response.status}): ${detail || response.statusText}`);
-    }
-
-    const contentType = response.headers.get("content-type") ?? "application/octet-stream";
-    const body = await readResponseText(response);
-
-    let content = body;
-    let extractor = "raw";
-
-    if (contentType.includes("text/html")) {
-      if (params.settings.readability) {
-        const readable = await extractReadableContent({
-          html: body,
-          url: finalUrl,
-          extractMode: params.extractMode,
-        });
-        if (readable?.text) {
-          content = readable.text;
-          extractor = "readability";
-        } else if (params.settings.firecrawl.enabled && params.settings.firecrawl.apiKey) {
-          const firecrawl = await fetchFirecrawlContent({
-            url: finalUrl,
-            extractMode: params.extractMode,
-            apiKey: params.settings.firecrawl.apiKey,
-            baseUrl: params.settings.firecrawl.baseUrl,
-            onlyMainContent: params.settings.firecrawl.onlyMainContent,
-            maxAgeMs: params.settings.firecrawl.maxAgeMs,
-            timeoutSeconds: params.settings.firecrawl.timeoutSeconds,
-          });
-          content = firecrawl.content;
-          extractor = "firecrawl";
-        } else {
-          const rendered = htmlToMarkdown(body);
-          content = params.extractMode === "text" ? markdownToText(rendered.text) : rendered.text;
-          extractor = "raw";
-        }
-      } else {
-        const rendered = htmlToMarkdown(body);
-        content = params.extractMode === "text" ? markdownToText(rendered.text) : rendered.text;
-        extractor = "raw";
-      }
-    } else if (contentType.includes("application/json")) {
-      try {
-        content = JSON.stringify(JSON.parse(body), null, 2);
-        extractor = "json";
-      } catch {
-        content = body;
-        extractor = "raw";
-      }
-    }
-
-    const truncated = truncateText(content, params.maxChars);
-    const payload = {
-      url: params.url,
-      finalUrl,
-      status: response.status,
-      extractor,
-      content: truncated.text,
-      tookMs: Date.now() - startedAt,
-      truncated: truncated.truncated,
-    };
+    const payload = await runWithToolType(params.settings.toolType);
     writeCache(FETCH_CACHE, cacheKey, payload, params.settings.cacheTtlMs);
     return payload;
-  } finally {
-    await closeDispatcher(dispatcher);
+  } catch (error) {
+    if (
+      isUnknownToolTypeError(error) &&
+      params.settings.fallbackToolType !== params.settings.toolType
+    ) {
+      try {
+        const payload = await runWithToolType(params.settings.fallbackToolType);
+        writeCache(FETCH_CACHE, cacheKey, payload, params.settings.cacheTtlMs);
+        return payload;
+      } catch {
+        // fallthrough to stale handling
+      }
+    }
+    if (stale) {
+      return {
+        ...stale.value,
+        cached: true,
+        stale: true,
+        staleAgeMs: stale.staleAgeMs,
+        fallback: "stale_if_error",
+      };
+    }
+    throw error;
   }
 }
 
@@ -1129,12 +685,10 @@ export function createWebCapabilities(env: CapabilityEnvironment): WebCapabiliti
   return {
     async search(input) {
       const settings = resolveSearchSettings();
-      const fetchSettings = resolveFetchSettings();
       if (!settings.enabled) {
         return formatFailure({
           code: "web_search_disabled",
           message: "Web search is disabled by runtime configuration.",
-          resource: "knowledge",
         });
       }
 
@@ -1143,77 +697,23 @@ export function createWebCapabilities(env: CapabilityEnvironment): WebCapabiliti
         return formatFailure({
           code: "query_required",
           message: "web.search requires a non-empty query string.",
-          docs: WEB_DOCS_URL,
-          resource: "knowledge",
+          docs: ANTHROPIC_WEB_SEARCH_DOCS_URL,
         });
       }
 
-      if (settings.provider === "brave" && !settings.braveApiKey) {
+      if (!settings.anthropicApiKey) {
         return formatFailure({
-          code: "missing_brave_api_key",
-          message: "web.search (brave) requires BRAVE_API_KEY.",
-          docs: WEB_DOCS_URL,
-          resource: "knowledge",
-        });
-      }
-
-      if (settings.provider === "perplexity" && !settings.perplexityApiKey) {
-        return formatFailure({
-          code: "missing_perplexity_api_key",
-          message:
-            "web.search (perplexity) requires PERPLEXITY_API_KEY, OPENROUTER_API_KEY, or TOOL_WEB_SEARCH_PERPLEXITY_API_KEY.",
-          docs: "https://docs.perplexity.ai/",
-          resource: "knowledge",
-        });
-      }
-
-      const freshnessRaw = input.freshness?.trim();
-      if (freshnessRaw && settings.provider !== "brave") {
-        return formatFailure({
-          code: "unsupported_freshness",
-          message: "freshness is only supported by the Brave web.search provider.",
-          docs: WEB_DOCS_URL,
-          resource: "knowledge",
-        });
-      }
-      const freshness = freshnessRaw ? normalizeFreshness(freshnessRaw) : undefined;
-      if (freshnessRaw && !freshness) {
-        return formatFailure({
-          code: "invalid_freshness",
-          message:
-            "freshness must be one of pd, pw, pm, py, or a range like YYYY-MM-DDtoYYYY-MM-DD.",
-          docs: WEB_DOCS_URL,
-          resource: "knowledge",
+          code: "missing_anthropic_api_key",
+          message: "web.search requires ANTHROPIC_API_KEY or TOOL_WEB_SEARCH_ANTHROPIC_API_KEY.",
+          docs: ANTHROPIC_WEB_SEARCH_DOCS_URL,
         });
       }
 
       try {
-        const baseData = await runWebSearch({
+        const data = await runAnthropicSearch({
           query,
           count: resolveSearchCount(input.count, settings.maxResults),
-          country: parseString(input.country),
-          searchLang: parseString(input.search_lang),
-          uiLang: parseString(input.ui_lang),
-          freshness,
           settings,
-        });
-        const enrichTopK = resolveSearchEnrichTopK(input.enrichTopK);
-        const enrichExtractMode: ExtractMode =
-          input.enrichExtractMode === "text" ? "text" : "markdown";
-        const enrichMaxChars = Math.max(
-          500,
-          Math.floor(
-            typeof input.enrichMaxChars === "number" && Number.isFinite(input.enrichMaxChars)
-              ? input.enrichMaxChars
-              : DEFAULT_SEARCH_ENRICH_MAX_CHARS,
-          ),
-        );
-        const data = await enrichWebSearchResults({
-          data: baseData,
-          enrichTopK,
-          enrichExtractMode,
-          enrichMaxChars,
-          fetchSettings,
         });
 
         return {
@@ -1222,37 +722,21 @@ export function createWebCapabilities(env: CapabilityEnvironment): WebCapabiliti
           message: "Web search completed.",
           meta: {
             resource: "knowledge",
-            itemCount:
-              typeof data.count === "number"
-                ? data.count
-                : Array.isArray(data.citations)
-                  ? data.citations.length
-                  : undefined,
+            itemCount: Array.isArray(data.results) ? data.results.length : undefined,
             durationMs: typeof data.tookMs === "number" ? data.tookMs : undefined,
           },
         };
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown web.search error";
         env.runtime.logger.warn("web.search failed", {
-          provider: settings.provider,
           query: query.slice(0, 120),
           error: message,
         });
-        if (message.includes("web_search_provider_circuit_open")) {
-          return formatFailure({
-            code: "web_search_temporarily_unavailable",
-            message: "web.search provider is temporarily unavailable. Please try again shortly.",
-            detail: message,
-            docs: WEB_DOCS_URL,
-            resource: "knowledge",
-          });
-        }
         return formatFailure({
           code: "web_search_failed",
           message: "web.search failed while fetching results.",
-          detail: message,
-          docs: WEB_DOCS_URL,
-          resource: "knowledge",
+          detail: message.slice(0, DEFAULT_ERROR_MAX_CHARS),
+          docs: ANTHROPIC_WEB_SEARCH_DOCS_URL,
         });
       }
     },
@@ -1263,7 +747,6 @@ export function createWebCapabilities(env: CapabilityEnvironment): WebCapabiliti
         return formatFailure({
           code: "web_fetch_disabled",
           message: "Web fetch is disabled by runtime configuration.",
-          resource: "knowledge",
         });
       }
 
@@ -1272,7 +755,6 @@ export function createWebCapabilities(env: CapabilityEnvironment): WebCapabiliti
         return formatFailure({
           code: "url_required",
           message: "web.fetch requires a URL.",
-          resource: "knowledge",
         });
       }
 
@@ -1283,18 +765,24 @@ export function createWebCapabilities(env: CapabilityEnvironment): WebCapabiliti
         return formatFailure({
           code: "invalid_url",
           message: "Invalid URL: must be an absolute http/https URL.",
-          resource: "knowledge",
         });
       }
       if (!["http:", "https:"].includes(parsed.protocol)) {
         return formatFailure({
           code: "invalid_url_scheme",
           message: "Invalid URL: only http and https are supported.",
-          resource: "knowledge",
         });
       }
 
-      const extractMode: ExtractMode = input.extractMode === "text" ? "text" : "markdown";
+      if (!settings.anthropicApiKey) {
+        return formatFailure({
+          code: "missing_anthropic_api_key",
+          message: "web.fetch requires ANTHROPIC_API_KEY or TOOL_WEB_FETCH_ANTHROPIC_API_KEY.",
+          docs: ANTHROPIC_WEB_FETCH_DOCS_URL,
+        });
+      }
+
+      const extractMode: "markdown" | "text" = input.extractMode === "text" ? "text" : "markdown";
       const maxChars = Math.max(
         100,
         Math.floor(
@@ -1304,36 +792,14 @@ export function createWebCapabilities(env: CapabilityEnvironment): WebCapabiliti
         ),
       );
 
-      if (settings.firecrawl.enabled && !settings.firecrawl.apiKey) {
-        return formatFailure({
-          code: "missing_firecrawl_api_key",
-          message: "Firecrawl fallback is enabled but FIRECRAWL_API_KEY is missing.",
-          docs: FIRECRAWL_DOCS_URL,
-          resource: "knowledge",
-        });
-      }
-
       try {
-        const effectiveSettings: FetchSettings = {
-          ...settings,
-          timeoutSeconds: resolveTimeoutSecondsWithRuntimeBudget({
-            timeoutSeconds: settings.timeoutSeconds,
-            reserveMs: 1_200,
-          }),
-          firecrawl: {
-            ...settings.firecrawl,
-            timeoutSeconds: resolveTimeoutSecondsWithRuntimeBudget({
-              timeoutSeconds: settings.firecrawl.timeoutSeconds,
-              reserveMs: 1_000,
-            }),
-          },
-        };
-        const data = await runWebFetch({
+        const data = await runAnthropicFetch({
           url,
-          extractMode,
           maxChars,
-          settings: effectiveSettings,
+          extractMode,
+          settings,
         });
+
         return {
           success: true,
           data,
@@ -1345,19 +811,6 @@ export function createWebCapabilities(env: CapabilityEnvironment): WebCapabiliti
           },
         };
       } catch (error) {
-        if (error instanceof SsrfBlockedError) {
-          env.runtime.logger.warn("web.fetch blocked by SSRF guard", {
-            url: sanitizeUrlForLog(url),
-            error: error.message,
-          });
-          return formatFailure({
-            code: "ssrf_blocked",
-            message: "web.fetch blocked the target URL because it appears private or internal.",
-            detail: error.message,
-            resource: "knowledge",
-          });
-        }
-
         const message = error instanceof Error ? error.message : "Unknown web.fetch error";
         env.runtime.logger.warn("web.fetch failed", {
           url: sanitizeUrlForLog(url),
@@ -1365,9 +818,9 @@ export function createWebCapabilities(env: CapabilityEnvironment): WebCapabiliti
         });
         return formatFailure({
           code: "web_fetch_failed",
-          message: "web.fetch failed while retrieving or extracting content.",
-          detail: message,
-          resource: "knowledge",
+          message: "web.fetch failed while retrieving content.",
+          detail: message.slice(0, DEFAULT_ERROR_MAX_CHARS),
+          docs: ANTHROPIC_WEB_FETCH_DOCS_URL,
         });
       }
     },
@@ -1375,16 +828,8 @@ export function createWebCapabilities(env: CapabilityEnvironment): WebCapabiliti
 }
 
 export const __testing = {
-  inferPerplexityBaseUrlFromApiKey,
-  resolvePerplexityBaseUrl,
-  normalizeFreshness,
   clearCaches: () => {
-    clearRuntimeWebCache(SEARCH_CACHE as Map<string, CacheEntry<unknown>>);
-    clearRuntimeWebCache(FETCH_CACHE as Map<string, CacheEntry<unknown>>);
-    for (const provider of SEARCH_PROVIDERS) {
-      SEARCH_CIRCUITS[provider].consecutiveFailures = 0;
-      SEARCH_CIRCUITS[provider].openUntilMs = 0;
-      SEARCH_CIRCUITS[provider].lastError = undefined;
-    }
+    SEARCH_CACHE.clear();
+    FETCH_CACHE.clear();
   },
 } as const;

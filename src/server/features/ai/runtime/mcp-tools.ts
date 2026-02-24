@@ -1,3 +1,4 @@
+import type { ToolSet } from "ai";
 import { enforcePolicyForTool } from "@/server/features/ai/policy/enforcement";
 import { assertProviderCompatibleToolSchema } from "@/server/features/ai/tools/fabric/adapters/provider-schema";
 import type {
@@ -6,8 +7,7 @@ import type {
   ToolExecutionArtifacts,
   ToolExecutionSummary,
 } from "@/server/features/ai/tools/fabric/types";
-import type { RuntimeCustomToolDefinition } from "@/server/features/ai/tools/harness/types";
-import type { ToolResult } from "@/server/features/ai/tools/types";
+import type { RuntimeToolResult } from "@/server/features/ai/tools/contracts/tool-result";
 
 const TOOL_EXECUTION_TIMEOUT_MS = 45_000;
 
@@ -19,6 +19,13 @@ class ToolExecutionTimeoutError extends Error {
     super(`tool_execution_timeout:${toolName}:${timeoutMs}`);
     this.name = "ToolExecutionTimeoutError";
   }
+}
+
+export interface RuntimeSessionTool {
+  name: string;
+  description: string;
+  inputSchema: RuntimeToolDefinition["parameters"];
+  execute: (rawArgs: unknown) => Promise<RuntimeToolResult>;
 }
 
 async function withToolTimeout<T>(params: {
@@ -41,7 +48,7 @@ async function withToolTimeout<T>(params: {
   }
 }
 
-function timeoutResult(toolName: string): ToolResult {
+function timeoutResult(): RuntimeToolResult {
   return {
     success: false,
     error: "tool_timeout",
@@ -49,19 +56,23 @@ function timeoutResult(toolName: string): ToolResult {
   };
 }
 
-function sanitizeResult(result: ToolResult): ToolResult {
+function sanitizeResult(result: RuntimeToolResult): RuntimeToolResult {
   if (!result || typeof result !== "object") return result;
   if (!Array.isArray(result.data)) return result;
   return {
     ...result,
     meta: {
       ...result.meta,
-      itemCount: Array.isArray(result.data) ? result.data.length : result.meta?.itemCount,
+      itemCount: result.data.length,
     },
   };
 }
 
-function blockedResult(params: { policyMessage: string; reasonCode: string; kind: "block" | "require_approval" }): ToolResult {
+function blockedResult(params: {
+  policyMessage: string;
+  reasonCode: string;
+  kind: "block" | "require_approval";
+}): RuntimeToolResult {
   return {
     success: false,
     error: params.reasonCode,
@@ -80,7 +91,7 @@ function blockedResult(params: { policyMessage: string; reasonCode: string; kind
 function invalidToolArgsResult(
   definition: RuntimeToolDefinition,
   missingFields: string[],
-): ToolResult {
+): RuntimeToolResult {
   const fields = missingFields.length > 0 ? missingFields : ["tool_args"];
   return {
     success: false,
@@ -102,10 +113,10 @@ function buildToolExecutor(params: {
   context: ToolAssemblyContext;
   artifacts: ToolExecutionArtifacts;
   summaries: ToolExecutionSummary[];
-}): (rawArgs: unknown) => Promise<ToolResult> {
+}): (rawArgs: unknown) => Promise<RuntimeToolResult> {
   const { definition, context, artifacts, summaries } = params;
 
-  return async (rawArgs: unknown): Promise<ToolResult> => {
+  return async (rawArgs: unknown): Promise<RuntimeToolResult> => {
     const startedAt = Date.now();
     const args =
       rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)
@@ -120,7 +131,11 @@ function buildToolExecutor(params: {
     });
 
     if (policy.kind === "block") {
-      const result = blockedResult({ policyMessage: policy.message, reasonCode: policy.reasonCode, kind: "block" });
+      const result = blockedResult({
+        policyMessage: policy.message,
+        reasonCode: policy.reasonCode,
+        kind: "block",
+      });
       summaries.push({
         toolName: definition.toolName,
         outcome: "blocked",
@@ -132,7 +147,11 @@ function buildToolExecutor(params: {
 
     if (policy.kind === "require_approval") {
       artifacts.approvals.push(policy.approval);
-      const result = blockedResult({ policyMessage: policy.message, reasonCode: policy.reasonCode, kind: "require_approval" });
+      const result = blockedResult({
+        policyMessage: policy.message,
+        reasonCode: policy.reasonCode,
+        kind: "require_approval",
+      });
       summaries.push({
         toolName: definition.toolName,
         outcome: "blocked",
@@ -157,7 +176,7 @@ function buildToolExecutor(params: {
       return result;
     }
 
-    let result: ToolResult;
+    let result: RuntimeToolResult;
     try {
       result = sanitizeResult(
         await withToolTimeout({
@@ -177,7 +196,7 @@ function buildToolExecutor(params: {
       );
     } catch (error) {
       if (error instanceof ToolExecutionTimeoutError) {
-        result = timeoutResult(definition.toolName);
+        result = timeoutResult();
       } else {
         throw error;
       }
@@ -198,29 +217,47 @@ function buildToolExecutor(params: {
   };
 }
 
-export function toToolDefinitions(params: {
+export function assembleRuntimeSessionTools(params: {
   registry: RuntimeToolDefinition[];
   context: ToolAssemblyContext;
   artifacts: ToolExecutionArtifacts;
   summaries: ToolExecutionSummary[];
-}): RuntimeCustomToolDefinition[] {
-  return params.registry.map((definition) => {
+}): {
+  tools: RuntimeSessionTool[];
+  toolLookup: Map<string, RuntimeSessionTool>;
+} {
+  const tools = params.registry.map((definition) => {
     assertProviderCompatibleToolSchema(
       definition.parameters,
       `tool:${definition.toolName}`,
     );
-    const execute = buildToolExecutor({
-      definition,
-      context: params.context,
-      artifacts: params.artifacts,
-      summaries: params.summaries,
-    });
     return {
       name: definition.toolName,
-      label: definition.toolName,
       description: definition.description,
       inputSchema: definition.parameters,
-      execute,
-    };
+      execute: buildToolExecutor({
+        definition,
+        context: params.context,
+        artifacts: params.artifacts,
+        summaries: params.summaries,
+      }),
+    } satisfies RuntimeSessionTool;
   });
+
+  return {
+    tools,
+    toolLookup: new Map(tools.map((tool) => [tool.name, tool])),
+  };
+}
+
+export function toAiToolSet(tools: RuntimeSessionTool[]): ToolSet {
+  const toolSet: ToolSet = {};
+  for (const tool of tools) {
+    toolSet[tool.name] = {
+      description: tool.description,
+      inputSchema: tool.inputSchema,
+      execute: tool.execute,
+    };
+  }
+  return toolSet;
 }

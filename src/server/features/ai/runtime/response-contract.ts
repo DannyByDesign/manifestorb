@@ -9,4 +9,9 @@ export interface RuntimeLoopResult {
   text: string;
   stopReason: RuntimeStopReason;
   attempts: number;
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  };
 }

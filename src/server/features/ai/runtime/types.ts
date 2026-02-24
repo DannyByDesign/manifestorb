@@ -4,7 +4,7 @@ import type { SkillCapabilities } from "@/server/features/ai/tools/runtime/capab
 import type { RuntimeSkillSnapshot } from "@/server/features/ai/skills/types";
 import type { UserPromptConfig } from "@/server/features/ai/system-prompt";
 import type { RuntimeTurnContract } from "@/server/features/ai/runtime/turn-contract";
-import type { RuntimeToolHarness } from "@/server/features/ai/tools/harness/types";
+import type { RuntimeSessionTool } from "@/server/features/ai/runtime/mcp-tools";
 import type {
   ToolExecutionArtifacts,
   ToolExecutionSummary,
@@ -34,7 +34,6 @@ export interface OpenWorldTurnInput {
   runtimeContextPack?: ContextPack;
   runtimeContextStatus?: "ready" | "degraded" | "missing";
   runtimeContextIssues?: string[];
-  runtimeTurnContract?: RuntimeTurnContract;
 }
 
 export interface RuntimeSession {
@@ -43,9 +42,9 @@ export interface RuntimeSession {
   turn: RuntimeTurnContract;
   skillSnapshot: RuntimeSkillSnapshot;
   userPromptConfig?: UserPromptConfig;
-  toolHarness: RuntimeToolHarness;
+  tools: RuntimeSessionTool[];
+  sessionToolLookup: Map<string, RuntimeSessionTool>;
   toolRegistry: RuntimeToolDefinition[];
-  toolLookup: Map<string, RuntimeToolDefinition>;
   artifacts: ToolExecutionArtifacts;
   summaries: ToolExecutionSummary[];
 }

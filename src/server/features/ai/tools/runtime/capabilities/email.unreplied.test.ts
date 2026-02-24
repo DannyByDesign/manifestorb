@@ -1,16 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CapabilityEnvironment } from "@/server/features/ai/tools/runtime/capabilities/types";
 import { createEmailCapabilities } from "@/server/features/ai/tools/runtime/capabilities/email";
-import { createUnifiedSearchService } from "@/server/features/search/unified/service";
 import prisma from "@/server/db/client";
-
-const unifiedQuery = vi.fn();
-
-vi.mock("@/server/features/search/unified/service", () => ({
-  createUnifiedSearchService: vi.fn(() => ({
-    query: unifiedQuery,
-  })),
-}));
 
 vi.mock("@/server/db/client", () => ({
   default: {
@@ -18,9 +9,30 @@ vi.mock("@/server/db/client", () => ({
   },
 }));
 
+vi.mock("@/server/features/ai/tools/calendar-time", () => ({
+  resolveDefaultCalendarTimeZone: vi.fn().mockResolvedValue({
+    timeZone: "America/Los_Angeles",
+    source: "integration",
+  }),
+}));
+
 function buildEnv(options?: {
-  emailProvider?: CapabilityEnvironment["toolContext"]["providers"]["email"];
+  search?: CapabilityEnvironment["toolContext"]["providers"]["email"]["search"];
+  getThread?: CapabilityEnvironment["toolContext"]["providers"]["email"]["getThread"];
 }): CapabilityEnvironment {
+  const search =
+    options?.search ??
+    vi.fn().mockResolvedValue({
+      messages: [],
+      nextPageToken: undefined,
+      totalEstimate: 0,
+    });
+  const getThread =
+    options?.getThread ??
+    vi.fn().mockResolvedValue({
+      messages: [],
+    });
+
   return {
     runtime: {
       userId: "user-1",
@@ -48,7 +60,10 @@ function buildEnv(options?: {
         with: vi.fn().mockReturnThis(),
       },
       providers: {
-        email: options?.emailProvider ?? ({} as never),
+        email: {
+          search,
+          getThread,
+        } as never,
         calendar: {} as never,
       },
       currentMessage: "",
@@ -59,15 +74,6 @@ function buildEnv(options?: {
 describe("email unrepliedToSent", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.mocked(createUnifiedSearchService).mockReturnValue({
-      query: unifiedQuery,
-    } as never);
-    unifiedQuery.mockResolvedValue({
-      items: [],
-      counts: { email: 0, calendar: 0, rule: 0, memory: 0 },
-      total: 0,
-      truncated: false,
-    });
   });
 
   it("returns clarification key when dateRange is missing", async () => {
@@ -75,7 +81,6 @@ describe("email unrepliedToSent", () => {
     const caps = createEmailCapabilities(buildEnv());
     const result = await caps.searchSent({
       unrepliedToSent: true,
-      // no dateRange
     });
 
     expect(result.success).toBe(false);
@@ -96,12 +101,8 @@ describe("email unrepliedToSent", () => {
       },
     ]);
 
-    const provider = {
-      search: vi.fn(),
-      getThread: vi.fn(),
-    };
-
-    const caps = createEmailCapabilities(buildEnv({ emailProvider: provider as never }));
+    const search = vi.fn();
+    const caps = createEmailCapabilities(buildEnv({ search }));
     const result = await caps.searchSent({
       unrepliedToSent: true,
       dateRange: {
@@ -123,8 +124,7 @@ describe("email unrepliedToSent", () => {
         snippet: "Follow up",
       }),
     ]);
-    expect(provider.search).not.toHaveBeenCalled();
-    expect(unifiedQuery).not.toHaveBeenCalled();
+    expect(search).not.toHaveBeenCalled();
 
     const [queryArg] = vi.mocked(prisma.$queryRaw).mock.calls[0] ?? [];
     const queryText =
@@ -135,111 +135,75 @@ describe("email unrepliedToSent", () => {
     expect(queryText).toContain("FROM \"EmailMessage\"");
   });
 
-  it("falls back to unified search scan when DB query fails and preserves unreplied semantics", async () => {
+  it("falls back to provider search scan when DB query fails and preserves unreplied semantics", async () => {
     vi.mocked(prisma.$queryRaw).mockRejectedValueOnce(new Error("db down"));
-    unifiedQuery.mockResolvedValueOnce({
-      items: [
-        {
-          surface: "email",
-          id: "email:m-a",
-          title: "A",
-          snippet: "",
-          timestamp: "2026-02-06T10:00:00.000Z",
-          score: 0.8,
-          metadata: { threadId: "t-a", messageId: "m-a" },
-        },
-        {
-          surface: "email",
-          id: "email:m-b",
-          title: "B",
-          snippet: "",
-          timestamp: "2026-02-02T09:00:00.000Z",
-          score: 0.7,
-          metadata: { threadId: "t-b", messageId: "m-b" },
-        },
-        {
-          surface: "email",
-          id: "email:m-c",
-          title: "C",
-          snippet: "",
-          timestamp: "2026-02-04T12:00:00.000Z",
-          score: 0.7,
-          metadata: { threadId: "t-c", messageId: "m-c" },
-        },
+
+    const search = vi.fn().mockResolvedValueOnce({
+      messages: [
+        { id: "m-a", threadId: "t-a" },
+        { id: "m-b", threadId: "t-b" },
+        { id: "m-c", threadId: "t-c" },
       ],
-      counts: { email: 3, calendar: 0, rule: 0, memory: 0 },
-      total: 3,
-      truncated: false,
+      nextPageToken: undefined,
+      totalEstimate: 3,
     });
 
-    const provider = {
-      search: vi.fn(),
-      getThread: vi.fn(async (threadId: string) => {
-        const mk = (p: {
-          id: string;
-          dateIso: string;
-          from: string;
-          subject?: string;
-          to?: string;
-        }) => ({
-          id: p.id,
-          internalDate: p.dateIso,
-          date: p.dateIso,
+    const getThread = vi.fn(async (threadId: string) => {
+      const mk = (p: {
+        id: string;
+        dateIso: string;
+        from: string;
+        subject?: string;
+        to?: string;
+      }) => ({
+        id: p.id,
+        internalDate: p.dateIso,
+        date: p.dateIso,
+        subject: p.subject ?? "",
+        headers: {
+          from: p.from,
           subject: p.subject ?? "",
-          headers: {
-            from: p.from,
-            subject: p.subject ?? "",
-            to: p.to ?? "",
-            cc: "",
-          },
-        });
+          to: p.to ?? "",
+          cc: "",
+        },
+      });
 
-        // Semantics: "reply" means any inbound message after the *last* sent message.
-        if (threadId === "t-a") {
-          // Last sent, then inbound reply after -> excluded.
-          return {
-            messages: [
-              mk({ id: "a1", dateIso: "2026-02-05T10:00:00.000Z", from: "user@example.com", subject: "A", to: "x@co.com" }),
-              mk({ id: "a2", dateIso: "2026-02-06T10:00:00.000Z", from: "x@co.com", subject: "Re: A" }),
-            ],
-          };
-        }
-        if (threadId === "t-b") {
-          // Inbound before last sent -> still unreplied (no inbound after last sent) -> included.
-          return {
-            messages: [
-              mk({ id: "b1", dateIso: "2026-02-01T09:00:00.000Z", from: "y@co.com", subject: "B" }),
-              mk({ id: "b2", dateIso: "2026-02-02T09:00:00.000Z", from: "user@example.com", subject: "Re: B", to: "y@co.com" }),
-            ],
-          };
-        }
-        // t-c: only sent messages -> included.
+      if (threadId === "t-a") {
         return {
           messages: [
-            mk({ id: "c1", dateIso: "2026-02-03T12:00:00.000Z", from: "user@example.com", subject: "C", to: "z@co.com" }),
-            mk({ id: "c2", dateIso: "2026-02-04T12:00:00.000Z", from: "user@example.com", subject: "Re: C", to: "z@co.com" }),
+            mk({ id: "a1", dateIso: "2026-02-05T10:00:00.000Z", from: "user@example.com", subject: "A", to: "x@co.com" }),
+            mk({ id: "a2", dateIso: "2026-02-06T10:00:00.000Z", from: "x@co.com", subject: "Re: A" }),
           ],
         };
-      }),
-    };
+      }
+      if (threadId === "t-b") {
+        return {
+          messages: [
+            mk({ id: "b1", dateIso: "2026-02-01T09:00:00.000Z", from: "y@co.com", subject: "B" }),
+            mk({ id: "b2", dateIso: "2026-02-02T09:00:00.000Z", from: "user@example.com", subject: "Re: B", to: "y@co.com" }),
+          ],
+        };
+      }
+      return {
+        messages: [
+          mk({ id: "c1", dateIso: "2026-02-03T12:00:00.000Z", from: "user@example.com", subject: "C", to: "z@co.com" }),
+          mk({ id: "c2", dateIso: "2026-02-04T12:00:00.000Z", from: "user@example.com", subject: "Re: C", to: "z@co.com" }),
+        ],
+      };
+    });
 
-    const caps = createEmailCapabilities(buildEnv({ emailProvider: provider as never }));
+    const caps = createEmailCapabilities(buildEnv({ search, getThread }));
     const result = await caps.searchSent({
       unrepliedToSent: true,
       dateRange: {
         after: "2026-02-01T00:00:00.000Z",
         before: "2026-02-10T00:00:00.000Z",
+        timeZone: "UTC",
       },
     });
 
-    expect(unifiedQuery).toHaveBeenCalledWith(
-      expect.objectContaining({
-        scopes: ["email"],
-        mailbox: "sent",
-        sort: "newest",
-      }),
-    );
-    expect(provider.search).not.toHaveBeenCalled();
+    expect(vi.mocked(prisma.$queryRaw)).toHaveBeenCalledTimes(1);
+    expect(getThread).toHaveBeenCalled();
 
     expect(result.success).toBe(true);
     const items = Array.isArray(result.data) ? result.data : [];

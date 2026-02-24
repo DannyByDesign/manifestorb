@@ -1,9 +1,30 @@
 # Cloud Agent SDK Secretary Runtime V2: Full Migration Plan
 
-**Status:** Planning complete, implementation not started  
+**Status:** Implementation complete (hard cutover, no legacy fallback path)  
 **Date:** 2026-02-24  
 **Scope:** Entire `src` tree (862 files, ~128,302 LOC)  
 **Directive:** Replace unreliable custom orchestration with a TypeScript Agent-SDK-style runtime, preserve strong domain/runtime capabilities, and narrow product scope to conversational inbox/calendar secretary.
+
+## 0. Implementation Tracking (Source of Truth)
+
+Workstream completion state in this repository:
+
+1. `WS0` Foundation runtime layer: **Completed**
+2. `WS1` Orchestration core replacement: **Completed**
+3. `WS2` MCP-style tool contract migration: **Completed**
+4. `WS3` Entry-point and API wiring cutover: **Completed**
+5. `WS4` Inbox/calendar reliability hardening: **Completed**
+6. `WS5` Skills migration to deterministic runtime contract loading: **Completed**
+7. `WS6` Secretary-mode search strategy migration: **Completed**
+8. `WS7` Non-secretary runtime-path prune/isolation: **Completed**
+9. `WS8` Telemetry/cost/control-plane updates: **Completed**
+10. `WS9` Tests and quality gates refresh: **Completed**
+
+Cutover constraints applied:
+
+1. Feature flags/staged rollout/rollback thresholds were intentionally removed from execution scope per product directive.
+2. Legacy runtime compatibility and fallback orchestration paths are removed from the secretary critical path.
+3. Web search/fetch use Anthropic server-tool contracts; deprecated custom web-tool implementation modules are removed.
 
 ## 1. Decision
 
