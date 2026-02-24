@@ -62,26 +62,33 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
     calendarId?: string;
   }): Promise<CalendarEvent[]> {
     const client = await this.getClient();
+    const targetCount = Math.max(1, maxResults);
+    const filteredEvents: calendar_v3.Schema$Event[] = [];
+    let nextPageToken: string | undefined;
 
-    const response = await client.events.list({
-      calendarId: calendarId ?? "primary",
-      timeMin: timeMin.toISOString(),
-      timeMax: timeMax.toISOString(),
-      maxResults,
-      singleEvents: true,
-      orderBy: "startTime",
-      q: attendeeEmail,
-    });
+    do {
+      const response = await client.events.list({
+        calendarId: calendarId ?? "primary",
+        timeMin: timeMin.toISOString(),
+        timeMax: timeMax.toISOString(),
+        maxResults: Math.min(2500, targetCount),
+        singleEvents: true,
+        orderBy: "startTime",
+        q: attendeeEmail,
+        pageToken: nextPageToken,
+      });
 
-    const events = response.data.items || [];
-
-    // Filter to events that actually have this attendee
-    return events
-      .filter((event) =>
+      const pageEvents = (response.data.items || []).filter((event) =>
         event.attendees?.some(
           (a) => a.email?.toLowerCase() === attendeeEmail.toLowerCase(),
         ),
-      )
+      );
+      filteredEvents.push(...pageEvents);
+      nextPageToken = response.data.nextPageToken ?? undefined;
+    } while (nextPageToken && filteredEvents.length < targetCount);
+
+    return filteredEvents
+      .slice(0, targetCount)
       .map((event) => this.parseEvent(event, calendarId));
   }
 
@@ -97,19 +104,26 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
     calendarId?: string;
   }): Promise<CalendarEvent[]> {
     const client = await this.getClient();
+    const targetCount = Math.max(1, maxResults || 10);
+    const events: calendar_v3.Schema$Event[] = [];
+    let nextPageToken: string | undefined;
 
-    const response = await client.events.list({
-      calendarId: calendarId ?? "primary",
-      timeMin: timeMin?.toISOString(),
-      timeMax: timeMax?.toISOString(),
-      maxResults: maxResults || 10,
-      singleEvents: true,
-      orderBy: "startTime",
-    });
+    do {
+      const response = await client.events.list({
+        calendarId: calendarId ?? "primary",
+        timeMin: timeMin?.toISOString(),
+        timeMax: timeMax?.toISOString(),
+        maxResults: Math.min(2500, targetCount - events.length),
+        singleEvents: true,
+        orderBy: "startTime",
+        pageToken: nextPageToken,
+      });
 
-    const events = response.data.items || [];
+      events.push(...(response.data.items || []));
+      nextPageToken = response.data.nextPageToken ?? undefined;
+    } while (nextPageToken && events.length < targetCount);
 
-    return events.map((event) => this.parseEvent(event, calendarId));
+    return events.slice(0, targetCount).map((event) => this.parseEvent(event, calendarId));
   }
 
   async getEvent(

@@ -170,7 +170,7 @@ describe("runtime email provider search routing", () => {
     expect(arg.receivedByMe).toBe(true);
   });
 
-  it("preserves user-turn semantic query context when explicit query/text is missing", async () => {
+  it("does not inject raw user-turn text into provider query when query/text is missing", async () => {
     const search = vi.fn().mockResolvedValue({
       messages: [],
       nextPageToken: undefined,
@@ -190,7 +190,7 @@ describe("runtime email provider search routing", () => {
 
     expect(search).toHaveBeenCalledWith(
       expect.objectContaining({
-        query: "in:inbox Show me my 10 most recent unread emails is:unread",
+        query: "in:inbox is:unread",
         limit: 10,
       }),
     );
@@ -400,7 +400,7 @@ describe("runtime email provider search routing", () => {
     expect((result.data as { count: number; exact: boolean }).exact).toBe(false);
     expect(search).toHaveBeenCalledWith(
       expect.objectContaining({
-        query: "in:inbox unread is:unread",
+        query: "in:inbox is:unread",
         limit: 100,
         fetchAll: false,
       }),
@@ -427,5 +427,51 @@ describe("runtime email provider search routing", () => {
     );
     expect(result.success).toBe(false);
     expect(result.message).toBe("No matching emails found for this sender action.");
+  });
+
+  it("uses scoped provider search for temporal unread counts", async () => {
+    const search = vi.fn().mockResolvedValue({
+      messages: [message({ id: "m-1" }), message({ id: "m-2" })],
+      nextPageToken: undefined,
+      totalEstimate: 2,
+    });
+    const getUnreadCount = vi.fn();
+    const caps = createEmailCapabilities(buildEnv({ search, getUnreadCount }));
+
+    const result = await caps.countUnread({
+      scope: "inbox",
+      dateRange: {
+        after: "2026-02-16",
+        before: "2026-02-16",
+        timeZone: "America/Los_Angeles",
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(search).toHaveBeenCalledWith(
+      expect.objectContaining({
+        query: "in:inbox is:unread",
+        fetchAll: true,
+      }),
+    );
+    const arg = search.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(arg.after).toBeInstanceOf(Date);
+    expect(arg.before).toBeInstanceOf(Date);
+    expect(getUnreadCount).not.toHaveBeenCalled();
+  });
+
+  it("delegates countUnread without filters to provider counter path", async () => {
+    const getUnreadCount = vi.fn().mockResolvedValue({
+      count: 9,
+      exact: true,
+    });
+    const search = vi.fn();
+    const caps = createEmailCapabilities(buildEnv({ search, getUnreadCount }));
+
+    const result = await caps.countUnread({ scope: "inbox" });
+
+    expect(result.success).toBe(true);
+    expect(getUnreadCount).toHaveBeenCalledWith({ scope: "inbox" });
+    expect(search).not.toHaveBeenCalled();
   });
 });

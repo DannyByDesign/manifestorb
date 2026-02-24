@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createGoogleCalendarProvider } from "@/server/features/calendar/providers/google";
 import prisma from "@/server/lib/__mocks__/prisma";
+import type { Logger } from "@/server/lib/logger";
 import {
   getCalendarOAuth2ClientForBaseUrl,
   fetchGoogleCalendars,
@@ -47,7 +48,7 @@ const logger = {
   warn: vi.fn(),
   error: vi.fn(),
   with: vi.fn().mockReturnThis(),
-} as any;
+} as unknown as Logger;
 
 describe("createGoogleCalendarProvider", () => {
   beforeEach(() => {
@@ -67,7 +68,7 @@ describe("createGoogleCalendarProvider", () => {
       verifyIdToken: vi.fn().mockResolvedValue({
         getPayload: () => ({ email: "user@test.com" }),
       }),
-    } as any);
+    } as unknown as ReturnType<typeof getCalendarOAuth2ClientForBaseUrl>);
 
     const provider = createGoogleCalendarProvider(logger, "http://localhost:3000");
     const tokens = await provider.exchangeCodeForTokens("code");
@@ -77,10 +78,10 @@ describe("createGoogleCalendarProvider", () => {
   });
 
   it("syncs calendars and schedules watches", async () => {
-    vi.mocked(getCalendarClientWithRefresh).mockResolvedValue({} as any);
+    vi.mocked(getCalendarClientWithRefresh).mockResolvedValue({} as never);
     vi.mocked(fetchGoogleCalendars).mockResolvedValue([
       { id: "cal-1", summary: "Primary", timeZone: "UTC" },
-    ] as any);
+    ] as never);
     prisma.calendar.upsert.mockResolvedValue({
       id: "cal-1",
       calendarId: "cal-1",
@@ -89,7 +90,7 @@ describe("createGoogleCalendarProvider", () => {
       googleResourceId: null,
       googleChannelToken: null,
       googleChannelExpiresAt: null,
-    } as any);
+    } as never);
 
     const provider = createGoogleCalendarProvider(logger, "http://localhost:3000");
     await provider.syncCalendars("conn-1", "a", "r", "email-1", null);
@@ -103,6 +104,146 @@ describe("createGoogleCalendarProvider", () => {
 describe("GoogleCalendarEventProvider", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("paginates Google events.list when fetching events", async () => {
+    const list = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: {
+          items: [
+            {
+              id: "event-1",
+              summary: "First",
+              start: { dateTime: "2024-05-01T10:00:00Z" },
+              end: { dateTime: "2024-05-01T11:00:00Z" },
+            },
+          ],
+          nextPageToken: "next-1",
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          items: [
+            {
+              id: "event-2",
+              summary: "Second",
+              start: { dateTime: "2024-05-01T12:00:00Z" },
+              end: { dateTime: "2024-05-01T13:00:00Z" },
+            },
+          ],
+        },
+      });
+    vi.mocked(getCalendarClientWithRefresh).mockResolvedValue({
+      events: { list },
+    } as never);
+
+    const provider = new GoogleCalendarEventProvider(
+      {
+        accessToken: "token",
+        refreshToken: "refresh",
+        expiresAt: null,
+        emailAccountId: "email-1",
+      },
+      logger,
+    );
+
+    const events = await provider.fetchEvents({
+      timeMin: new Date("2024-05-01T00:00:00Z"),
+      timeMax: new Date("2024-05-02T00:00:00Z"),
+      maxResults: 2,
+      calendarId: "primary",
+    });
+
+    expect(events).toHaveLength(2);
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(list).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        calendarId: "primary",
+        maxResults: 2,
+        pageToken: undefined,
+      }),
+    );
+    expect(list).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        calendarId: "primary",
+        pageToken: "next-1",
+      }),
+    );
+  });
+
+  it("paginates attendee search until matching attendee events are found", async () => {
+    const attendeeEmail = "teammate@example.com";
+    const list = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: {
+          items: [
+            {
+              id: "event-1",
+              summary: "Other attendee",
+              start: { dateTime: "2024-05-01T10:00:00Z" },
+              end: { dateTime: "2024-05-01T11:00:00Z" },
+              attendees: [{ email: "other@example.com" }],
+            },
+          ],
+          nextPageToken: "next-1",
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          items: [
+            {
+              id: "event-2",
+              summary: "Target attendee",
+              start: { dateTime: "2024-05-01T12:00:00Z" },
+              end: { dateTime: "2024-05-01T13:00:00Z" },
+              attendees: [{ email: attendeeEmail }],
+            },
+          ],
+        },
+      });
+    vi.mocked(getCalendarClientWithRefresh).mockResolvedValue({
+      events: { list },
+    } as never);
+
+    const provider = new GoogleCalendarEventProvider(
+      {
+        accessToken: "token",
+        refreshToken: "refresh",
+        expiresAt: null,
+        emailAccountId: "email-1",
+      },
+      logger,
+    );
+
+    const events = await provider.fetchEventsWithAttendee({
+      attendeeEmail,
+      timeMin: new Date("2024-05-01T00:00:00Z"),
+      timeMax: new Date("2024-05-02T00:00:00Z"),
+      maxResults: 1,
+      calendarId: "primary",
+    });
+
+    expect(events).toHaveLength(1);
+    expect(events[0]?.id).toBe("event-2");
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(list).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        q: attendeeEmail,
+        pageToken: undefined,
+      }),
+    );
+    expect(list).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        q: attendeeEmail,
+        pageToken: "next-1",
+      }),
+    );
   });
 
   it("creates events with a default time zone", async () => {

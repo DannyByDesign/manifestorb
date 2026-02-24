@@ -11,6 +11,7 @@ import { planRuntimeTurn } from "@/server/features/ai/runtime/turn-planner";
 
 const EMAIL_SEARCH_TOOL_NAMES = new Set([
   "email.getUnreadCount",
+  "email.countUnread",
   "email.searchThreads",
   "email.searchThreadsAdvanced",
   "email.searchSent",

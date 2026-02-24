@@ -19,20 +19,38 @@ import prisma from "@/server/db/client";
 import type { Logger } from "@/server/lib/logger";
 import type { gmail_v1 } from "@googleapis/gmail";
 
+function normalizeHistoryId(value: unknown): string | null {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value) || value <= 0) return null;
+    return Math.trunc(value).toString();
+  }
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!/^\d+$/u.test(trimmed)) return null;
+  const normalized = trimmed.replace(/^0+/u, "");
+  return normalized.length > 0 ? normalized : null;
+}
+
 export async function processHistoryForUser(
   decodedData: {
     emailAddress: string;
-    historyId: number;
+    historyId: number | string;
   },
   options: { startHistoryId?: string },
   logger: Logger,
 ) {
   const startTime = Date.now();
   const { emailAddress, historyId } = decodedData;
+  const webhookHistoryId = normalizeHistoryId(historyId);
   // All emails in the database are stored in lowercase
   // But it's possible that the email address in the webhook is not
   // So we need to convert it to lowercase
   const email = emailAddress.toLowerCase();
+
+  if (!webhookHistoryId) {
+    logger.warn("Invalid Gmail webhook history ID; skipping", { historyId });
+    return NextResponse.json({ ok: true });
+  }
 
   const emailAccount = await getWebhookEmailAccount({ email }, logger);
 
@@ -81,7 +99,7 @@ export async function processHistoryForUser(
     const historyResult = await fetchGmailHistoryResilient({
       gmail,
       emailAccount,
-      webhookHistoryId: historyId,
+      webhookHistoryId,
       options,
       logger,
     });
@@ -89,7 +107,7 @@ export async function processHistoryForUser(
     if (historyResult.status === "expired") {
       await updateLastSyncedHistoryId({
         emailAccountId: validatedEmailAccount.id,
-        lastSyncedHistoryId: historyId.toString(),
+        lastSyncedHistoryId: webhookHistoryId,
       });
       return NextResponse.json({ ok: true });
     }
@@ -117,6 +135,10 @@ export async function processHistoryForUser(
         },
         logger,
       );
+      await updateLastSyncedHistoryId({
+        emailAccountId: validatedEmailAccount.id,
+        lastSyncedHistoryId: historyResult.latestHistoryId,
+      });
     } else {
       logger.info("No history", {
         startHistoryId: historyResult.startHistoryId,
@@ -125,7 +147,7 @@ export async function processHistoryForUser(
       // important to save this or we can get into a loop with never receiving history
       await updateLastSyncedHistoryId({
         emailAccountId: validatedEmailAccount.id,
-        lastSyncedHistoryId: historyId.toString(),
+        lastSyncedHistoryId: webhookHistoryId,
       });
     }
 
@@ -236,18 +258,19 @@ async function updateLastSyncedHistoryId({
   emailAccountId: string;
   lastSyncedHistoryId?: string | null;
 }) {
-  if (!lastSyncedHistoryId) return;
+  const normalizedHistoryId = normalizeHistoryId(lastSyncedHistoryId);
+  if (!normalizedHistoryId) return;
 
   // Use conditional update: only set if new value > current value (or current is null)
   // This prevents race conditions where slower webhook processors with older
   // history IDs could overwrite progress from faster processors with newer IDs
   await prisma.$executeRaw`
     UPDATE "EmailAccount"
-    SET "lastSyncedHistoryId" = ${lastSyncedHistoryId}, "updatedAt" = NOW()
+    SET "lastSyncedHistoryId" = ${normalizedHistoryId}, "updatedAt" = NOW()
     WHERE id = ${emailAccountId}
     AND (
       "lastSyncedHistoryId" IS NULL
-      OR CAST("lastSyncedHistoryId" AS NUMERIC) < CAST(${lastSyncedHistoryId} AS NUMERIC)
+      OR CAST("lastSyncedHistoryId" AS NUMERIC) < CAST(${normalizedHistoryId} AS NUMERIC)
     )
   `;
 }
@@ -285,8 +308,9 @@ function isHistoryIdExpiredError(error: unknown): boolean {
 
 /**
  * Fetches history from Gmail with resilience:
- * 1. Limits how far back we go to avoid processing massive gaps (e.g. if a user is disconnected for months).
- * 2. Handles expired history IDs (404s) by resetting the sync point.
+ * 1. Starts from a persisted sync point (or current webhook history ID if unset).
+ * 2. Paginates through all Gmail history pages.
+ * 3. Handles expired history IDs (404s) by resetting the sync point.
  */
 async function fetchGmailHistoryResilient({
   gmail,
@@ -297,7 +321,7 @@ async function fetchGmailHistoryResilient({
 }: {
   gmail: gmail_v1.Gmail;
   emailAccount: ValidatedWebhookAccountData;
-  webhookHistoryId: number;
+  webhookHistoryId: string;
   options: { startHistoryId?: string };
   logger: Logger;
 }): Promise<
@@ -305,53 +329,71 @@ async function fetchGmailHistoryResilient({
       status: "success";
       data: Awaited<ReturnType<typeof getHistory>>;
       startHistoryId: string;
+      latestHistoryId?: string;
     }
   | { status: "expired" }
 > {
-  const lastSyncedHistoryId = Number.parseInt(
-    emailAccount?.lastSyncedHistoryId || "0",
-  );
-
-  // If the gap is too large (e.g. > 500 items), we start from currentHistoryId - 500.
-  // This prevents timeouts and runaway processing costs if the system falls way behind.
-  const startHistoryIdNum = Math.max(
-    lastSyncedHistoryId,
-    webhookHistoryId - 500,
-  );
   const startHistoryId =
-    options?.startHistoryId || startHistoryIdNum.toString();
-
-  // Log if we are intentionally skipping emails to keep the system stable
-  if (startHistoryIdNum > lastSyncedHistoryId && !options?.startHistoryId) {
-    logger.warn("Skipping history items due to large gap", {
-      lastSyncedHistoryId,
-      webhookHistoryId,
-      effectiveStartHistoryId: startHistoryIdNum,
-      skippedHistoryItems: startHistoryIdNum - lastSyncedHistoryId,
-    });
-  }
+    normalizeHistoryId(options?.startHistoryId) ??
+    normalizeHistoryId(emailAccount?.lastSyncedHistoryId) ??
+    webhookHistoryId;
 
   logger.info("Listing history", {
     startHistoryId,
+    webhookHistoryId,
     lastSyncedHistoryId: emailAccount?.lastSyncedHistoryId,
     gmailHistoryId: startHistoryId,
   });
 
   try {
-    const data = await getHistory(gmail, {
-      startHistoryId,
-      historyTypes: ["messageAdded", "labelAdded", "labelRemoved"],
-      maxResults: 500,
-    });
+    type GmailHistoryResponse = Awaited<ReturnType<typeof getHistory>>;
+    const allHistory: NonNullable<GmailHistoryResponse["history"]> = [];
+    let nextPageToken: string | undefined;
+    let latestHistoryId: string | undefined;
+    let lastPage: GmailHistoryResponse | null = null;
+    let pageCount = 0;
 
-    if (data.nextPageToken) {
-      logger.warn("Gmail history has more pages that were not fetched", {
-        historyItemCount: data.history?.length ?? 0,
+    do {
+      const data = await getHistory(gmail, {
         startHistoryId,
+        historyTypes: ["messageAdded", "labelAdded", "labelRemoved"],
+        maxResults: 500,
+        pageToken: nextPageToken,
+      });
+      pageCount += 1;
+      lastPage = data;
+      if (Array.isArray(data.history)) {
+        allHistory.push(...data.history);
+      }
+      if (typeof data.historyId === "string" && data.historyId.trim().length > 0) {
+        latestHistoryId = data.historyId;
+      }
+      nextPageToken = data.nextPageToken ?? undefined;
+    } while (nextPageToken);
+
+    if (pageCount > 1) {
+      logger.info("Fetched paginated Gmail history", {
+        startHistoryId,
+        pageCount,
+        historyItemCount: allHistory.length,
       });
     }
 
-    return { status: "success", data, startHistoryId };
+    const data: GmailHistoryResponse = {
+      ...(lastPage ?? {}),
+      history: allHistory.length > 0 ? allHistory : undefined,
+      nextPageToken: undefined,
+      historyId: latestHistoryId ?? lastPage?.historyId ?? undefined,
+    };
+    return {
+      status: "success",
+      data,
+      startHistoryId,
+      latestHistoryId:
+        latestHistoryId ??
+        normalizeHistoryId(lastPage?.historyId) ??
+        undefined,
+    };
   } catch (error) {
     // Gmail history IDs are typically valid for ~1 week. If older, Gmail returns a 404.
     // In this case, we reset the sync point to the current history ID.

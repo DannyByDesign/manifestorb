@@ -55,8 +55,6 @@ import {
 import { getMessagesBatch } from "@/server/integrations/google/message";
 import {
   getAccessTokenFromClient,
-  getGmailClient,
-  getContactsClient,
 } from "@/server/integrations/google/client";
 import {
   searchGoogleContacts,
@@ -233,10 +231,13 @@ export class GmailProvider implements EmailProvider {
       return { count, exact: true };
     }
 
-    const scopedQuery =
-      scope === "primary"
-        ? "in:inbox category:primary is:unread"
-        : "in:inbox is:unread";
+    if (scope === "all") {
+      const label = await getLabelById({ gmail: this.client, id: GmailLabel.UNREAD });
+      const count = Math.max(0, Math.trunc(label.messagesTotal ?? label.messagesUnread ?? 0));
+      return { count, exact: true };
+    }
+
+    const scopedQuery = "in:inbox category:primary is:unread";
     const response = await getMessages(this.client, {
       query: scopedQuery,
       maxResults: 1,
@@ -418,7 +419,6 @@ export class GmailProvider implements EmailProvider {
     for (const sender of senders) {
       if (!sender) continue;
 
-      const publishedThreadIds = new Set<string>();
       let nextPageToken: string | undefined;
 
       do {
@@ -432,7 +432,6 @@ export class GmailProvider implements EmailProvider {
             },
           );
 
-          const batchThreadIds = new Set(messages.map((msg) => msg.threadId));
           const batchMessageIds = messages.map((msg) => msg.id);
 
           if (batchMessageIds.length > 0) {
@@ -1580,14 +1579,18 @@ export class GmailProvider implements EmailProvider {
   }
 
   async moveThreadToFolder(
-    _threadId: string,
-    _ownerEmail: string,
-    _folderName: string,
+    threadId: string,
+    ownerEmail: string,
+    folderName: string,
   ): Promise<void> {
+    void threadId;
+    void ownerEmail;
+    void folderName;
     this.logger.warn("Moving thread to folder is not supported for Gmail");
   }
 
-  async getOrCreateFolderIdByName(_folderName: string): Promise<string> {
+  async getOrCreateFolderIdByName(folderName: string): Promise<string> {
+    void folderName;
     this.logger.warn("Moving to folder is not supported for Gmail");
     return "";
   }

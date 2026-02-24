@@ -26,6 +26,7 @@ import { Prisma } from "@/generated/prisma/client";
 
 export interface EmailCapabilities {
   getUnreadCount(filter?: Record<string, unknown>): Promise<ToolResult>;
+  countUnread(filter?: Record<string, unknown>): Promise<ToolResult>;
   searchThreads(filter: Record<string, unknown>): Promise<ToolResult>;
   searchThreadsAdvanced(filter: Record<string, unknown>): Promise<ToolResult>;
   facetThreads(input: { filter?: Record<string, unknown>; maxFacets?: number; scanLimit?: number }): Promise<ToolResult>;
@@ -280,9 +281,6 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         ? (requestFilter.dateRange as Record<string, unknown>)
         : undefined;
 
-    const currentMessage = capEnv.toolContext.currentMessage ?? "";
-    const fallbackQuery = currentMessage.trim();
-
     const inferredUnrepliedToSent = requestFilter.unrepliedToSent === true;
 
     const mailboxCandidate =
@@ -512,8 +510,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
             typeof requestFilter.text === "string" && requestFilter.text.trim().length > 0
               ? requestFilter.text.trim()
               : undefined;
-          const semanticQuery =
-            requestQuery ?? requestText ?? (fallbackQuery.length > 0 ? fallbackQuery : undefined);
+          const semanticQuery = requestQuery ?? requestText ?? undefined;
           const scopedQuery = ensureMailboxScopeInQuery(semanticQuery, mailbox ?? "sent");
           const providerResult = await provider.search({
             query: scopedQuery ?? "",
@@ -644,11 +641,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         typeof requestFilter.text === "string" && requestFilter.text.trim().length > 0
           ? requestFilter.text.trim()
           : undefined;
-
-      // Preserve the full user turn for intent compilation when tool args are underspecified.
-      // This prevents ranking/filter constraints (e.g. recency/unread) from being dropped.
-      const semanticQuery =
-        requestQuery ?? requestText ?? (fallbackQuery.length > 0 ? fallbackQuery : undefined);
+      const semanticQuery = requestQuery ?? requestText ?? undefined;
       const unread = typeof requestFilter.unread === "boolean" ? requestFilter.unread : undefined;
       const unreadToken = unread === true ? "is:unread" : unread === false ? "-is:unread" : "";
       const queryWithUnread =
@@ -771,12 +764,22 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
   const runUnreadCount = async (
     filter?: Record<string, unknown>,
   ): Promise<ToolResult> => {
-    const scopeRaw =
-      typeof filter?.scope === "string"
-        ? filter.scope.trim().toLowerCase()
-        : "inbox";
-    const scope = scopeRaw === "primary" || scopeRaw === "all" ? scopeRaw : "inbox";
-    if (scopeRaw.length > 0 && scopeRaw !== "inbox" && scopeRaw !== "primary" && scopeRaw !== "all") {
+    const resolveScope = () => {
+      const scopeRaw =
+        typeof filter?.scope === "string"
+          ? filter.scope.trim().toLowerCase()
+          : "inbox";
+      const scope: "inbox" | "primary" | "all" =
+        scopeRaw === "primary" || scopeRaw === "all" ? scopeRaw : "inbox";
+      return { scopeRaw, scope };
+    };
+    const { scopeRaw, scope } = resolveScope();
+    if (
+      scopeRaw.length > 0 &&
+      scopeRaw !== "inbox" &&
+      scopeRaw !== "primary" &&
+      scopeRaw !== "all"
+    ) {
       return {
         success: false,
         error: "invalid_scope",
@@ -807,14 +810,22 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         meta: asMetaItemCount(1),
       };
     } catch (error) {
-      const fallback = await runUnifiedSearchThreads({
-        query: scope === "primary" ? "unread category:primary" : "unread",
-        unread: true,
-        sort: "newest",
-        limit: 100,
-        fetchAll: false,
-        ...(scope === "primary" ? { category: "primary" } : {}),
-      }, "inbox");
+      const fallback = await runUnifiedSearchThreads(
+        {
+          query:
+            scope === "primary"
+              ? "in:inbox category:primary"
+              : scope === "all"
+                ? ""
+                : "in:inbox",
+          unread: true,
+          sort: "newest",
+          limit: 100,
+          fetchAll: false,
+          ...(scope === "primary" ? { category: "primary" } : {}),
+        },
+        scope === "all" ? undefined : "inbox",
+      );
       if (!fallback.success) {
         return capabilityFailureResult(error, "I couldn't count unread emails right now.", {
           resource: "email",
@@ -848,6 +859,211 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         paging: paging ?? undefined,
         meta: asMetaItemCount(1),
       };
+    }
+  };
+
+  const runCountUnread = async (
+    filter?: Record<string, unknown>,
+  ): Promise<ToolResult> => {
+    const scopeRaw =
+      typeof filter?.scope === "string"
+        ? filter.scope.trim().toLowerCase()
+        : "inbox";
+    const scope: "inbox" | "primary" | "all" =
+      scopeRaw === "primary" || scopeRaw === "all" ? scopeRaw : "inbox";
+    if (scopeRaw.length > 0 && scopeRaw !== "inbox" && scopeRaw !== "primary" && scopeRaw !== "all") {
+      return {
+        success: false,
+        error: "invalid_scope",
+        message: "Unread count supports inbox, primary, or all.",
+        clarification: {
+          kind: "invalid_fields",
+          prompt: "email_unread_count_scope_invalid",
+          missingFields: ["scope"],
+        },
+      };
+    }
+
+    const validatedFilter = validateEmailSearchFilter(filter ?? {});
+    if (!validatedFilter.ok) {
+      return {
+        success: false,
+        error: validatedFilter.error,
+        message: validatedFilter.message,
+        clarification: {
+          kind: validatedFilter.clarificationKind ?? "invalid_fields",
+          prompt: validatedFilter.prompt,
+          missingFields: validatedFilter.fields,
+        },
+      };
+    }
+
+    const requestFilter = validatedFilter.filter;
+    if (requestFilter.unread === false) {
+      return {
+        success: false,
+        error: "invalid_fields",
+        message: "email.countUnread only supports unread=true (or omitting unread).",
+        clarification: {
+          kind: "invalid_fields",
+          prompt: "email_count_unread_invalid_unread_filter",
+          missingFields: ["unread"],
+        },
+      };
+    }
+
+    const resolvedBounds = await resolveProviderDateBounds(requestFilter);
+    if (!resolvedBounds.ok) {
+      return {
+        success: false,
+        error: "invalid_date_range",
+        message: resolvedBounds.error,
+        clarification: {
+          kind: "invalid_fields",
+          prompt: "email_date_range_invalid",
+          missingFields: ["dateRange.after", "dateRange.before"],
+        },
+      };
+    }
+
+    const hasTemporalWindow = Boolean(resolvedBounds.after || resolvedBounds.before);
+    const hasAdditionalFilter = Boolean(
+      (typeof requestFilter.query === "string" && requestFilter.query.trim()) ||
+        (typeof requestFilter.text === "string" && requestFilter.text.trim()) ||
+        (typeof requestFilter.from === "string" && requestFilter.from.trim()) ||
+        (typeof requestFilter.to === "string" && requestFilter.to.trim()) ||
+        (typeof requestFilter.cc === "string" && requestFilter.cc.trim()) ||
+        (Array.isArray(requestFilter.fromEmails) && requestFilter.fromEmails.length > 0) ||
+        (Array.isArray(requestFilter.fromDomains) && requestFilter.fromDomains.length > 0) ||
+        (Array.isArray(requestFilter.toEmails) && requestFilter.toEmails.length > 0) ||
+        (Array.isArray(requestFilter.toDomains) && requestFilter.toDomains.length > 0) ||
+        (Array.isArray(requestFilter.ccEmails) && requestFilter.ccEmails.length > 0) ||
+        (Array.isArray(requestFilter.ccDomains) && requestFilter.ccDomains.length > 0) ||
+        typeof requestFilter.category === "string" ||
+        typeof requestFilter.hasAttachment === "boolean" ||
+        (Array.isArray(requestFilter.attachmentMimeTypes) &&
+          requestFilter.attachmentMimeTypes.length > 0) ||
+        (typeof requestFilter.attachmentFilenameContains === "string" &&
+          requestFilter.attachmentFilenameContains.trim().length > 0),
+    );
+
+    if (!hasTemporalWindow && !hasAdditionalFilter) {
+      return runUnreadCount({ scope });
+    }
+
+    const requestQuery =
+      typeof requestFilter.query === "string" && requestFilter.query.trim().length > 0
+        ? requestFilter.query.trim()
+        : undefined;
+    const requestText =
+      typeof requestFilter.text === "string" && requestFilter.text.trim().length > 0
+        ? requestFilter.text.trim()
+        : undefined;
+    const scopePrefix =
+      scope === "primary" ? "in:inbox category:primary" : scope === "inbox" ? "in:inbox" : "";
+    const query = [scopePrefix, requestQuery, requestText, "is:unread"]
+      .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
+      .join(" ")
+      .trim();
+
+    const limit =
+      typeof requestFilter.limit === "number" && Number.isFinite(requestFilter.limit)
+        ? Math.max(1, Math.min(5000, Math.trunc(requestFilter.limit)))
+        : 5000;
+
+    try {
+      const result = await provider.search({
+        query,
+        text: requestText,
+        from: typeof requestFilter.from === "string" ? requestFilter.from : undefined,
+        to: typeof requestFilter.to === "string" ? requestFilter.to : undefined,
+        cc: typeof requestFilter.cc === "string" ? requestFilter.cc : undefined,
+        fromEmails: Array.isArray(requestFilter.fromEmails)
+          ? (requestFilter.fromEmails as string[])
+          : undefined,
+        fromDomains: Array.isArray(requestFilter.fromDomains)
+          ? (requestFilter.fromDomains as string[])
+          : undefined,
+        toEmails: Array.isArray(requestFilter.toEmails)
+          ? (requestFilter.toEmails as string[])
+          : undefined,
+        toDomains: Array.isArray(requestFilter.toDomains)
+          ? (requestFilter.toDomains as string[])
+          : undefined,
+        ccEmails: Array.isArray(requestFilter.ccEmails)
+          ? (requestFilter.ccEmails as string[])
+          : undefined,
+        ccDomains: Array.isArray(requestFilter.ccDomains)
+          ? (requestFilter.ccDomains as string[])
+          : undefined,
+        category:
+          requestFilter.category === "primary" ||
+          requestFilter.category === "promotions" ||
+          requestFilter.category === "social" ||
+          requestFilter.category === "updates" ||
+          requestFilter.category === "forums"
+            ? requestFilter.category
+            : undefined,
+        hasAttachment:
+          typeof requestFilter.hasAttachment === "boolean"
+            ? requestFilter.hasAttachment
+            : undefined,
+        attachmentMimeTypes: Array.isArray(requestFilter.attachmentMimeTypes)
+          ? (requestFilter.attachmentMimeTypes as string[])
+          : undefined,
+        attachmentFilenameContains:
+          typeof requestFilter.attachmentFilenameContains === "string"
+            ? requestFilter.attachmentFilenameContains
+            : undefined,
+        includeNonPrimary:
+          typeof requestFilter.includeNonPrimary === "boolean"
+            ? requestFilter.includeNonPrimary
+            : undefined,
+        ...(resolvedBounds.after ? { after: resolvedBounds.after } : {}),
+        ...(resolvedBounds.before ? { before: resolvedBounds.before } : {}),
+        limit,
+        fetchAll: true,
+      });
+
+      const minimumCount = result.messages.length;
+      const totalEstimate =
+        typeof result.totalEstimate === "number" && Number.isFinite(result.totalEstimate)
+          ? Math.max(minimumCount, Math.trunc(result.totalEstimate))
+          : undefined;
+      const truncated = Boolean(result.nextPageToken);
+      const exact = !truncated;
+      const count = exact ? minimumCount : totalEstimate ?? minimumCount;
+
+      return {
+        success: true,
+        data: {
+          count,
+          exact,
+          minimumCount,
+          scope,
+          source: exact ? "search_scan" : totalEstimate ? "search_estimate" : "search_partial",
+          asOf: new Date().toISOString(),
+        },
+        message: exact
+          ? `Found ${count} unread email${count === 1 ? "" : "s"} for that window.`
+          : totalEstimate
+            ? `Found about ${count} unread email${count === 1 ? "" : "s"} for that window.`
+            : `Found at least ${minimumCount} unread email${minimumCount === 1 ? "" : "s"} in the scanned portion.`,
+        truncated,
+        paging: {
+          nextPageToken: result.nextPageToken ?? null,
+          totalEstimate: totalEstimate ?? minimumCount,
+          coverage: {
+            completeness: truncated ? "partial" : "complete",
+            mailboxScope: scope,
+          },
+        },
+        meta: asMetaItemCount(1),
+      };
+    } catch (error) {
+      return capabilityFailureResult(error, "I couldn't count unread emails for that window.", {
+        resource: "email",
+      });
     }
   };
 
@@ -948,6 +1164,10 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       return runUnreadCount(filter);
     },
 
+    async countUnread(filter) {
+      return runCountUnread(filter);
+    },
+
     async searchThreads(filter) {
       return runUnifiedSearchThreads(filter);
     },
@@ -1021,11 +1241,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         typeof filter.text === "string" && filter.text.trim().length > 0
           ? filter.text.trim()
           : undefined;
-      const fallbackFacetQuery = capEnv.toolContext.currentMessage?.trim();
-      const semanticQuery =
-        requestQuery ??
-        requestText ??
-        (fallbackFacetQuery && fallbackFacetQuery.length > 0 ? fallbackFacetQuery : undefined);
+      const semanticQuery = requestQuery ?? requestText ?? undefined;
       const resolvedBounds = await resolveProviderDateBounds(filter);
       if (!resolvedBounds.ok) {
         return {

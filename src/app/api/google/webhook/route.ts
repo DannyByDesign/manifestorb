@@ -51,7 +51,7 @@ export const POST = withError("google/webhook", async (request) => {
 });
 
 async function processWebhookAsync(
-  decodedData: { emailAddress: string; historyId: number },
+  decodedData: { emailAddress: string; historyId: string },
   logger: Logger,
 ) {
   try {
@@ -87,11 +87,11 @@ function decodeHistoryId(body: { message?: { data?: string } }) {
   const decodedData: { emailAddress: string; historyId: number | string } =
     JSON.parse(Buffer.from(base64, "base64").toString());
 
-  // seem to get this in different formats? so unifying as number
+  // Preserve as string to avoid precision loss (Gmail history IDs can exceed JS safe integers).
   const historyId =
     typeof decodedData.historyId === "string"
-      ? Number.parseInt(decodedData.historyId)
-      : decodedData.historyId;
+      ? decodedData.historyId.trim()
+      : Math.trunc(decodedData.historyId).toString();
 
   return { emailAddress: decodedData.emailAddress, historyId };
 }

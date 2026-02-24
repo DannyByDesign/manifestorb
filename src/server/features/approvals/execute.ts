@@ -41,6 +41,7 @@ function mapToolToApprovalTool(toolName: string): string {
     toolName === "email.searchThreads" ||
     toolName === "email.searchSent" ||
     toolName === "email.getUnreadCount" ||
+    toolName === "email.countUnread" ||
     toolName === "calendar.listEvents" ||
     toolName === "calendar.findAvailability" ||
     toolName === "calendar.getEvent" ||

@@ -54,7 +54,7 @@ describe("processHistoryForUser - 404 Handling", () => {
       lastSyncedHistoryId: "1000",
     };
 
-    vi.mocked(getWebhookEmailAccount).mockResolvedValue(emailAccount as any);
+    vi.mocked(getWebhookEmailAccount).mockResolvedValue(emailAccount as never);
     vi.mocked(validateWebhookAccount).mockResolvedValue({
       success: true,
       data: {
@@ -70,11 +70,13 @@ describe("processHistoryForUser - 404 Handling", () => {
         hasAutomationRules: false,
         hasAiAccess: false,
       },
-    } as any);
+    } as never);
 
     // Simulate Gmail 404 error
-    const error404 = new Error("Requested entity was not found");
-    (error404 as any).status = 404;
+    const error404 = Object.assign(
+      new Error("Requested entity was not found"),
+      { status: 404 },
+    );
     vi.mocked(getHistory).mockRejectedValue(error404);
 
     const result = await processHistoryForUser(
@@ -83,23 +85,23 @@ describe("processHistoryForUser - 404 Handling", () => {
       logger,
     );
 
-    const jsonResponse = await (result as any).json();
+    const jsonResponse = await (result as Response).json();
     expect(jsonResponse).toEqual({ ok: true });
 
     // Verify lastSyncedHistoryId was updated to the current historyId via conditional update
     expect(prisma.$executeRaw).toHaveBeenCalled();
   });
 
-  it("should log a warning when history items are skipped due to large gap", async () => {
+  it("should start from lastSyncedHistoryId and paginate history", async () => {
     const email = "user@test.com";
-    const historyId = 2000; // Gap of 1000 (2000 - 1000)
+    const historyId = "2000";
     const emailAccount = {
       id: "account-123",
       email,
       lastSyncedHistoryId: "1000",
     };
 
-    vi.mocked(getWebhookEmailAccount).mockResolvedValue(emailAccount as any);
+    vi.mocked(getWebhookEmailAccount).mockResolvedValue(emailAccount as never);
     vi.mocked(validateWebhookAccount).mockResolvedValue({
       success: true,
       data: {
@@ -115,20 +117,34 @@ describe("processHistoryForUser - 404 Handling", () => {
         hasAutomationRules: false,
         hasAiAccess: false,
       },
-    } as any);
+    } as never);
 
-    vi.mocked(getHistory).mockResolvedValue({ history: [] });
-
-    const warnSpy = vi.spyOn(logger, "warn");
+    vi.mocked(getHistory)
+      .mockResolvedValueOnce({
+        history: [{ id: "1500", messagesAdded: [] }],
+        nextPageToken: "next-1",
+      } as never)
+      .mockResolvedValueOnce({
+        history: [{ id: "1600", messagesAdded: [] }],
+      } as never);
 
     await processHistoryForUser({ emailAddress: email, historyId }, {}, logger);
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      "Skipping history items due to large gap",
+    expect(getHistory).toHaveBeenCalledTimes(2);
+    expect(getHistory).toHaveBeenNthCalledWith(
+      1,
+      expect.anything(),
       expect.objectContaining({
-        lastSyncedHistoryId: 1000,
-        webhookHistoryId: 2000,
-        skippedHistoryItems: 500, // (2000 - 500) - 1000 = 500
+        startHistoryId: "1000",
+        pageToken: undefined,
+      }),
+    );
+    expect(getHistory).toHaveBeenNthCalledWith(
+      2,
+      expect.anything(),
+      expect.objectContaining({
+        startHistoryId: "1000",
+        pageToken: "next-1",
       }),
     );
   });

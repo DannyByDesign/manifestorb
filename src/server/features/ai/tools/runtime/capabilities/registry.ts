@@ -150,6 +150,11 @@ const emailFacetInputSchema = z
     maxFacets: z.number().int().min(3).max(25).optional(),
   })
   .strict();
+const emailCountUnreadInputSchema = emailSearchInputSchema
+  .extend({
+    scope: z.enum(["inbox", "primary", "all"]).optional(),
+  })
+  .strict();
 
 function buildCapabilityDefinitions(): CapabilityDefinition[] {
   return [
@@ -167,6 +172,19 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       approvalOperation: "query",
       intentFamilies: ["inbox_read"],
       tags: ["email", "count", "unread", "inbox"],
+      effects: [{ resource: "email", mutates: false }],
+    },
+    {
+      id: "email.countUnread",
+      description:
+        "Count unread email with optional date/filter constraints (use for 'today', ranges, and scoped unread counts).",
+      inputSchema: emailCountUnreadInputSchema,
+      outputSchema: z.unknown(),
+      readOnly: true,
+      riskLevel: "safe",
+      approvalOperation: "query",
+      intentFamilies: ["inbox_read"],
+      tags: ["email", "count", "unread", "date_range"],
       effects: [{ resource: "email", mutates: false }],
     },
     {

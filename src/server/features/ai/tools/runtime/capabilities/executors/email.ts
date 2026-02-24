@@ -9,6 +9,8 @@ import {
 export const emailToolExecutors: RuntimeToolExecutorMap = {
   "email.getUnreadCount": async ({ args, capabilities }) =>
     capabilities.email.getUnreadCount(asObject(args)),
+  "email.countUnread": async ({ args, capabilities }) =>
+    capabilities.email.countUnread(asObject(args)),
   "email.searchThreads": async ({ args, capabilities }) =>
     capabilities.email.searchThreads(asObject(args)),
   "email.searchThreadsAdvanced": async ({ args, capabilities }) =>
