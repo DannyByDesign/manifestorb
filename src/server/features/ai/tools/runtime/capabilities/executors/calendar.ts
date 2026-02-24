@@ -39,6 +39,8 @@ export const calendarToolExecutors: RuntimeToolExecutorMap = {
       calendarId: asString(args.calendarId),
       mode:
         args.mode === "single" || args.mode === "series" ? args.mode : undefined,
+      instanceId: asString(args.instanceId),
+      originalStartTime: asString(args.originalStartTime),
     }),
   "calendar.manageAttendees": async ({ args, capabilities }) =>
     capabilities.calendar.manageAttendees({

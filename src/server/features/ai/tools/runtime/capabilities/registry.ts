@@ -803,6 +803,8 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
         eventId: z.string().min(1),
         calendarId: z.string().optional(),
         mode: z.enum(["single", "series"]).optional(),
+        instanceId: z.string().min(1).optional(),
+        originalStartTime: z.string().min(1).optional(),
       }).strict(),
       outputSchema: z.unknown(),
       readOnly: false,

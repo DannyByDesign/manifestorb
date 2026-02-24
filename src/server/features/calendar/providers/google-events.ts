@@ -223,7 +223,7 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
       },
       calendarId,
       eventId,
-      options?.mode ?? "single",
+      options,
     );
   }
 

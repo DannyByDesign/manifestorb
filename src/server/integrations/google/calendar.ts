@@ -37,6 +37,8 @@ export type GoogleCalendarEventUpdate = Partial<
 > & {
   timeZone?: string;
   mode?: "single" | "series";
+  instanceId?: string;
+  originalStartTime?: string;
 };
 
 type GoogleEvent = calendar_v3.Schema$Event;
@@ -51,6 +53,69 @@ async function getGoogleCalendarClient(
     emailAccountId: params.emailAccountId,
     logger: params.logger,
   });
+}
+
+function normalizeInstanceOriginalStart(value: string | undefined): string | null {
+  if (!value || value.trim().length === 0) return null;
+  const trimmed = value.trim();
+  const parsed = new Date(trimmed);
+  if (Number.isFinite(parsed.getTime())) return parsed.toISOString();
+  return /^\d{4}-\d{2}-\d{2}$/u.test(trimmed) ? trimmed : null;
+}
+
+function instanceOriginalStartValue(
+  instance: calendar_v3.Schema$Event,
+): string | null {
+  return normalizeInstanceOriginalStart(
+    instance.originalStartTime?.dateTime ?? instance.originalStartTime?.date ?? undefined,
+  );
+}
+
+async function resolveRecurringInstanceEventId(params: {
+  calendar: calendar_v3.Calendar;
+  calendarId: string;
+  recurringEventId: string;
+  instanceId?: string;
+  originalStartTime?: string;
+}): Promise<string> {
+  if (params.instanceId && params.instanceId.trim().length > 0) {
+    return params.instanceId.trim();
+  }
+
+  const normalizedOriginalStart = normalizeInstanceOriginalStart(
+    params.originalStartTime,
+  );
+  if (!normalizedOriginalStart) {
+    throw new Error(
+      "recurring_instance_identity_required: provide instanceId or originalStartTime",
+    );
+  }
+
+  const parsedOriginalStart = new Date(normalizedOriginalStart);
+  const timeMin = Number.isFinite(parsedOriginalStart.getTime())
+    ? new Date(parsedOriginalStart.getTime() - 24 * 60 * 60 * 1000).toISOString()
+    : undefined;
+  const timeMax = Number.isFinite(parsedOriginalStart.getTime())
+    ? new Date(parsedOriginalStart.getTime() + 24 * 60 * 60 * 1000).toISOString()
+    : undefined;
+
+  const instances = await params.calendar.events.instances({
+    calendarId: params.calendarId,
+    eventId: params.recurringEventId,
+    ...(timeMin ? { timeMin } : {}),
+    ...(timeMax ? { timeMax } : {}),
+    maxResults: 100,
+  });
+
+  const matched = (instances.data.items ?? []).find((instance) => {
+    const instanceStart = instanceOriginalStartValue(instance);
+    return instanceStart === normalizedOriginalStart;
+  });
+  const matchedId = matched?.id?.trim();
+  if (!matchedId) {
+    throw new Error("recurring_instance_not_found");
+  }
+  return matchedId;
 }
 
 export async function createGoogleEvent(
@@ -178,54 +243,57 @@ export async function updateGoogleEvent(
       return response.data;
     }
 
-    if (event.mode === "single") {
-      const instances = await calendar.events.instances({
+    const recurringMasterId =
+      existingEvent.data.recurringEventId ??
+      (existingEvent.data.recurrence ? eventId : undefined);
+
+    if (event.mode === "single" && recurringMasterId) {
+      const instanceEventId = await resolveRecurringInstanceEventId({
+        calendar,
         calendarId,
-        eventId: existingEvent.data.recurringEventId || eventId,
-        timeMin: (event.start ?? new Date()).toISOString(),
-        maxResults: 1,
+        recurringEventId: recurringMasterId,
+        instanceId: event.instanceId,
+        originalStartTime: event.originalStartTime,
       });
 
-      if (instances.data.items?.[0]) {
-        const response = await calendar.events.patch({
+      const response = await calendar.events.patch({
+        calendarId,
+        eventId: instanceEventId,
+        requestBody: {
+          summary: event.title,
+          description: event.description,
+          location: event.location,
+          attendees,
+          start: event.start
+            ? {
+                dateTime: event.allDay ? undefined : event.start.toISOString(),
+                date: event.allDay ? toDateOnly(event.start) : undefined,
+                timeZone,
+              }
+            : undefined,
+          end: event.end
+            ? {
+                dateTime: event.allDay ? undefined : event.end.toISOString(),
+                date: event.allDay ? toDateOnly(event.end) : undefined,
+                timeZone,
+              }
+            : undefined,
+        },
+      });
+      if (params.userId) {
+        await logCalendarAction({
+          userId: params.userId,
+          provider: "google",
+          action: "update",
           calendarId,
-          eventId: instances.data.items[0].id!,
-          requestBody: {
-            summary: event.title,
-            description: event.description,
-            location: event.location,
-            attendees,
-            start: event.start
-              ? {
-                  dateTime: event.allDay ? undefined : event.start.toISOString(),
-                  date: event.allDay ? toDateOnly(event.start) : undefined,
-                  timeZone,
-                }
-              : undefined,
-            end: event.end
-              ? {
-                  dateTime: event.allDay ? undefined : event.end.toISOString(),
-                  date: event.allDay ? toDateOnly(event.end) : undefined,
-                  timeZone,
-                }
-              : undefined,
-          },
+          eventId: response.data.id ?? instanceEventId,
+          emailAccountId: params.emailAccountId,
+          payload: event,
+          response: response.data,
         });
-        if (params.userId) {
-          await logCalendarAction({
-            userId: params.userId,
-            provider: "google",
-            action: "update",
-            calendarId,
-            eventId: response.data.id ?? eventId,
-            emailAccountId: params.emailAccountId,
-            payload: event,
-            response: response.data,
-          });
-        }
-
-        return response.data;
       }
+
+      return response.data;
     }
 
     const response = await calendar.events.patch({
@@ -295,9 +363,14 @@ export async function deleteGoogleEvent(
   params: GoogleCalendarConnectionParams,
   calendarId: string,
   eventId: string,
-  mode: "single" | "series" = "single",
+  options: {
+    mode?: "single" | "series";
+    instanceId?: string;
+    originalStartTime?: string;
+  } = {},
 ) {
   const calendar = await getGoogleCalendarClient(params);
+  const mode = options.mode ?? "single";
 
   try {
     const event = await calendar.events.get({
@@ -324,32 +397,34 @@ export async function deleteGoogleEvent(
       return;
     }
 
-    if (mode === "single") {
-      const instances = await calendar.events.instances({
-        calendarId,
-        eventId: event.data.recurringEventId || eventId,
-        timeMin: new Date().toISOString(),
-        maxResults: 1,
-      });
+    const recurringMasterId =
+      event.data.recurringEventId ??
+      (event.data.recurrence ? eventId : undefined);
 
-      if (instances.data.items?.[0]) {
-        await calendar.events.delete({
+    if (mode === "single" && recurringMasterId) {
+      const instanceEventId = await resolveRecurringInstanceEventId({
+        calendar,
+        calendarId,
+        recurringEventId: recurringMasterId,
+        instanceId: options.instanceId,
+        originalStartTime: options.originalStartTime,
+      });
+      await calendar.events.delete({
+        calendarId,
+        eventId: instanceEventId,
+      });
+      if (params.userId) {
+        await logCalendarAction({
+          userId: params.userId,
+          provider: "google",
+          action: "delete",
           calendarId,
-          eventId: instances.data.items[0].id!,
+          eventId: instanceEventId,
+          emailAccountId: params.emailAccountId,
+          payload: { mode, instanceId: options.instanceId, originalStartTime: options.originalStartTime },
         });
-        if (params.userId) {
-          await logCalendarAction({
-            userId: params.userId,
-            provider: "google",
-            action: "delete",
-            calendarId,
-            eventId: instances.data.items[0].id!,
-            emailAccountId: params.emailAccountId,
-            payload: { mode },
-          });
-        }
-        return;
       }
+      return;
     }
 
     await calendar.events.delete({
@@ -381,7 +456,11 @@ export async function deleteGoogleEvent(
         calendarId,
         eventId,
         emailAccountId: params.emailAccountId,
-        payload: { mode },
+        payload: {
+          mode,
+          instanceId: options.instanceId,
+          originalStartTime: options.originalStartTime,
+        },
         error,
       });
     }

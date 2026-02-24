@@ -19,7 +19,7 @@ Legend: `OPEN`, `IN_PROGRESS`, `BLOCKED`, `DONE`
    - Status: DONE
    - Covers: baseline failing tests for all P0/P1 gaps
 2. WP-01 P0 action correctness fixes
-   - Status: OPEN
+   - Status: DONE
    - Covers: move false-success, recurring single-instance target, calendar 410 canonical replay
 3. WP-02 Mutation outcome contract hardening
    - Status: OPEN

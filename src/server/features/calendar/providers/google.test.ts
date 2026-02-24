@@ -337,7 +337,7 @@ describe("GoogleCalendarEventProvider", () => {
       expect.any(Object),
       "primary",
       "event-3",
-      "series",
+      { mode: "series" },
     );
   });
 });

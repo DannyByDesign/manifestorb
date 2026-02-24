@@ -1587,6 +1587,7 @@ export class GmailProvider implements EmailProvider {
     void ownerEmail;
     void folderName;
     this.logger.warn("Moving thread to folder is not supported for Gmail");
+    throw new Error("unsupported_operation:move_thread_to_folder");
   }
 
   async getOrCreateFolderIdByName(folderName: string): Promise<string> {

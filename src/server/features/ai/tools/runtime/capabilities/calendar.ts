@@ -43,6 +43,8 @@ export interface CalendarCapabilities {
     eventId: string;
     calendarId?: string;
     mode?: "single" | "series";
+    instanceId?: string;
+    originalStartTime?: string;
   }): Promise<ToolResult>;
   manageAttendees(input: {
     eventId: string;
@@ -938,9 +940,37 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
       const attendees = toStringArray((changes as Record<string, unknown>).attendees);
       const modeRaw = safeString((changes as Record<string, unknown>).mode);
       const mode = modeRaw === "single" || modeRaw === "series" ? modeRaw : undefined;
+      const instanceId = safeString((changes as Record<string, unknown>).instanceId);
+      const originalStartTime = safeString(
+        (changes as Record<string, unknown>).originalStartTime,
+      );
       const requestedTimeZone = resolveRequestedTimeZone(changes as Record<string, unknown>);
 
       try {
+        if (mode === "single") {
+          const existingEvent = await getCalendarEvent(provider, {
+            eventId,
+            ...(safeString(input.calendarId)
+              ? { calendarId: safeString(input.calendarId) }
+              : {}),
+          });
+          const isRecurringEvent = Boolean(
+            existingEvent?.seriesMasterId ||
+            (Array.isArray(existingEvent?.instances) && existingEvent.instances.length > 0),
+          );
+          if (isRecurringEvent && !instanceId && !originalStartTime) {
+            return {
+              success: false,
+              error: "recurring_instance_identity_required",
+              clarification: {
+                kind: "missing_fields",
+                prompt: "calendar_recurring_instance_identity_required",
+                missingFields: ["changes.instanceId_or_originalStartTime"],
+              },
+            };
+          }
+        }
+
         const resolvedTimeZone = await resolveEffectiveTimeZone(requestedTimeZone);
         if ("error" in resolvedTimeZone) {
           return {
@@ -995,6 +1025,8 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
             ...(attendees.length > 0 ? { attendees } : {}),
             timeZone: resolvedTimeZone.timeZone,
             ...(mode ? { mode } : {}),
+            ...(instanceId ? { instanceId } : {}),
+            ...(originalStartTime ? { originalStartTime } : {}),
           },
         });
 
@@ -1037,17 +1069,52 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
         };
       }
       const mode = input.mode === "single" || input.mode === "series" ? input.mode : "single";
+      const instanceId = safeString(input.instanceId);
+      const originalStartTime = safeString(input.originalStartTime);
       try {
+        if (mode === "single") {
+          const existingEvent = await getCalendarEvent(provider, {
+            eventId,
+            ...(safeString(input.calendarId)
+              ? { calendarId: safeString(input.calendarId) }
+              : {}),
+          });
+          const isRecurringEvent = Boolean(
+            existingEvent?.seriesMasterId ||
+            (Array.isArray(existingEvent?.instances) && existingEvent.instances.length > 0),
+          );
+          if (isRecurringEvent && !instanceId && !originalStartTime) {
+            return {
+              success: false,
+              error: "recurring_instance_identity_required",
+              clarification: {
+                kind: "missing_fields",
+                prompt: "calendar_recurring_instance_identity_required",
+                missingFields: ["instanceId_or_originalStartTime"],
+              },
+            };
+          }
+        }
+
         await deleteCalendarEvent(provider, {
           ...(safeString(input.calendarId)
             ? { calendarId: safeString(input.calendarId) }
             : {}),
           eventId,
-          deleteOptions: { mode },
+          deleteOptions: {
+            mode,
+            ...(instanceId ? { instanceId } : {}),
+            ...(originalStartTime ? { originalStartTime } : {}),
+          },
         });
         return {
           success: true,
-          data: { eventId, mode },
+          data: {
+            eventId,
+            mode,
+            ...(instanceId ? { instanceId } : {}),
+            ...(originalStartTime ? { originalStartTime } : {}),
+          },
           message: "Event deleted.",
           meta: { resource: "calendar", itemCount: 1 },
         };

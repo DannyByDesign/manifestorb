@@ -46,10 +46,14 @@ export interface CalendarEventCreateInput {
 export interface CalendarEventUpdateInput
   extends Partial<CalendarEventCreateInput> {
   mode?: "single" | "series";
+  instanceId?: string;
+  originalStartTime?: string;
 }
 
 export interface CalendarEventDeleteOptions {
   mode?: "single" | "series";
+  instanceId?: string;
+  originalStartTime?: string;
 }
 
 export interface CalendarEventProvider {

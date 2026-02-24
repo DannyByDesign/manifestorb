@@ -1615,6 +1615,18 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           },
         };
       }
+      if (provider.name === "google") {
+        return {
+          success: false,
+          error: "unsupported_operation",
+          message: "Moving threads to folders is not supported for Gmail.",
+          data: {
+            provider: "google",
+            operation: "moveThread",
+          },
+          meta: asMetaItemCount(0),
+        };
+      }
       try {
         for (const threadId of threadIds) {
           await provider.moveThreadToFolder(threadId, folderName.trim());
