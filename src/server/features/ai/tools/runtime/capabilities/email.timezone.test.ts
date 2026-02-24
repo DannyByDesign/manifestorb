@@ -124,7 +124,7 @@ describe("runtime email provider search routing", () => {
 
     expect(search).toHaveBeenCalledWith(
       expect.objectContaining({
-        query: "portfolio review",
+        query: "in:inbox portfolio review",
         limit: 25,
         fetchAll: true,
       }),
@@ -146,7 +146,7 @@ describe("runtime email provider search routing", () => {
 
     expect(search).toHaveBeenCalledWith(
       expect.objectContaining({
-        query: "portfolio review",
+        query: "in:sent portfolio review",
         sentByMe: true,
         limit: 10,
       }),
@@ -190,7 +190,7 @@ describe("runtime email provider search routing", () => {
 
     expect(search).toHaveBeenCalledWith(
       expect.objectContaining({
-        query: "Show me my 10 most recent unread emails is:unread",
+        query: "in:inbox Show me my 10 most recent unread emails is:unread",
         limit: 10,
       }),
     );
@@ -252,7 +252,33 @@ describe("runtime email provider search routing", () => {
     expect(result.paging).toEqual({
       nextPageToken: "next-1",
       totalEstimate: 2,
+      coverage: {
+        completeness: "partial",
+        mailboxScope: "inbox",
+      },
     });
+  });
+
+  it("avoids definitive zero-result claims when search coverage is partial", async () => {
+    const search = vi.fn().mockResolvedValue({
+      messages: [],
+      nextPageToken: "next-1",
+      totalEstimate: 250,
+    });
+
+    const caps = createEmailCapabilities(buildEnv({ search }));
+    const result = await caps.searchInbox({ query: "investor updates" });
+
+    expect(result.success).toBe(true);
+    expect(result.message).toContain("scanned portion");
+    expect(result.truncated).toBe(true);
+    expect(result.paging).toEqual(
+      expect.objectContaining({
+        coverage: expect.objectContaining({
+          completeness: "partial",
+        }),
+      }),
+    );
   });
 
   it("derives sender/domain facets from provider search results", async () => {
@@ -338,6 +364,25 @@ describe("runtime email provider search routing", () => {
     expect(search).not.toHaveBeenCalled();
   });
 
+  it("supports scoped unread count lookups for primary", async () => {
+    const getUnreadCount = vi.fn().mockResolvedValue({
+      count: 27,
+      exact: false,
+    });
+    const search = vi.fn();
+    const caps = createEmailCapabilities(
+      buildEnv({ search, getUnreadCount }),
+    );
+
+    const result = await caps.getUnreadCount({ scope: "primary" });
+    expect(getUnreadCount).toHaveBeenCalledWith({ scope: "primary" });
+    expect(result.success).toBe(true);
+    expect((result.data as { count: number; exact: boolean; scope: string }).count).toBe(27);
+    expect((result.data as { count: number; exact: boolean; scope: string }).exact).toBe(false);
+    expect((result.data as { count: number; exact: boolean; scope: string }).scope).toBe("primary");
+    expect(search).not.toHaveBeenCalled();
+  });
+
   it("falls back to provider search when provider counters fail", async () => {
     const getUnreadCount = vi.fn().mockRejectedValue(new Error("provider down"));
     const search = vi.fn().mockResolvedValue({
@@ -355,7 +400,7 @@ describe("runtime email provider search routing", () => {
     expect((result.data as { count: number; exact: boolean }).exact).toBe(false);
     expect(search).toHaveBeenCalledWith(
       expect.objectContaining({
-        query: "unread is:unread",
+        query: "in:inbox unread is:unread",
         limit: 100,
         fetchAll: false,
       }),

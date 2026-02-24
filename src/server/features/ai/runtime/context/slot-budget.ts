@@ -1,5 +1,6 @@
 export type RuntimeLane =
   | "conversation_only"
+  | "evidence_first"
   | "planner";
 
 export interface RuntimeContextSlotBudget {
@@ -15,6 +16,12 @@ const DEFAULT_BUDGETS: Record<RuntimeLane, RuntimeContextSlotBudget> = {
     maxFacts: 4,
     maxKnowledge: 3,
     maxHistory: 3,
+  },
+  evidence_first: {
+    maxChars: 2_600,
+    maxFacts: 6,
+    maxKnowledge: 4,
+    maxHistory: 5,
   },
   planner: {
     maxChars: 4_200,

@@ -15,7 +15,7 @@ export const runtimePlanTelemetrySchema = baseSchema.extend({
 });
 
 export const runtimeRouteSelectedTelemetrySchema = baseSchema.extend({
-  lane: z.enum(["conversation_only", "planner"]),
+  lane: z.enum(["conversation_only", "evidence_first", "planner"]),
   profile: z.enum(["fast", "standard", "deep"]),
   reason: z.string().min(1).max(120),
   nativeMaxSteps: z.number().int().nonnegative(),
@@ -111,7 +111,7 @@ export const runtimeContextHydratedTelemetrySchema = baseSchema.extend({
 });
 
 export const runtimeContextPrunedTelemetrySchema = baseSchema.extend({
-  lane: z.enum(["conversation_only", "planner"]),
+  lane: z.enum(["conversation_only", "evidence_first", "planner"]),
   mode: z.enum(["soft", "hard"]),
   beforeChars: z.number().int().nonnegative(),
   afterChars: z.number().int().nonnegative(),
@@ -120,7 +120,7 @@ export const runtimeContextPrunedTelemetrySchema = baseSchema.extend({
 });
 
 export const runtimeCompactionRetryTelemetrySchema = baseSchema.extend({
-  lane: z.enum(["conversation_only", "planner"]),
+  lane: z.enum(["conversation_only", "evidence_first", "planner"]),
   overflowDetected: z.boolean(),
   retryAttempted: z.boolean(),
   retrySucceeded: z.boolean(),
@@ -130,7 +130,7 @@ export const runtimeCompactionRetryTelemetrySchema = baseSchema.extend({
 });
 
 export const runtimeContextSlotsTelemetrySchema = baseSchema.extend({
-  lane: z.enum(["conversation_only", "planner"]),
+  lane: z.enum(["conversation_only", "evidence_first", "planner"]),
   maxChars: z.number().int().positive(),
   maxFacts: z.number().int().positive(),
   maxKnowledge: z.number().int().positive(),

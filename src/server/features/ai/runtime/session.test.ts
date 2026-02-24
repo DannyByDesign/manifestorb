@@ -34,6 +34,10 @@ describe("resolveRuntimeToolCatalogMaxTools", () => {
     expect(resolveRuntimeToolCatalogMaxTools(baseTurn({ routeHint: "planner" }))).toBe(96);
   });
 
+  it("uses a constrained tool catalog size for evidence-first turns", () => {
+    expect(resolveRuntimeToolCatalogMaxTools(baseTurn({ routeHint: "evidence_first" }))).toBe(48);
+  });
+
   it("does not force a max tool count for non-planner turns", () => {
     expect(resolveRuntimeToolCatalogMaxTools(baseTurn({ routeHint: "conversation_only" }))).toBeUndefined();
   });

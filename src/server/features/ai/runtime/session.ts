@@ -33,11 +33,28 @@ function isSecretaryCoreTool(toolName: string): boolean {
 
 export function resolveRuntimeToolCatalogMaxTools(turn: RuntimeTurnContract): number | undefined {
   if (turn.routeHint === "planner") return 96;
+  if (turn.routeHint === "evidence_first") return 48;
   return undefined;
 }
 
 export function shouldAdmitDangerousTools(turn: RuntimeTurnContract): boolean {
   return turn.requestedOperation === "mutate" || turn.requestedOperation === "mixed";
+}
+
+function stabilizeTurnForExecution(turn: RuntimeTurnContract): RuntimeTurnContract {
+  if (turn.requestedOperation !== "read") return turn;
+
+  const next: RuntimeTurnContract = { ...turn };
+  if (next.toolChoice === "none") {
+    next.toolChoice = "auto";
+  }
+  if (next.routeHint === "conversation_only") {
+    next.routeHint = next.followUpLikely ? "evidence_first" : "planner";
+  }
+  if (next.followUpLikely && next.routeHint === "planner") {
+    next.routeHint = "evidence_first";
+  }
+  return next;
 }
 
 export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<RuntimeSession> {
@@ -77,7 +94,7 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
     }),
   ]);
 
-  const turn =
+  const rawTurn =
     input.runtimeTurnContract ??
     await planRuntimeTurn({
       userId: input.userId,
@@ -87,6 +104,7 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
       message: input.message,
       logger: input.logger,
     });
+  const turn = stabilizeTurnForExecution(rawTurn);
 
   const loadedSkills = loadRuntimeSkills();
   const skillSnapshot = buildSkillPromptSnapshot({

@@ -159,7 +159,6 @@ export function selectSemanticToolCandidates(
   const turn = params.turn;
   if (!turn) return registry;
   if (turn.intent === "greeting" || turn.intent === "capabilities") return [];
-  if (turn.requestedOperation === "meta") return [];
 
   let working = [...registry];
 
@@ -181,7 +180,7 @@ export function selectSemanticToolCandidates(
     }
   }
 
-  if (turn.requestedOperation === "read" || params.strictReadOnly) {
+  if (turn.requestedOperation === "read" || turn.requestedOperation === "meta" || params.strictReadOnly) {
     const readOnly = working.filter((definition) => definition.metadata.readOnly);
     if (readOnly.length > 0) {
       working = readOnly;

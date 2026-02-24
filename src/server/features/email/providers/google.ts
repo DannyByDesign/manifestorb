@@ -20,8 +20,16 @@ import {
 } from "@/server/integrations/google/label";
 import { labelVisibility, messageVisibility } from "@/server/integrations/google/constants";
 import type { AmodelLabel } from "@/server/lib/label";
-// import type { ThreadsQuery } from "@/app/api/threads/validation";
-type ThreadsQuery = any;
+type ThreadsQuery = {
+  fromEmail?: string;
+  after?: Date;
+  before?: Date;
+  isUnread?: boolean;
+  type?: string | null;
+  excludeLabelNames?: string[];
+  labelIds?: string[];
+  labelId?: string;
+};
 import { getMessageByRfc822Id } from "@/server/integrations/google/message";
 import {
   draftEmail,
@@ -214,18 +222,34 @@ export class GmailProvider implements EmailProvider {
     return messages.messages;
   }
 
-  async getUnreadCount(options?: { scope?: "inbox" }): Promise<{
+  async getUnreadCount(options?: { scope?: "inbox" | "primary" | "all" }): Promise<{
     count: number;
     exact: boolean;
   }> {
     const scope = options?.scope ?? "inbox";
-    if (scope !== "inbox") {
-      throw new Error(`Unsupported unread count scope for Gmail: ${scope}`);
+    if (scope === "inbox") {
+      const label = await getLabelById({ gmail: this.client, id: GmailLabel.INBOX });
+      const count = Math.max(0, Math.trunc(label.messagesUnread ?? 0));
+      return { count, exact: true };
     }
 
-    const label = await getLabelById({ gmail: this.client, id: GmailLabel.INBOX });
-    const count = Math.max(0, Math.trunc(label.messagesUnread ?? 0));
-    return { count, exact: true };
+    const scopedQuery =
+      scope === "primary"
+        ? "in:inbox category:primary is:unread"
+        : "in:inbox is:unread";
+    const response = await getMessages(this.client, {
+      query: scopedQuery,
+      maxResults: 1,
+    });
+    const estimatedCount = Math.max(
+      0,
+      Math.trunc(
+        response.resultSizeEstimate ??
+        response.messages?.length ??
+        0,
+      ),
+    );
+    return { count: estimatedCount, exact: false };
   }
 
   async getSentMessageIds(options: {

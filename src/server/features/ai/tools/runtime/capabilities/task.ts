@@ -1,5 +1,6 @@
 import type { ToolResult } from "@/server/features/ai/tools/types";
 import type { CapabilityEnvironment } from "@/server/features/ai/tools/runtime/capabilities/types";
+import type { TaskStatus } from "@/generated/prisma/client";
 import prisma from "@/server/db/client";
 import { capabilityFailureResult } from "@/server/features/ai/tools/runtime/capabilities/errors";
 import {
@@ -43,6 +44,30 @@ function safeString(value: unknown): string | undefined {
 
 function asBoolean(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
+}
+
+type TaskStatusScope = "active" | "completed" | "all";
+
+function resolveTaskStatusScope(input: Record<string, unknown>): TaskStatusScope {
+  const explicit =
+    safeString(input.statusScope) ??
+    safeString(input.status);
+  if (!explicit) return "active";
+  const normalized = explicit.toLowerCase();
+  if (normalized === "all") return "all";
+  if (normalized === "completed" || normalized === "done" || normalized === "closed") {
+    return "completed";
+  }
+  return "active";
+}
+
+function taskStatusWhereForScope(scope: TaskStatusScope) {
+  const completedStatuses: TaskStatus[] = ["COMPLETED", "CANCELLED"];
+  if (scope === "all") return undefined;
+  if (scope === "completed") {
+    return { in: completedStatuses };
+  }
+  return { notIn: completedStatuses };
 }
 
 function taskFailure(error: unknown, message: string): ToolResult {
@@ -178,11 +203,13 @@ export function createTaskCapabilities(env: CapabilityEnvironment): TaskCapabili
         const beforeRaw = safeString(dueRange?.before) ?? safeString(input.before);
         const after = afterRaw ? parseDateBoundInTimeZone(afterRaw, timeZone, "start") : undefined;
         const before = beforeRaw ? parseDateBoundInTimeZone(beforeRaw, timeZone, "end") : undefined;
+        const statusScope = resolveTaskStatusScope(input);
+        const statusWhere = taskStatusWhereForScope(statusScope);
 
         const tasks = await prisma.task.findMany({
           where: {
             userId: env.runtime.userId,
-            status: { notIn: ["COMPLETED", "CANCELLED"] },
+            ...(statusWhere ? { status: statusWhere } : {}),
             ...(after || before
               ? {
                   dueDate: {
@@ -211,7 +238,7 @@ export function createTaskCapabilities(env: CapabilityEnvironment): TaskCapabili
           message:
             tasks.length === 0
               ? "No matching tasks found."
-              : `Found ${tasks.length} task${tasks.length === 1 ? "" : "s"}.`,
+              : `Found ${tasks.length} task${tasks.length === 1 ? "" : "s"} (${statusScope} scope).`,
           meta: { resource: "task", itemCount: tasks.length },
         };
       } catch (error) {
@@ -243,11 +270,13 @@ export function createTaskCapabilities(env: CapabilityEnvironment): TaskCapabili
         const beforeRaw = safeString(dueRange?.before) ?? safeString(input.before);
         const after = afterRaw ? parseDateBoundInTimeZone(afterRaw, timeZone, "start") : undefined;
         const before = beforeRaw ? parseDateBoundInTimeZone(beforeRaw, timeZone, "end") : undefined;
+        const statusScope = resolveTaskStatusScope(input);
+        const statusWhere = taskStatusWhereForScope(statusScope);
 
         const tasks = await prisma.task.findMany({
           where: {
             userId: env.runtime.userId,
-            status: { notIn: ["COMPLETED", "CANCELLED"] },
+            ...(statusWhere ? { status: statusWhere } : {}),
             ...(after || before
               ? {
                   dueDate: {

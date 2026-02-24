@@ -22,6 +22,8 @@ export type RuntimeComplexity = "simple" | "moderate" | "complex";
 export type RuntimeRouteProfile = "fast" | "standard" | "deep";
 export type RuntimeRiskLevel = "low" | "medium" | "high";
 export type RuntimeTurnSource = "model" | "fallback";
+export type RuntimeRouteHint = "conversation_only" | "evidence_first" | "planner";
+export type RuntimeToolChoice = "none" | "auto";
 
 export interface RuntimeTurnContract {
   intent: RuntimeTurnIntent;
@@ -29,8 +31,8 @@ export interface RuntimeTurnContract {
   requestedOperation: RuntimeRequestedOperation;
   complexity: RuntimeComplexity;
   routeProfile: RuntimeRouteProfile;
-  routeHint: "conversation_only" | "planner";
-  toolChoice: "none" | "auto";
+  routeHint: RuntimeRouteHint;
+  toolChoice: RuntimeToolChoice;
   knowledgeSource: "internal" | "web" | "either";
   freshness: "low" | "high";
   riskLevel: RuntimeRiskLevel;
@@ -53,7 +55,7 @@ export function buildFallbackRuntimeTurnContract(message: string): RuntimeTurnCo
     requestedOperation: conversationOnly ? "meta" : "read",
     complexity: "moderate",
     routeProfile: "standard",
-    routeHint: conversationOnly ? "conversation_only" : "planner",
+    routeHint: conversationOnly ? "conversation_only" : "evidence_first",
     toolChoice: conversationOnly ? "none" : "auto",
     knowledgeSource: "either",
     freshness: "low",

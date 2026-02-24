@@ -272,7 +272,7 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
       requestedTimeZone,
       dateRange: { after, before },
       relativeDateHintText: safeString(source.query) ?? safeString(source.text),
-      defaultWindow: "next_7_days",
+      defaultWindow: "today",
       missingBoundDurationMs: rescheduleWindowDurationMs,
     });
 

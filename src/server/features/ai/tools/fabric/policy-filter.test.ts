@@ -111,6 +111,36 @@ describe("filterToolRegistry", () => {
     expect(filtered).toEqual([]);
   });
 
+  it("keeps read-only candidates for follow-up meta turns", async () => {
+    const filtered = await filterToolRegistry(registry, {
+      message: "what about the unread ones from today?",
+      turn: {
+        intent: "general",
+        domain: "inbox",
+        requestedOperation: "meta",
+        complexity: "simple",
+        routeProfile: "fast",
+        routeHint: "evidence_first",
+        toolChoice: "auto",
+        knowledgeSource: "internal",
+        freshness: "low",
+        riskLevel: "low",
+        confidence: 0.8,
+        toolHints: [],
+        source: "model",
+        conversationClauses: [],
+        taskClauses: [],
+        metaConstraints: [],
+        needsClarification: false,
+        followUpLikely: true,
+      },
+    });
+
+    const names = filtered.map((definition) => definition.toolName);
+    expect(names).toContain("email.searchInbox");
+    expect(names).not.toContain("email.batchTrash");
+  });
+
   it("keeps inbox read tools and excludes unrelated domain tools", async () => {
     const filtered = await filterToolRegistry(registry, {
       message: "find the first email in my inbox",

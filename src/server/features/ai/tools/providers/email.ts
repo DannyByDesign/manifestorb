@@ -110,7 +110,7 @@ function isGmailAuthError(err: unknown): boolean {
 export interface EmailProvider {
     readonly name: "google" | "microsoft";
     // Core (Original)
-    getUnreadCount(options?: { scope?: "inbox" }): Promise<{
+    getUnreadCount(options?: { scope?: "inbox" | "primary" | "all" }): Promise<{
         count: number;
         exact: boolean;
     }>;
@@ -551,7 +551,7 @@ export async function createEmailProvider(
 
     return {
         name: service.name,
-        getUnreadCount: async (options?: { scope?: "inbox" }) => runThrottled("getUnreadCount", async () => {
+        getUnreadCount: async (options?: { scope?: "inbox" | "primary" | "all" }) => runThrottled("getUnreadCount", async () => {
             try {
                 return await service.getUnreadCount(options);
             } catch (err: unknown) {

@@ -92,6 +92,19 @@ export function validateEmailSearchFilter(
     delete sanitized.query;
   }
 
+  if (filter.mailbox === "inbox" || filter.mailbox === "sent") {
+    sanitized.mailbox = filter.mailbox;
+  } else {
+    delete sanitized.mailbox;
+  }
+
+  const includeNonPrimary = sanitizeBoolean(filter.includeNonPrimary);
+  if (typeof includeNonPrimary === "boolean") {
+    sanitized.includeNonPrimary = includeNonPrimary;
+  } else {
+    delete sanitized.includeNonPrimary;
+  }
+
   const text = normalizeStringValue(filter.text);
   if (text) {
     sanitized.text = text;

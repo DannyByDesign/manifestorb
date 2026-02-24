@@ -69,8 +69,10 @@ const unknownObject = z.record(
 );
 const emailSearchInputSchema = z.object({
   query: z.string().optional(),
+  mailbox: z.enum(["inbox", "sent"]).optional(),
   limit: z.number().int().positive().max(5000).optional(),
   fetchAll: z.boolean().optional(),
+  includeNonPrimary: z.boolean().optional(),
   subscriptionsOnly: z.boolean().optional(),
   purpose: z.enum(["lookup", "list", "count"]).optional(),
   dateRange: z
@@ -156,7 +158,7 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       description: "Return unread inbox count using provider-level counters.",
       inputSchema: z
         .object({
-          scope: z.literal("inbox").optional(),
+          scope: z.enum(["inbox", "primary", "all"]).optional(),
         })
         .strict(),
       outputSchema: z.unknown(),
@@ -883,7 +885,7 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
     },
     {
       id: "task.list",
-      description: "List active tasks with optional due-date filters.",
+      description: "List tasks with optional due-date and status-scope filters (active/completed/all).",
       inputSchema: unknownObject,
       outputSchema: z.unknown(),
       readOnly: true,

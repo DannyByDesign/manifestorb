@@ -285,10 +285,27 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
 
     const inferredUnrepliedToSent = requestFilter.unrepliedToSent === true;
 
-    const mailbox =
+    const mailboxCandidate =
       mailboxOverride ??
       (typeof requestFilter.mailbox === "string" ? requestFilter.mailbox : undefined) ??
       (requestFilter.sentByMe === true ? "sent" : undefined);
+    const mailbox =
+      mailboxCandidate === "inbox" || mailboxCandidate === "sent"
+        ? mailboxCandidate
+        : undefined;
+    const ensureMailboxScopeInQuery = (
+      query: string | undefined,
+      mailboxScope: "inbox" | "sent" | undefined,
+    ): string | undefined => {
+      if (!query || query.trim().length === 0) {
+        return mailboxScope ? `in:${mailboxScope}` : query;
+      }
+      if (/\bin:(inbox|sent|draft|trash|spam|all)\b/i.test(query)) {
+        return query.trim();
+      }
+      if (!mailboxScope) return query.trim();
+      return `in:${mailboxScope} ${query}`.trim();
+    };
 
     const fromConcept =
       typeof requestFilter.fromConcept === "string" ? requestFilter.fromConcept.trim() : "";
@@ -497,8 +514,9 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
               : undefined;
           const semanticQuery =
             requestQuery ?? requestText ?? (fallbackQuery.length > 0 ? fallbackQuery : undefined);
+          const scopedQuery = ensureMailboxScopeInQuery(semanticQuery, mailbox ?? "sent");
           const providerResult = await provider.search({
-            query: semanticQuery ?? "",
+            query: scopedQuery ?? "",
             text: requestText,
             from: requestFrom,
             fromEmails,
@@ -637,6 +655,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         unreadToken.length > 0
           ? [semanticQuery, unreadToken].filter(Boolean).join(" ").trim()
           : semanticQuery;
+      const scopedQuery = ensureMailboxScopeInQuery(queryWithUnread, mailbox);
 
       const resolvedBounds = await resolveProviderDateBounds(requestFilter);
       if (!resolvedBounds.ok) {
@@ -653,7 +672,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       }
 
       const result = await provider.search({
-        query: queryWithUnread ?? "",
+        query: scopedQuery ?? "",
         text: requestText,
         from: requestFrom,
         to: requestTo,
@@ -690,6 +709,10 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
             : undefined,
         ...(resolvedBounds.after ? { after: resolvedBounds.after } : {}),
         ...(resolvedBounds.before ? { before: resolvedBounds.before } : {}),
+        includeNonPrimary:
+          typeof requestFilter.includeNonPrimary === "boolean"
+            ? requestFilter.includeNonPrimary
+            : undefined,
         limit:
           typeof requestFilter.limit === "number" && Number.isFinite(requestFilter.limit)
             ? requestFilter.limit
@@ -720,7 +743,9 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         data,
         message:
           data.length === 0
-            ? "No matching emails found."
+            ? result.nextPageToken
+              ? "No matching emails found in the scanned portion yet."
+              : "No matching emails found."
             : `Found ${data.length} matching email${data.length === 1 ? "" : "s"}.`,
         truncated: Boolean(result.nextPageToken),
         paging: {
@@ -729,6 +754,10 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
             typeof result.totalEstimate === "number" && Number.isFinite(result.totalEstimate)
               ? result.totalEstimate
               : data.length,
+          coverage: {
+            completeness: result.nextPageToken ? "partial" : "complete",
+            mailboxScope: mailbox ?? "auto",
+          },
         },
         meta: asMetaItemCount(data.length),
       };
@@ -746,11 +775,12 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       typeof filter?.scope === "string"
         ? filter.scope.trim().toLowerCase()
         : "inbox";
-    if (scopeRaw.length > 0 && scopeRaw !== "inbox") {
+    const scope = scopeRaw === "primary" || scopeRaw === "all" ? scopeRaw : "inbox";
+    if (scopeRaw.length > 0 && scopeRaw !== "inbox" && scopeRaw !== "primary" && scopeRaw !== "all") {
       return {
         success: false,
         error: "invalid_scope",
-        message: "Unread count currently supports inbox scope only.",
+        message: "Unread count supports inbox, primary, or all.",
         clarification: {
           kind: "invalid_fields",
           prompt: "email_unread_count_scope_invalid",
@@ -760,27 +790,30 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
     }
 
     try {
-      const result = await provider.getUnreadCount({ scope: "inbox" });
+      const result = await provider.getUnreadCount({ scope });
       const count = Math.max(0, Math.trunc(result.count));
       return {
         success: true,
         data: {
           count,
           exact: Boolean(result.exact),
-          scope: "inbox",
-          source: "provider_counter",
+          scope,
+          source: result.exact ? "provider_counter" : "provider_estimate",
           asOf: new Date().toISOString(),
         },
-        message: `You have ${count} unread emails right now.`,
+        message: result.exact
+          ? `You have ${count} unread email${count === 1 ? "" : "s"} in ${scope} right now.`
+          : `You have about ${count} unread email${count === 1 ? "" : "s"} in ${scope} right now.`,
         meta: asMetaItemCount(1),
       };
     } catch (error) {
       const fallback = await runUnifiedSearchThreads({
-        query: "unread",
+        query: scope === "primary" ? "unread category:primary" : "unread",
         unread: true,
         sort: "newest",
         limit: 100,
         fetchAll: false,
+        ...(scope === "primary" ? { category: "primary" } : {}),
       }, "inbox");
       if (!fallback.success) {
         return capabilityFailureResult(error, "I couldn't count unread emails right now.", {
@@ -806,11 +839,11 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         data: {
           count,
           exact: false,
-          scope: "inbox",
+          scope,
           source: totalEstimate !== null ? "provider_estimate" : "sample_count",
           asOf: new Date().toISOString(),
         },
-        message: `You have about ${count} unread emails right now.`,
+        message: `You have about ${count} unread email${count === 1 ? "" : "s"} in ${scope} right now.`,
         truncated: fallback.truncated,
         paging: paging ?? undefined,
         meta: asMetaItemCount(1),

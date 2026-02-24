@@ -249,6 +249,13 @@ export function createPlannerCapabilities(env: CapabilityEnvironment): PlannerCa
                   subject: message.subject || message.headers?.subject || null,
                 }));
               })();
+        const topEmailSample = {
+          kind: "planning_hint",
+          query: "in:inbox is:unread",
+          sampleLimit: 10,
+          sampledCount: topEmailItems.length,
+          authoritative: false,
+        };
 
         const conflicts = computeConflicts(calendarItems);
 
@@ -306,7 +313,7 @@ export function createPlannerCapabilities(env: CapabilityEnvironment): PlannerCa
         }
 
         if (topEmailItems.length > 0) {
-          messageParts.push("Urgent inbox (unread):");
+          messageParts.push("Inbox sample (first unread threads, planning hint):");
           for (const it of topEmailItems.slice(0, 10)) {
             const title = typeof it?.title === "string" ? it.title : "(No subject)";
             const from = typeof it?.from === "string" ? it.from : null;
@@ -326,6 +333,7 @@ export function createPlannerCapabilities(env: CapabilityEnvironment): PlannerCa
             },
             calendarItems,
             topEmailItems,
+            topEmailSample,
             freeSlots: candidateSlots,
             conflicts,
             focusSuggestions: Array.isArray(input.focusSuggestions) ? input.focusSuggestions : [],

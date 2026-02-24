@@ -192,7 +192,9 @@ function buildNativeRuntimeSystemPrompt(params: {
     `- User timezone: ${userTimeZone}.`,
     `- Current local time for the user: ${formatNowInTimeZone(userTimeZone)}.`,
     "- Interpret relative dates (today, tomorrow, monday, next week) in the user timezone.",
-    "- For inbox/calendar facts, call tools rather than guessing.",
+    "- For inbox/calendar facts, rely on tool evidence; do not guess.",
+    "- If prior turn tool evidence is present and still answers the follow-up, reuse it without forcing a new tool call.",
+    "- If prior evidence is stale, partial, or missing required scope, call tools to refresh.",
     "- Treat task rescheduling as valid calendar rescheduling when task/calendar tools are available.",
     "- If a tool indicates missing fields, ask one precise follow-up question.",
     "- Keep output concise and natural in assistant voice.",
@@ -236,6 +238,9 @@ function resolveLane(session: RuntimeSession): RuntimeLane {
   if (session.turn.routeHint === "conversation_only" || session.turn.toolChoice === "none") {
     return "conversation_only";
   }
+  if (session.turn.routeHint === "evidence_first") {
+    return "evidence_first";
+  }
   return "planner";
 }
 
@@ -244,11 +249,15 @@ function resolveNativeMaxSteps(session: RuntimeSession, lane: RuntimeLane): numb
   if (typeof configured === "number" && Number.isFinite(configured) && configured > 0) {
     return Math.min(Math.max(1, Math.trunc(configured)), 24);
   }
-  return lane === "conversation_only" ? 1 : 8;
+  if (lane === "conversation_only") return 1;
+  if (lane === "evidence_first") return 4;
+  return 8;
 }
 
 function resolveNativeTimeoutMs(lane: RuntimeLane): number {
-  return lane === "conversation_only" ? 18_000 : 120_000;
+  if (lane === "conversation_only") return 18_000;
+  if (lane === "evidence_first") return 60_000;
+  return 120_000;
 }
 
 function requiresToolEvidenceForFinalAnswer(session: RuntimeSession): boolean {
@@ -258,6 +267,18 @@ function requiresToolEvidenceForFinalAnswer(session: RuntimeSession): boolean {
     session.turn.domain === "calendar" ||
     session.turn.domain === "cross_surface"
   );
+}
+
+function hasPriorTurnToolEvidence(session: RuntimeSession): boolean {
+  if (!Array.isArray(session.input.messages) || session.input.messages.length === 0) {
+    return false;
+  }
+
+  return session.input.messages.some((message) => {
+    if (message.role !== "assistant") return false;
+    const content = extractMessageTextContent(message.content);
+    return content.includes("Last turn tool evidence (ground truth for follow-up questions about prior results):");
+  });
 }
 
 function resolveGenerationUsage(generation: unknown): RuntimeLoopResult["usage"] | undefined {
@@ -531,8 +552,9 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
       const clarificationPrompt = latestClarificationPrompt(results);
       const usage = resolveGenerationUsage(generation);
       const hasToolEvidence = session.summaries.length > 0;
+      const hasPriorEvidence = hasPriorTurnToolEvidence(session);
 
-      if (requiresToolEvidenceForFinalAnswer(session) && !hasToolEvidence) {
+      if (requiresToolEvidenceForFinalAnswer(session) && !hasToolEvidence && !hasPriorEvidence) {
         session.input.logger.warn("Runtime read turn finished without required tool evidence", {
           userId: session.input.userId,
           provider: session.input.provider,

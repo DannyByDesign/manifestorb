@@ -49,8 +49,11 @@ function formatEvidence(results: RuntimeToolResult[]): string {
   if (results.length === 0) return "[]";
   const payload = results.slice(-6).map((result) => ({
     success: result.success,
+    message: result.message ?? null,
     error: result.error ?? null,
     clarification: result.clarification ?? null,
+    truncated: result.truncated === true,
+    paging: compact(result.paging),
     data: compact(result.data),
   }));
   return JSON.stringify(payload);
@@ -118,6 +121,8 @@ export async function generateRuntimeUserReply(params: {
       "- For list/search results: include all items when there are 10 or fewer.",
       "- If there are more than 10 items, state the total and that you're showing the first 10.",
       "- Never present raw UTC offsets to the user unless they asked for UTC explicitly.",
+      "- If evidence indicates truncation or partial coverage, do not claim exhaustive results.",
+      "- When coverage is partial, explicitly say you searched a subset and offer to run a broader check.",
       "- If mode is clarification, ask one concrete follow-up question.",
       "- Clarification prompts from tools are keys, not user-facing strings; use tool evidence to form a natural assistant follow-up question.",
       "- If mode is approval_pending, clearly say approval is needed and what happens next.",
