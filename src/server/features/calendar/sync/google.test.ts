@@ -5,6 +5,11 @@ import {
 } from "@/server/features/calendar/sync/google";
 import prisma from "@/server/lib/__mocks__/prisma";
 import { getCalendarClientWithRefresh } from "@/features/calendar/client";
+import {
+  buildCalendarEventSnapshot,
+  markCalendarEventShadowDeleted,
+  upsertCalendarEventShadow,
+} from "@/features/calendar/canonical-state";
 
 const mockEnv = vi.hoisted(() => ({
   NEXT_PUBLIC_BASE_URL: "http://localhost:3000" as string | undefined,
@@ -14,6 +19,14 @@ vi.mock("@/env", () => ({ env: mockEnv }));
 vi.mock("@/server/db/client");
 vi.mock("@/features/calendar/client", () => ({
   getCalendarClientWithRefresh: vi.fn(),
+}));
+vi.mock("@/features/calendar/canonical-state", () => ({
+  buildCalendarEventSnapshot: vi.fn().mockReturnValue({ id: "snapshot-1" }),
+  markCalendarEventShadowDeleted: vi.fn().mockResolvedValue(false),
+  upsertCalendarEventShadow: vi.fn().mockResolvedValue({
+    shadowId: "shadow-1",
+    remapped: false,
+  }),
 }));
 
 const logger = {
@@ -238,6 +251,102 @@ describe("calendar sync/google", () => {
     expect(prisma.calendar.update).toHaveBeenCalledWith({
       where: { id: "cal-1" },
       data: { googleSyncToken: "sync-2" },
+    });
+  });
+
+  it("repro: 410 recovery should run canonical reconciliation, not skip it", async () => {
+    const list = vi
+      .fn()
+      .mockRejectedValueOnce({ code: 410 })
+      .mockResolvedValueOnce({
+        data: {
+          items: [
+            {
+              id: "evt-410",
+              summary: "Recovered event",
+              status: "confirmed",
+              start: { dateTime: "2026-02-24T10:00:00.000Z" },
+              end: { dateTime: "2026-02-24T11:00:00.000Z" },
+            },
+          ],
+          nextSyncToken: "sync-410",
+        },
+      });
+    vi.mocked(getCalendarClientWithRefresh).mockResolvedValue({
+      events: { list },
+    } as never);
+
+    const result = await syncGoogleCalendarChanges({
+      calendar: {
+        id: "cal-1",
+        calendarId: "primary",
+        googleSyncToken: "expired-token",
+        googleChannelId: null,
+        googleResourceId: null,
+        googleChannelToken: null,
+        googleChannelExpiresAt: null,
+      },
+      connection: {
+        accessToken: "a",
+        refreshToken: "r",
+        expiresAt: null,
+        emailAccountId: "email-1",
+      },
+      logger,
+      userId: "user-1",
+    });
+
+    expect(upsertCalendarEventShadow).toHaveBeenCalled();
+    expect(buildCalendarEventSnapshot).toHaveBeenCalled();
+    expect(markCalendarEventShadowDeleted).not.toHaveBeenCalled();
+    expect(result.canonical.processed).toBe(1);
+  });
+
+  it("repro: sync token writes should be monotonic/CAS guarded", async () => {
+    vi.mocked(getCalendarClientWithRefresh).mockResolvedValue({
+      events: {
+        list: vi.fn().mockResolvedValue({
+          data: {
+            items: [],
+            nextSyncToken: "sync-new",
+          },
+        }),
+      },
+    } as never);
+
+    prisma.calendar.updateMany.mockResolvedValue({ count: 0 } as never);
+
+    await syncGoogleCalendarChanges({
+      calendar: {
+        id: "cal-1",
+        calendarId: "primary",
+        googleSyncToken: "sync-old",
+        googleChannelId: null,
+        googleResourceId: null,
+        googleChannelToken: null,
+        googleChannelExpiresAt: null,
+      },
+      connection: {
+        accessToken: "a",
+        refreshToken: "r",
+        expiresAt: null,
+        emailAccountId: "email-1",
+      },
+      logger,
+    });
+
+    expect(prisma.calendar.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "cal-1",
+        googleSyncToken: "sync-old",
+      },
+      data: {
+        googleSyncToken: "sync-new",
+      },
+    });
+    expect(prisma.calendar.update).not.toHaveBeenCalledWith({
+      where: { id: "cal-1" },
+      data: { googleSyncToken: "sync-new" },
     });
   });
 });

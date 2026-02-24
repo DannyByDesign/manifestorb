@@ -16,7 +16,7 @@ Primary plan:
 Legend: `OPEN`, `IN_PROGRESS`, `BLOCKED`, `DONE`
 
 1. WP-00 Baseline reproducibility tests
-   - Status: OPEN
+   - Status: DONE
    - Covers: baseline failing tests for all P0/P1 gaps
 2. WP-01 P0 action correctness fixes
    - Status: OPEN

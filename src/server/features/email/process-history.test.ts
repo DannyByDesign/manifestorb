@@ -20,6 +20,7 @@ vi.mock("@/features/webhooks/validate-webhook-account", () => ({
 }));
 
 import { getHistory } from "@/server/integrations/google/history";
+import { getGmailClientWithRefresh } from "@/server/integrations/google/client";
 import { processHistoryItem } from "@/app/api/google/webhook/process-history-item";
 import {
   validateWebhookAccount,
@@ -205,5 +206,64 @@ describe("processHistoryForUser", () => {
     );
     const json = await res.json();
     expect(json.ok).toBe(true);
+  });
+
+  it("repro: expired history id must trigger full backfill before advancing sync pointer", async () => {
+    vi.mocked(getWebhookEmailAccount).mockResolvedValue({
+      id: "email-1",
+      email: "user@test.com",
+      lastSyncedHistoryId: "1000",
+    } as any);
+    vi.mocked(validateWebhookAccount).mockResolvedValue({
+      success: true,
+      data: {
+        emailAccount: {
+          id: "email-1",
+          userId: "user-1",
+          email: "user@test.com",
+          account: {
+            provider: "google",
+            access_token: "a",
+            refresh_token: "r",
+          },
+          rules: [],
+        },
+        hasAutomationRules: false,
+        hasAiAccess: false,
+      },
+    } as any);
+    vi.mocked(getHistory).mockRejectedValue({
+      response: { status: 404 },
+    });
+    vi.mocked(getGmailClientWithRefresh).mockResolvedValue({
+      users: {
+        getProfile: vi.fn().mockResolvedValue({
+          data: { historyId: "2000" },
+        }),
+        messages: {
+          list: vi.fn().mockResolvedValue({
+            data: {
+              messages: [{ id: "msg-1", threadId: "thread-1" }],
+            },
+          }),
+        },
+      },
+    } as any);
+    prisma.$executeRaw.mockResolvedValue(undefined as any);
+
+    const res = await processHistoryForUser(
+      { emailAddress: "user@test.com", historyId: 999 },
+      {},
+      logger,
+    );
+    const json = await res.json();
+
+    expect(json.ok).toBe(true);
+    expect(processHistoryItem).toHaveBeenCalled();
+    const flattenedArgs = prisma.$executeRaw.mock.calls
+      .flatMap((call) => call as unknown[])
+      .map((entry) => String(entry));
+    expect(flattenedArgs.some((entry) => entry.includes("2000"))).toBe(true);
+    expect(flattenedArgs.some((entry) => entry.includes("999"))).toBe(false);
   });
 });

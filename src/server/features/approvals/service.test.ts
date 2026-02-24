@@ -114,18 +114,14 @@ describe("ApprovalService", () => {
     });
   });
 
-  it("still decides when request is past expiry", async () => {
+  it("repro: rejects decisions when request is past expiry and marks EXPIRED", async () => {
     prismaMock.approvalRequest.findUnique.mockResolvedValue({
       id: "req-5",
       userId: "user-1",
       status: "PENDING",
       expiresAt: new Date(Date.now() - 1000),
     } as any);
-    prismaMock.approvalRequest.update.mockResolvedValue({} as any);
-    prismaMock.approvalDecision.create.mockResolvedValue({
-      id: "dec-2",
-      decision: "DENY",
-    } as any);
+    prismaMock.approvalRequest.update.mockResolvedValue({ status: "EXPIRED" } as any);
     prismaMock.$transaction.mockImplementation(
       async (callback: (tx: PrismaClient) => unknown) =>
         callback(prismaMock as unknown as PrismaClient),
@@ -133,17 +129,18 @@ describe("ApprovalService", () => {
 
     const service = new ApprovalService(prismaMock);
 
-    const result = await service.decideRequest({
-      approvalRequestId: "req-5",
-      decidedByUserId: "user-1",
-      decision: "DENY",
-    });
-
-    expect(result.decision).toBe("DENY");
+    await expect(
+      service.decideRequest({
+        approvalRequestId: "req-5",
+        decidedByUserId: "user-1",
+        decision: "DENY",
+      }),
+    ).rejects.toThrow("Cannot decide on request in status: EXPIRED");
     expect(prismaMock.approvalRequest.update).toHaveBeenCalledWith({
       where: { id: "req-5" },
-      data: { status: "DENIED" },
+      data: { status: "EXPIRED" },
     });
+    expect(prismaMock.approvalDecision.create).not.toHaveBeenCalled();
   });
 
   it("rejects decisions from non-owners", async () => {
