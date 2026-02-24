@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import prisma from "@/server/lib/__mocks__/prisma";
 import type { CapabilityEnvironment } from "@/server/features/ai/tools/runtime/capabilities/types";
 import { createEmailCapabilities } from "@/server/features/ai/tools/runtime/capabilities/email";
+import { Prisma } from "@/generated/prisma/client";
 
 vi.mock("@/server/db/client");
 
@@ -47,6 +48,8 @@ vi.mock("@/server/features/ai/tools/email/primitives", () => ({
 
 function buildEnv(overrides?: {
   provider?: Partial<CapabilityEnvironment["toolContext"]["providers"]["email"]>;
+  currentMessage?: string;
+  conversationId?: string;
 }): CapabilityEnvironment {
   const provider: CapabilityEnvironment["toolContext"]["providers"]["email"] = {
     name: "google",
@@ -60,6 +63,8 @@ function buildEnv(overrides?: {
       emailAccountId: "email-1",
       email: "user@example.com",
       provider: "web",
+      currentMessage: overrides?.currentMessage,
+      conversationId: overrides?.conversationId,
       logger: {
         info: vi.fn(),
         warn: vi.fn(),
@@ -115,6 +120,19 @@ describe("email mutation reliability repros", () => {
     } as never);
     prisma.scheduledDraftSend.findUnique.mockResolvedValue(null as never);
     prisma.scheduledDraftSend.update.mockResolvedValue({} as never);
+    prisma.pendingAgentTurnState.create.mockResolvedValue({
+      id: "idem-row-1",
+      correlationId: "idem-key-1",
+      status: "PENDING",
+      payload: {},
+    } as never);
+    prisma.pendingAgentTurnState.findUnique.mockResolvedValue(null as never);
+    prisma.pendingAgentTurnState.update.mockResolvedValue({
+      id: "idem-row-1",
+      correlationId: "idem-key-1",
+      status: "RESOLVED",
+      payload: {},
+    } as never);
   });
 
   it("repro: gmail moveThread should fail explicitly instead of reporting success", async () => {
@@ -166,5 +184,49 @@ describe("email mutation reliability repros", () => {
         }),
       }),
     );
+  });
+
+  it("repro: duplicate sendDraft retries should replay deterministic outcome", async () => {
+    const sendDraftMock = vi.fn().mockResolvedValue({
+      messageId: "message-1",
+      threadId: "thread-1",
+    });
+    const caps = createEmailCapabilities(
+      buildEnv({
+        currentMessage: "send the draft now",
+        conversationId: "conversation-1",
+        provider: {
+          sendDraft: sendDraftMock,
+        },
+      }),
+    );
+
+    const first = await caps.sendDraft("draft-1");
+
+    prisma.pendingAgentTurnState.create.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError("duplicate", {
+        clientVersion: "test",
+        code: "P2002",
+      }),
+    );
+    prisma.pendingAgentTurnState.findUnique.mockResolvedValueOnce({
+      id: "idem-row-1",
+      correlationId: "idem-key-1",
+      status: "RESOLVED",
+      payload: {
+        toolResult: first,
+      },
+    } as never);
+
+    const replay = await caps.sendDraft("draft-1");
+
+    expect(sendDraftMock).toHaveBeenCalledTimes(1);
+    expect(first.success).toBe(true);
+    expect(replay.success).toBe(true);
+    expect(replay.data).toMatchObject({
+      idempotency: expect.objectContaining({
+        replayed: true,
+      }),
+    });
   });
 });

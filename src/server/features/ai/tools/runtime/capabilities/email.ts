@@ -14,6 +14,7 @@ import {
 } from "@/server/features/ai/tools/runtime/capabilities/errors";
 import { validateEmailSearchFilter } from "@/server/features/ai/tools/runtime/capabilities/validators/email-search";
 import { createCapabilityIdempotencyKey } from "@/server/features/ai/tools/runtime/capabilities/idempotency";
+import { runMutationWithIdempotency } from "@/server/features/ai/tools/runtime/capabilities/mutation-idempotency";
 import {
   getEmailMessages,
   getEmailThread,
@@ -2140,7 +2141,20 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
     },
 
     async createDraft(input) {
-      try {
+      return runMutationWithIdempotency({
+        env: capEnv,
+        capability: "email.createDraft",
+        payload: {
+          type: input.type ?? null,
+          parentId: input.parentId ?? null,
+          to: Array.isArray(input.to) ? input.to : [],
+          cc: Array.isArray(input.cc) ? input.cc : [],
+          bcc: Array.isArray(input.bcc) ? input.bcc : [],
+          subject: input.subject ?? null,
+          body: input.body,
+        },
+        execute: async () => {
+          try {
         const draftType: "new" | "reply" | "forward" =
           input.type ?? (input.parentId ? "reply" : "new");
 
@@ -2184,11 +2198,13 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           message: "Draft created. You can review it before sending.",
           meta: asMetaItemCount(1),
         };
-      } catch (error) {
-        return capabilityFailureResult(error, "I couldn't create that draft right now.", {
-          resource: "email",
-        });
-      }
+          } catch (error) {
+            return capabilityFailureResult(error, "I couldn't create that draft right now.", {
+              resource: "email",
+            });
+          }
+        },
+      });
     },
 
     async updateDraft(input) {
@@ -2217,22 +2233,33 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         };
       }
 
-      try {
-        await provider.updateDraft(draftId, {
-          ...(input.subject ? { subject: input.subject } : {}),
-          ...(input.body ? { messageHtml: input.body } : {}),
-        });
-        return {
-          success: true,
-          data: { draftId },
-          message: "Draft updated.",
-          meta: asMetaItemCount(1),
-        };
-      } catch (error) {
-        return capabilityFailureResult(error, "I couldn't update that draft right now.", {
-          resource: "email",
-        });
-      }
+      return runMutationWithIdempotency({
+        env: capEnv,
+        capability: "email.updateDraft",
+        payload: {
+          draftId,
+          subject: input.subject ?? null,
+          body: input.body ?? null,
+        },
+        execute: async () => {
+          try {
+            await provider.updateDraft(draftId, {
+              ...(input.subject ? { subject: input.subject } : {}),
+              ...(input.body ? { messageHtml: input.body } : {}),
+            });
+            return {
+              success: true,
+              data: { draftId },
+              message: "Draft updated.",
+              meta: asMetaItemCount(1),
+            };
+          } catch (error) {
+            return capabilityFailureResult(error, "I couldn't update that draft right now.", {
+              resource: "email",
+            });
+          }
+        },
+      });
     },
 
     async deleteDraft(draftId) {
@@ -2248,19 +2275,26 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           },
         };
       }
-      try {
-        await provider.deleteDraft(id);
-        return {
-          success: true,
-          data: { draftId: id },
-          message: "Draft deleted.",
-          meta: asMetaItemCount(1),
-        };
-      } catch (error) {
-        return capabilityFailureResult(error, "I couldn't delete that draft right now.", {
-          resource: "email",
-        });
-      }
+      return runMutationWithIdempotency({
+        env: capEnv,
+        capability: "email.deleteDraft",
+        payload: { draftId: id },
+        execute: async () => {
+          try {
+            await provider.deleteDraft(id);
+            return {
+              success: true,
+              data: { draftId: id },
+              message: "Draft deleted.",
+              meta: asMetaItemCount(1),
+            };
+          } catch (error) {
+            return capabilityFailureResult(error, "I couldn't delete that draft right now.", {
+              resource: "email",
+            });
+          }
+        },
+      });
     },
 
     async sendDraft(draftId) {
@@ -2276,71 +2310,92 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           },
         };
       }
-      try {
-        const result = await provider.sendDraft(id);
-        return {
-          success: true,
-          data: result,
-          message: "Draft sent.",
-          meta: asMetaItemCount(1),
-        };
-      } catch (error) {
-        return capabilityFailureResult(error, "I couldn't send that draft right now.", {
-          resource: "email",
-        });
-      }
+      return runMutationWithIdempotency({
+        env: capEnv,
+        capability: "email.sendDraft",
+        payload: { draftId: id },
+        execute: async () => {
+          try {
+            const result = await provider.sendDraft(id);
+            return {
+              success: true,
+              data: result,
+              message: "Draft sent.",
+              meta: asMetaItemCount(1),
+            };
+          } catch (error) {
+            return capabilityFailureResult(error, "I couldn't send that draft right now.", {
+              resource: "email",
+            });
+          }
+        },
+      });
     },
 
     async sendNow(input) {
-      if (input.draftId?.trim()) {
-        try {
-          const result = await provider.sendDraft(input.draftId.trim());
+      if (!input.to || input.to.length === 0 || !input.body?.trim()) {
+        if (!input.draftId?.trim()) {
           return {
-            success: true,
-            data: result,
-            message: "Draft sent.",
-            meta: asMetaItemCount(1),
+            success: false,
+            error: "invalid_input:missing send fields",
+            clarification: {
+              kind: "missing_fields",
+              prompt: "email_send_now_missing_fields",
+              missingFields: ["recipient", "body"],
+            },
           };
-        } catch (error) {
-          return capabilityFailureResult(error, "I couldn't send that draft right now.", {
-            resource: "email",
-          });
         }
       }
 
-      if (!input.to || input.to.length === 0 || !input.body?.trim()) {
-        return {
-          success: false,
-          error: "invalid_input:missing send fields",
-          clarification: {
-            kind: "missing_fields",
-            prompt: "email_send_now_missing_fields",
-            missingFields: ["recipient", "body"],
-          },
-        };
-      }
+      return runMutationWithIdempotency({
+        env: capEnv,
+        capability: "email.sendNow",
+        payload: {
+          draftId: input.draftId ?? null,
+          to: Array.isArray(input.to) ? input.to : [],
+          subject: input.subject ?? null,
+          body: input.body ?? null,
+        },
+        execute: async () => {
+          if (input.draftId?.trim()) {
+            try {
+              const result = await provider.sendDraft(input.draftId.trim());
+              return {
+                success: true,
+                data: result,
+                message: "Draft sent.",
+                meta: asMetaItemCount(1),
+              };
+            } catch (error) {
+              return capabilityFailureResult(error, "I couldn't send that draft right now.", {
+                resource: "email",
+              });
+            }
+          }
 
-      try {
-        const draft = await provider.createDraft({
-          type: "new",
-          to: input.to,
-          subject: input.subject,
-          body: input.body,
-        });
-        const sendResult = await provider.sendDraft(draft.draftId);
-        return {
-          success: true,
-          data: sendResult,
-          message: "Email sent.",
-          meta: asMetaItemCount(1),
-        };
-      } catch (error) {
-        return {
-          success: false,
-          error: `unknown:${error instanceof Error ? error.message : String(error)}`,
-          message: "I couldn't send that email right now.",
-        };
-      }
+          try {
+            const draft = await provider.createDraft({
+              type: "new",
+              to: input.to,
+              subject: input.subject,
+              body: input.body,
+            });
+            const sendResult = await provider.sendDraft(draft.draftId);
+            return {
+              success: true,
+              data: sendResult,
+              message: "Email sent.",
+              meta: asMetaItemCount(1),
+            };
+          } catch (error) {
+            return {
+              success: false,
+              error: `unknown:${error instanceof Error ? error.message : String(error)}`,
+              message: "I couldn't send that email right now.",
+            };
+          }
+        },
+      });
     },
 
     async reply(input) {
@@ -2457,40 +2512,53 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           })()
         : [];
 
-      try {
-        const draft = await provider.createDraft({
-          type: "reply",
+      return runMutationWithIdempotency({
+        env: capEnv,
+        capability: "email.reply",
+        payload: {
           parentId: parentMessage.id,
-          ...(toAddresses.length > 0 ? { to: toAddresses } : {}),
-          ...(ccAddresses.length > 0 ? { cc: ccAddresses } : {}),
-          subject: input.subject,
+          subject: input.subject ?? null,
           body,
-        });
+          mode,
+          replyAll,
+        },
+        execute: async () => {
+          try {
+            const draft = await provider.createDraft({
+              type: "reply",
+              parentId: parentMessage.id,
+              ...(toAddresses.length > 0 ? { to: toAddresses } : {}),
+              ...(ccAddresses.length > 0 ? { cc: ccAddresses } : {}),
+              subject: input.subject,
+              body,
+            });
 
-        if (mode === "draft") {
-          return {
-            success: true,
-            data: {
-              draftId: draft.draftId,
-              preview: draft.preview,
-            },
-            message: "Draft reply created.",
-            meta: asMetaItemCount(1),
-          };
-        }
+            if (mode === "draft") {
+              return {
+                success: true,
+                data: {
+                  draftId: draft.draftId,
+                  preview: draft.preview,
+                },
+                message: "Draft reply created.",
+                meta: asMetaItemCount(1),
+              };
+            }
 
-        const sendResult = await provider.sendDraft(draft.draftId);
-        return {
-          success: true,
-          data: sendResult,
-          message: "Reply sent.",
-          meta: asMetaItemCount(1),
-        };
-      } catch (error) {
-        return capabilityFailureResult(error, "I couldn't send that reply right now.", {
-          resource: "email",
-        });
-      }
+            const sendResult = await provider.sendDraft(draft.draftId);
+            return {
+              success: true,
+              data: sendResult,
+              message: "Reply sent.",
+              meta: asMetaItemCount(1),
+            };
+          } catch (error) {
+            return capabilityFailureResult(error, "I couldn't send that reply right now.", {
+              resource: "email",
+            });
+          }
+        },
+      });
     },
 
     async forward(input) {
@@ -2551,26 +2619,38 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         };
       }
 
-      try {
-        const draft = await provider.createDraft({
-          type: "forward",
+      return runMutationWithIdempotency({
+        env: capEnv,
+        capability: "email.forward",
+        payload: {
           parentId: parentMessage.id,
           to: input.to,
-          subject: input.subject,
-          body: input.body ?? "",
-        });
-        const sendResult = await provider.sendDraft(draft.draftId);
-        return {
-          success: true,
-          data: sendResult,
-          message: "Email forwarded.",
-          meta: asMetaItemCount(1),
-        };
-      } catch (error) {
-        return capabilityFailureResult(error, "I couldn't forward that email right now.", {
-          resource: "email",
-        });
-      }
+          subject: input.subject ?? null,
+          body: input.body ?? null,
+        },
+        execute: async () => {
+          try {
+            const draft = await provider.createDraft({
+              type: "forward",
+              parentId: parentMessage.id,
+              to: input.to,
+              subject: input.subject,
+              body: input.body ?? "",
+            });
+            const sendResult = await provider.sendDraft(draft.draftId);
+            return {
+              success: true,
+              data: sendResult,
+              message: "Email forwarded.",
+              meta: asMetaItemCount(1),
+            };
+          } catch (error) {
+            return capabilityFailureResult(error, "I couldn't forward that email right now.", {
+              resource: "email",
+            });
+          }
+        },
+      });
     },
 
     async scheduleSend(_draftId, _sendAt) {
@@ -2627,9 +2707,9 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       });
 
       try {
-        const scheduledDraftSend = await (async () => {
+        const { scheduledDraftSend, created } = await (async () => {
           try {
-            return await prisma.scheduledDraftSend.create({
+            const createdRecord = await prisma.scheduledDraftSend.create({
               data: {
                 userId: capEnv.runtime.userId,
                 emailAccountId: capEnv.runtime.emailAccountId,
@@ -2642,6 +2722,10 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
                   : {}),
               },
             });
+            return {
+              scheduledDraftSend: createdRecord,
+              created: true,
+            };
           } catch (error: unknown) {
             // If we already scheduled this draft+timestamp, return the existing row deterministically.
             if (
@@ -2651,21 +2735,32 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
               const existing = await prisma.scheduledDraftSend.findUnique({
                 where: { idempotencyKey: deduplicationId },
               });
-              if (existing) return existing;
+              if (existing) {
+                return {
+                  scheduledDraftSend: existing,
+                  created: false,
+                };
+              }
             }
             throw error;
           }
         })();
 
-        let qstashMessageId: string | null = null;
-        if (appEnv.QSTASH_TOKEN) {
+        let qstashMessageId: string | null = scheduledDraftSend.scheduledId ?? null;
+        const shouldPublish =
+          Boolean(appEnv.QSTASH_TOKEN) &&
+          scheduledDraftSend.status === "PENDING" &&
+          (!qstashMessageId || created);
+        if (shouldPublish) {
           const client = new Client({ token: appEnv.QSTASH_TOKEN });
           const url = `${getInternalApiUrl()}/api/drafts/schedule-send/execute`;
           const response = await client.publishJSON({
             url,
             body: {
+              scheduleId: scheduledDraftSend.id,
               emailAccountId: capEnv.runtime.emailAccountId,
               draftId,
+              idempotencyKey: deduplicationId,
             },
             notBefore,
             deduplicationId,

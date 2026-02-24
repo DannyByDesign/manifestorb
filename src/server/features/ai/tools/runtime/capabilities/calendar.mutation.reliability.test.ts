@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CapabilityEnvironment } from "@/server/features/ai/tools/runtime/capabilities/types";
 import { createCalendarCapabilities } from "@/server/features/ai/tools/runtime/capabilities/calendar";
+import { Prisma } from "@/generated/prisma/client";
 
 const resolveDefaultCalendarTimeZoneMock = vi.hoisted(() => vi.fn());
 const resolveCalendarTimeRangeMock = vi.hoisted(() => vi.fn());
@@ -16,9 +17,13 @@ vi.mock("@/server/features/ai/tools/calendar-time", () => ({
 const getCalendarEventMock = vi.hoisted(() => vi.fn());
 const updateCalendarEventMock = vi.hoisted(() => vi.fn());
 const deleteCalendarEventMock = vi.hoisted(() => vi.fn());
+const createCalendarEventMock = vi.hoisted(() => vi.fn());
+const pendingIdempotencyCreateMock = vi.hoisted(() => vi.fn());
+const pendingIdempotencyFindUniqueMock = vi.hoisted(() => vi.fn());
+const pendingIdempotencyUpdateMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/server/features/ai/tools/calendar/primitives", () => ({
-  createCalendarEvent: vi.fn(),
+  createCalendarEvent: createCalendarEventMock,
   deleteCalendarEvent: deleteCalendarEventMock,
   findCalendarAvailability: vi.fn(),
   getCalendarEvent: getCalendarEventMock,
@@ -27,6 +32,11 @@ vi.mock("@/server/features/ai/tools/calendar/primitives", () => ({
 
 vi.mock("@/server/db/client", () => ({
   default: {
+    pendingAgentTurnState: {
+      create: pendingIdempotencyCreateMock,
+      findUnique: pendingIdempotencyFindUniqueMock,
+      update: pendingIdempotencyUpdateMock,
+    },
     calendarConnection: { findMany: vi.fn().mockResolvedValue([]) },
     calendar: { updateMany: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
     taskPreference: { findUnique: vi.fn().mockResolvedValue(null), upsert: vi.fn() },
@@ -94,7 +104,27 @@ describe("calendar mutation reliability repros", () => {
       endTime: new Date("2026-02-24T19:30:00.000Z"),
       attendees: [],
     });
+    createCalendarEventMock.mockResolvedValue({
+      id: "evt-2",
+      title: "Focus block",
+      startTime: new Date("2026-02-24T20:00:00.000Z"),
+      endTime: new Date("2026-02-24T20:30:00.000Z"),
+      attendees: [],
+    });
     deleteCalendarEventMock.mockResolvedValue(undefined);
+    pendingIdempotencyCreateMock.mockResolvedValue({
+      id: "idem-row-1",
+      correlationId: "idem-key-1",
+      status: "PENDING",
+      payload: {},
+    } as never);
+    pendingIdempotencyFindUniqueMock.mockResolvedValue(null as never);
+    pendingIdempotencyUpdateMock.mockResolvedValue({
+      id: "idem-row-1",
+      correlationId: "idem-key-1",
+      status: "RESOLVED",
+      payload: {},
+    } as never);
   });
 
   it("repro: recurring single-instance update should require explicit instance identity", async () => {
@@ -127,5 +157,43 @@ describe("calendar mutation reliability repros", () => {
       "instanceId_or_originalStartTime",
     ]);
     expect(deleteCalendarEventMock).not.toHaveBeenCalled();
+  });
+
+  it("repro: duplicate createEvent retries should replay deterministic outcome", async () => {
+    const caps = createCalendarCapabilities(buildEnv());
+    const first = await caps.createEvent({
+      title: "Focus block",
+      start: "2026-02-24T12:00:00",
+      end: "2026-02-24T12:30:00",
+    });
+
+    pendingIdempotencyCreateMock.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError("duplicate", {
+        clientVersion: "test",
+        code: "P2002",
+      }),
+    );
+    pendingIdempotencyFindUniqueMock.mockResolvedValueOnce({
+      id: "idem-row-1",
+      correlationId: "idem-key-1",
+      status: "RESOLVED",
+      payload: {
+        toolResult: first,
+      },
+    } as never);
+
+    const replay = await caps.createEvent({
+      title: "Focus block",
+      start: "2026-02-24T12:00:00",
+      end: "2026-02-24T12:30:00",
+    });
+
+    expect(createCalendarEventMock).toHaveBeenCalledTimes(1);
+    expect(replay.success).toBe(true);
+    expect(replay.data).toMatchObject({
+      idempotency: expect.objectContaining({
+        replayed: true,
+      }),
+    });
   });
 });

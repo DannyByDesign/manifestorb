@@ -19,6 +19,7 @@ import {
   getCalendarEvent,
   updateCalendarEvent,
 } from "@/server/features/ai/tools/calendar/primitives";
+import { runMutationWithIdempotency } from "@/server/features/ai/tools/runtime/capabilities/mutation-idempotency";
 import {
   ensureCalendarSelectionInvariant,
   isLikelyNoisyCalendar,
@@ -843,83 +844,98 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
     },
 
     async createEvent(data) {
-      const title = safeString(data.title) ?? "New event";
-      const requestedTimeZone = resolveRequestedTimeZone(data);
-      const resolvedTimeZone = await resolveEffectiveTimeZone(requestedTimeZone);
-      if ("error" in resolvedTimeZone) {
-        return {
-          success: false,
-          error: "invalid_time_zone",
-          message: resolvedTimeZone.error,
-          clarification: {
-            kind: "invalid_fields",
-            prompt: "calendar_timezone_invalid",
-            missingFields: ["timeZone"],
-          },
-        };
-      }
-      const start = parseDateBoundInTimeZone(
-        safeString(data.start),
-        resolvedTimeZone.timeZone,
-        "start",
-      );
-      const end = parseDateBoundInTimeZone(
-        safeString(data.end),
-        resolvedTimeZone.timeZone,
-        "end",
-      );
-      if (!start || !end || start.getTime() >= end.getTime()) {
-        return {
-          success: false,
-          error: "invalid_event_time",
-          clarification: {
-            kind: "missing_fields",
-            prompt: "calendar_event_time_required",
-            missingFields: ["start", "end"],
-          },
-        };
-      }
+      return runMutationWithIdempotency({
+        env,
+        capability: "calendar.createEvent",
+        payload: {
+          title: safeString(data.title) ?? "New event",
+          start: safeString(data.start) ?? null,
+          end: safeString(data.end) ?? null,
+          attendees: toStringArray(data.attendees),
+          location: safeString(data.location) ?? null,
+          description: safeString(data.description) ?? null,
+          timeZone: safeString(data.timeZone) ?? safeString(data.timezone) ?? null,
+        },
+        execute: async () => {
+          const title = safeString(data.title) ?? "New event";
+          const requestedTimeZone = resolveRequestedTimeZone(data);
+          const resolvedTimeZone = await resolveEffectiveTimeZone(requestedTimeZone);
+          if ("error" in resolvedTimeZone) {
+            return {
+              success: false,
+              error: "invalid_time_zone",
+              message: resolvedTimeZone.error,
+              clarification: {
+                kind: "invalid_fields",
+                prompt: "calendar_timezone_invalid",
+                missingFields: ["timeZone"],
+              },
+            };
+          }
+          const start = parseDateBoundInTimeZone(
+            safeString(data.start),
+            resolvedTimeZone.timeZone,
+            "start",
+          );
+          const end = parseDateBoundInTimeZone(
+            safeString(data.end),
+            resolvedTimeZone.timeZone,
+            "end",
+          );
+          if (!start || !end || start.getTime() >= end.getTime()) {
+            return {
+              success: false,
+              error: "invalid_event_time",
+              clarification: {
+                kind: "missing_fields",
+                prompt: "calendar_event_time_required",
+                missingFields: ["start", "end"],
+              },
+            };
+          }
 
-      const attendees = Array.isArray(data.attendees)
-        ? data.attendees.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-        : [];
+          const attendees = Array.isArray(data.attendees)
+            ? data.attendees.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+            : [];
 
-      try {
-        const event = await createCalendarEvent(provider, {
-          event: {
-            title,
-            start,
-            end,
-            ...(attendees.length > 0 ? { attendees } : {}),
-            ...(safeString(data.location) ? { location: safeString(data.location) } : {}),
-            ...(safeString(data.description) ? { description: safeString(data.description) } : {}),
-            timeZone: resolvedTimeZone.timeZone,
-          },
-        });
+          try {
+            const event = await createCalendarEvent(provider, {
+              event: {
+                title,
+                start,
+                end,
+                ...(attendees.length > 0 ? { attendees } : {}),
+                ...(safeString(data.location) ? { location: safeString(data.location) } : {}),
+                ...(safeString(data.description) ? { description: safeString(data.description) } : {}),
+                timeZone: resolvedTimeZone.timeZone,
+              },
+            });
 
-        return {
-          success: true,
-          data: {
-            id: event.id,
-            title: event.title,
-            start: event.startTime.toISOString(),
-            end: event.endTime.toISOString(),
-            startLocal: formatDateTimeForUser(
-              event.startTime,
-              resolvedTimeZone.timeZone,
-            ),
-            endLocal: formatDateTimeForUser(
-              event.endTime,
-              resolvedTimeZone.timeZone,
-            ),
-            attendees: event.attendees.map((attendee) => attendee.email),
-          },
-          message: "Event created.",
-          meta: { resource: "calendar", itemCount: 1 },
-        };
-      } catch (error) {
-        return calendarFailure(error, "I couldn't create that event right now.");
-      }
+            return {
+              success: true,
+              data: {
+                id: event.id,
+                title: event.title,
+                start: event.startTime.toISOString(),
+                end: event.endTime.toISOString(),
+                startLocal: formatDateTimeForUser(
+                  event.startTime,
+                  resolvedTimeZone.timeZone,
+                ),
+                endLocal: formatDateTimeForUser(
+                  event.endTime,
+                  resolvedTimeZone.timeZone,
+                ),
+                attendees: event.attendees.map((attendee) => attendee.email),
+              },
+              message: "Event created.",
+              meta: { resource: "calendar", itemCount: 1 },
+            };
+          } catch (error) {
+            return calendarFailure(error, "I couldn't create that event right now.");
+          }
+        },
+      });
     },
 
     async updateEvent(input) {
@@ -946,7 +962,16 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
       );
       const requestedTimeZone = resolveRequestedTimeZone(changes as Record<string, unknown>);
 
-      try {
+      return runMutationWithIdempotency({
+        env,
+        capability: "calendar.updateEvent",
+        payload: {
+          eventId,
+          calendarId: safeString(input.calendarId) ?? null,
+          changes,
+        },
+        execute: async () => {
+          try {
         if (mode === "single") {
           const existingEvent = await getCalendarEvent(provider, {
             eventId,
@@ -1050,9 +1075,11 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           message: "Event updated.",
           meta: { resource: "calendar", itemCount: 1 },
         };
-      } catch (error) {
-        return calendarFailure(error, "I couldn't update that event right now.");
-      }
+          } catch (error) {
+            return calendarFailure(error, "I couldn't update that event right now.");
+          }
+        },
+      });
     },
 
     async deleteEvent(input) {
@@ -1071,7 +1098,18 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
       const mode = input.mode === "single" || input.mode === "series" ? input.mode : "single";
       const instanceId = safeString(input.instanceId);
       const originalStartTime = safeString(input.originalStartTime);
-      try {
+      return runMutationWithIdempotency({
+        env,
+        capability: "calendar.deleteEvent",
+        payload: {
+          eventId,
+          calendarId: safeString(input.calendarId) ?? null,
+          mode,
+          instanceId: instanceId ?? null,
+          originalStartTime: originalStartTime ?? null,
+        },
+        execute: async () => {
+          try {
         if (mode === "single") {
           const existingEvent = await getCalendarEvent(provider, {
             eventId,
@@ -1118,9 +1156,11 @@ export function createCalendarCapabilities(env: CapabilityEnvironment): Calendar
           message: "Event deleted.",
           meta: { resource: "calendar", itemCount: 1 },
         };
-      } catch (error) {
-        return calendarFailure(error, "I couldn't delete that event right now.");
-      }
+          } catch (error) {
+            return calendarFailure(error, "I couldn't delete that event right now.");
+          }
+        },
+      });
     },
 
     async manageAttendees(input) {

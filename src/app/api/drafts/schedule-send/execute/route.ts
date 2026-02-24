@@ -10,8 +10,10 @@ import { withQStashSignatureAppRouter } from "@/server/lib/qstash";
 const logger = createScopedLogger("api/drafts/schedule-send/execute");
 
 const bodySchema = z.object({
+  scheduleId: z.string().min(1).optional(),
   emailAccountId: z.string().min(1),
   draftId: z.string().min(1),
+  idempotencyKey: z.string().min(1).optional(),
 });
 
 export const POST = withQStashSignatureAppRouter(async (req: Request) => {
@@ -31,7 +33,83 @@ export const POST = withQStashSignatureAppRouter(async (req: Request) => {
       );
     }
 
-    const { emailAccountId, draftId } = parseResult.data;
+    const { scheduleId, idempotencyKey } = parseResult.data;
+
+    let emailAccountId = parseResult.data.emailAccountId;
+    let draftId = parseResult.data.draftId;
+
+    if (scheduleId) {
+      const scheduled = await prisma.scheduledDraftSend.findUnique({
+        where: { id: scheduleId },
+        select: {
+          id: true,
+          emailAccountId: true,
+          draftId: true,
+          status: true,
+        },
+      });
+
+      if (!scheduled) {
+        logger.warn("Scheduled draft row not found", {
+          scheduleId,
+          emailAccountId,
+          draftId,
+          idempotencyKey: idempotencyKey ?? null,
+        });
+        return NextResponse.json(
+          { success: false, error: "SCHEDULE_NOT_FOUND", scheduleId },
+          { status: 404 },
+        );
+      }
+
+      emailAccountId = scheduled.emailAccountId;
+      draftId = scheduled.draftId;
+
+      const lock = await prisma.scheduledDraftSend.updateMany({
+        where: {
+          id: scheduleId,
+          status: { in: ["PENDING", "FAILED"] },
+        },
+        data: {
+          status: "SENDING",
+          lastError: null,
+        },
+      });
+
+      if (lock.count === 0) {
+        const current = await prisma.scheduledDraftSend.findUnique({
+          where: { id: scheduleId },
+          select: {
+            status: true,
+            messageId: true,
+            threadId: true,
+            sentAt: true,
+          },
+        });
+        if (current?.status === "SENT") {
+          return NextResponse.json({
+            success: true,
+            deduped: true,
+            scheduleId,
+            status: "SENT",
+            draftId,
+            messageId: current.messageId ?? null,
+            threadId: current.threadId ?? null,
+            sentAt: current.sentAt?.toISOString() ?? null,
+          });
+        }
+
+        return NextResponse.json(
+          {
+            success: false,
+            error: "SCHEDULE_NOT_EXECUTABLE",
+            scheduleId,
+            status: current?.status ?? "UNKNOWN",
+          },
+          { status: 409 },
+        );
+      }
+    }
 
     const emailAccount = await prisma.emailAccount.findUnique({
       where: { id: emailAccountId },
@@ -55,29 +133,73 @@ export const POST = withQStashSignatureAppRouter(async (req: Request) => {
       logger,
     });
 
-    const result = await sendDraftById({
-      provider,
-      draftId,
-      requireExisting: true,
-    });
+    try {
+      const result = await sendDraftById({
+        provider,
+        draftId,
+        requireExisting: true,
+      });
 
-    logger.info("Scheduled draft sent", {
-      emailAccountId,
-      draftId,
-      messageId: result.messageId,
-      threadId: result.threadId,
-    });
+      if (scheduleId) {
+        await prisma.scheduledDraftSend.update({
+          where: { id: scheduleId },
+          data: {
+            status: "SENT",
+            sentAt: new Date(),
+            messageId: result.messageId,
+            threadId: result.threadId,
+            lastError: null,
+          },
+        });
+      }
 
-    return NextResponse.json({
-      success: true,
-      draftId,
-      messageId: result.messageId,
-      threadId: result.threadId,
-    });
+      logger.info("Scheduled draft sent", {
+        scheduleId: scheduleId ?? null,
+        emailAccountId,
+        draftId,
+        idempotencyKey: idempotencyKey ?? null,
+        messageId: result.messageId,
+        threadId: result.threadId,
+      });
+
+      return NextResponse.json({
+        success: true,
+        scheduleId: scheduleId ?? null,
+        status: scheduleId ? "SENT" : undefined,
+        draftId,
+        messageId: result.messageId,
+        threadId: result.threadId,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (scheduleId) {
+        await prisma.scheduledDraftSend.update({
+          where: { id: scheduleId },
+          data: {
+            status: "FAILED",
+            lastError: message,
+          },
+        });
+      }
+      logger.error("Scheduled draft send failed", {
+        scheduleId: scheduleId ?? null,
+        emailAccountId,
+        draftId,
+        error: message,
+      });
+      return NextResponse.json(
+        {
+          success: false,
+          error: message,
+          scheduleId: scheduleId ?? null,
+          status: scheduleId ? "FAILED" : undefined,
+        },
+        { status: 500 },
+      );
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error("Scheduled draft send failed", { error: message });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 });
-
