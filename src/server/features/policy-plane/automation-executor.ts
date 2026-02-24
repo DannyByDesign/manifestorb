@@ -88,13 +88,6 @@ function compareCondition(params: {
         : Array.isArray(actual)
           ? actual.includes(expected)
           : false;
-    case "regex":
-      if (typeof actual !== "string" || typeof expected !== "string") return false;
-      try {
-        return new RegExp(expected, "iu").test(actual);
-      } catch {
-        return false;
-      }
     case "gt":
       return typeof actual === "number" && typeof expected === "number" && actual > expected;
     case "gte":

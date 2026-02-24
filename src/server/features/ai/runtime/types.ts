@@ -34,6 +34,7 @@ export interface OpenWorldTurnInput {
   runtimeContextPack?: ContextPack;
   runtimeContextStatus?: "ready" | "degraded" | "missing";
   runtimeContextIssues?: string[];
+  runtimeTurnContract?: RuntimeTurnContract;
 }
 
 export interface RuntimeSession {

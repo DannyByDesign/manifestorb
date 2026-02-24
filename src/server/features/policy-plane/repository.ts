@@ -28,6 +28,31 @@ function asObject(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function normalizeLegacyMatch(match: Record<string, unknown>): {
+  match: Record<string, unknown>;
+  migratedFromRegex: boolean;
+} {
+  const conditions = Array.isArray(match.conditions) ? match.conditions : [];
+  let migratedFromRegex = false;
+  const normalizedConditions = conditions.map((entry) => {
+    const condition = asObject(entry);
+    if (condition.op !== "regex") return condition;
+    migratedFromRegex = true;
+    return {
+      ...condition,
+      op: "contains",
+    };
+  });
+  if (!migratedFromRegex) return { match, migratedFromRegex };
+  return {
+    match: {
+      ...match,
+      conditions: normalizedConditions,
+    },
+    migratedFromRegex,
+  };
+}
+
 function toNullableJson(
   value: Prisma.JsonValue | null | undefined,
 ): Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue | undefined {
@@ -46,6 +71,18 @@ function toJson(
 function mapDbRuleToCanonical(
   row: Awaited<ReturnType<typeof prisma.canonicalRule.findMany>>[number],
 ): CanonicalRule | null {
+  const { match: normalizedMatch, migratedFromRegex } = normalizeLegacyMatch(
+    asObject(row.match),
+  );
+  const normalizedCompilerWarnings = row.compilerWarnings
+    ? asArray(row.compilerWarnings).map(String)
+    : undefined;
+  const compilerWarnings = migratedFromRegex
+    ? [
+        ...(normalizedCompilerWarnings ?? []),
+        "Rule operator regex migrated to contains for runtime compatibility.",
+      ]
+    : normalizedCompilerWarnings;
   const parsed = canonicalRuleSchema.safeParse({
     id: row.id,
     version: row.version,
@@ -56,7 +93,7 @@ function mapDbRuleToCanonical(
     description: row.description ?? undefined,
     scope: row.scope ? asObject(row.scope) : undefined,
     trigger: row.trigger ? asObject(row.trigger) : undefined,
-    match: asObject(row.match),
+    match: normalizedMatch,
     decision: row.decision ?? undefined,
     transform: row.transform ? asObject(row.transform) : undefined,
     actionPlan: row.actionPlan ? asObject(row.actionPlan) : undefined,
@@ -68,7 +105,7 @@ function mapDbRuleToCanonical(
       sourceConversationId: row.sourceConversationId ?? undefined,
       compilerVersion: row.compilerVersion ?? undefined,
       compilerConfidence: row.compilerConfidence ?? undefined,
-      compilerWarnings: row.compilerWarnings ? asArray(row.compilerWarnings).map(String) : undefined,
+      compilerWarnings,
     },
     expiresAt: toJsonDate(row.expiresAt),
     disabledUntil: toJsonDate(row.disabledUntil),

@@ -19,6 +19,7 @@ import { resolveScheduleProposalRequestById } from "@/features/calendar/schedule
 import { resolveAmbiguousTimeRequestById } from "@/features/calendar/ambiguous-time";
 import { enqueueConversationMessageEmbedding } from "@/features/memory/embeddings/conversation-ingestion";
 import type { ToolExecutionSummary } from "@/server/features/ai/tools/fabric/types";
+import { extractPendingDecisionIntent } from "@/server/features/ai/runtime/pending-decision-extractor";
 
 export interface ProcessorContext {
   conversationId?: string;
@@ -64,8 +65,6 @@ type SourceEmailContext = {
   eventId?: string;
 };
 
-type DecisionIntent = "APPROVE" | "DENY";
-
 type PendingDecisionCandidate = {
   id: string;
   provider: string;
@@ -83,24 +82,6 @@ type PendingDecisionContext = {
   pendingApproval: PendingDecisionCandidate | null;
   pendingScheduleProposal: PendingDecisionCandidate | null;
   pendingAmbiguousTime: PendingDecisionCandidate | null;
-};
-
-const APPROVE_REPLY_PATTERN =
-  /^(yes|yep|yeah|approve|approved|go ahead|send it|do it|confirm)$/iu;
-const DENY_REPLY_PATTERN =
-  /^(no|nope|nah|deny|denied|cancel|stop|don't|dont|do not)$/iu;
-
-const OPTION_WORD_TO_INDEX: Record<string, number> = {
-  first: 0,
-  second: 1,
-  third: 2,
-  fourth: 3,
-  fifth: 4,
-  sixth: 5,
-  seventh: 6,
-  eighth: 7,
-  ninth: 8,
-  tenth: 9,
 };
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -122,55 +103,6 @@ function getStringFromAnyKey(
   return undefined;
 }
 
-function detectDecisionIntent(message: string): DecisionIntent | null {
-  const normalized = message.trim().toLowerCase().replace(/[!?.,]/gu, "");
-  if (!normalized) return null;
-
-  if (APPROVE_REPLY_PATTERN.test(normalized)) return "APPROVE";
-  if (DENY_REPLY_PATTERN.test(normalized)) return "DENY";
-  return null;
-}
-
-function parseScheduleChoiceIndex(
-  message: string,
-  optionsCount: number,
-): number | null {
-  if (optionsCount <= 0) return null;
-  const normalized = message.trim().toLowerCase();
-  if (!normalized) return null;
-
-  const directNumber = normalized.match(/^(\d{1,2})$/u);
-  if (directNumber) {
-    const parsed = Number.parseInt(directNumber[1], 10);
-    if (parsed >= 1 && parsed <= optionsCount) return parsed - 1;
-  }
-
-  const optionNumber = normalized.match(/\b(?:option|slot|choice)\s*(\d{1,2})\b/u);
-  if (optionNumber) {
-    const parsed = Number.parseInt(optionNumber[1], 10);
-    if (parsed >= 1 && parsed <= optionsCount) return parsed - 1;
-  }
-
-  for (const [word, index] of Object.entries(OPTION_WORD_TO_INDEX)) {
-    if (index >= optionsCount) continue;
-    if (new RegExp(`\\b${word}\\b`, "u").test(normalized)) {
-      return index;
-    }
-  }
-  return null;
-}
-
-function parseAmbiguousTimeChoice(
-  message: string,
-): "earlier" | "later" | null {
-  const normalized = message.trim().toLowerCase();
-  if (!normalized) return null;
-  const hasEarlier = /\bearlier\b/u.test(normalized);
-  const hasLater = /\blater\b/u.test(normalized);
-  if (hasEarlier && !hasLater) return "earlier";
-  if (hasLater && !hasEarlier) return "later";
-  return null;
-}
 
 function formatScheduleOptionLabel(option: {
   start: string;
@@ -372,10 +304,11 @@ async function resolvePendingDecisionContext(params: {
 
 function formatDecisionError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  const statusMatch = message.match(/Cannot decide on request in status: (\w+)/u);
-  if (!statusMatch) return "I couldn't process that decision right now. Please try again.";
+  const marker = "Cannot decide on request in status: ";
+  const markerIndex = message.indexOf(marker);
+  if (markerIndex < 0) return "I couldn't process that decision right now. Please try again.";
 
-  const status = statusMatch[1];
+  const status = message.slice(markerIndex + marker.length).trim().split(" ")[0] ?? "";
   if (status === "EXPIRED") {
     return "That approval request expired. Please ask me to recreate it.";
   }
@@ -399,25 +332,56 @@ function buildApproveSuccessMessage(executionResult: unknown): string {
 async function handlePendingDecisionTurn(params: {
   message: string;
   userId: string;
+  emailAccountId: string;
+  email: string;
+  provider: string;
+  logger: Logger;
   pendingContext: PendingDecisionContext;
 }): Promise<{ handled: true; text: string } | { handled: false }> {
   const { message, userId, pendingContext } = params;
-  const decisionIntent = detectDecisionIntent(message);
+  const hasPending =
+    pendingContext.pendingApproval !== null ||
+    pendingContext.pendingScheduleProposal !== null ||
+    pendingContext.pendingAmbiguousTime !== null;
+  if (!hasPending) return { handled: false };
 
   const scheduleCandidate = pendingContext.pendingScheduleProposal;
-  if (scheduleCandidate) {
-    const optionsRaw = scheduleCandidate.requestPayload.options;
-    const options = Array.isArray(optionsRaw)
-      ? optionsRaw.filter(
-          (option): option is { start: string; end?: string; timeZone?: string } =>
-            Boolean(option) &&
-            typeof option === "object" &&
-            typeof (option as Record<string, unknown>).start === "string",
-        )
-      : [];
+  const scheduleOptionsRaw = scheduleCandidate?.requestPayload.options;
+  const scheduleOptions = Array.isArray(scheduleOptionsRaw)
+    ? scheduleOptionsRaw.filter(
+        (option): option is { start: string; end?: string; timeZone?: string } =>
+          Boolean(option) &&
+          typeof option === "object" &&
+          typeof (option as Record<string, unknown>).start === "string",
+      )
+    : [];
+  const extracted = await extractPendingDecisionIntent({
+    userId: params.userId,
+    emailAccountId: params.emailAccountId,
+    email: params.email,
+    provider: params.provider,
+    message,
+    hasPendingApproval: pendingContext.pendingApproval !== null,
+    hasPendingScheduleProposal: scheduleCandidate !== null,
+    hasPendingAmbiguousTime: pendingContext.pendingAmbiguousTime !== null,
+    scheduleOptionsCount: scheduleOptions.length,
+    logger: params.logger,
+  });
 
-    const choiceIndex = parseScheduleChoiceIndex(message, options.length);
-    if (choiceIndex !== null) {
+  if (extracted.action === "none") return { handled: false };
+
+  if (scheduleCandidate) {
+    if (extracted.action === "select_option" && typeof extracted.optionIndex === "number") {
+      const choiceIndex = extracted.optionIndex;
+      if (choiceIndex < 0 || choiceIndex >= scheduleOptions.length) {
+        return {
+          handled: true,
+          text:
+            scheduleOptions.length > 0
+              ? `Please pick an option number from 1 to ${scheduleOptions.length}.`
+              : "No options are currently available for that proposal. Please ask me to recreate it.",
+        };
+      }
       const result = await resolveScheduleProposalRequestById({
         requestId: scheduleCandidate.id,
         choiceIndex,
@@ -431,11 +395,11 @@ async function handlePendingDecisionTurn(params: {
               ? "That schedule proposal expired. Please ask me to recreate it."
               : result.error === "Request not found"
                 ? "I couldn't find that pending schedule proposal."
-                : "I couldn't apply that slot selection. Please try again.",
+              : "I couldn't apply that slot selection. Please try again.",
         };
       }
 
-      const selectedOption = options[choiceIndex];
+      const selectedOption = scheduleOptions[choiceIndex];
       const label = selectedOption
         ? formatScheduleOptionLabel(selectedOption)
         : `option ${choiceIndex + 1}`;
@@ -448,8 +412,11 @@ async function handlePendingDecisionTurn(params: {
 
   const ambiguousCandidate = pendingContext.pendingAmbiguousTime;
   if (ambiguousCandidate) {
-    const ambiguousChoice = parseAmbiguousTimeChoice(message);
-    if (ambiguousChoice) {
+    if (
+      extracted.action === "choose_earlier" ||
+      extracted.action === "choose_later"
+    ) {
+      const ambiguousChoice = extracted.action === "choose_earlier" ? "earlier" : "later";
       const result = await resolveAmbiguousTimeRequestById({
         requestId: ambiguousCandidate.id,
         choice: ambiguousChoice,
@@ -477,13 +444,11 @@ async function handlePendingDecisionTurn(params: {
     }
   }
 
-  if (!decisionIntent) return { handled: false };
-
   const target = pendingContext.primary;
   if (!target) return { handled: false };
 
   if (target.actionType === "schedule_proposal") {
-    if (decisionIntent === "DENY") {
+    if (extracted.action === "deny") {
       try {
         const service = new ApprovalService(prisma);
         await service.decideRequest({
@@ -513,7 +478,7 @@ async function handlePendingDecisionTurn(params: {
   }
 
   if (target.actionType === "ambiguous_time") {
-    if (decisionIntent === "DENY") {
+    if (extracted.action === "deny") {
       try {
         const service = new ApprovalService(prisma);
         await service.decideRequest({
@@ -537,7 +502,11 @@ async function handlePendingDecisionTurn(params: {
     };
   }
 
-  if (decisionIntent === "DENY") {
+  if (extracted.action !== "approve" && extracted.action !== "deny") {
+    return { handled: false };
+  }
+
+  if (extracted.action === "deny") {
     try {
       const service = new ApprovalService(prisma);
       await service.decideRequest({
@@ -962,6 +931,10 @@ export async function processMessage(
   const pendingDecisionResult = await handlePendingDecisionTurn({
     message: messageContent,
     userId: user.id,
+    emailAccountId: emailAccount.id,
+    email: emailAccount.email,
+    provider: context.provider,
+    logger,
     pendingContext,
   });
 

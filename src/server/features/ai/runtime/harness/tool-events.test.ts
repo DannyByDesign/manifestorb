@@ -36,11 +36,12 @@ function buildSession(): RuntimeSession {
       riskLevel: "low",
       confidence: 0.9,
       toolHints: [],
-      source: "deterministic",
+      source: "model",
       conversationClauses: [],
       taskClauses: [],
       metaConstraints: [],
       needsClarification: false,
+      followUpLikely: false,
     },
     skillSnapshot: {
       selectedSkillIds: [],

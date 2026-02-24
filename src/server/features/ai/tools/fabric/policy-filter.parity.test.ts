@@ -54,11 +54,12 @@ describe("policy filter parity", () => {
         riskLevel: "low",
         confidence: 0.9,
         toolHints: ["group:inbox_read"],
-        source: "deterministic",
+        source: "model",
         conversationClauses: [],
         taskClauses: [],
         metaConstraints: [],
         needsClarification: false,
+        followUpLikely: false,
       },
       layeredPolicies: {
         profilePolicy: { allow: ["email.*"] },

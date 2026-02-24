@@ -5,7 +5,7 @@ import {
   buildProgressiveRuntimeContext,
   type RuntimeHydrationTier,
 } from "@/server/features/ai/runtime/context/retrieval-broker";
-import { buildRuntimeTurnContractFromMessage } from "@/server/features/ai/runtime/turn-contract";
+import { planRuntimeTurn } from "@/server/features/ai/runtime/turn-planner";
 
 export interface RuntimeHydratedContext {
   message: string;
@@ -80,7 +80,16 @@ export async function hydrateRuntimeContext(
       userId: input.userId,
       emailAccount,
       message,
-      turn: buildRuntimeTurnContractFromMessage(message),
+      turn:
+        input.runtimeTurnContract ??
+        await planRuntimeTurn({
+          userId: input.userId,
+          emailAccountId: input.emailAccountId,
+          email: input.email,
+          provider: input.provider,
+          message,
+          logger: input.logger,
+        }),
       logger: input.logger,
     });
 

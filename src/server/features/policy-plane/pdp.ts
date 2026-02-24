@@ -175,13 +175,6 @@ function compareCondition(params: {
         : Array.isArray(actual)
           ? actual.includes(expected)
           : false;
-    case "regex":
-      if (typeof actual !== "string" || typeof expected !== "string") return false;
-      try {
-        return new RegExp(expected, "iu").test(actual);
-      } catch {
-        return false;
-      }
     case "gt":
       return typeof actual === "number" && typeof expected === "number" && actual > expected;
     case "gte":
@@ -260,9 +253,9 @@ function operationMatches(
     return actual.startsWith("planner_") || actual === "analyze";
   }
   if (expected.includes(",") || expected.includes("|")) {
-    const delimiters = /[|,]/u;
-    return expected
-      .split(delimiters)
+    const normalized = expected.replaceAll("|", ",");
+    return normalized
+      .split(",")
       .map((token) => token.trim())
       .filter(Boolean)
       .includes(actual);
@@ -354,7 +347,7 @@ function applyPreferencePatch(params: {
       continue;
     }
     if (key.startsWith("args.")) {
-      setByPath(next, key.replace(/^args\./u, ""), update.value);
+      setByPath(next, key.slice("args.".length), update.value);
       changed = true;
       continue;
     }

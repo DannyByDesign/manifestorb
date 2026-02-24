@@ -4,7 +4,6 @@ import { buildSkillPromptSnapshot } from "@/server/features/ai/skills/snapshot";
 import { filterToolRegistryDetailed } from "@/server/features/ai/tools/fabric/policy-filter";
 import { buildRuntimeToolRegistryContext } from "@/server/features/ai/tools/fabric/registry";
 import {
-  buildRuntimeTurnContractFromMessage,
   type RuntimeTurnContract,
 } from "@/server/features/ai/runtime/turn-contract";
 import { resolveEffectiveToolPolicy } from "@/server/features/ai/tools/policy/policy-resolver";
@@ -18,6 +17,7 @@ import { assembleRuntimeSessionTools } from "@/server/features/ai/runtime/mcp-to
 import prisma from "@/server/db/client";
 import type { RuntimeSession, OpenWorldTurnInput } from "@/server/features/ai/runtime/types";
 import type { ToolExecutionSummary } from "@/server/features/ai/tools/fabric/types";
+import { planRuntimeTurn } from "@/server/features/ai/runtime/turn-planner";
 
 const SECRETARY_TOOL_PREFIXES = [
   "email.",
@@ -77,7 +77,16 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
     }),
   ]);
 
-  const turn = buildRuntimeTurnContractFromMessage(input.message);
+  const turn =
+    input.runtimeTurnContract ??
+    await planRuntimeTurn({
+      userId: input.userId,
+      emailAccountId: input.emailAccountId,
+      email: input.email,
+      provider: input.provider,
+      message: input.message,
+      logger: input.logger,
+    });
 
   const loadedSkills = loadRuntimeSkills();
   const skillSnapshot = buildSkillPromptSnapshot({

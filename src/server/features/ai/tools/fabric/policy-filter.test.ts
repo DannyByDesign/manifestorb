@@ -99,11 +99,12 @@ describe("filterToolRegistry", () => {
         riskLevel: "low",
         confidence: 0.99,
         toolHints: [],
-        source: "deterministic",
+        source: "model",
         conversationClauses: [],
         taskClauses: [],
         metaConstraints: [],
         needsClarification: false,
+        followUpLikely: false,
       },
     });
 
@@ -126,11 +127,12 @@ describe("filterToolRegistry", () => {
         riskLevel: "low",
         confidence: 0.9,
         toolHints: ["group:inbox_read"],
-        source: "deterministic",
+        source: "model",
         conversationClauses: [],
         taskClauses: [],
         metaConstraints: [],
         needsClarification: false,
+        followUpLikely: false,
       },
       includeDangerous: false,
     });
@@ -158,11 +160,12 @@ describe("filterToolRegistry", () => {
         riskLevel: "medium",
         confidence: 0.87,
         toolHints: ["group:calendar_mutate"],
-        source: "deterministic",
+        source: "model",
         conversationClauses: [],
         taskClauses: [],
         metaConstraints: [],
         needsClarification: false,
+        followUpLikely: false,
       },
     });
 
@@ -187,11 +190,12 @@ describe("filterToolRegistry", () => {
         riskLevel: "medium",
         confidence: 0.4,
         toolHints: ["group:calendar_mutate"],
-        source: "deterministic",
+        source: "model",
         conversationClauses: [],
         taskClauses: [],
         metaConstraints: [],
         needsClarification: false,
+        followUpLikely: false,
       },
     });
 

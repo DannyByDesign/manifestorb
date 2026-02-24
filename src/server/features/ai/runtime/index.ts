@@ -7,6 +7,7 @@ import { hydrateRuntimeContext } from "@/server/features/ai/runtime/context/hydr
 import { withUserRuntimeConcurrencyLimit } from "@/server/features/ai/runtime/concurrency";
 import { emitRuntimeTelemetry } from "@/server/features/ai/runtime/telemetry/schema";
 import { env } from "@/env";
+import { planRuntimeTurn } from "@/server/features/ai/runtime/turn-planner";
 
 const EMAIL_SEARCH_TOOL_NAMES = new Set([
   "email.getUnreadCount",
@@ -72,7 +73,34 @@ export async function runOpenWorldRuntimeTurn(
       };
     }
 
-    const hydrated = await hydrateRuntimeContext(input);
+    const plannedTurn = await planRuntimeTurn({
+      userId: input.userId,
+      emailAccountId: input.emailAccountId,
+      email: input.email,
+      provider: input.provider,
+      message: input.message,
+      logger: input.logger,
+    });
+    const telemetryIntent =
+      plannedTurn.requestedOperation === "read" ||
+      plannedTurn.requestedOperation === "mutate" ||
+      plannedTurn.requestedOperation === "mixed"
+        ? plannedTurn.requestedOperation
+        : "unknown";
+    emitRuntimeTelemetry(input.logger, "openworld.runtime.plan", {
+      userId: input.userId,
+      provider: input.provider,
+      source: plannedTurn.source,
+      intent: telemetryIntent,
+      confidence: plannedTurn.confidence,
+      stepCount: 0,
+      issueCount: plannedTurn.metaConstraints.length,
+    });
+
+    const hydrated = await hydrateRuntimeContext({
+      ...input,
+      runtimeTurnContract: plannedTurn,
+    });
     emitRuntimeTelemetry(input.logger, "openworld.runtime.context_hydrated", {
       userId: input.userId,
       provider: input.provider,
@@ -92,6 +120,7 @@ export async function runOpenWorldRuntimeTurn(
       runtimeContextPack: hydrated.contextPack,
       runtimeContextStatus: hydrated.contextStatus,
       runtimeContextIssues: hydrated.contextIssues,
+      runtimeTurnContract: plannedTurn,
     });
     const execution = await runAttemptLoop(session);
     const result = buildFinalUserResponse({

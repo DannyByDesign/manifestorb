@@ -23,6 +23,7 @@
     "lint:changed": "./scripts/lint-changed.sh",
     "lint:critical": "bunx eslint src/server/features/search/unified src/server/features/search/index src/server/features/ai/tools/runtime/capabilities/memory.ts src/server/features/ai/tools/runtime/capabilities/executors/memory.ts src/server/features/ai/tools/runtime/capabilities/registry.ts --max-warnings=0",
     "lint:baseline": "./scripts/lint-baseline.sh",
+    "check:no-regex-authority": "node scripts/no-regex-ast-check.mjs",
     "test-ai": "vitest run --config vitest.config.ts",
     "test:integration": "vitest run --config vitest.config.ts tests/integration/**/*.integration.test.ts",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",

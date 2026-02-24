@@ -2,11 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import prisma, { resetPrismaMock } from "@/server/lib/__mocks__/prisma";
 import { hydrateRuntimeContext } from "@/server/features/ai/runtime/context/hydrator";
 import { buildProgressiveRuntimeContext } from "@/server/features/ai/runtime/context/retrieval-broker";
+import { planRuntimeTurn } from "@/server/features/ai/runtime/turn-planner";
 import type { Logger } from "@/server/lib/logger";
 
 vi.mock("@/server/db/client");
 vi.mock("@/server/features/ai/runtime/context/retrieval-broker", () => ({
   buildProgressiveRuntimeContext: vi.fn(),
+}));
+vi.mock("@/server/features/ai/runtime/turn-planner", () => ({
+  planRuntimeTurn: vi.fn(),
 }));
 
 function testLogger() {
@@ -27,6 +31,26 @@ describe("runtime context hydrator", () => {
   beforeEach(() => {
     resetPrismaMock();
     vi.clearAllMocks();
+    vi.mocked(planRuntimeTurn).mockResolvedValue({
+      intent: "general",
+      domain: "general",
+      requestedOperation: "read",
+      complexity: "simple",
+      routeProfile: "fast",
+      routeHint: "planner",
+      toolChoice: "auto",
+      knowledgeSource: "either",
+      freshness: "low",
+      riskLevel: "low",
+      confidence: 0.8,
+      toolHints: [],
+      source: "model",
+      conversationClauses: [],
+      taskClauses: [],
+      metaConstraints: [],
+      needsClarification: false,
+      followUpLikely: false,
+    });
     vi.mocked(buildProgressiveRuntimeContext).mockResolvedValue({
       contextPack: undefined,
       tier: undefined,
@@ -132,7 +156,7 @@ describe("runtime context hydrator", () => {
     expect(logger.warn).toHaveBeenCalled();
   });
 
-  it("always uses progressive runtime hydration with deterministic turn contract", async () => {
+  it("always uses progressive runtime hydration with planned turn contract", async () => {
     prisma.emailAccount.findFirst.mockResolvedValue({
       id: "email-1",
       userId: "user-1",
