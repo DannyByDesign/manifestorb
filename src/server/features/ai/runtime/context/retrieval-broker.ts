@@ -41,8 +41,13 @@ function resolveTimeoutMs(envName: string, fallback: number, min: number, max: n
 }
 
 function needsTargetedTier(turn: RuntimeTurnContract): boolean {
-  if (turn.followUpLikely) return true;
-  if (turn.routeHint === "conversation_only") return false;
+  if (
+    turn.routeHint === "conversation_only" &&
+    turn.toolChoice === "none" &&
+    turn.requestedOperation === "meta"
+  ) {
+    return false;
+  }
   return true;
 }
 

@@ -28,6 +28,8 @@
     "test:integration": "vitest run --config vitest.config.ts tests/integration/**/*.integration.test.ts",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "test:evals": "vitest run --config vitest.evals.config.ts",
+    "migrate:tool-policy-names": "bun run src/server/scripts/migrate-tool-policy-names.ts",
+    "verify:tool-contract-quality": "bun run src/server/scripts/verify-tool-contract-quality.ts",
     "verify:embedding-contract": "bunx tsx src/server/scripts/verify-embedding-contract.ts",
     "verify:embedding-contract:ci": "bunx tsx src/server/scripts/verify-embedding-contract.ts --ci",
     "skills:harness": "bun run scripts/skills-scenario-harness.ts",

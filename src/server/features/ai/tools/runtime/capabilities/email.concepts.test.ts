@@ -40,7 +40,7 @@ function buildEnv(): CapabilityEnvironment {
 describe("email concept clarification", () => {
   it("returns clarification when fromConcept is provided", async () => {
     const caps = createEmailCapabilities(buildEnv());
-    const result = await caps.searchThreadsAdvanced({
+    const result = await caps.search({
       fromConcept: "recruiters",
       unread: true,
       sort: "newest",
@@ -54,4 +54,3 @@ describe("email concept clarification", () => {
     });
   });
 });
-

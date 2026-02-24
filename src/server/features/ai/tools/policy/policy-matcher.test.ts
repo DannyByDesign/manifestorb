@@ -28,7 +28,7 @@ function tool(name: string): RuntimeToolDefinition {
 
 describe("policy matcher", () => {
   it("supports wildcard and exact patterns", () => {
-    const tools = [tool("email.searchInbox"), tool("calendar.listEvents"), tool("email.batchTrash")];
+    const tools = [tool("email.search"), tool("calendar.listEvents"), tool("email.batchTrash")];
     const filtered = filterToolsByPolicy(
       tools,
       {
@@ -37,13 +37,13 @@ describe("policy matcher", () => {
       undefined,
     );
     expect(filtered.map((entry) => entry.toolName)).toEqual([
-      "email.searchInbox",
+      "email.search",
       "email.batchTrash",
     ]);
   });
 
   it("applies deny before allow", () => {
-    const tools = [tool("email.searchInbox"), tool("email.batchTrash")];
+    const tools = [tool("email.search"), tool("email.batchTrash")];
     const filtered = filterToolsByPolicy(
       tools,
       {
@@ -52,11 +52,11 @@ describe("policy matcher", () => {
       },
       undefined,
     );
-    expect(filtered.map((entry) => entry.toolName)).toEqual(["email.searchInbox"]);
+    expect(filtered.map((entry) => entry.toolName)).toEqual(["email.search"]);
   });
 
   it("expands dynamic groups passed from plugin/runtime group maps", () => {
-    const tools = [tool("calendar.listEvents"), tool("calendar.deleteEvent"), tool("email.searchInbox")];
+    const tools = [tool("calendar.listEvents"), tool("calendar.deleteEvent"), tool("email.search")];
     const filtered = filterToolsByPolicy(
       tools,
       {
@@ -74,7 +74,7 @@ describe("policy matcher", () => {
 
   it("evaluates all layered policies as intersection", () => {
     const allowed = isToolAllowedByPolicies(
-      "email.searchInbox",
+      "email.search",
       [
         { allow: ["email.*"] },
         { deny: ["email.batchTrash"] },

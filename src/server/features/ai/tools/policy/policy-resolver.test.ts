@@ -32,7 +32,7 @@ describe("policy resolver", () => {
       config: {
         toolByGroup: {
           "slack/group-1": {
-            allow: ["email.searchInbox"],
+            allow: ["email.search"],
           },
           "group-1": {
             allow: ["calendar.listEvents"],
@@ -47,7 +47,7 @@ describe("policy resolver", () => {
       channelId: "D123",
     });
 
-    expect(resolved.groupPolicy?.allow).toEqual(["email.searchInbox"]);
+    expect(resolved.groupPolicy?.allow).toEqual(["email.search"]);
   });
 
   it("supports agent-scoped policy and provider-scoped agent override", () => {
@@ -79,13 +79,13 @@ describe("policy resolver", () => {
       config: {
         isSubagentSession: true,
         toolSubagentPolicy: {
-          allow: ["email.searchInbox"],
+          allow: ["email.search"],
           deny: ["calendar.deleteEvent"],
         },
       },
     });
 
-    expect(resolved.subagentPolicy?.allow).toEqual(["email.searchInbox"]);
+    expect(resolved.subagentPolicy?.allow).toEqual(["email.search"]);
     expect(resolved.subagentPolicy?.deny).toContain("calendar.deleteEvent");
     expect(resolved.subagentPolicy?.deny).toContain("sessions_list");
     expect(resolved.subagentPolicy?.deny).toContain("memory_get");

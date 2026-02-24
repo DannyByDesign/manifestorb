@@ -15,7 +15,7 @@ describe("tool policy parity", () => {
     const resolved = stripPluginOnlyAllowlist(
       { allow: ["plugin-x"] },
       groups,
-      new Set(["email.searchInbox", "calendar.listEvents"]),
+      new Set(["email.search", "calendar.listEvents"]),
     );
 
     expect(resolved.strippedAllowlist).toBe(true);
@@ -27,7 +27,7 @@ describe("tool policy parity", () => {
     const resolved = stripPluginOnlyAllowlist(
       { allow: ["unknown-tool"] },
       groups,
-      new Set(["email.searchInbox"]),
+      new Set(["email.search"]),
     );
 
     expect(resolved.unknownAllowlist).toEqual(["unknown-tool"]);

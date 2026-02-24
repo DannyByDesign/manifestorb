@@ -50,4 +50,33 @@ describe("runtime telemetry schema", () => {
     expect(logger.info).not.toHaveBeenCalled();
     expect(logger.warn).toHaveBeenCalledTimes(1);
   });
+
+  it("accepts read-intent zero-tools metric payloads", () => {
+    const logger = createLogger();
+
+    emitRuntimeTelemetry(logger, "openworld.metric.read_intent_zero_tools", {
+      userId: "user-1",
+      provider: "slack",
+      requestedOperation: "read",
+      routeHint: "conversation_only",
+      toolChoice: "none",
+    });
+
+    expect(logger.info).toHaveBeenCalledTimes(1);
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it("accepts follow-up evidence reuse metric payloads", () => {
+    const logger = createLogger();
+
+    emitRuntimeTelemetry(logger, "openworld.metric.followup_evidence_reuse", {
+      userId: "user-1",
+      provider: "slack",
+      reused: false,
+      reason: "missing",
+    });
+
+    expect(logger.info).toHaveBeenCalledTimes(1);
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
 });

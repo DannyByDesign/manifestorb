@@ -25,13 +25,9 @@ import prisma from "@/server/db/client";
 import { Prisma } from "@/generated/prisma/client";
 
 export interface EmailCapabilities {
-  getUnreadCount(filter?: Record<string, unknown>): Promise<ToolResult>;
   countUnread(filter?: Record<string, unknown>): Promise<ToolResult>;
-  searchThreads(filter: Record<string, unknown>): Promise<ToolResult>;
-  searchThreadsAdvanced(filter: Record<string, unknown>): Promise<ToolResult>;
+  search(filter: Record<string, unknown>): Promise<ToolResult>;
   facetThreads(input: { filter?: Record<string, unknown>; maxFacets?: number; scanLimit?: number }): Promise<ToolResult>;
-  searchSent(filter: Record<string, unknown>): Promise<ToolResult>;
-  searchInbox(filter: Record<string, unknown>): Promise<ToolResult>;
   getThreadMessages(threadId: string): Promise<ToolResult>;
   getMessagesBatch(ids: string[]): Promise<ToolResult>;
   getLatestMessage(threadId: string): Promise<ToolResult>;
@@ -752,6 +748,14 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
             mailboxScope: mailbox ?? "auto",
           },
         },
+        evidence: {
+          domain: "email",
+          observedAt: new Date().toISOString(),
+          scope: mailbox ?? "auto",
+          coverage: result.nextPageToken ? "partial" : "complete",
+          reusableForFollowUp: !result.nextPageToken,
+          staleAfterSec: 180,
+        },
         meta: asMetaItemCount(data.length),
       };
     } catch (error) {
@@ -807,6 +811,14 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         message: result.exact
           ? `You have ${count} unread email${count === 1 ? "" : "s"} in ${scope} right now.`
           : `You have about ${count} unread email${count === 1 ? "" : "s"} in ${scope} right now.`,
+        evidence: {
+          domain: "email",
+          observedAt: new Date().toISOString(),
+          scope,
+          coverage: result.exact ? "complete" : "partial",
+          reusableForFollowUp: result.exact,
+          staleAfterSec: 120,
+        },
         meta: asMetaItemCount(1),
       };
     } catch (error) {
@@ -857,6 +869,14 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         message: `You have about ${count} unread email${count === 1 ? "" : "s"} in ${scope} right now.`,
         truncated: fallback.truncated,
         paging: paging ?? undefined,
+        evidence: {
+          domain: "email",
+          observedAt: new Date().toISOString(),
+          scope,
+          coverage: fallback.truncated ? "partial" : "complete",
+          reusableForFollowUp: !fallback.truncated,
+          staleAfterSec: 120,
+        },
         meta: asMetaItemCount(1),
       };
     }
@@ -966,10 +986,10 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
       .join(" ")
       .trim();
 
-    const limit =
-      typeof requestFilter.limit === "number" && Number.isFinite(requestFilter.limit)
-        ? Math.max(1, Math.min(5000, Math.trunc(requestFilter.limit)))
-        : 5000;
+      const limit =
+        typeof requestFilter.limit === "number" && Number.isFinite(requestFilter.limit)
+          ? Math.max(1, Math.min(500, Math.trunc(requestFilter.limit)))
+          : 500;
 
     try {
       const result = await provider.search({
@@ -1058,6 +1078,14 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
             mailboxScope: scope,
           },
         },
+        evidence: {
+          domain: "email",
+          observedAt: new Date().toISOString(),
+          scope,
+          coverage: truncated ? "partial" : "complete",
+          reusableForFollowUp: !truncated,
+          staleAfterSec: 120,
+        },
         meta: asMetaItemCount(1),
       };
     } catch (error) {
@@ -1073,7 +1101,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
     const search = await runUnifiedSearchThreads({
       ...filter,
       subscriptionsOnly: Boolean(filter.subscriptionsOnly),
-      limit: typeof filter.limit === "number" ? filter.limit : 1000,
+      limit: typeof filter.limit === "number" ? filter.limit : 500,
       fetchAll: true,
     });
 
@@ -1160,19 +1188,11 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
   };
 
   return {
-    async getUnreadCount(filter) {
-      return runUnreadCount(filter);
-    },
-
     async countUnread(filter) {
       return runCountUnread(filter);
     },
 
-    async searchThreads(filter) {
-      return runUnifiedSearchThreads(filter);
-    },
-
-    async searchThreadsAdvanced(filter) {
+    async search(filter) {
       return runUnifiedSearchThreads(filter);
     },
 
@@ -1230,8 +1250,8 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
 
       const scanLimit =
         typeof input.scanLimit === "number" && Number.isFinite(input.scanLimit)
-          ? Math.max(20, Math.min(800, Math.trunc(input.scanLimit)))
-          : 250;
+          ? Math.max(20, Math.min(300, Math.trunc(input.scanLimit)))
+          : 150;
 
       const requestQuery =
         typeof filter.query === "string" && filter.query.trim().length > 0
@@ -1337,16 +1357,16 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
           topSenders,
           topDomains,
         },
+        evidence: {
+          domain: "email",
+          observedAt: new Date().toISOString(),
+          scope: "facet",
+          coverage: "partial",
+          reusableForFollowUp: false,
+          staleAfterSec: 180,
+        },
         meta: asMetaItemCount(topSenders.length + topDomains.length),
       };
-    },
-
-    async searchSent(filter) {
-      return runUnifiedSearchThreads({ ...filter, sentByMe: true }, "sent");
-    },
-
-    async searchInbox(filter) {
-      return runUnifiedSearchThreads(filter, "inbox");
     },
 
     async getThreadMessages(threadId) {

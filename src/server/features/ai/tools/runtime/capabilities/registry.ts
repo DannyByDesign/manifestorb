@@ -70,7 +70,7 @@ const unknownObject = z.record(
 const emailSearchInputSchema = z.object({
   query: z.string().optional(),
   mailbox: z.enum(["inbox", "sent"]).optional(),
-  limit: z.number().int().positive().max(5000).optional(),
+  limit: z.number().int().positive().max(500).optional(),
   fetchAll: z.boolean().optional(),
   includeNonPrimary: z.boolean().optional(),
   subscriptionsOnly: z.boolean().optional(),
@@ -124,7 +124,7 @@ const emailBulkTargetBaseSchema = z
   .object({
     ids: z.array(z.string().min(1)).min(1).optional(),
     filter: emailSearchInputSchema.optional(),
-    limit: z.number().int().min(1).max(5000).optional(),
+    limit: z.number().int().min(1).max(500).optional(),
   })
   .strict();
 
@@ -146,7 +146,7 @@ const emailBulkTargetSchema = withEmailBulkTargetGuard(emailBulkTargetBaseSchema
 const emailFacetInputSchema = z
   .object({
     filter: emailSearchInputSchema.optional(),
-    scanLimit: z.number().int().min(20).max(800).optional(),
+    scanLimit: z.number().int().min(20).max(300).optional(),
     maxFacets: z.number().int().min(3).max(25).optional(),
   })
   .strict();
@@ -156,24 +156,62 @@ const emailCountUnreadInputSchema = emailSearchInputSchema
   })
   .strict();
 
+function withTerminalPeriod(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return trimmed;
+  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
+function humanizeFamily(family: CapabilityIntentFamily): string {
+  switch (family) {
+    case "inbox_read":
+      return "inbox read";
+    case "inbox_mutate":
+      return "inbox mutate";
+    case "inbox_compose":
+      return "inbox compose";
+    case "inbox_controls":
+      return "inbox controls";
+    case "calendar_read":
+      return "calendar read";
+    case "calendar_mutate":
+      return "calendar mutate";
+    case "calendar_policy":
+      return "calendar policy";
+    case "cross_surface_planning":
+      return "cross-surface planning";
+    case "memory_read":
+      return "memory read";
+    case "memory_mutate":
+      return "memory mutate";
+    case "web_read":
+      return "web read";
+    default:
+      return family;
+  }
+}
+
+function composeCapabilityDescription(definition: CapabilityDefinition): string {
+  const base = withTerminalPeriod(definition.description);
+  const access = definition.readOnly
+    ? "This tool is read-only and must not be used to change user state."
+    : "This tool changes user state and should only run when the user explicitly requests that action.";
+  const families =
+    definition.intentFamilies.length > 0
+      ? `Primary intents: ${definition.intentFamilies.map(humanizeFamily).join(", ")}.`
+      : "Primary intents: general.";
+  const effects =
+    definition.effects.length > 0
+      ? `Effects: ${definition.effects
+          .map((effect) => `${effect.resource}:${effect.mutates ? "mutate" : "read"}`)
+          .join(", ")}.`
+      : "Effects: none.";
+  const approval = `Approval operation: ${definition.approvalOperation}.`;
+  return [base, access, families, effects, approval].join(" ");
+}
+
 function buildCapabilityDefinitions(): CapabilityDefinition[] {
-  return [
-    {
-      id: "email.getUnreadCount",
-      description: "Return unread inbox count using provider-level counters.",
-      inputSchema: z
-        .object({
-          scope: z.enum(["inbox", "primary", "all"]).optional(),
-        })
-        .strict(),
-      outputSchema: z.unknown(),
-      readOnly: true,
-      riskLevel: "safe",
-      approvalOperation: "query",
-      intentFamilies: ["inbox_read"],
-      tags: ["email", "count", "unread", "inbox"],
-      effects: [{ resource: "email", mutates: false }],
-    },
+  const definitions: CapabilityDefinition[] = [
     {
       id: "email.countUnread",
       description:
@@ -188,28 +226,16 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       effects: [{ resource: "email", mutates: false }],
     },
     {
-      id: "email.searchThreads",
-      description: "Search inbox threads using query/filter constraints.",
-      inputSchema: emailSearchInputSchema,
-      outputSchema: z.unknown(),
-      readOnly: true,
-      riskLevel: "safe",
-      approvalOperation: "query",
-      intentFamilies: ["inbox_read", "cross_surface_planning"],
-      tags: ["email", "search", "threads", "query"],
-      effects: [{ resource: "email", mutates: false }],
-    },
-    {
-      id: "email.searchThreadsAdvanced",
+      id: "email.search",
       description:
-        "Advanced thread search using rich filter constraints (use unrepliedToSent=true for 'sent but no reply yet').",
+        "Search email messages/threads with query/filter constraints across inbox or sent scope.",
       inputSchema: emailSearchInputSchema,
       outputSchema: z.unknown(),
       readOnly: true,
       riskLevel: "safe",
       approvalOperation: "query",
       intentFamilies: ["inbox_read", "cross_surface_planning"],
-      tags: ["email", "search", "advanced", "unreplied", "awaiting_reply"],
+      tags: ["email", "search", "threads", "query", "inbox", "sent"],
       effects: [{ resource: "email", mutates: false }],
     },
     {
@@ -223,31 +249,6 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       approvalOperation: "query",
       intentFamilies: ["inbox_read", "cross_surface_planning"],
       tags: ["email", "search", "facets", "clarification"],
-      effects: [{ resource: "email", mutates: false }],
-    },
-    {
-      id: "email.searchSent",
-      description:
-        "Search sent mailbox messages and threads using query/filter constraints (use unrepliedToSent=true for 'sent but no reply yet').",
-      inputSchema: emailSearchInputSchema,
-      outputSchema: z.unknown(),
-      readOnly: true,
-      riskLevel: "safe",
-      approvalOperation: "query",
-      intentFamilies: ["inbox_read"],
-      tags: ["email", "search", "sent", "unreplied", "awaiting_reply"],
-      effects: [{ resource: "email", mutates: false }],
-    },
-    {
-      id: "email.searchInbox",
-      description: "Search inbox-focused messages and threads.",
-      inputSchema: emailSearchInputSchema,
-      outputSchema: z.unknown(),
-      readOnly: true,
-      riskLevel: "safe",
-      approvalOperation: "query",
-      intentFamilies: ["inbox_read"],
-      tags: ["email", "search", "inbox"],
       effects: [{ resource: "email", mutates: false }],
     },
     {
@@ -1288,6 +1289,10 @@ function buildCapabilityDefinitions(): CapabilityDefinition[] {
       effects: [{ resource: "rule", mutates: false }],
     },
   ];
+  return definitions.map((definition) => ({
+    ...definition,
+    description: composeCapabilityDescription(definition),
+  }));
 }
 
 const CAPABILITY_DEFINITIONS = buildCapabilityDefinitions();

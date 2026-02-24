@@ -19,7 +19,7 @@ describe("runtime capability input schemas", () => {
   });
 
   it("accepts query-based filters for sent email search", () => {
-    const definition = getToolDefinition("email.searchSent");
+    const definition = getToolDefinition("email.search");
     const parsed = definition.inputSchema.safeParse({
       query: "portfolio review",
       purpose: "list",

@@ -11,11 +11,11 @@ vi.mock("@/server/features/ai/policy/enforcement", () => ({
 function buildDefinition(): RuntimeToolDefinition {
   const parameters = z.object({ query: z.string().min(1) }).strict();
   return {
-    toolName: "email.searchInbox",
+    toolName: "email.search",
     description: "Search inbox",
     parameters,
     metadata: {
-      id: "email.searchInbox",
+      id: "email.search",
       description: "Search inbox",
       inputSchema: parameters,
       outputSchema: z.unknown(),
@@ -80,7 +80,7 @@ describe("runtime mcp tools", () => {
     expect(artifacts.interactivePayloads).toHaveLength(1);
     expect(artifacts.approvals).toHaveLength(0);
     expect(summaries).toHaveLength(1);
-    expect(summaries[0]?.toolName).toBe("email.searchInbox");
+    expect(summaries[0]?.toolName).toBe("email.search");
     expect(summaries[0]?.outcome).toBe("success");
   });
 

@@ -32,7 +32,7 @@ function tool(params: {
 }
 
 const registry: RuntimeToolDefinition[] = [
-  tool({ toolName: "email.searchInbox", family: "inbox_read", readOnly: true }),
+  tool({ toolName: "email.search", family: "inbox_read", readOnly: true }),
   tool({ toolName: "email.batchTrash", family: "inbox_mutate", readOnly: false, riskLevel: "dangerous" }),
   tool({ toolName: "calendar.listEvents", family: "calendar_read", readOnly: true }),
 ];
@@ -63,7 +63,7 @@ describe("policy filter parity", () => {
       },
       layeredPolicies: {
         profilePolicy: { allow: ["email.*"] },
-        providerProfilePolicy: { allow: ["email.searchInbox", "email.batchTrash"] },
+        providerProfilePolicy: { allow: ["email.search", "email.batchTrash"] },
         globalPolicy: { deny: ["email.batchTrash"] },
         globalProviderPolicy: undefined,
         agentPolicy: undefined,
@@ -74,7 +74,7 @@ describe("policy filter parity", () => {
       },
     });
 
-    expect(result.tools.map((entry) => entry.toolName)).toEqual(["email.searchInbox"]);
+    expect(result.tools.map((entry) => entry.toolName)).toEqual(["email.search"]);
     expect(result.diagnostics.counts.afterProfile).toBe(1);
     expect(result.diagnostics.counts.afterProviderProfile).toBe(1);
     expect(result.diagnostics.counts.afterGlobal).toBe(1);

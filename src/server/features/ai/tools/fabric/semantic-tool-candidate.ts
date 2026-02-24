@@ -158,7 +158,6 @@ export function selectSemanticToolCandidates(
 ): RuntimeToolDefinition[] {
   const turn = params.turn;
   if (!turn) return registry;
-  if (turn.intent === "greeting" || turn.intent === "capabilities") return [];
 
   let working = [...registry];
 

@@ -7,24 +7,16 @@ import {
 } from "@/server/features/ai/tools/runtime/capabilities/executors/utils";
 
 export const emailToolExecutors: RuntimeToolExecutorMap = {
-  "email.getUnreadCount": async ({ args, capabilities }) =>
-    capabilities.email.getUnreadCount(asObject(args)),
   "email.countUnread": async ({ args, capabilities }) =>
     capabilities.email.countUnread(asObject(args)),
-  "email.searchThreads": async ({ args, capabilities }) =>
-    capabilities.email.searchThreads(asObject(args)),
-  "email.searchThreadsAdvanced": async ({ args, capabilities }) =>
-    capabilities.email.searchThreadsAdvanced(asObject(args)),
+  "email.search": async ({ args, capabilities }) =>
+    capabilities.email.search(asObject(args)),
   "email.facetThreads": async ({ args, capabilities }) =>
     capabilities.email.facetThreads({
       filter: args.filter ? asObject(args.filter) : undefined,
       scanLimit: typeof args.scanLimit === "number" ? args.scanLimit : undefined,
       maxFacets: typeof args.maxFacets === "number" ? args.maxFacets : undefined,
     }),
-  "email.searchSent": async ({ args, capabilities }) =>
-    capabilities.email.searchSent(asObject(args)),
-  "email.searchInbox": async ({ args, capabilities }) =>
-    capabilities.email.searchInbox(asObject(args)),
   "email.getThreadMessages": async ({ args, capabilities }) =>
     capabilities.email.getThreadMessages(asString(args.threadId) ?? ""),
   "email.getMessagesBatch": async ({ args, capabilities }) =>

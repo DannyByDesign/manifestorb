@@ -89,6 +89,17 @@ export const runtimeTurnCostUsdMetricSchema = baseSchema.extend({
   totalTokens: z.number().int().nonnegative(),
 });
 
+export const runtimeReadIntentZeroToolsMetricSchema = baseSchema.extend({
+  requestedOperation: z.enum(["read", "mutate", "mixed", "meta"]),
+  routeHint: z.enum(["conversation_only", "evidence_first", "planner"]),
+  toolChoice: z.enum(["none", "auto"]),
+});
+
+export const runtimeFollowupEvidenceReuseMetricSchema = baseSchema.extend({
+  reused: z.boolean(),
+  reason: z.enum(["reused", "missing", "stale_or_partial"]),
+});
+
 export const runtimePrecheckFailedTelemetrySchema = baseSchema.extend({
   issues: z.array(z.string().min(1)).min(1).max(16),
 });
@@ -152,6 +163,8 @@ const runtimeTelemetrySchemas = {
   "openworld.metric.tool_call_failure_rate_by_tool":
     runtimeToolFailureRateByToolMetricSchema,
   "openworld.metric.turn_cost_usd": runtimeTurnCostUsdMetricSchema,
+  "openworld.metric.read_intent_zero_tools": runtimeReadIntentZeroToolsMetricSchema,
+  "openworld.metric.followup_evidence_reuse": runtimeFollowupEvidenceReuseMetricSchema,
   "openworld.turn.completed": runtimeTurnCompletedTelemetrySchema,
   "openworld.runtime.precheck_failed": runtimePrecheckFailedTelemetrySchema,
   "openworld.runtime.clarification_required":

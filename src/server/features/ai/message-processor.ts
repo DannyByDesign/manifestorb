@@ -691,6 +691,7 @@ type PersistedToolEvidenceEntry = {
   data?: unknown;
   truncated?: boolean;
   paging?: Record<string, unknown>;
+  evidence?: Record<string, unknown>;
 };
 
 const TOOL_EVIDENCE_MAX_SUMMARIES = 6;
@@ -749,6 +750,10 @@ function compactToolSummariesForPersistence(
       paging:
         result?.paging && typeof result.paging === "object"
           ? (compactToolEvidenceValue(result.paging) as Record<string, unknown>)
+          : undefined,
+      evidence:
+        result?.evidence && typeof result.evidence === "object"
+          ? (compactToolEvidenceValue(result.evidence) as Record<string, unknown>)
           : undefined,
     };
   });

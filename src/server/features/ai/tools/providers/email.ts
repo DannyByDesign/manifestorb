@@ -33,8 +33,8 @@ const SEARCH_PAGE_SIZE_MIN = 10;
 const SEARCH_PAGE_SIZE_MAX = 100;
 const LOCAL_FILTER_MAX_PAGES_DEFAULT = 8;
 const LOCAL_FILTER_MAX_PAGES_FETCH_ALL_DEFAULT = 16;
-const LOCAL_FILTER_MAX_SCANNED_MESSAGES_DEFAULT = 800;
-const LOCAL_FILTER_MAX_SCANNED_MESSAGES_FETCH_ALL_DEFAULT = 2_400;
+const LOCAL_FILTER_MAX_SCANNED_MESSAGES_DEFAULT = 600;
+const LOCAL_FILTER_MAX_SCANNED_MESSAGES_FETCH_ALL_DEFAULT = 1_200;
 
 function computeSearchTimeoutBudgetMs(options: {
     fetchAll?: boolean;
@@ -202,6 +202,70 @@ export async function createEmailProvider(
             .split(/[^a-z0-9@._-]+/u)
             .filter((token) => token.length > 0);
 
+    const normalizeToken = (token: string): string => token.replace(/[^a-z0-9]/gu, "");
+
+    const extractCandidateTokens = (value: string | undefined): string[] => {
+        const candidates = new Set<string>();
+        for (const token of tokenize(value)) {
+            const compact = normalizeToken(token);
+            if (compact.length > 0) candidates.add(compact);
+            if (!token.includes("@")) continue;
+
+            const [localPart] = token.split("@");
+            if (!localPart) continue;
+            const normalizedLocal = normalizeToken(localPart);
+            if (normalizedLocal.length > 0) candidates.add(normalizedLocal);
+            for (const localToken of localPart.split(/[._-]+/u)) {
+                const normalizedLocalToken = normalizeToken(localToken);
+                if (normalizedLocalToken.length > 0) candidates.add(normalizedLocalToken);
+            }
+        }
+        return Array.from(candidates);
+    };
+
+    const boundedEditDistance = (a: string, b: string, maxDistance: number): number => {
+        if (a === b) return 0;
+        if (!a || !b) return Math.max(a.length, b.length);
+        if (Math.abs(a.length - b.length) > maxDistance) return maxDistance + 1;
+
+        let prev = Array.from({ length: b.length + 1 }, (_, idx) => idx);
+        for (let i = 1; i <= a.length; i += 1) {
+            const current = [i];
+            let rowMin = current[0]!;
+            for (let j = 1; j <= b.length; j += 1) {
+                const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+                const value = Math.min(
+                    prev[j]! + 1,
+                    current[j - 1]! + 1,
+                    prev[j - 1]! + cost,
+                );
+                current.push(value);
+                if (value < rowMin) rowMin = value;
+            }
+            if (rowMin > maxDistance) return maxDistance + 1;
+            prev = current;
+        }
+        return prev[b.length]!;
+    };
+
+    const tokensRoughlyMatch = (queryToken: string, valueToken: string): boolean => {
+        if (!queryToken || !valueToken) return false;
+        if (queryToken === valueToken) return true;
+
+        if (queryToken.length === 1 || valueToken.length === 1) {
+            return queryToken[0] === valueToken[0];
+        }
+
+        if (queryToken.includes(valueToken) || valueToken.includes(queryToken)) {
+            return Math.min(queryToken.length, valueToken.length) >= 3;
+        }
+
+        return (
+            Math.max(queryToken.length, valueToken.length) >= 5 &&
+            boundedEditDistance(queryToken, valueToken, 1) <= 1
+        );
+    };
+
     const includesLooseTerm = (value: string | undefined, term: string | undefined): boolean => {
         const normalizedTerm = normalizeText(term);
         if (!normalizedTerm) return true;
@@ -209,11 +273,26 @@ export async function createEmailProvider(
         if (!normalizedValue) return false;
         if (normalizedValue.includes(normalizedTerm)) return true;
 
-        const queryTokens = tokenize(normalizedTerm);
-        const valueTokens = tokenize(normalizedValue);
+        const queryTokens = tokenize(normalizedTerm)
+            .map((token) => normalizeToken(token))
+            .filter((token) => token.length > 0);
+        const valueTokens = extractCandidateTokens(normalizedValue);
         if (queryTokens.length === 0 || valueTokens.length === 0) return false;
-        const valueTokenSet = new Set(valueTokens);
-        return queryTokens.every((queryToken) => valueTokenSet.has(queryToken));
+
+        if (queryTokens.every((queryToken) => valueTokens.some((valueToken) => tokensRoughlyMatch(queryToken, valueToken)))) {
+            return true;
+        }
+
+        if (queryTokens.length >= 2) {
+            const firstInitial = queryTokens[0]?.[0] ?? "";
+            const lastToken = queryTokens[queryTokens.length - 1] ?? "";
+            const signature = normalizeToken(`${firstInitial}${lastToken}`);
+            if (signature.length > 0) {
+                return valueTokens.some((valueToken) => valueToken === signature);
+            }
+        }
+
+        return false;
     };
 
     const applyLocalSearchFilters = (
@@ -657,7 +736,7 @@ export async function createEmailProvider(
                     });
                 }
 
-                const targetCount = fetchAll ? (limit ?? 1000) : (limit ?? 100);
+                const targetCount = fetchAll ? (limit ?? 500) : (limit ?? 100);
                 const pageSize = Math.min(
                     Math.max(targetCount, SEARCH_PAGE_SIZE_MIN),
                     SEARCH_PAGE_SIZE_MAX,

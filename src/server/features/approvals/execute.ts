@@ -37,10 +37,7 @@ function mapToolToApprovalTool(toolName: string): string {
   if (toolName.startsWith("policy.")) return "rules";
   if (toolName.startsWith("planner.")) return "workflow";
   if (
-    toolName === "email.searchInbox" ||
-    toolName === "email.searchThreads" ||
-    toolName === "email.searchSent" ||
-    toolName === "email.getUnreadCount" ||
+    toolName === "email.search" ||
     toolName === "email.countUnread" ||
     toolName === "calendar.listEvents" ||
     toolName === "calendar.findAvailability" ||

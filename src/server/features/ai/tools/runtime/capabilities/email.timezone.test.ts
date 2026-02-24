@@ -111,7 +111,8 @@ describe("runtime email provider search routing", () => {
     });
     const caps = createEmailCapabilities(buildEnv({ search }));
 
-    await caps.searchInbox({
+    await caps.search({
+      mailbox: "inbox",
       query: "portfolio review",
       dateRange: {
         after: "2026-02-16",
@@ -142,7 +143,7 @@ describe("runtime email provider search routing", () => {
       totalEstimate: 0,
     });
     const caps = createEmailCapabilities(buildEnv({ search }));
-    await caps.searchSent({ query: "portfolio review", limit: 10 });
+    await caps.search({ mailbox: "sent", query: "portfolio review", limit: 10 });
 
     expect(search).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -161,7 +162,8 @@ describe("runtime email provider search routing", () => {
     });
     const caps = createEmailCapabilities(buildEnv({ search }));
 
-    await caps.searchInbox({
+    await caps.search({
+      mailbox: "inbox",
       query: "updates",
       receivedByMe: true,
     });
@@ -183,7 +185,8 @@ describe("runtime email provider search routing", () => {
       }),
     );
 
-    await caps.searchInbox({
+    await caps.search({
+      mailbox: "inbox",
       unread: true,
       limit: 10,
     });
@@ -233,7 +236,7 @@ describe("runtime email provider search routing", () => {
     });
 
     const caps = createEmailCapabilities(buildEnv({ search }));
-    const result = await caps.searchInbox({ query: "portfolio review" });
+    const result = await caps.search({ mailbox: "inbox", query: "portfolio review" });
 
     expect(result.success).toBe(true);
     const items = Array.isArray(result.data) ? result.data : [];
@@ -267,7 +270,7 @@ describe("runtime email provider search routing", () => {
     });
 
     const caps = createEmailCapabilities(buildEnv({ search }));
-    const result = await caps.searchInbox({ query: "investor updates" });
+    const result = await caps.search({ mailbox: "inbox", query: "investor updates" });
 
     expect(result.success).toBe(true);
     expect(result.message).toContain("scanned portion");
@@ -356,7 +359,7 @@ describe("runtime email provider search routing", () => {
       buildEnv({ search, getUnreadCount }),
     );
 
-    const result = await caps.getUnreadCount({});
+    const result = await caps.countUnread({});
     expect(getUnreadCount).toHaveBeenCalledWith({ scope: "inbox" });
     expect(result.success).toBe(true);
     expect((result.data as { count: number; exact: boolean }).count).toBe(1234);
@@ -374,7 +377,7 @@ describe("runtime email provider search routing", () => {
       buildEnv({ search, getUnreadCount }),
     );
 
-    const result = await caps.getUnreadCount({ scope: "primary" });
+    const result = await caps.countUnread({ scope: "primary" });
     expect(getUnreadCount).toHaveBeenCalledWith({ scope: "primary" });
     expect(result.success).toBe(true);
     expect((result.data as { count: number; exact: boolean; scope: string }).count).toBe(27);
@@ -394,7 +397,7 @@ describe("runtime email provider search routing", () => {
       buildEnv({ search, getUnreadCount }),
     );
 
-    const result = await caps.getUnreadCount({});
+    const result = await caps.countUnread({});
     expect(result.success).toBe(true);
     expect((result.data as { count: number; exact: boolean }).count).toBe(9876);
     expect((result.data as { count: number; exact: boolean }).exact).toBe(false);
@@ -421,7 +424,7 @@ describe("runtime email provider search routing", () => {
     expect(search).toHaveBeenCalledWith(
       expect.objectContaining({
         from: "Haseeb",
-        limit: 1000,
+        limit: 500,
         fetchAll: true,
       }),
     );

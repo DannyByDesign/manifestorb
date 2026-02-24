@@ -39,7 +39,7 @@ function tool(params: {
 
 const registry: RuntimeToolDefinition[] = [
   tool({
-    toolName: "email.searchInbox",
+    toolName: "email.search",
     readOnly: true,
     riskLevel: "safe",
     families: ["inbox_read"],
@@ -83,7 +83,7 @@ const registry: RuntimeToolDefinition[] = [
 ];
 
 describe("filterToolRegistry", () => {
-  it("returns no tools for greeting/capability semantic intents", async () => {
+  it("keeps safe read-only tools for greeting/capability turns", async () => {
     const filtered = await filterToolRegistry(registry, {
       message: "hello",
       turn: {
@@ -108,7 +108,11 @@ describe("filterToolRegistry", () => {
       },
     });
 
-    expect(filtered).toEqual([]);
+    const names = filtered.map((definition) => definition.toolName);
+    expect(names).toContain("email.search");
+    expect(names).toContain("calendar.listEvents");
+    expect(names).not.toContain("email.batchTrash");
+    expect(names).not.toContain("calendar.deleteEvent");
   });
 
   it("keeps read-only candidates for follow-up meta turns", async () => {
@@ -137,7 +141,7 @@ describe("filterToolRegistry", () => {
     });
 
     const names = filtered.map((definition) => definition.toolName);
-    expect(names).toContain("email.searchInbox");
+    expect(names).toContain("email.search");
     expect(names).not.toContain("email.batchTrash");
   });
 
@@ -168,7 +172,7 @@ describe("filterToolRegistry", () => {
     });
 
     const names = filtered.map((definition) => definition.toolName);
-    expect(names).toContain("email.searchInbox");
+    expect(names).toContain("email.search");
     expect(names).not.toContain("calendar.listEvents");
     expect(names).not.toContain("email.batchTrash");
   });

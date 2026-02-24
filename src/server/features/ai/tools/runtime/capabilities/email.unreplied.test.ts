@@ -79,7 +79,8 @@ describe("email unrepliedToSent", () => {
   it("returns clarification key when dateRange is missing", async () => {
     vi.mocked(prisma.$queryRaw).mockResolvedValueOnce([]);
     const caps = createEmailCapabilities(buildEnv());
-    const result = await caps.searchSent({
+    const result = await caps.search({
+      mailbox: "sent",
       unrepliedToSent: true,
     });
 
@@ -103,7 +104,8 @@ describe("email unrepliedToSent", () => {
 
     const search = vi.fn();
     const caps = createEmailCapabilities(buildEnv({ search }));
-    const result = await caps.searchSent({
+    const result = await caps.search({
+      mailbox: "sent",
       unrepliedToSent: true,
       dateRange: {
         after: "2026-01-15T00:00:00.000Z",
@@ -193,7 +195,8 @@ describe("email unrepliedToSent", () => {
     });
 
     const caps = createEmailCapabilities(buildEnv({ search, getThread }));
-    const result = await caps.searchSent({
+    const result = await caps.search({
+      mailbox: "sent",
       unrepliedToSent: true,
       dateRange: {
         after: "2026-02-01T00:00:00.000Z",

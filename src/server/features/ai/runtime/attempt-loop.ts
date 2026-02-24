@@ -30,6 +30,8 @@ import { resolveRuntimeContextSlotBudget, type RuntimeLane } from "@/server/feat
 
 const RUNTIME_TURN_BUDGET_MS = 180_000;
 const MAX_SKILL_PROMPT_CHARS = 2_200;
+const LAST_TURN_TOOL_EVIDENCE_HEADER =
+  "Last turn tool evidence (ground truth for follow-up questions about prior results):";
 
 class RuntimeOperationTimeoutError extends Error {
   constructor(
@@ -269,16 +271,67 @@ function requiresToolEvidenceForFinalAnswer(session: RuntimeSession): boolean {
   );
 }
 
-function hasPriorTurnToolEvidence(session: RuntimeSession): boolean {
+type PriorToolEvidenceEntry = {
+  outcome?: "success" | "partial" | "blocked" | "failed";
+  evidence?: {
+    observedAt?: string;
+    coverage?: "complete" | "partial";
+    reusableForFollowUp?: boolean;
+    staleAfterSec?: number;
+  };
+};
+
+function parsePriorToolEvidence(content: string): PriorToolEvidenceEntry[] {
+  const markerIndex = content.indexOf(LAST_TURN_TOOL_EVIDENCE_HEADER);
+  if (markerIndex < 0) return [];
+  const payload = content
+    .slice(markerIndex + LAST_TURN_TOOL_EVIDENCE_HEADER.length)
+    .trim();
+  if (!payload) return [];
+  try {
+    const parsed = JSON.parse(payload);
+    return Array.isArray(parsed) ? (parsed as PriorToolEvidenceEntry[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function isReusablePriorEvidenceEntry(entry: PriorToolEvidenceEntry): boolean {
+  if (entry.outcome !== "success" && entry.outcome !== "partial") return false;
+  if (!entry.evidence || typeof entry.evidence !== "object") return false;
+  if (entry.evidence.reusableForFollowUp !== true) return false;
+  if (entry.evidence.coverage && entry.evidence.coverage !== "complete") return false;
+  if (typeof entry.evidence.observedAt !== "string") return false;
+  const observedAtMs = Date.parse(entry.evidence.observedAt);
+  if (!Number.isFinite(observedAtMs)) return false;
+  const staleAfterSec = entry.evidence.staleAfterSec;
+  if (typeof staleAfterSec === "number" && Number.isFinite(staleAfterSec) && staleAfterSec > 0) {
+    if (Date.now() - observedAtMs > staleAfterSec * 1_000) {
+      return false;
+    }
+  }
+  return true;
+}
+
+type PriorTurnToolEvidenceStatus = "missing" | "stale_or_partial" | "reusable";
+
+function resolvePriorTurnToolEvidenceStatus(session: RuntimeSession): PriorTurnToolEvidenceStatus {
   if (!Array.isArray(session.input.messages) || session.input.messages.length === 0) {
-    return false;
+    return "missing";
   }
 
-  return session.input.messages.some((message) => {
-    if (message.role !== "assistant") return false;
+  let foundEvidencePayload = false;
+
+  for (const message of session.input.messages) {
+    if (message.role !== "assistant") continue;
     const content = extractMessageTextContent(message.content);
-    return content.includes("Last turn tool evidence (ground truth for follow-up questions about prior results):");
-  });
+    if (!content.includes(LAST_TURN_TOOL_EVIDENCE_HEADER)) continue;
+    foundEvidencePayload = true;
+    const entries = parsePriorToolEvidence(content);
+    if (entries.some(isReusablePriorEvidenceEntry)) return "reusable";
+  }
+
+  return foundEvidencePayload ? "stale_or_partial" : "missing";
 }
 
 function resolveGenerationUsage(generation: unknown): RuntimeLoopResult["usage"] | undefined {
@@ -552,7 +605,23 @@ export async function runAttemptLoop(session: RuntimeSession): Promise<RuntimeLo
       const clarificationPrompt = latestClarificationPrompt(results);
       const usage = resolveGenerationUsage(generation);
       const hasToolEvidence = session.summaries.length > 0;
-      const hasPriorEvidence = hasPriorTurnToolEvidence(session);
+      const priorEvidenceStatus = resolvePriorTurnToolEvidenceStatus(session);
+      const hasPriorEvidence = priorEvidenceStatus === "reusable";
+      const reusedPriorEvidence = hasPriorEvidence && !hasToolEvidence;
+
+      if (session.turn.requestedOperation === "read" && session.turn.followUpLikely) {
+        emitRuntimeTelemetry(session.input.logger, "openworld.metric.followup_evidence_reuse", {
+          userId: session.input.userId,
+          provider: session.input.provider,
+          reused: reusedPriorEvidence,
+          reason:
+            reusedPriorEvidence
+              ? "reused"
+              : priorEvidenceStatus === "missing"
+                ? "missing"
+                : "stale_or_partial",
+        });
+      }
 
       if (requiresToolEvidenceForFinalAnswer(session) && !hasToolEvidence && !hasPriorEvidence) {
         session.input.logger.warn("Runtime read turn finished without required tool evidence", {

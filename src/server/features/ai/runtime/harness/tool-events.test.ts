@@ -68,14 +68,14 @@ describe("tool lifecycle events", () => {
           toolCalls: [
             {
               toolCallId: "call-1",
-              toolName: "email.searchInbox",
+              toolName: "email.search",
               input: { limit: 1 },
             },
           ],
           toolResults: [
             {
               toolCallId: "call-1",
-              toolName: "email.searchInbox",
+              toolName: "email.search",
               output: { success: true },
             },
           ],

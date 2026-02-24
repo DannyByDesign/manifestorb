@@ -54,6 +54,7 @@ function formatEvidence(results: RuntimeToolResult[]): string {
     clarification: result.clarification ?? null,
     truncated: result.truncated === true,
     paging: compact(result.paging),
+    evidence: compact(result.evidence),
     data: compact(result.data),
   }));
   return JSON.stringify(payload);

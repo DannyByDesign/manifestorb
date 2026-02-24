@@ -84,6 +84,15 @@ export interface AmbiguousTimePayload {
     message: string;
 }
 
+export interface ToolEvidenceMetadata {
+    domain?: "email" | "calendar" | "task" | "planner" | "policy" | "memory" | "web";
+    observedAt?: string;
+    scope?: string;
+    coverage?: "complete" | "partial";
+    reusableForFollowUp?: boolean;
+    staleAfterSec?: number;
+}
+
 export interface ToolResult {
     success: boolean;
     data?: unknown;
@@ -103,6 +112,7 @@ export interface ToolResult {
     };
     truncated?: boolean;
     paging?: Record<string, unknown>;
+    evidence?: ToolEvidenceMetadata;
     meta?: {
         resource?: string;
         requestedIds?: string[];

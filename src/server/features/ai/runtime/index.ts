@@ -10,12 +10,8 @@ import { env } from "@/env";
 import { planRuntimeTurn } from "@/server/features/ai/runtime/turn-planner";
 
 const EMAIL_SEARCH_TOOL_NAMES = new Set([
-  "email.getUnreadCount",
   "email.countUnread",
-  "email.searchThreads",
-  "email.searchThreadsAdvanced",
-  "email.searchSent",
-  "email.searchInbox",
+  "email.search",
   "email.facetThreads",
 ]);
 
@@ -128,6 +124,15 @@ export async function runOpenWorldRuntimeTurn(
       session,
       loopResult: execution,
     });
+    if (session.turn.requestedOperation === "read" && result.toolSummaries.length === 0) {
+      emitRuntimeTelemetry(input.logger, "openworld.metric.read_intent_zero_tools", {
+        userId: input.userId,
+        provider: input.provider,
+        requestedOperation: session.turn.requestedOperation,
+        routeHint: session.turn.routeHint,
+        toolChoice: session.turn.toolChoice,
+      });
+    }
     const durationMs = Date.now() - startedAt;
     const successes = result.toolSummaries.filter((summary) => summary.outcome === "success").length;
     const blocked = result.toolSummaries.filter((summary) => summary.outcome === "blocked").length;
