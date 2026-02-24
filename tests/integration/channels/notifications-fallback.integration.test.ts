@@ -8,17 +8,21 @@ vi.mock("@/server/db/client");
 vi.mock("@/server/integrations/qstash", () => ({
   getQstashClient: vi.fn(),
 }));
-class MockChannelRouter {
-  pushMessage = vi.fn().mockResolvedValue(true);
-}
+
+const { pushMessageMock } = vi.hoisted(() => ({
+  pushMessageMock: vi.fn().mockResolvedValue(true),
+}));
 
 vi.mock("@/features/channels/router", () => ({
-  ChannelRouter: MockChannelRouter,
+  ChannelRouter: class {
+    pushMessage = pushMessageMock;
+  },
 }));
 
 describe("E2E notifications fallback", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    pushMessageMock.mockResolvedValue(true);
   });
 
   it("creates notification and pushes via fallback", async () => {

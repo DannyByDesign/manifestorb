@@ -2,6 +2,7 @@ import prisma from "@/server/db/client";
 import { createScopedLogger } from "@/server/lib/logger";
 import { scanForAttentionItems } from "@/server/features/ai/proactive/scanner";
 import type { AttentionItem } from "@/server/features/ai/proactive/types";
+import { createInAppNotification } from "@/server/features/notifications/create";
 
 const logger = createScopedLogger("ai/proactive/orchestrator");
 
@@ -136,14 +137,36 @@ export async function runProactiveAttentionSweep(params?: {
           continue;
         }
 
+        const dedupeKey = buildDedupeKey(item, now);
+
         logger.info("Proactive attention item detected", {
           userId: user.id,
           title: item.title,
           type: item.type,
           urgency: item.urgency,
-          dedupeKey: buildDedupeKey(item, now),
+          dedupeKey,
         });
+
+        await createInAppNotification({
+          userId: user.id,
+          title: item.title,
+          body: item.description,
+          type: "info",
+          dedupeKey,
+          metadata: {
+            source: "proactive_attention",
+            attentionType: item.type,
+            urgency: item.urgency,
+            relatedEntityId: item.relatedEntityId,
+            relatedEntityType: item.relatedEntityType,
+            actionable: item.actionable,
+            suggestedAction: item.suggestedAction ?? null,
+            detectedAt: item.detectedAt.toISOString(),
+          },
+        });
+
         sentForUser += 1;
+        stats.notificationsCreated += 1;
       }
     } catch (error) {
       stats.errors += 1;

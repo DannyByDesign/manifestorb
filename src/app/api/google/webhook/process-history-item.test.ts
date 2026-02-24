@@ -1,300 +1,196 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { processHistoryItem } from "./process-history-item";
-import { HistoryEventType } from "./types";
-import { NewsletterStatus } from "@/generated/prisma/enums";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { gmail_v1 } from "@googleapis/gmail";
-import { isAssistantEmail } from "@/features/assistant-email/is-assistant-email";
-import { markMessageAsProcessing } from "@/server/lib/redis/message-processing";
-import { GmailLabel } from "@/server/integrations/google/label";
-import { processAssistantEmail } from "@/features/assistant-email/process-assistant-email";
+import { processHistoryItem } from "./process-history-item";
+import { HistoryEventType, type ProcessHistoryOptions } from "./types";
 import { getEmailAccount } from "@/tests/support/helpers";
-import { createEmailProvider } from "@/features/email/provider";
 import { createScopedLogger } from "@/server/lib/logger";
-import { handleLabelRemovedEvent } from "@/app/api/google/webhook/process-label-removed-event";
 
-const logger = createScopedLogger("test");
+const {
+  createEmailProviderMock,
+  markMessageAsProcessingMock,
+  handleLabelRemovedEventMock,
+  sharedProcessHistoryItemMock,
+} = vi.hoisted(() => ({
+  createEmailProviderMock: vi.fn(),
+  markMessageAsProcessingMock: vi.fn(),
+  handleLabelRemovedEventMock: vi.fn(),
+  sharedProcessHistoryItemMock: vi.fn(),
+}));
 
-vi.mock("server-only", () => ({}));
-vi.mock("next/server", () => ({
-  after: vi.fn((callback) => callback()),
-}));
-vi.mock("@/server/db/client");
-vi.mock("@/server/lib/redis/message-processing", () => ({
-  markMessageAsProcessing: vi.fn().mockResolvedValue(true),
-}));
-
-vi.mock("@/server/integrations/google/thread", () => ({
-  getThreadMessages: vi.fn().mockImplementation(async (_gmail, threadId) => [
-    {
-      id: threadId === "thread-456" ? "456" : "123",
-      threadId,
-      labelIds: ["INBOX"],
-      internalDate: "1704067200000", // 2024-01-01T00:00:00Z
-      headers: {
-        from: "sender@example.com",
-        to: "user@test.com",
-        subject: "Test Email",
-        date: "2024-01-01T00:00:00Z",
-      },
-      body: "Hello World",
-    },
-  ]),
-}));
-vi.mock("@/features/assistant-email/is-assistant-email", () => ({
-  isAssistantEmail: vi.fn().mockReturnValue(false),
-}));
-vi.mock("@/features/cold-email/is-cold-email", () => ({
-  runColdEmailBlocker: vi
-    .fn()
-    .mockResolvedValue({ isColdEmail: false, reason: "hasPreviousEmail" }),
-}));
-vi.mock("@/features/categorize/senders/categorize", () => ({
-  categorizeSender: vi.fn(),
-}));
-vi.mock("@/features/assistant-email/process-assistant-email", () => ({
-  processAssistantEmail: vi.fn().mockResolvedValue(undefined),
-}));
-vi.mock("@/app/api/google/webhook/process-label-removed-event", () => ({
-  handleLabelRemovedEvent: vi.fn(),
-}));
-vi.mock("@/features/digest/index", () => ({
-  enqueueDigestItem: vi.fn().mockResolvedValue(undefined),
-}));
 vi.mock("@/features/email/provider", () => ({
-  createEmailProvider: vi.fn().mockResolvedValue({
-    getMessage: vi.fn().mockImplementation(async (messageId) => ({
-      id: messageId,
-      threadId: messageId === "456" ? "thread-456" : "thread-123",
-      labelIds: ["INBOX"],
-      snippet: "Test email snippet",
-      historyId: "12345",
-      internalDate: "1704067200000",
-      sizeEstimate: 1024,
-      headers: {
-        from: "sender@example.com",
-        to: "user@test.com",
-        subject: "Test Email",
-        date: "2024-01-01T00:00:00Z",
-      },
-      textPlain: "Hello World",
-      textHtml: "<b>Hello World</b>",
-    })),
-    blockUnsubscribedEmail: vi.fn().mockResolvedValue(undefined),
-    isSentMessage: vi.fn().mockReturnValue(false),
-  }),
+  createEmailProvider: createEmailProviderMock,
 }));
 
-vi.mock("@/server/integrations/google/label", async () => {
-  const actual = await vi.importActual("@/server/integrations/google/label");
+vi.mock("@/server/lib/redis/message-processing", () => ({
+  markMessageAsProcessing: markMessageAsProcessingMock,
+}));
+
+vi.mock("@/app/api/google/webhook/process-label-removed-event", () => ({
+  handleLabelRemovedEvent: handleLabelRemovedEventMock,
+}));
+
+vi.mock("@/features/webhooks/process-history-item", () => ({
+  processHistoryItem: sharedProcessHistoryItemMock,
+}));
+
+const logger = createScopedLogger("webhook/process-history-item.test");
+
+function makeOptions(overrides?: Partial<ProcessHistoryOptions>): ProcessHistoryOptions {
   return {
-    ...actual,
-    getLabelById: vi.fn().mockImplementation(async ({ id }: { id: string }) => {
-      const labelMap: Record<string, { name: string }> = {
-        "label-1": { name: "Cold Email" },
-        "label-2": { name: "Newsletter" },
-        "label-3": { name: "Marketing" },
-        "label-4": { name: "To Reply" },
-      };
-      return labelMap[id] || { name: "Unknown Label" };
-    }),
-  };
-});
-
-vi.mock("@/server/features/policy-plane/learning-patterns", () => ({
-  saveLearnedPatterns: vi.fn().mockResolvedValue(undefined),
-}));
-
-describe("processHistoryItem", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  const createHistoryItem = (
-    messageId = "123",
-    threadId = "thread-123",
-    type: HistoryEventType = HistoryEventType.MESSAGE_ADDED,
-    labelIds?: string[],
-  ) => {
-    const baseItem = { message: { id: messageId, threadId } };
-
-    if (type === HistoryEventType.LABEL_REMOVED) {
-      return {
-        type,
-        item: {
-          ...baseItem,
-          labelIds: labelIds || [],
-        } as gmail_v1.Schema$HistoryLabelRemoved,
-      };
-    } else if (type === HistoryEventType.LABEL_ADDED) {
-      return {
-        type,
-        item: {
-          ...baseItem,
-          labelIds: labelIds || [],
-        } as gmail_v1.Schema$HistoryLabelAdded,
-      };
-    } else {
-      return {
-        type,
-        item: baseItem as gmail_v1.Schema$HistoryMessageAdded,
-      };
-    }
-  };
-
-  const defaultOptions = {
-    gmail: {} as any,
-    accessToken: "fake-token",
-    hasAutomationRules: false,
-    hasAiAccess: false,
-    rules: [],
-    history: [] as gmail_v1.Schema$History[],
-  };
-
-  function getDefaultEmailAccount() {
-    return {
+    history: [],
+    gmail: {} as gmail_v1.Gmail,
+    accessToken: "test-token",
+    hasAutomationRules: true,
+    hasAiAccess: true,
+    emailAccount: {
       ...getEmailAccount(),
       autoCategorizeSenders: false,
+    },
+    ...overrides,
+  };
+}
+
+function makeHistoryItem(params?: {
+  messageId?: string;
+  threadId?: string;
+  type?: (typeof HistoryEventType)[keyof typeof HistoryEventType];
+  labelIds?: string[];
+}) {
+  const type = params?.type ?? HistoryEventType.MESSAGE_ADDED;
+  const messageId = params?.messageId ?? "message-123";
+  const threadId = params?.threadId ?? "thread-123";
+
+  if (type === HistoryEventType.LABEL_REMOVED || type === HistoryEventType.LABEL_ADDED) {
+    return {
+      type,
+      item: {
+        message: {
+          id: messageId,
+          threadId,
+          labelIds: params?.labelIds ?? [],
+        },
+      } as gmail_v1.Schema$HistoryLabelRemoved,
     };
   }
 
-  it("should skip if message is already being processed", async () => {
-    vi.mocked(markMessageAsProcessing).mockResolvedValueOnce(false);
+  return {
+    type,
+    item: {
+      message: {
+        id: messageId,
+        threadId,
+      },
+    } as gmail_v1.Schema$HistoryMessageAdded,
+  };
+}
 
-    const options = {
-      ...defaultOptions,
-      emailAccount: getDefaultEmailAccount(),
-    };
-
-    await processHistoryItem(createHistoryItem(), options as any, logger);
+describe("google webhook processHistoryItem wrapper", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    createEmailProviderMock.mockResolvedValue({ name: "google" });
+    markMessageAsProcessingMock.mockResolvedValue(true);
   });
 
-  it("should skip if message is an assistant email", async () => {
-    vi.mocked(isAssistantEmail).mockReturnValueOnce(true);
-
-    const options = {
-      ...defaultOptions,
-      emailAccount: getDefaultEmailAccount(),
-    };
-    await processHistoryItem(createHistoryItem(), options as any, logger);
-
-    expect(processAssistantEmail).toHaveBeenCalledWith({
-      message: expect.objectContaining({
-        headers: expect.objectContaining({
-          from: "sender@example.com",
-          to: "user@test.com",
-        }),
-      }),
-      userEmail: "user@test.com",
-      emailAccountId: "email-account-id",
-      provider: expect.any(Object),
-      logger,
-    });
-  });
-
-  it("should skip if message is outbound", async () => {
-    const mockProvider = {
-      getMessage: vi.fn().mockResolvedValue({
-        id: "123",
-        threadId: "thread-123",
-        labelIds: [GmailLabel.SENT],
-        snippet: "Test email snippet",
-        historyId: "12345",
-        internalDate: "1704067200000",
-        sizeEstimate: 1024,
-        headers: {
-          from: "user@test.com",
-          to: "recipient@example.com",
-          subject: "Test Email",
-          date: "2024-01-01T00:00:00Z",
-        },
-        textPlain: "Hello World",
-        textHtml: "<b>Hello World</b>",
-      }),
-      blockUnsubscribedEmail: vi.fn().mockResolvedValue(undefined),
-      isSentMessage: vi.fn().mockReturnValue(true),
-    };
-
-    vi.mocked(createEmailProvider).mockResolvedValueOnce(mockProvider as any);
-
-    const options = {
-      ...defaultOptions,
-      emailAccount: getDefaultEmailAccount(),
-    };
-    await processHistoryItem(createHistoryItem(), options as any, logger);
-  });
-
-  it("should skip if email is unsubscribed", async () => {
-    const mockPrisma = await import("@/server/db/client");
-    vi.mocked(mockPrisma.default.newsletter.findFirst).mockResolvedValueOnce({
-      id: "newsletter-123",
-      email: "sender@example.com",
-      status: NewsletterStatus.UNSUBSCRIBED,
-      emailAccountId: "email-account-id",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      patternAnalyzed: false,
-      lastAnalyzedAt: null,
-      categoryId: null,
-    } as any);
-
-    const mockProvider = {
-      getMessage: vi.fn().mockResolvedValue({
-        id: "123",
-        threadId: "thread-123",
-        labelIds: ["INBOX"],
-        snippet: "Test email snippet",
-        historyId: "12345",
-        internalDate: "1704067200000",
-        sizeEstimate: 1024,
-        headers: {
-          from: "sender@example.com",
-          to: "user@test.com",
-          subject: "Test Email",
-          date: "2024-01-01T00:00:00Z",
-        },
-        textPlain: "Hello World",
-        textHtml: "<b>Hello World</b>",
-      }),
-      blockUnsubscribedEmail: vi.fn().mockResolvedValue(undefined),
-      isSentMessage: vi.fn().mockReturnValue(false),
-    };
-
-    vi.mocked(createEmailProvider).mockResolvedValueOnce(mockProvider as any);
-
-    const options = {
-      ...defaultOptions,
-      emailAccount: getDefaultEmailAccount(),
-    };
-    await processHistoryItem(createHistoryItem(), options as any, logger);
-
-    expect(mockProvider.blockUnsubscribedEmail).toHaveBeenCalledWith("123");
-  });
-
-  it("delegates label removed events to the label handler", async () => {
-    const options = {
-      ...defaultOptions,
-      emailAccount: getDefaultEmailAccount(),
-    };
-
-    const historyItem = createHistoryItem(
-      "789",
-      "thread-789",
-      HistoryEventType.LABEL_REMOVED,
-      [GmailLabel.INBOX],
-    );
-
+  it("returns early when message id or thread id is missing", async () => {
+    const options = makeOptions();
     await processHistoryItem(
-      historyItem,
-      options as unknown as typeof options,
+      {
+        type: HistoryEventType.MESSAGE_ADDED,
+        item: {
+          message: {
+            id: undefined,
+            threadId: "thread-123",
+          },
+        } as gmail_v1.Schema$HistoryMessageAdded,
+      },
+      options,
       logger,
     );
 
-    expect(handleLabelRemovedEvent).toHaveBeenCalledWith(
+    expect(createEmailProviderMock).not.toHaveBeenCalled();
+    expect(sharedProcessHistoryItemMock).not.toHaveBeenCalled();
+  });
+
+  it("delegates label removed events to label handler", async () => {
+    const options = makeOptions();
+    const historyItem = makeHistoryItem({
+      type: HistoryEventType.LABEL_REMOVED,
+      labelIds: ["INBOX"],
+    });
+    const provider = { name: "google" };
+    createEmailProviderMock.mockResolvedValueOnce(provider);
+
+    await processHistoryItem(historyItem, options, logger);
+
+    expect(handleLabelRemovedEventMock).toHaveBeenCalledWith(
       historyItem.item,
       expect.objectContaining({
         emailAccount: options.emailAccount,
+        provider,
       }),
       logger,
     );
+    expect(sharedProcessHistoryItemMock).not.toHaveBeenCalled();
+  });
+
+  it("skips processing when message lock is already held", async () => {
+    const options = makeOptions();
+    markMessageAsProcessingMock.mockResolvedValueOnce(false);
+
+    await processHistoryItem(
+      makeHistoryItem({ type: HistoryEventType.MESSAGE_ADDED }),
+      options,
+      logger,
+    );
+
+    expect(sharedProcessHistoryItemMock).not.toHaveBeenCalled();
+  });
+
+  it("delegates message-added events to shared processor", async () => {
+    const options = makeOptions({
+      hasAutomationRules: false,
+      hasAiAccess: true,
+    });
+    const provider = { name: "google" };
+    createEmailProviderMock.mockResolvedValueOnce(provider);
+
+    await processHistoryItem(
+      makeHistoryItem({
+        type: HistoryEventType.MESSAGE_ADDED,
+        messageId: "message-456",
+        threadId: "thread-456",
+      }),
+      options,
+      logger,
+    );
+
+    expect(sharedProcessHistoryItemMock).toHaveBeenCalledWith(
+      {
+        messageId: "message-456",
+        threadId: "thread-456",
+      },
+      expect.objectContaining({
+        provider,
+        emailAccount: options.emailAccount,
+        hasAutomationRules: false,
+        hasAiAccess: true,
+        logger,
+      }),
+    );
+  });
+
+  it("ignores label-added events", async () => {
+    const options = makeOptions();
+
+    await processHistoryItem(
+      makeHistoryItem({
+        type: HistoryEventType.LABEL_ADDED,
+      }),
+      options,
+      logger,
+    );
+
+    expect(markMessageAsProcessingMock).not.toHaveBeenCalled();
+    expect(sharedProcessHistoryItemMock).not.toHaveBeenCalled();
   });
 });
