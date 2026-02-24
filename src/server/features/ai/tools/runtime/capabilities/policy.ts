@@ -14,7 +14,6 @@ import type {
   CanonicalRule,
   CanonicalRuleType,
 } from "@/server/features/policy-plane/canonical-schema";
-import { createUnifiedSearchService } from "@/server/features/search/unified/service";
 
 const RULE_TARGET_MAX_CANDIDATES = 25;
 
@@ -40,11 +39,7 @@ function truncate(value: string | undefined, max: number): string | undefined {
   return `${value.slice(0, max - 1)}…`;
 }
 
-function buildRuleClarificationPrompt(_params: {
-  action: "update" | "disable" | "delete";
-  target: string;
-  candidates: CanonicalRule[];
-}): string {
+function buildRuleClarificationPrompt(): string {
   // `ToolResult.clarification.prompt` is a stable key consumed by the UI/response layer,
   // not a dynamic human sentence. Keep this deterministic.
   return "policy_rule_target_ambiguous";
@@ -177,11 +172,7 @@ async function selectRuleFromTarget(params: {
         message: "More than one rule has the same name.",
         clarification: {
           kind: "invalid_fields",
-          prompt: buildRuleClarificationPrompt({
-            action: params.action,
-            target,
-            candidates: exactNameMatches,
-          }),
+          prompt: buildRuleClarificationPrompt(),
           missingFields: ["rule_target"],
         },
       },
@@ -189,7 +180,6 @@ async function selectRuleFromTarget(params: {
   }
 
   const candidates = rules.slice(0, RULE_TARGET_MAX_CANDIDATES);
-  const candidateById = new Map(candidates.map((rule) => [rule.id, rule]));
   const candidatePayload = candidates.map(summarizeRuleForSelection);
 
   const STOPWORDS = new Set([
@@ -520,16 +510,6 @@ export function createPolicyCapabilities(env: CapabilityEnvironment): PolicyCapa
           ? Math.min(50, Math.max(1, Math.trunc(limitRaw)))
           : 20;
 
-        const unifiedSearch = createUnifiedSearchService({
-          userId: env.runtime.userId,
-          emailAccountId: env.runtime.emailAccountId,
-          email: env.runtime.email,
-          logger: env.runtime.logger,
-          providers: env.toolContext.providers,
-        });
-
-        // Gmail-only pragmatic dry run: use the rule's natural language source as the query.
-        // This provides a deterministic, inspectable "what would match" preview.
         const queryText = rule.source?.sourceNl?.trim() || rule.name?.trim() || rule.description?.trim() || "";
         if (!queryText) {
           return {
@@ -539,21 +519,68 @@ export function createPolicyCapabilities(env: CapabilityEnvironment): PolicyCapa
           };
         }
 
-        const result = await unifiedSearch.query({
-          scopes: rule.match.resource === "calendar" ? ["calendar"] : rule.match.resource === "email" ? ["email"] : ["email", "calendar"],
-          query: queryText,
-          limit,
-        });
+        const shouldCheckEmail = rule.match.resource !== "calendar";
+        const shouldCheckCalendar = rule.match.resource !== "email";
+        const now = new Date();
+        const calendarStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        const calendarEnd = new Date(now.getTime() + 120 * 24 * 60 * 60 * 1000);
+
+        const emailResults = shouldCheckEmail
+          ? await env.toolContext.providers.email.search({
+              query: queryText,
+              limit,
+            })
+          : { messages: [] };
+        const calendarResults = shouldCheckCalendar
+          ? await env.toolContext.providers.calendar.searchEvents(queryText, {
+              start: calendarStart,
+              end: calendarEnd,
+            })
+          : [];
+
+        const items = [
+          ...emailResults.messages.map((message) => ({
+            surface: "email",
+            id: message.threadId || message.id,
+            title: message.subject || message.headers?.subject || null,
+            snippet: message.snippet || message.textPlain || null,
+            timestamp: message.internalDate
+              ? new Date(message.internalDate).toISOString()
+              : null,
+            metadata: {
+              messageId: message.id,
+              threadId: message.threadId,
+              from: message.headers?.from ?? null,
+            },
+          })),
+          ...calendarResults.map((event) => ({
+            surface: "calendar",
+            id: event.id,
+            title: event.title || null,
+            snippet: event.description || null,
+            timestamp: event.startTime?.toISOString() ?? null,
+            metadata: {
+              eventId: event.id,
+              calendarId: event.calendarId,
+              start: event.startTime?.toISOString() ?? null,
+              end: event.endTime?.toISOString() ?? null,
+            },
+          })),
+        ].slice(0, limit);
 
         return {
           success: true,
           data: {
             rule: summarizeRuleForSelection(rule),
             queryUsed: queryText,
-            result,
+            result: {
+              query: queryText,
+              items,
+              total: items.length,
+            },
           },
-          message: result.items.length === 0 ? "No current items matched in dry run." : `Dry run found ${result.items.length} matching item${result.items.length === 1 ? "" : "s"}.`,
-          meta: { resource: "rule", itemCount: result.items.length },
+          message: items.length === 0 ? "No current items matched in dry run." : `Dry run found ${items.length} matching item${items.length === 1 ? "" : "s"}.`,
+          meta: { resource: "rule", itemCount: items.length },
         };
       } catch (error) {
         return failure("I couldn't dry-run that rule right now.", error);

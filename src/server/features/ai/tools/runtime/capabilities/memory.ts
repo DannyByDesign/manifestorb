@@ -5,10 +5,6 @@ import { capabilityFailureResult } from "@/server/features/ai/tools/runtime/capa
 import { EmbeddingQueue } from "@/features/memory/embeddings/queue";
 import { EmbeddingService } from "@/features/memory/embeddings/service";
 import { orchestrateMemoryRetrieval } from "@/server/features/memory/retrieval/orchestrator";
-import {
-  enqueueMemoryDeleteForIndexing,
-  enqueueMemoryFactForIndexing,
-} from "@/server/features/search/index/ingestors/memory";
 
 const BLOCKED_PATTERNS = [
   /^(test|asdf|xxx|placeholder|example|sample)/i,
@@ -120,12 +116,6 @@ export function createMemoryCapabilities(env: CapabilityEnvironment): MemoryCapa
             });
           });
         }
-
-        void enqueueMemoryFactForIndexing({
-          userId: env.runtime.userId,
-          fact,
-          logger: env.runtime.logger,
-        });
 
         return {
           success: true,
@@ -243,17 +233,7 @@ export function createMemoryCapabilities(env: CapabilityEnvironment): MemoryCapa
           };
         }
 
-        for (const fact of existingFacts) {
-          void enqueueMemoryDeleteForIndexing({
-            identity: {
-              userId: env.runtime.userId,
-              connector: "memory",
-              sourceType: "memory_fact",
-              sourceId: fact.id,
-            },
-            logger: env.runtime.logger,
-          });
-        }
+        void existingFacts;
 
         return {
           success: true,

@@ -7,7 +7,6 @@ import {
 } from "@/features/calendar/canonical-state";
 import { wasRecentCalendarAction } from "@/features/calendar/action-log";
 import { createCalendarProvider } from "@/features/ai/tools/providers/calendar";
-import { createInAppNotification } from "@/features/notifications/create";
 import { createDeterministicIdempotencyKey } from "@/server/lib/idempotency";
 import prisma from "@/server/db/client";
 import type { Logger } from "@/server/lib/logger";
@@ -295,24 +294,18 @@ export async function runAdaptiveCalendarReplan(params: {
           },
         });
 
-        await createInAppNotification({
+        params.logger.info("Adaptive replan approval requested", {
           userId: params.userId,
-          title: "Approval needed for calendar adjustment",
-          body: `I found a conflict with protected time and prepared a safer slot for \"${currentEvent.title}\". Approve to apply it.`,
-          type: "approval",
-          metadata: {
-            approvalId: approval.id,
-            eventId,
-            calendarId,
-          },
-          dedupeKey: `calendar-auto-reschedule-approval:${approval.id}`,
+          approvalId: approval.id,
+          eventId,
+          calendarId,
         });
 
         processed += 1;
         continue;
       }
 
-      const updatedEvent = await provider.updateEvent({
+      await provider.updateEvent({
         calendarId,
         eventId,
         input: {
@@ -338,20 +331,12 @@ export async function runAdaptiveCalendarReplan(params: {
       });
 
       if (targetPolicy.notifyOnAutoMove) {
-        await createInAppNotification({
+        params.logger.info("Adaptive replan auto-moved event", {
           userId: params.userId,
-          title: "Calendar adjusted",
-          body: `I moved \"${updatedEvent.title || currentEvent.title}\" to avoid a protected-time conflict.`,
-          type: "calendar",
-          metadata: {
-            eventId,
-            calendarId,
-            fromStart: currentEvent.startTime.toISOString(),
-            fromEnd: currentEvent.endTime.toISOString(),
-            toStart: chosenSlot.start.toISOString(),
-            toEnd: chosenSlot.end.toISOString(),
-          },
-          dedupeKey: `calendar-auto-reschedule:${eventId}:${chosenSlot.start.toISOString()}`,
+          eventId,
+          calendarId,
+          toStart: chosenSlot.start.toISOString(),
+          toEnd: chosenSlot.end.toISOString(),
         });
       }
     }

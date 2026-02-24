@@ -1,9 +1,13 @@
 import type { ParsedMessage } from "@/server/lib/types";
 import type { AmodelLabel } from "@/server/lib/label";
 // import type { ThreadsQuery } from "@/app/api/threads/validation";
-type ThreadsQuery = any;
-import type { OutlookFolder } from "@/server/integrations/microsoft/folders";
+type ThreadsQuery = Record<string, unknown>;
 import type { Logger } from "@/server/lib/logger";
+
+export interface EmailFolder {
+  id: string;
+  displayName: string;
+}
 
 export interface EmailThread {
   id: string;
@@ -61,7 +65,7 @@ export interface EmailProvider {
   getLabels(): Promise<EmailLabel[]>;
   getLabelById(labelId: string): Promise<EmailLabel | null>;
   getLabelByName(name: string): Promise<EmailLabel | null>;
-  getFolders(): Promise<OutlookFolder[]>;
+  getFolders(): Promise<EmailFolder[]>;
   getMessage(messageId: string): Promise<ParsedMessage>;
   getMessageByRfc822MessageId(
     rfc822MessageId: string,

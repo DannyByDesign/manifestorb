@@ -369,7 +369,6 @@ async function createRescheduleApprovals({
   if (!tasks.length) return;
 
   const approvalService = new ApprovalService(prisma);
-  const { createInAppNotification } = await import("@/features/notifications/create");
 
   const taskSummaries = tasks.map((task, i) => ({
     index: i,
@@ -416,16 +415,10 @@ async function createRescheduleApprovals({
     })
     .join("\n");
 
-  await createInAppNotification({
+  console.info("[TaskSchedulingService] batch reschedule approval created", {
     userId,
-    title: `Reschedule ${tasks.length} task(s)?`,
-    body: `The scheduler wants to move:\n${taskList}\n\nApprove all or deny.`,
-    type: "approval",
-    metadata: {
-      approvalId: approval.id,
-      taskCount: tasks.length,
-      tasks: taskSummaries,
-    },
-    dedupeKey: `batch-reschedule-${approval.id}`,
+    approvalId: approval.id,
+    taskCount: tasks.length,
+    taskList,
   });
 }

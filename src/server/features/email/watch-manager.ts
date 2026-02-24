@@ -4,8 +4,6 @@ import { createEmailProvider } from "@/features/email/provider";
 import { captureException } from "@/server/lib/error";
 import { cleanupInvalidTokens } from "@/server/auth/cleanup-invalid-tokens";
 import type { EmailProvider } from "@/features/email/types";
-import { createManagedOutlookSubscription } from "@/server/integrations/microsoft/subscription-manager";
-import { isMicrosoftProvider } from "@/features/email/provider-types";
 
 export type WatchEmailAccountResult =
   | {
@@ -174,23 +172,14 @@ async function watchEmails({
   logger.info("Watching emails");
 
   try {
-    if (isMicrosoftProvider(provider.name)) {
-      const result = await createManagedOutlookSubscription({
-        emailAccountId,
-        logger,
+    const result = await provider.watchEmails();
+
+    if (result) {
+      await prisma.emailAccount.update({
+        where: { id: emailAccountId },
+        data: { watchEmailsExpirationDate: result.expirationDate },
       });
-
-      if (result) return { success: true, expirationDate: result };
-    } else {
-      const result = await provider.watchEmails();
-
-      if (result) {
-        await prisma.emailAccount.update({
-          where: { id: emailAccountId },
-          data: { watchEmailsExpirationDate: result.expirationDate },
-        });
-        return { success: true, expirationDate: result.expirationDate };
-      }
+      return { success: true, expirationDate: result.expirationDate };
     }
 
     const error = new Error("Provider returned no result for watch setup");

@@ -11,7 +11,6 @@ import { hasVariables } from "@/server/lib/template";
 import prisma from "@/server/db/client";
 import { extractEmailAddress } from "@/server/integrations/google";
 import { ensureEmailSendingEnabled } from "@/server/lib/mail";
-import { getEmailAccountWithAi } from "@/server/lib/user/get";
 import { scheduleTasksForUser } from "@/features/calendar/scheduling/TaskSchedulingService";
 import { createCalendarProvider } from "@/features/ai/tools/providers/calendar";
 import {
@@ -23,7 +22,6 @@ import {
   parseDateBoundInTimeZone,
 } from "@/features/ai/tools/timezone";
 import { ApprovalService, getApprovalExpiry } from "@/features/approvals/service";
-import { createInAppNotification } from "@/features/notifications/create";
 import { applyTaskPreferencePayloadsForUser } from "@/features/preferences/service";
 import { evaluatePolicyDecision } from "@/server/features/policy-plane/pdp";
 import { createPolicyExecutionLog } from "@/server/features/policy-plane/policy-logs";
@@ -150,28 +148,11 @@ export const runActionFunction = async (options: {
           expiresInSeconds,
         });
 
-        try {
-          await createInAppNotification({
-            userId: options.userId,
-            title: "Automation action requires approval",
-            body: `Amodel blocked automation action ${action.type} until you approve it.`,
-            type: "approval",
-            dedupeKey: idempotencyKey,
-            metadata: {
-              approvalRequestId: approvalRequest.id,
-              executedRuleId: options.executedRule.id,
-              actionId: action.id,
-              actionType: action.type,
-              messageId: options.email.id,
-              threadId: options.email.threadId,
-            },
-          });
-        } catch (notificationError) {
-          log.warn("Failed to create in-app notification for automation approval", {
-            error: notificationError,
-            approvalRequestId: approvalRequest.id,
-          });
-        }
+        log.info("Automation action requires approval", {
+          approvalRequestId: approvalRequest.id,
+          actionType: action.type,
+          dedupeKey: idempotencyKey,
+        });
 
         await createPolicyExecutionLog({
           userId: options.userId,
@@ -721,62 +702,22 @@ const notify_sender: ActionFunction<Record<string, unknown>> = async ({
 
 export const notify_user: ActionFunction<Record<string, unknown>> = async ({
   email,
-  userId,
   emailAccountId,
   logger,
 }) => {
   try {
-    const { generateNotification } = await import(
-      "@/features/notifications/generator"
-    );
-    const { createInAppNotification } = await import(
-      "@/features/notifications/create"
-    );
-
     const fromName =
       extractEmailAddress(email.headers.from) || email.headers.from;
     const subject = email.headers.subject || "(No Subject)";
-    const snippet = email.snippet || email.textPlain?.substring(0, 150) || "";
 
-    // Get email account for AI notification generation
-    const emailAccount = await getEmailAccountWithAi({ emailAccountId });
-    if (!emailAccount) {
-      logger.error("Could not find email account for notify_user action");
-      return;
-    }
-
-    // Generate AI-powered notification text
-    const text = await generateNotification(
-      {
-        type: "email",
-        source: fromName,
-        title: subject,
-        detail: snippet,
-        importance: "medium",
-      },
-      { emailAccount }
-    );
-
-    // Create in-app notification (with surfaces fallback via QStash)
-    await createInAppNotification({
-      userId,
-      title: `New Email from ${fromName}`,
-      body: text,
-      type: "info",
-      dedupeKey: `email-rule-${email.id}`,
-      metadata: {
-        messageId: email.id,
-        threadId: email.threadId,
-        emailAccountId,
-      },
-    });
-
-    logger.info("Push notification sent via NOTIFY_USER action", {
+    logger.info("NOTIFY_USER action skipped (notification subsystem removed)", {
       messageId: email.id,
       from: fromName,
+      subject,
+      emailAccountId,
     });
   } catch (error) {
-    logger.error("Error sending push notification via NOTIFY_USER action", {
+    logger.error("Error handling NOTIFY_USER action", {
       error,
     });
     captureException(error instanceof Error ? error : new Error(String(error)), {
@@ -1050,20 +991,12 @@ export const schedule_meeting: ActionFunction<Record<string, unknown>> = async (
   }
 
   if (slots.length === 0) {
-    // Graceful degradation: send a plain notification
-    await createInAppNotification({
+    logger.info("SCHEDULE_MEETING: no slots available", {
       userId,
-      title: `Meeting request from ${senderEmail}`,
-      body: `${senderEmail} wants to meet (re: "${subject}"), but no calendar availability was found. Please check your calendar settings.`,
-      type: "info",
-      dedupeKey: `schedule-meeting-${email.id}`,
-      metadata: {
-        messageId: email.id,
-        threadId: email.threadId,
-        emailAccountId,
-      },
+      emailAccountId,
+      senderEmail,
+      subject,
     });
-    logger.info("SCHEDULE_MEETING: no slots, sent fallback notification");
     return;
   }
 
@@ -1153,27 +1086,7 @@ export const schedule_meeting: ActionFunction<Record<string, unknown>> = async (
     expiresInSeconds: expirySeconds,
   });
 
-  // 6. Create rich notification
-  await createInAppNotification({
-    userId,
-    title: `Meeting request from ${senderEmail}`,
-    body: `${senderEmail} wants to meet about "${subject}". ${slots.length} time slots available. Draft reply ready for review.`,
-    type: "approval",
-    dedupeKey: `schedule-meeting-${email.id}`,
-    metadata: {
-      messageId: email.id,
-      threadId: email.threadId,
-      emailAccountId,
-      approvalRequestId: approvalRequest.id,
-      senderEmail,
-      subject,
-      slots: serializedOptions,
-      draftId,
-      draftPreview: draftContent.substring(0, 300),
-    },
-  });
-
-  logger.info("SCHEDULE_MEETING: approval + notification created", {
+  logger.info("SCHEDULE_MEETING: approval created", {
     approvalRequestId: approvalRequest.id,
     slotCount: slots.length,
     hasDraft: Boolean(draftId),

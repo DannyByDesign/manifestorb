@@ -19,7 +19,6 @@ import {
 } from "./conversation-key";
 import { runSerializedConversationTurn } from "./runtime";
 import { enqueueConversationMessageEmbedding } from "@/features/memory/embeddings/conversation-ingestion";
-import { enqueueConversationMessageForIndexing } from "@/server/features/search/index/ingestors/memory";
 import {
     preferredProviderAccountId,
     resolveSurfaceAccount,
@@ -379,7 +378,7 @@ export class ChannelRouter {
                     isDirectMessage,
                     canonicalThreadId,
                 }),
-                content: "Your account is linked, but you haven't connected a Gmail/Outlook account yet.\n\nPlease go to the Amodel Web App to connect your email."
+                content: "Your account is linked, but you haven't connected a Gmail account yet.\n\nPlease go to the Amodel Web App to connect your email.",
             }]);
         }
 
@@ -475,11 +474,6 @@ export class ChannelRouter {
                                 logger,
                             }).catch((error) => {
                                 logger.warn("Failed to enqueue inbound conversation embedding", { error });
-                            });
-                            void enqueueConversationMessageForIndexing({
-                                userId: user.id,
-                                message: persisted,
-                                logger,
                             });
                         }
                     } catch (err) {
@@ -617,7 +611,7 @@ export class ChannelRouter {
             const recentMessage = await prisma.conversationMessage.findFirst({
                 where: {
                     userId: userId,
-                    provider: { in: ["slack", "discord", "telegram"] }
+                    provider: "slack"
                 },
                 orderBy: { createdAt: "desc" },
                 select: {
@@ -639,7 +633,7 @@ export class ChannelRouter {
                 : await prisma.conversation.findFirst({
                     where: {
                         userId: userId,
-                        provider: { in: ["slack", "discord", "telegram"] }
+                        provider: "slack"
                     },
                     orderBy: { updatedAt: "desc" }
                 });

@@ -4,9 +4,7 @@ import prisma from "@/server/db/client";
 import { isValidInternalApiKey } from "@/server/lib/internal-api";
 import { createScopedLogger } from "@/server/lib/logger";
 import { syncGoogleCalendarChanges } from "@/features/calendar/sync/google";
-import { syncMicrosoftCalendarChanges } from "@/features/calendar/sync/microsoft";
 import { ensureGoogleCalendarWatch } from "@/features/calendar/sync/google";
-import { ensureMicrosoftCalendarSubscription } from "@/features/calendar/sync/microsoft";
 import { scheduleTasksForUser } from "@/features/calendar/scheduling/TaskSchedulingService";
 import { runAdaptiveCalendarReplan } from "@/features/calendar/adaptive-replanner";
 import { ensureCalendarSelectionInvariant } from "@/features/calendar/selection-invariant";
@@ -69,84 +67,53 @@ export const POST = withError("calendar/sync/reconcile", async (request) => {
 
   for (const calendar of calendars) {
     const connection = calendar.connection;
-    if (connection.provider === "microsoft") {
-      await ensureMicrosoftCalendarSubscription({
-        calendar: {
-          id: calendar.id,
-          calendarId: calendar.calendarId,
-          microsoftSubscriptionId: calendar.microsoftSubscriptionId,
-          microsoftSubscriptionExpiresAt: calendar.microsoftSubscriptionExpiresAt,
-          microsoftDeltaToken: calendar.microsoftDeltaToken,
-          microsoftClientState: calendar.microsoftClientState,
-        },
-        connection: {
-          accessToken: connection.accessToken,
-          refreshToken: connection.refreshToken,
-          expiresAt: connection.expiresAt,
-          emailAccountId: connection.emailAccountId,
-        },
-        logger,
+    if (connection.provider !== "google") {
+      logger.warn("Skipping non-google calendar connection during reconcile", {
+        connectionId: connection.emailAccountId,
+        provider: connection.provider,
+        calendarId: calendar.calendarId,
       });
-    } else {
-      await ensureGoogleCalendarWatch({
-        calendar: {
-          id: calendar.id,
-          calendarId: calendar.calendarId,
-          googleSyncToken: calendar.googleSyncToken,
-          googleChannelId: calendar.googleChannelId,
-          googleResourceId: calendar.googleResourceId,
-          googleChannelToken: calendar.googleChannelToken,
-          googleChannelExpiresAt: calendar.googleChannelExpiresAt,
-        },
-        connection: {
-          accessToken: connection.accessToken,
-          refreshToken: connection.refreshToken,
-          expiresAt: connection.expiresAt,
-          emailAccountId: connection.emailAccountId,
-        },
-        logger,
-      });
+      continue;
     }
 
-    const syncResult =
-      connection.provider === "microsoft"
-        ? await syncMicrosoftCalendarChanges({
-            calendar: {
-              id: calendar.id,
-              calendarId: calendar.calendarId,
-              microsoftSubscriptionId: calendar.microsoftSubscriptionId,
-              microsoftSubscriptionExpiresAt: calendar.microsoftSubscriptionExpiresAt,
-              microsoftDeltaToken: calendar.microsoftDeltaToken,
-              microsoftClientState: calendar.microsoftClientState,
-            },
-            connection: {
-              accessToken: connection.accessToken,
-              refreshToken: connection.refreshToken,
-              expiresAt: connection.expiresAt,
-              emailAccountId: connection.emailAccountId,
-            },
-            logger,
-            userId: connection.emailAccount.userId,
-          })
-        : await syncGoogleCalendarChanges({
-            calendar: {
-              id: calendar.id,
-              calendarId: calendar.calendarId,
-              googleSyncToken: calendar.googleSyncToken,
-              googleChannelId: calendar.googleChannelId,
-              googleResourceId: calendar.googleResourceId,
-              googleChannelToken: calendar.googleChannelToken,
-              googleChannelExpiresAt: calendar.googleChannelExpiresAt,
-            },
-            connection: {
-              accessToken: connection.accessToken,
-              refreshToken: connection.refreshToken,
-              expiresAt: connection.expiresAt,
-              emailAccountId: connection.emailAccountId,
-            },
-            logger,
-            userId: connection.emailAccount.userId,
-          });
+    await ensureGoogleCalendarWatch({
+      calendar: {
+        id: calendar.id,
+        calendarId: calendar.calendarId,
+        googleSyncToken: calendar.googleSyncToken,
+        googleChannelId: calendar.googleChannelId,
+        googleResourceId: calendar.googleResourceId,
+        googleChannelToken: calendar.googleChannelToken,
+        googleChannelExpiresAt: calendar.googleChannelExpiresAt,
+      },
+      connection: {
+        accessToken: connection.accessToken,
+        refreshToken: connection.refreshToken,
+        expiresAt: connection.expiresAt,
+        emailAccountId: connection.emailAccountId,
+      },
+      logger,
+    });
+
+    const syncResult = await syncGoogleCalendarChanges({
+      calendar: {
+        id: calendar.id,
+        calendarId: calendar.calendarId,
+        googleSyncToken: calendar.googleSyncToken,
+        googleChannelId: calendar.googleChannelId,
+        googleResourceId: calendar.googleResourceId,
+        googleChannelToken: calendar.googleChannelToken,
+        googleChannelExpiresAt: calendar.googleChannelExpiresAt,
+      },
+      connection: {
+        accessToken: connection.accessToken,
+        refreshToken: connection.refreshToken,
+        expiresAt: connection.expiresAt,
+        emailAccountId: connection.emailAccountId,
+      },
+      logger,
+      userId: connection.emailAccount.userId,
+    });
 
     if (syncResult.changed) {
       changedCount += 1;

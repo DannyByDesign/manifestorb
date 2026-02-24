@@ -4,11 +4,10 @@ import type { Logger } from "@/server/lib/logger";
 import prisma from "@/server/db/client";
 import type { BusyPeriod } from "./availability-types";
 import { createGoogleAvailabilityProvider } from "./providers/google-availability";
-import { createMicrosoftAvailabilityProvider } from "./providers/microsoft-availability";
 import { isGoogleProvider } from "@/features/email/provider-types";
 
 /**
- * Fetch calendar availability across all connected calendars (Google and Microsoft)
+ * Fetch calendar availability across all connected Google calendars.
  */
 export async function getUnifiedCalendarAvailability({
   emailAccountId,
@@ -65,9 +64,6 @@ export async function getUnifiedCalendarAvailability({
   const googleConnections = calendarConnections.filter((conn) =>
     isGoogleProvider(conn.provider),
   );
-  const microsoftConnections = calendarConnections.filter(
-    (conn) => conn.provider === "microsoft",
-  );
 
   const promises: Promise<BusyPeriod[]>[] = [];
 
@@ -89,43 +85,8 @@ export async function getUnifiedCalendarAvailability({
           timeMin,
           timeMax,
         })
-        .catch((error) => {
+        .catch((error: unknown) => {
           logger.error("Error fetching Google calendar availability", {
-            error,
-            connectionId: connection.id,
-          });
-          return []; // Return empty array on error
-        }),
-    );
-  }
-
-  // Fetch Microsoft calendar availability
-  for (const connection of microsoftConnections) {
-    const calendarIds = connection.calendars.map((cal) => cal.calendarId);
-
-    if (!calendarIds.length) {
-      logger.warn("No enabled calendars for Microsoft connection", {
-        connectionId: connection.id,
-      });
-      continue;
-    }
-
-    const microsoftAvailabilityProvider =
-      createMicrosoftAvailabilityProvider(logger);
-
-    promises.push(
-      microsoftAvailabilityProvider
-        .fetchBusyPeriods({
-          accessToken: connection.accessToken,
-          refreshToken: connection.refreshToken,
-          expiresAt: connection.expiresAt?.getTime() || null,
-          emailAccountId,
-          calendarIds,
-          timeMin,
-          timeMax,
-        })
-        .catch((error) => {
-          logger.error("Error fetching Microsoft calendar availability", {
             error,
             connectionId: connection.id,
           });
@@ -149,7 +110,6 @@ export async function getUnifiedCalendarAvailability({
   logger.trace("Unified calendar availability results", {
     totalBusyPeriods: convertedBusyPeriods.length,
     googleConnectionsCount: googleConnections.length,
-    microsoftConnectionsCount: microsoftConnections.length,
   });
 
   return convertedBusyPeriods;

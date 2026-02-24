@@ -130,27 +130,6 @@ export async function suggestPreferenceUpdates(userId: string): Promise<void> {
   }
 
   if (diffs.length === 0) return;
-
-  const { createInAppNotification } = await import("@/server/features/notifications/create");
-  await createInAppNotification({
-    userId,
-    title: "Your schedule settings might be outdated",
-    body: `Based on your recent calendar:\n${diffs.join("\n")}\n\nWant me to update your settings?`,
-    type: "info",
-    dedupeKey: `schedule-suggestion-${userId}-${new Date().toISOString().slice(0, 10)}`,
-    metadata: {
-      type: "preference_suggestion",
-      suggestions: {
-        workHourStart: Math.floor(insights.actualWorkHourStart),
-        workHourEnd: Math.ceil(insights.actualWorkHourEnd),
-        workDays: insights.activeWorkDays,
-        bufferMinutes:
-          insights.avgBufferMin != null
-            ? Math.round(insights.avgBufferMin)
-            : preferences.bufferMinutes,
-      },
-    },
-  });
 }
 
 function formatHour(h: number): string {

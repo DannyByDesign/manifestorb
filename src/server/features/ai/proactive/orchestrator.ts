@@ -1,5 +1,4 @@
 import prisma from "@/server/db/client";
-import { createInAppNotification } from "@/server/features/notifications/create";
 import { createScopedLogger } from "@/server/lib/logger";
 import { scanForAttentionItems } from "@/server/features/ai/proactive/scanner";
 import type { AttentionItem } from "@/server/features/ai/proactive/types";
@@ -48,12 +47,6 @@ function canBypassQuietHours(item: AttentionItem): boolean {
   if (item.type === "pending_approval") return true;
   if (item.type === "upcoming_meeting" && item.urgency === "high") return true;
   return false;
-}
-
-function notificationType(item: AttentionItem): "info" | "warning" | "approval" {
-  if (item.type === "pending_approval") return "approval";
-  if (item.urgency === "high") return "warning";
-  return "info";
 }
 
 function buildDedupeKey(item: AttentionItem, now: Date): string {
@@ -143,32 +136,14 @@ export async function runProactiveAttentionSweep(params?: {
           continue;
         }
 
-        const notification = await createInAppNotification({
+        logger.info("Proactive attention item detected", {
           userId: user.id,
           title: item.title,
-          body: item.suggestedAction
-            ? `${item.description} Suggested action: ${item.suggestedAction}.`
-            : item.description,
-          type: notificationType(item),
-          metadata: {
-            source: "proactive_attention",
-            attentionItemId: item.id,
-            attentionType: item.type,
-            urgency: item.urgency,
-            actionable: item.actionable,
-            relatedEntityId: item.relatedEntityId,
-            relatedEntityType: item.relatedEntityType,
-            detectedAt: item.detectedAt.toISOString(),
-            suggestedAction: item.suggestedAction ?? null,
-          },
+          type: item.type,
+          urgency: item.urgency,
           dedupeKey: buildDedupeKey(item, now),
         });
-
-        if (!notification) {
-          continue;
-        }
         sentForUser += 1;
-        stats.notificationsCreated += 1;
       }
     } catch (error) {
       stats.errors += 1;

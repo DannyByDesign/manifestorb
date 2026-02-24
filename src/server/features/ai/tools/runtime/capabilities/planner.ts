@@ -1,6 +1,5 @@
 import type { ToolResult } from "@/server/features/ai/tools/types";
 import type { CapabilityEnvironment } from "@/server/features/ai/tools/runtime/capabilities/types";
-import { createUnifiedSearchService } from "@/server/features/search/unified/service";
 import { resolveCalendarTimeRange, resolveDefaultCalendarTimeZone } from "@/server/features/ai/tools/calendar-time";
 import { parseDateBoundInTimeZone, formatDateTimeForUser } from "@/server/features/ai/tools/timezone";
 import { findCalendarAvailability } from "@/server/features/ai/tools/calendar/primitives";
@@ -121,15 +120,8 @@ export interface PlannerCapabilities {
 }
 
 export function createPlannerCapabilities(env: CapabilityEnvironment): PlannerCapabilities {
-  const unifiedSearch = createUnifiedSearchService({
-    userId: env.runtime.userId,
-    emailAccountId: env.runtime.emailAccountId,
-    email: env.runtime.email,
-    logger: env.runtime.logger,
-    providers: env.toolContext.providers,
-  });
-
   const calendarProvider = env.toolContext.providers.calendar;
+  const emailProvider = env.toolContext.providers.email;
 
   const resolveTimeZone = async (): Promise<string> => {
     const resolved = await resolveDefaultCalendarTimeZone({
@@ -215,62 +207,47 @@ export function createPlannerCapabilities(env: CapabilityEnvironment): PlannerCa
           Array.isArray(input.calendarItems) && input.calendarItems.length > 0
             ? input.calendarItems.filter(isCalendarPlanItem)
             : await (async () => {
-                const result = await unifiedSearch.query({
-                  scopes: ["calendar"],
-                  dateRange: {
-                    after: window.start.toISOString(),
-                    before: window.end.toISOString(),
-                    timeZone,
-                  },
-                  limit: 100,
+                const events = await calendarProvider.searchEvents("", {
+                  start: window.start,
+                  end: window.end,
                 });
 
-                return result.items
-                  .filter((it) => it.surface === "calendar")
-                  .map((it) => {
-                    const md = asObject(it.metadata);
-                    return {
-                      id: typeof md.eventId === "string" ? md.eventId : it.id,
-                      title: it.title,
-                      snippet: it.snippet,
-                      start: typeof md.start === "string" ? md.start : null,
-                      end: typeof md.end === "string" ? md.end : null,
-                      startLocal:
-                        typeof md.start === "string" ? formatDateTimeForUser(new Date(md.start), timeZone) : null,
-                      endLocal:
-                        typeof md.end === "string" ? formatDateTimeForUser(new Date(md.end), timeZone) : null,
-                      location: typeof md.location === "string" ? md.location : null,
-                      organizerEmail: typeof md.authorIdentity === "string" ? md.authorIdentity : null,
-                      attendees: Array.isArray(md.attendees) ? md.attendees : [],
-                    };
-                  });
+                return events.map((event) => ({
+                  id: event.id,
+                  title: event.title ?? null,
+                  snippet: event.description ?? null,
+                  start: event.startTime?.toISOString() ?? null,
+                  end: event.endTime?.toISOString() ?? null,
+                  startLocal: event.startTime
+                    ? formatDateTimeForUser(event.startTime, timeZone)
+                    : null,
+                  endLocal: event.endTime
+                    ? formatDateTimeForUser(event.endTime, timeZone)
+                    : null,
+                  location: event.location ?? null,
+                  organizerEmail: event.organizerEmail ?? null,
+                  attendees: event.attendees ?? [],
+                }));
               })();
 
         const topEmailItems: EmailPlanItem[] =
           Array.isArray(input.topEmailItems) && input.topEmailItems.length > 0
             ? input.topEmailItems.filter(isEmailPlanItem)
             : await (async () => {
-                const result = await unifiedSearch.query({
-                  scopes: ["email"],
-                  mailbox: "inbox",
-                  unread: true,
-                  sort: "newest",
+                const result = await emailProvider.search({
+                  query: "in:inbox is:unread",
                   limit: 10,
                 });
-
-                return result.items
-                  .filter((it) => it.surface === "email")
-                  .map((it) => {
-                    const md = asObject(it.metadata);
-                    return {
-                      id: typeof md.threadId === "string" ? md.threadId : it.id,
-                      title: it.title,
-                      snippet: it.snippet,
-                      timestamp: it.timestamp ?? null,
-                      from: typeof md.from === "string" ? md.from : typeof md.authorIdentity === "string" ? md.authorIdentity : null,
-                      subject: it.title,
-                    };
-                  });
+                return result.messages.map((message) => ({
+                  id: message.threadId || message.id,
+                  title: message.subject || message.headers?.subject || null,
+                  snippet: message.snippet ?? message.textPlain ?? null,
+                  timestamp: message.internalDate
+                    ? new Date(message.internalDate).toISOString()
+                    : null,
+                  from: message.headers?.from ?? null,
+                  subject: message.subject || message.headers?.subject || null,
+                }));
               })();
 
         const conflicts = computeConflicts(calendarItems);

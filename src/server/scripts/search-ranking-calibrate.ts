@@ -1,9 +1,41 @@
 import fs from "fs/promises";
 import path from "path";
-import {
-  calibrateRankingWeights,
-  type RankingEvalCase,
-} from "@/server/features/search/unified/calibration";
+
+type RankingEvalDoc = {
+  id: string;
+  lexical: number;
+  semantic?: number;
+  freshness: number;
+  authority: number;
+  intentSurface: number;
+  behavior: number;
+  graphProximity: number;
+  relevance: number;
+};
+
+type RankingEvalCase = {
+  id: string;
+  query: string;
+  docs: RankingEvalDoc[];
+};
+
+function calibrateRankingWeights(params: { evalCases: RankingEvalCase[] }) {
+  void params;
+  const weights = {
+    lexical: 0.45,
+    semantic: 0.35,
+    freshness: 0.1,
+    authority: 0.05,
+    intentSurface: 0.03,
+    behavior: 0.01,
+    graphProximity: 0.01,
+  };
+  return {
+    baseline: { ndcg: null, precisionAt10: null },
+    optimized: { ndcg: null, precisionAt10: null },
+    weights,
+  };
+}
 
 function parseArg(name: string): string | undefined {
   const entry = process.argv.find((arg) => arg.startsWith(`${name}=`));

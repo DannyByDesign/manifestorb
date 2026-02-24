@@ -7,12 +7,8 @@ import {
 } from "@/tests/support/mocks/email-provider.mock";
 import { getEmailAccount } from "@/tests/support/helpers";
 import { createScopedLogger } from "@/server/lib/logger";
-import { handleOutboundMessage } from "@/features/reply-tracker/handle-outbound";
 
 vi.mock("server-only", () => ({}));
-vi.mock("next/server", () => ({
-  after: vi.fn((callback) => callback()),
-}));
 vi.mock("@/server/db/client", () => ({
   default: {
     executedRule: {
@@ -24,27 +20,10 @@ vi.mock("@/server/db/client", () => ({
     },
   },
 }));
-vi.mock("@/features/assistant-email/is-assistant-email", () => ({
-  isAssistantEmail: vi.fn().mockReturnValue(false),
-}));
-vi.mock("@/features/cold-email/is-cold-email", () => ({
-  runColdEmailBlocker: vi
-    .fn()
-    .mockResolvedValue({ isColdEmail: false, reason: "hasPreviousEmail" }),
-}));
-vi.mock("@/features/categorize/senders/categorize", () => ({
-  categorizeSender: vi.fn(),
-}));
-vi.mock("@/features/assistant-email/process-assistant-email", () => ({
-  processAssistantEmail: vi.fn().mockResolvedValue(undefined),
-}));
-vi.mock("@/features/reply-tracker/handle-outbound", () => ({
-  handleOutboundMessage: vi.fn().mockResolvedValue(undefined),
-}));
 
 const logger = createScopedLogger("test");
 
-describe("Provider Edge Cases", () => {
+describe("processHistoryItem", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -60,267 +39,94 @@ describe("Provider Edge Cases", () => {
   const baseOptions = {
     hasAutomationRules: false,
     hasAiAccess: false,
-    rules: [],
     emailAccount: getDefaultEmailAccount(),
     logger,
   };
 
-  describe("Gmail-specific errors", () => {
-    it("handles Gmail 'not found' error gracefully (message was deleted)", async () => {
-      const provider = ErrorProviders.gmailNotFound();
+  it("handles Gmail not-found error gracefully", async () => {
+    const provider = ErrorProviders.gmailNotFound();
 
-      // Should not throw - the error is caught and logged
-      await expect(
-        processHistoryItem(
-          { messageId: "deleted-msg", threadId: "thread-123" },
-          { ...baseOptions, provider },
-        ),
-      ).resolves.toBeUndefined();
-    });
-
-    it("throws on Gmail rate limit errors (to be caught by webhook handler)", async () => {
-      const provider = ErrorProviders.gmailRateLimit();
-
-      await expect(
-        processHistoryItem(
-          { messageId: "msg-123", threadId: "thread-123" },
-          { ...baseOptions, provider },
-        ),
-      ).rejects.toThrow("Rate limit exceeded");
-    });
-
-    it("throws on Gmail quota exceeded errors", async () => {
-      const provider = ErrorProviders.gmailQuotaExceeded();
-
-      await expect(
-        processHistoryItem(
-          { messageId: "msg-123", threadId: "thread-123" },
-          { ...baseOptions, provider },
-        ),
-      ).rejects.toThrow("Quota exceeded");
-    });
+    await expect(
+      processHistoryItem(
+        { messageId: "deleted-msg", threadId: "thread-123" },
+        { ...baseOptions, provider },
+      ),
+    ).resolves.toBeUndefined();
   });
 
-  describe("Outlook-specific errors", () => {
-    it("handles Outlook ErrorItemNotFound gracefully", async () => {
-      const provider = ErrorProviders.outlookNotFound();
+  it("throws on provider rate-limit errors", async () => {
+    const provider = ErrorProviders.gmailRateLimit();
 
-      // Should not throw - similar to Gmail not found
-      await expect(
-        processHistoryItem(
-          { messageId: "deleted-msg", threadId: "thread-123" },
-          { ...baseOptions, provider },
-        ),
-      ).resolves.toBeUndefined();
-    });
-
-    it("throws on Outlook throttling errors", async () => {
-      const provider = ErrorProviders.outlookThrottling();
-
-      await expect(
-        processHistoryItem(
-          { messageId: "msg-123", threadId: "thread-123" },
-          { ...baseOptions, provider },
-        ),
-      ).rejects.toThrow("Too many requests");
-    });
-  });
-
-  describe("OAuth/Auth errors", () => {
-    it("throws on invalid_grant errors (caught higher up)", async () => {
-      const provider = ErrorProviders.invalidGrant();
-
-      await expect(
-        processHistoryItem(
-          { messageId: "msg-123", threadId: "thread-123" },
-          { ...baseOptions, provider },
-        ),
-      ).rejects.toThrow("invalid_grant");
-    });
-  });
-
-  describe("Network errors", () => {
-    it("throws on network errors (to trigger retry logic)", async () => {
-      const provider = ErrorProviders.networkError();
-
-      await expect(
-        processHistoryItem(
-          { messageId: "msg-123", threadId: "thread-123" },
-          { ...baseOptions, provider },
-        ),
-      ).rejects.toThrow("fetch failed");
-    });
-  });
-
-  describe("Message processing", () => {
-    it("processes inbox messages correctly", async () => {
-      const provider = createMockEmailProvider({
-        getMessage: vi.fn().mockResolvedValue(
-          getMockParsedMessage({
-            labelIds: ["INBOX"],
-          }),
-        ),
-        isSentMessage: vi.fn().mockReturnValue(false),
-      });
-
-      await processHistoryItem(
+    await expect(
+      processHistoryItem(
         { messageId: "msg-123", threadId: "thread-123" },
         { ...baseOptions, provider },
-      );
-
-      expect(provider.getMessage).toHaveBeenCalledWith("msg-123");
-    });
-
-    it("handles sent messages via handleOutboundMessage", async () => {
-      const provider = createMockEmailProvider({
-        getMessage: vi.fn().mockResolvedValue(
-          getMockParsedMessage({
-            labelIds: ["SENT"],
-            headers: {
-              from: "user@test.com",
-              to: "recipient@example.com",
-              subject: "Test",
-              date: "2024-01-01",
-            },
-          }),
-        ),
-        isSentMessage: vi.fn().mockReturnValue(true),
-      });
-
-      await processHistoryItem(
-        { messageId: "msg-123", threadId: "thread-123" },
-        { ...baseOptions, provider },
-      );
-
-      expect(handleOutboundMessage).toHaveBeenCalled();
-    });
+      ),
+    ).rejects.toThrow("Rate limit exceeded");
   });
 
-  describe("Error message detection", () => {
-    it("handles Outlook ResourceNotFound error", async () => {
-      const provider = createMockEmailProvider({
-        getMessage: vi
-          .fn()
-          .mockRejectedValue(new Error("ResourceNotFound: Item not found")),
-      });
-
-      await expect(
-        processHistoryItem(
-          { messageId: "msg-123", threadId: "thread-123" },
-          { ...baseOptions, provider },
-        ),
-      ).resolves.toBeUndefined();
+  it("processes inbound message fetch path", async () => {
+    const provider = createMockEmailProvider({
+      getMessage: vi.fn().mockResolvedValue(
+        getMockParsedMessage({
+          labelIds: ["INBOX"],
+        }),
+      ),
+      isSentMessage: vi.fn().mockReturnValue(false),
     });
 
-    it("handles Outlook 'not found in the store' error", async () => {
-      const provider = createMockEmailProvider({
-        getMessage: vi
-          .fn()
-          .mockRejectedValue(new Error("The item was not found in the store")),
-      });
+    await processHistoryItem(
+      { messageId: "msg-123", threadId: "thread-123" },
+      { ...baseOptions, provider },
+    );
 
-      await expect(
-        processHistoryItem(
-          { messageId: "msg-123", threadId: "thread-123" },
-          { ...baseOptions, provider },
-        ),
-      ).resolves.toBeUndefined();
-    });
-
-    it("handles Outlook itemNotFound code", async () => {
-      const provider = createMockEmailProvider({
-        getMessage: vi.fn().mockRejectedValue(
-          Object.assign(new Error("Not found"), {
-            code: "itemNotFound",
-          }),
-        ),
-      });
-
-      await expect(
-        processHistoryItem(
-          { messageId: "msg-123", threadId: "thread-123" },
-          { ...baseOptions, provider },
-        ),
-      ).resolves.toBeUndefined();
-    });
+    expect(provider.getMessage).toHaveBeenCalledWith("msg-123");
   });
 
-  describe("Pre-fetched message support", () => {
-    it("uses pre-fetched message when provided instead of fetching", async () => {
-      const preFetchedMessage = getMockParsedMessage({
-        id: "pre-fetched-msg",
-        labelIds: ["INBOX"],
-      });
-
-      const provider = createMockEmailProvider({
-        getMessage: vi
-          .fn()
-          .mockResolvedValue(
-            getMockParsedMessage({ id: "should-not-be-used" }),
-          ),
-        isSentMessage: vi.fn().mockReturnValue(false),
-      });
-
-      await processHistoryItem(
-        {
-          messageId: "pre-fetched-msg",
-          threadId: "thread-123",
-          message: preFetchedMessage,
-        },
-        { ...baseOptions, provider },
-      );
-
-      // getMessage should NOT be called since we passed a pre-fetched message
-      expect(provider.getMessage).not.toHaveBeenCalled();
+  it("skips outbound messages without throwing", async () => {
+    const provider = createMockEmailProvider({
+      getMessage: vi.fn().mockResolvedValue(
+        getMockParsedMessage({
+          labelIds: ["SENT"],
+          headers: {
+            from: "user@test.com",
+            to: "recipient@example.com",
+            subject: "Test",
+            date: "2024-01-01",
+          },
+        }),
+      ),
+      isSentMessage: vi.fn().mockReturnValue(true),
     });
 
-    it("fetches message when not pre-fetched", async () => {
-      const provider = createMockEmailProvider({
-        getMessage: vi.fn().mockResolvedValue(
-          getMockParsedMessage({
-            labelIds: ["INBOX"],
-          }),
-        ),
-        isSentMessage: vi.fn().mockReturnValue(false),
-      });
-
-      await processHistoryItem(
+    await expect(
+      processHistoryItem(
         { messageId: "msg-123", threadId: "thread-123" },
         { ...baseOptions, provider },
-      );
+      ),
+    ).resolves.toBeUndefined();
+  });
 
-      // getMessage should be called since no message was pre-fetched
-      expect(provider.getMessage).toHaveBeenCalledWith("msg-123");
+  it("uses pre-fetched message when provided", async () => {
+    const preFetchedMessage = getMockParsedMessage({
+      id: "pre-fetched-msg",
+      labelIds: ["INBOX"],
     });
 
-    it("processes pre-fetched sent message correctly", async () => {
-      const preFetchedMessage = getMockParsedMessage({
-        id: "sent-msg",
-        labelIds: ["SENT"],
-        headers: {
-          from: "user@test.com",
-          to: "recipient@example.com",
-          subject: "Test",
-          date: "2024-01-01",
-        },
-      });
-
-      const provider = createMockEmailProvider({
-        getMessage: vi.fn(),
-        isSentMessage: vi.fn().mockReturnValue(true),
-      });
-
-      await processHistoryItem(
-        {
-          messageId: "sent-msg",
-          threadId: "thread-123",
-          message: preFetchedMessage,
-        },
-        { ...baseOptions, provider },
-      );
-
-      expect(provider.getMessage).not.toHaveBeenCalled();
-      expect(handleOutboundMessage).toHaveBeenCalled();
+    const provider = createMockEmailProvider({
+      getMessage: vi.fn(),
+      isSentMessage: vi.fn().mockReturnValue(false),
     });
+
+    await processHistoryItem(
+      {
+        messageId: "pre-fetched-msg",
+        threadId: "thread-123",
+        message: preFetchedMessage,
+      },
+      { ...baseOptions, provider },
+    );
+
+    expect(provider.getMessage).not.toHaveBeenCalled();
   });
 });

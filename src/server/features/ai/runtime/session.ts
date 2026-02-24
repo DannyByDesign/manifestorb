@@ -19,7 +19,13 @@ import prisma from "@/server/db/client";
 import type { RuntimeSession, OpenWorldTurnInput } from "@/server/features/ai/runtime/types";
 import type { ToolExecutionSummary } from "@/server/features/ai/tools/fabric/types";
 
-const SECRETARY_TOOL_PREFIXES = ["email.", "calendar.", "task.", "web."] as const;
+const SECRETARY_TOOL_PREFIXES = [
+  "email.",
+  "calendar.",
+  "task.",
+  "web.",
+  "policy.",
+] as const;
 
 function isSecretaryCoreTool(toolName: string): boolean {
   return SECRETARY_TOOL_PREFIXES.some((prefix) => toolName.startsWith(prefix));

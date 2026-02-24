@@ -2,7 +2,6 @@ import prisma from "@/server/db/client";
 import type { Logger } from "@/server/lib/logger";
 import type { CalendarEventProvider } from "@/features/calendar/event-types";
 import { GoogleCalendarEventProvider } from "@/features/calendar/providers/google-events";
-import { MicrosoftCalendarEventProvider } from "@/features/calendar/providers/microsoft-events";
 import { isGoogleProvider } from "@/features/email/provider-types";
 
 /**
@@ -56,20 +55,6 @@ export async function createCalendarEventProviders(
       if (isGoogleProvider(connection.provider)) {
         providers.push(
           new GoogleCalendarEventProvider(
-            {
-              accessToken: connection.accessToken,
-              refreshToken: connection.refreshToken,
-              expiresAt: connection.expiresAt?.getTime() ?? null,
-              emailAccountId,
-              userId: emailAccount.userId,
-              timeZone: emailAccount.timezone,
-            },
-            logger,
-          ),
-        );
-      } else if (connection.provider === "microsoft") {
-        providers.push(
-          new MicrosoftCalendarEventProvider(
             {
               accessToken: connection.accessToken,
               refreshToken: connection.refreshToken,

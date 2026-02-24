@@ -5,10 +5,6 @@ import {
   getGmailClientWithRefresh,
   getAccessTokenFromClient,
 } from "@/server/integrations/google/client";
-import {
-  getOutlookClientWithRefresh,
-  getAccessTokenFromClient as getOutlookAccessToken,
-} from "@/server/integrations/microsoft/client";
 import { redirect } from "next/navigation";
 import prisma from "@/server/db/client";
 import {
@@ -52,68 +48,6 @@ export async function getGmailAndAccessTokenForEmail({
   });
   const accessToken = getAccessTokenFromClient(gmail);
   return { gmail, accessToken, tokens };
-}
-
-export async function getOutlookClientForEmail({
-  emailAccountId,
-  logger,
-}: {
-  emailAccountId: string;
-  logger: Logger;
-}) {
-  const tokens = await getTokens({ emailAccountId });
-  const outlook = await getOutlookClientWithRefresh({
-    accessToken: tokens.accessToken,
-    refreshToken: tokens.refreshToken || "",
-    expiresAt: tokens.expiresAt,
-    emailAccountId,
-    logger,
-  });
-  return outlook;
-}
-
-export async function getOutlookAndAccessTokenForEmail({
-  emailAccountId,
-  logger,
-}: {
-  emailAccountId: string;
-  logger: Logger;
-}) {
-  const tokens = await getTokens({ emailAccountId });
-  const outlook = await getOutlookClientWithRefresh({
-    accessToken: tokens.accessToken,
-    refreshToken: tokens.refreshToken || "",
-    expiresAt: tokens.expiresAt,
-    emailAccountId,
-    logger,
-  });
-  const accessToken = getOutlookAccessToken(outlook);
-  return { outlook, accessToken, tokens };
-}
-
-export async function getOutlookClientForEmailId({
-  emailAccountId,
-  logger,
-}: {
-  emailAccountId: string;
-  logger: Logger;
-}) {
-  const account = await prisma.emailAccount.findUnique({
-    where: { id: emailAccountId },
-    select: {
-      account: {
-        select: { access_token: true, refresh_token: true, expires_at: true },
-      },
-    },
-  });
-  const outlook = await getOutlookClientWithRefresh({
-    accessToken: account?.account.access_token,
-    refreshToken: account?.account.refresh_token || "",
-    expiresAt: account?.account.expires_at?.getTime() ?? null,
-    emailAccountId,
-    logger,
-  });
-  return outlook;
 }
 
 async function getTokens({ emailAccountId }: { emailAccountId: string }) {

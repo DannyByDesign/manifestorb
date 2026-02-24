@@ -1,18 +1,12 @@
 import prisma from "@/server/db/client";
-import { categorizeSender } from "@/features/categorize/senders/categorize";
-import { isAssistantEmail } from "@/features/assistant-email/is-assistant-email";
-import { processAssistantEmail } from "@/features/assistant-email/process-assistant-email";
-import { handleOutboundMessage } from "@/features/reply-tracker/handle-outbound";
-import { clearFollowUpLabel } from "@/features/follow-up/labels";
 import { ActionType, NewsletterStatus } from "@/generated/prisma/enums";
 import type { EmailAccount } from "@/generated/prisma/client";
-import { extractEmailAddress, extractNameFromEmail } from "@/server/lib/email";
+import { extractEmailAddress } from "@/server/lib/email";
 import { isIgnoredSender } from "@/server/lib/filter-ignored-senders";
 import type { EmailProvider } from "@/features/email/types";
 import type { ParsedMessage } from "@/server/lib/types";
 import type { EmailAccountWithAI } from "@/server/lib/llms/types";
 import type { Logger } from "@/server/lib/logger";
-import { captureException } from "@/server/lib/error";
 import { executeCanonicalEmailAutomations } from "@/server/features/policy-plane/automation-executor";
 
 export type SharedProcessHistoryOptions = {
@@ -48,7 +42,6 @@ export async function processHistoryItem(
   } = options;
 
   const emailAccountId = emailAccount.id;
-  const userEmail = emailAccount.email;
 
   try {
     logger.info("Shared processor started");
@@ -80,32 +73,6 @@ export async function processHistoryItem(
       return;
     }
 
-    const isForAssistant = isAssistantEmail({
-      userEmail,
-      emailToCheck: parsedMessage.headers.to,
-    });
-
-    if (isForAssistant) {
-      logger.info("Passing through assistant email.");
-      return processAssistantEmail({
-        message: parsedMessage,
-        emailAccountId,
-        userEmail,
-        provider,
-        logger,
-      });
-    }
-
-    const isFromAssistant = isAssistantEmail({
-      userEmail,
-      emailToCheck: parsedMessage.headers.from,
-    });
-
-    if (isFromAssistant) {
-      logger.info("Skipping. Assistant email.");
-      return;
-    }
-
     const isOutbound = provider.isSentMessage(parsedMessage);
 
     logger.info("Message direction check", {
@@ -118,12 +85,7 @@ export async function processHistoryItem(
     });
 
     if (isOutbound) {
-      await handleOutboundMessage({
-        emailAccount,
-        message: parsedMessage,
-        provider,
-        logger,
-      });
+      logger.info("Skipping outbound message in webhook processor");
       return;
     }
 
@@ -146,28 +108,6 @@ export async function processHistoryItem(
     if (!hasAiAccess) {
       logger.info("Skipping. No AI access.");
       return;
-    }
-
-    // categorize a sender if we haven't already
-    // this is used for category filters in ai rules
-    if (emailAccount.autoCategorizeSenders) {
-      const sender = extractEmailAddress(parsedMessage.headers.from);
-      const senderName = extractNameFromEmail(parsedMessage.headers.from);
-      const existingSender = await prisma.newsletter.findUnique({
-        where: {
-          email_emailAccountId: { email: sender, emailAccountId },
-        },
-        select: { category: true },
-      });
-      if (!existingSender?.category) {
-        await categorizeSender(
-          sender,
-          emailAccount,
-          provider,
-          undefined,
-          senderName !== sender ? senderName : undefined,
-        );
-      }
     }
 
     logger.info("Running canonical automation executor", { hasAiAccess });
@@ -194,38 +134,14 @@ export async function processHistoryItem(
       return;
     }
 
-    // Remove follow-up label if present (they replied, so follow-up no longer needed)
-    // This handles the case where we were awaiting a reply from them
-    try {
-      await clearFollowUpLabel({
-        emailAccountId,
-        threadId: actualThreadId,
-        provider,
-        logger,
-      });
-    } catch (error) {
-      logger.error("Error removing follow-up label on inbound", { error });
-      captureException(error, { emailAccountId });
-    }
-
-    // Push notifications are now handled via the NOTIFY_USER rule action
-    // Users control which emails trigger notifications by creating rules
+    // Push notifications are handled by conversational responses and rule actions.
   } catch (error: unknown) {
     // Handle provider-specific "not found" errors
     if (error instanceof Error) {
       const isGoogleNotFound =
         error.message === "Requested entity was not found.";
 
-      // Outlook can return ErrorItemNotFound code or "not found in the store" message
-      const err = error as { code?: string };
-      const isOutlookNotFound =
-        err?.code === "ErrorItemNotFound" ||
-        err?.code === "itemNotFound" ||
-        error.message.includes("ItemNotFound") ||
-        error.message.includes("not found in the store") ||
-        error.message.includes("ResourceNotFound");
-
-      if (isGoogleNotFound || isOutlookNotFound) {
+      if (isGoogleNotFound) {
         logger.info("Message not found");
         return;
       }

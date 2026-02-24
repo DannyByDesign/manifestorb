@@ -2,8 +2,6 @@ import { config } from "dotenv";
 import { timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { startSlack, stopSlack } from "./connectors/slack";
-import { startDiscord } from "./connectors/discord";
-import { startTelegram } from "./connectors/telegram";
 import { startScheduler, triggerEmbeddingJob, triggerDecayJob } from "./jobs/scheduler";
 import { getQueueStats } from "./jobs/embedding-worker";
 import { getDecayStats } from "./jobs/decay-worker";
@@ -194,7 +192,7 @@ export async function handleRequest(req: Request) {
 
             const body = await req.json();
             const { platform, channelId, threadId, content, responseId } = body as {
-                platform?: "slack" | "discord" | "telegram";
+                platform?: "slack";
                 channelId?: string;
                 threadId?: string;
                 content?: string;
@@ -217,12 +215,6 @@ export async function handleRequest(req: Request) {
             if (platform === "slack") {
                 const { sendSlackMessage } = await import("./connectors/slack");
                 providerMessageId = await sendSlackMessage(channelId, content, undefined, threadId);
-            } else if (platform === "discord") {
-                const { sendDiscordMessage } = await import("./connectors/discord");
-                providerMessageId = await sendDiscordMessage(channelId, content);
-            } else if (platform === "telegram") {
-                const { sendTelegramMessage } = await import("./connectors/telegram");
-                providerMessageId = await sendTelegramMessage(channelId, content);
             } else {
                 return new Response("Unsupported platform", { status: 400 });
             }
@@ -274,39 +266,18 @@ export async function handleRequest(req: Request) {
 
             const provider = body.provider;
             const providerAccountId = body.providerAccountId;
-            if (
-                (provider !== "slack" && provider !== "discord" && provider !== "telegram") ||
-                !providerAccountId
-            ) {
+            if (provider !== "slack" || !providerAccountId) {
                 return new Response(
                     JSON.stringify({
                         ok: false,
-                        error: "Requires provider ('slack'|'discord'|'telegram') and providerAccountId",
+                        error: "Requires provider ('slack') and providerAccountId",
                     }),
                     { status: 400, headers: { "Content-Type": "application/json" } },
                 );
             }
 
-            if (provider === "slack") {
-                const { sendLinkedToSlackUser } = await import("./connectors/slack");
-                const result = await sendLinkedToSlackUser(providerAccountId);
-                return new Response(JSON.stringify(result), {
-                    status: result.ok ? 200 : 500,
-                    headers: { "Content-Type": "application/json" },
-                });
-            }
-
-            if (provider === "discord") {
-                const { sendLinkedToDiscordUser } = await import("./connectors/discord");
-                const result = await sendLinkedToDiscordUser(providerAccountId);
-                return new Response(JSON.stringify(result), {
-                    status: result.ok ? 200 : 500,
-                    headers: { "Content-Type": "application/json" },
-                });
-            }
-
-            const { sendLinkedToTelegramUser } = await import("./connectors/telegram");
-            const result = await sendLinkedToTelegramUser(providerAccountId);
+            const { sendLinkedToSlackUser } = await import("./connectors/slack");
+            const result = await sendLinkedToSlackUser(providerAccountId);
             return new Response(JSON.stringify(result), {
                 status: result.ok ? 200 : 500,
                 headers: { "Content-Type": "application/json" },
@@ -560,8 +531,6 @@ export async function startSurfacesWorker() {
     // Start platform connectors in the background so health checks don't depend on Slack socket startup.
     void Promise.all([
         startConnectorSafely("slack", startSlack),
-        startConnectorSafely("discord", startDiscord),
-        startConnectorSafely("telegram", startTelegram),
     ]).then(() => {
         console.log("🚀 Surfaces connectors initialized");
     });
