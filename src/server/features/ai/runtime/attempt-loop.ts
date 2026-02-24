@@ -214,14 +214,30 @@ function buildNativeRuntimeSystemPrompt(params: {
   ].join("\n");
 }
 
-function latestClarificationPrompt(results: RuntimeToolResult[]): string | null {
+export function latestClarificationPrompt(results: RuntimeToolResult[]): string | null {
+  let clarificationPrompt: string | null = null;
+  let clarificationIndex = -1;
+
   for (let i = results.length - 1; i >= 0; i -= 1) {
     const prompt = results[i]?.clarification?.prompt;
     if (typeof prompt === "string" && prompt.trim().length > 0) {
-      return prompt.trim();
+      clarificationPrompt = prompt.trim();
+      clarificationIndex = i;
+      break;
     }
   }
-  return null;
+
+  if (!clarificationPrompt) {
+    return null;
+  }
+
+  for (let i = clarificationIndex + 1; i < results.length; i += 1) {
+    if (results[i]?.success === true) {
+      return null;
+    }
+  }
+
+  return clarificationPrompt;
 }
 
 function isOverflowLikeError(error: unknown): boolean {

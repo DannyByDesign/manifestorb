@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { ModelMessage } from "ai";
 import type { RuntimeSession } from "@/server/features/ai/runtime/types";
-import { buildRuntimeMessages } from "@/server/features/ai/runtime/attempt-loop";
+import { buildRuntimeMessages, latestClarificationPrompt } from "@/server/features/ai/runtime/attempt-loop";
+import type { RuntimeToolResult } from "@/server/features/ai/tools/contracts/tool-result";
 
 function makeSession(params: {
   message: string;
@@ -78,5 +79,43 @@ describe("buildRuntimeMessages", () => {
     });
     expect(messages.some((message) => message.role === "system")).toBe(false);
     expect(messages[2]).toEqual({ role: "user", content: "show unread" });
+  });
+});
+
+describe("latestClarificationPrompt", () => {
+  it("ignores stale clarification prompts when a later tool call succeeds", () => {
+    const results: RuntimeToolResult[] = [
+      {
+        success: false,
+        clarification: {
+          kind: "invalid_fields",
+          prompt: "email_date_range_invalid",
+        },
+      },
+      {
+        success: true,
+        data: { count: 2 },
+      },
+    ];
+
+    expect(latestClarificationPrompt(results)).toBeNull();
+  });
+
+  it("returns clarification prompt when no later success exists", () => {
+    const results: RuntimeToolResult[] = [
+      {
+        success: true,
+        data: { count: 4 },
+      },
+      {
+        success: false,
+        clarification: {
+          kind: "missing_fields",
+          prompt: "email_date_range_missing",
+        },
+      },
+    ];
+
+    expect(latestClarificationPrompt(results)).toBe("email_date_range_missing");
   });
 });
