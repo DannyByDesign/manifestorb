@@ -2706,6 +2706,7 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         payload: { draftId, notBefore },
       });
 
+      let scheduledDraftSendId: string | null = null;
       try {
         const { scheduledDraftSend, created } = await (async () => {
           try {
@@ -2745,6 +2746,36 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
             throw error;
           }
         })();
+        scheduledDraftSendId = scheduledDraftSend.id;
+
+        if (scheduledDraftSend.status === "FAILED") {
+          return {
+            success: false,
+            error: "scheduled_send_failed",
+            message: "A previous scheduling attempt for this draft failed.",
+            data: {
+              scheduleId: scheduledDraftSend.id,
+              status: "FAILED",
+              sendAt: scheduledDraftSend.sendAt.toISOString(),
+              idempotencyKey: deduplicationId,
+            },
+            meta: asMetaItemCount(0),
+          };
+        }
+
+        if (scheduledDraftSend.status === "SENT") {
+          return {
+            success: true,
+            data: {
+              scheduleId: scheduledDraftSend.id,
+              status: "SENT",
+              sendAt: scheduledDraftSend.sendAt.toISOString(),
+              idempotencyKey: deduplicationId,
+            },
+            message: "This draft was already sent by the scheduled worker.",
+            meta: asMetaItemCount(1),
+          };
+        }
 
         let qstashMessageId: string | null = scheduledDraftSend.scheduledId ?? null;
         const shouldPublish =
@@ -2794,10 +2825,28 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
         };
       } catch (error) {
         const classified = classifyCapabilityError(error);
+        if (scheduledDraftSendId) {
+          await prisma.scheduledDraftSend.update({
+            where: { id: scheduledDraftSendId },
+            data: {
+              status: "FAILED",
+              lastError: classified.message,
+            },
+          }).catch(() => undefined);
+        }
         return {
           success: false,
           error: classified.code,
           message: "I couldn't schedule that send right now.",
+          data: scheduledDraftSendId
+            ? {
+                scheduleId: scheduledDraftSendId,
+                status: "FAILED",
+                idempotencyKey: deduplicationId,
+              }
+            : {
+                idempotencyKey: deduplicationId,
+              },
           meta: {
             resource: "email",
             capabilityErrorMessage: classified.message,

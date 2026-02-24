@@ -6,6 +6,7 @@ import { createEmailProvider } from "@/features/email/provider";
 import { sendDraftById } from "@/features/drafts/operations";
 
 const logger = createScopedLogger("jobs/scheduled-draft-sends");
+const ORPHAN_PENDING_GRACE_MS = 5 * 60 * 1_000;
 
 export const maxDuration = 300;
 
@@ -68,6 +69,35 @@ export async function POST(request: Request) {
 
     const now = new Date();
 
+    const orphanCutoff = new Date(now.getTime() - ORPHAN_PENDING_GRACE_MS);
+    const orphanedPendingWhere = {
+      status: "PENDING" as const,
+      scheduledId: null,
+      sendAt: { lte: orphanCutoff },
+    };
+    const orphanedPendingCount = await prisma.scheduledDraftSend.count({
+      where: orphanedPendingWhere,
+    });
+    let reconciledOrphans = 0;
+    if (!dryRun && orphanedPendingCount > 0) {
+      const reconciled = await prisma.scheduledDraftSend.updateMany({
+        where: orphanedPendingWhere,
+        data: {
+          status: "FAILED",
+          lastError:
+            "Scheduled send queue publish was not confirmed before execution deadline.",
+        },
+      });
+      reconciledOrphans = reconciled.count;
+      if (reconciled.count > 0) {
+        logger.warn("Reconciled orphaned scheduled draft sends", {
+          orphanedPendingCount,
+          reconciled: reconciled.count,
+          orphanCutoff: orphanCutoff.toISOString(),
+        });
+      }
+    }
+
     const due = await prisma.scheduledDraftSend.findMany({
       where: {
         status: includeFailed
@@ -92,6 +122,7 @@ export async function POST(request: Request) {
           sendAt: row.sendAt,
           status: row.status,
         })),
+        orphanedPendingCount,
         ...snapshot,
       });
     }
@@ -184,6 +215,7 @@ export async function POST(request: Request) {
       sent,
       failed,
       skipped,
+      reconciledOrphans,
       ...snapshot,
     });
   } catch (error) {

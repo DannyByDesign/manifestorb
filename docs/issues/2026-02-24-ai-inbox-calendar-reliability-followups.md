@@ -37,7 +37,7 @@ Legend: `OPEN`, `IN_PROGRESS`, `BLOCKED`, `DONE`
    - Status: DONE
    - Covers: send/create/update/delete retry safety
 8. WP-07 Scheduling queue transactional safety
-   - Status: OPEN
+   - Status: DONE
    - Covers: orphaned pending schedule states
 9. WP-08 Temporal/routing/evidence consolidation
    - Status: OPEN
