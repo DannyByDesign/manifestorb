@@ -684,7 +684,10 @@ export function createEmailCapabilities(capEnv: CapabilityEnvironment): EmailCap
             ? requestFilter.attachmentFilenameContains
             : undefined,
         sentByMe: mailbox === "sent" || requestFilter.sentByMe === true,
-        receivedByMe: mailbox === "inbox",
+        receivedByMe:
+          typeof requestFilter.receivedByMe === "boolean"
+            ? requestFilter.receivedByMe
+            : undefined,
         ...(resolvedBounds.after ? { after: resolvedBounds.after } : {}),
         ...(resolvedBounds.before ? { before: resolvedBounds.before } : {}),
         limit:

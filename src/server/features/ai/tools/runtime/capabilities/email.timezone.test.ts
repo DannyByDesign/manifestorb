@@ -125,12 +125,12 @@ describe("runtime email provider search routing", () => {
     expect(search).toHaveBeenCalledWith(
       expect.objectContaining({
         query: "portfolio review",
-        receivedByMe: true,
         limit: 25,
         fetchAll: true,
       }),
     );
     const arg = search.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(arg.receivedByMe).toBeUndefined();
     expect(arg.after).toBeInstanceOf(Date);
     expect(arg.before).toBeInstanceOf(Date);
   });
@@ -151,6 +151,23 @@ describe("runtime email provider search routing", () => {
         limit: 10,
       }),
     );
+  });
+
+  it("preserves explicit receivedByMe inbox filters when provided", async () => {
+    const search = vi.fn().mockResolvedValue({
+      messages: [],
+      nextPageToken: undefined,
+      totalEstimate: 0,
+    });
+    const caps = createEmailCapabilities(buildEnv({ search }));
+
+    await caps.searchInbox({
+      query: "updates",
+      receivedByMe: true,
+    });
+
+    const arg = search.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(arg.receivedByMe).toBe(true);
   });
 
   it("preserves user-turn semantic query context when explicit query/text is missing", async () => {
@@ -174,10 +191,11 @@ describe("runtime email provider search routing", () => {
     expect(search).toHaveBeenCalledWith(
       expect.objectContaining({
         query: "Show me my 10 most recent unread emails is:unread",
-        receivedByMe: true,
         limit: 10,
       }),
     );
+    const arg = search.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(arg.receivedByMe).toBeUndefined();
   });
 
   it("maps provider email messages into capability response items", async () => {
@@ -338,11 +356,12 @@ describe("runtime email provider search routing", () => {
     expect(search).toHaveBeenCalledWith(
       expect.objectContaining({
         query: "unread is:unread",
-        receivedByMe: true,
         limit: 100,
         fetchAll: false,
       }),
     );
+    const arg = search.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(arg.receivedByMe).toBeUndefined();
   });
 
   it("uses provider search for sender bulk actions without duplicate search paths", async () => {
