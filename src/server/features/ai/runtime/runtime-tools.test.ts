@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { z } from "zod";
 import { enforcePolicyForTool } from "@/server/features/ai/policy/enforcement";
-import { assembleRuntimeSessionTools } from "@/server/features/ai/runtime/mcp-tools";
+import { assembleRuntimeSessionTools } from "@/server/features/ai/runtime/runtime-tools";
 import type { RuntimeToolDefinition } from "@/server/features/ai/tools/fabric/types";
 
 vi.mock("@/server/features/ai/policy/enforcement", () => ({
@@ -38,7 +38,7 @@ function buildDefinition(): RuntimeToolDefinition {
   };
 }
 
-describe("runtime mcp tools", () => {
+describe("runtime tools", () => {
   beforeEach(() => {
     vi.mocked(enforcePolicyForTool).mockReset();
   });

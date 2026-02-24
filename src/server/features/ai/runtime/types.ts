@@ -4,7 +4,7 @@ import type { SkillCapabilities } from "@/server/features/ai/tools/runtime/capab
 import type { RuntimeSkillSnapshot } from "@/server/features/ai/skills/types";
 import type { UserPromptConfig } from "@/server/features/ai/system-prompt";
 import type { RuntimeTurnContract } from "@/server/features/ai/runtime/turn-contract";
-import type { RuntimeSessionTool } from "@/server/features/ai/runtime/mcp-tools";
+import type { RuntimeSessionTool } from "@/server/features/ai/runtime/runtime-tools";
 import type {
   ToolExecutionArtifacts,
   ToolExecutionSummary,

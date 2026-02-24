@@ -1,6 +1,6 @@
 import { type ModelMessage, type ToolSet } from "ai";
 import type { createGenerateText } from "@/server/lib/llms";
-import { toAiToolSet, type RuntimeSessionTool } from "@/server/features/ai/runtime/mcp-tools";
+import { toAiToolSet, type RuntimeSessionTool } from "@/server/features/ai/runtime/runtime-tools";
 
 type GenerateTextCall = Parameters<ReturnType<typeof createGenerateText>>[0];
 type GenerateTextWithMaxSteps = (

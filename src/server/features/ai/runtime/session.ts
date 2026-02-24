@@ -13,7 +13,7 @@ import {
   stripPluginOnlyAllowlist,
 } from "@/server/features/ai/tools/policy/tool-policy";
 import { getModel } from "@/server/lib/llms/model";
-import { assembleRuntimeSessionTools } from "@/server/features/ai/runtime/mcp-tools";
+import { assembleRuntimeSessionTools } from "@/server/features/ai/runtime/runtime-tools";
 import prisma from "@/server/db/client";
 import type { RuntimeSession, OpenWorldTurnInput } from "@/server/features/ai/runtime/types";
 import type { ToolExecutionSummary } from "@/server/features/ai/tools/fabric/types";
