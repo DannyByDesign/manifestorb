@@ -31,7 +31,7 @@ Legend: `OPEN`, `IN_PROGRESS`, `BLOCKED`, `DONE`
    - Status: DONE
    - Covers: wrong-account prevention and explicit disambiguation
 6. WP-05 Sync/backfill reliability under load
-   - Status: OPEN
+   - Status: DONE
    - Covers: Gmail 404 backfill, calendar sync token race guard
 7. WP-06 Idempotency and duplicate-action controls
    - Status: OPEN

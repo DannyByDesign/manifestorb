@@ -105,10 +105,29 @@ export async function processHistoryForUser(
     });
 
     if (historyResult.status === "expired") {
-      await updateLastSyncedHistoryId({
-        emailAccountId: validatedEmailAccount.id,
-        lastSyncedHistoryId: webhookHistoryId,
+      const backfill = await runFullBackfillFromMailboxState({
+        gmail,
+        options: {
+          emailAccount: {
+            ...validatedEmailAccount,
+            account: {
+              provider: accountProvider,
+            },
+          },
+          history: [],
+          accessToken: accountAccessToken,
+          hasAutomationRules,
+          hasAiAccess: userHasAiAccess,
+          gmail,
+        },
+        logger,
       });
+      if (backfill.completed && backfill.latestHistoryId) {
+        await updateLastSyncedHistoryId({
+          emailAccountId: validatedEmailAccount.id,
+          lastSyncedHistoryId: backfill.latestHistoryId,
+        });
+      }
       return NextResponse.json({ ok: true });
     }
 
@@ -244,6 +263,74 @@ async function processHistory(options: ProcessHistoryOptions, logger: Logger) {
     emailAccountId,
     lastSyncedHistoryId,
   });
+}
+
+async function runFullBackfillFromMailboxState(params: {
+  gmail: gmail_v1.Gmail;
+  options: ProcessHistoryOptions;
+  logger: Logger;
+}): Promise<{ completed: boolean; latestHistoryId?: string }> {
+  const { gmail, options, logger } = params;
+  const usersApi = gmail.users;
+  if (!usersApi?.getProfile || !usersApi.messages?.list) {
+    logger.warn("Backfill unavailable: Gmail profile/messages API missing");
+    return { completed: false };
+  }
+
+  const profile = await usersApi.getProfile({ userId: "me" });
+  const latestHistoryId = normalizeHistoryId(profile.data.historyId);
+  if (!latestHistoryId) {
+    logger.warn("Backfill unavailable: Gmail profile returned no historyId");
+    return { completed: false };
+  }
+
+  const seenMessageIds = new Set<string>();
+  let pageToken: string | undefined;
+  let processed = 0;
+
+  do {
+    const response = await usersApi.messages.list({
+      userId: "me",
+      maxResults: 500,
+      pageToken,
+      includeSpamTrash: false,
+    });
+
+    const messages = response.data.messages ?? [];
+    for (const message of messages) {
+      const messageId = message.id ?? "";
+      const threadId = message.threadId ?? "";
+      if (!messageId || !threadId || seenMessageIds.has(messageId)) continue;
+      seenMessageIds.add(messageId);
+
+      await processHistoryItem(
+        {
+          type: HistoryEventType.MESSAGE_ADDED,
+          item: {
+            message: {
+              id: messageId,
+              threadId,
+              labelIds: [GmailLabel.INBOX],
+            },
+          },
+        },
+        options,
+        logger.with({ backfillMessageId: messageId, backfillThreadId: threadId }),
+      );
+      processed += 1;
+    }
+
+    pageToken = response.data.nextPageToken ?? undefined;
+  } while (pageToken);
+
+  logger.info("Completed Gmail full backfill after expired history id", {
+    processedCount: processed,
+    latestHistoryId,
+  });
+  return {
+    completed: true,
+    latestHistoryId,
+  };
 }
 
 /**

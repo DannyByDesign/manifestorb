@@ -39,6 +39,7 @@ const logger = {
 describe("calendar sync/google", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    prisma.calendar.updateMany.mockResolvedValue({ count: 1 } as never);
   });
 
   it("skips watch when base url missing", async () => {
@@ -211,8 +212,11 @@ describe("calendar sync/google", () => {
     });
 
     expect(result.changed).toBe(true);
-    expect(prisma.calendar.update).toHaveBeenCalledWith({
-      where: { id: "cal-1" },
+    expect(prisma.calendar.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "cal-1",
+        googleSyncToken: "prev",
+      },
       data: { googleSyncToken: "sync-1" },
     });
   });
@@ -248,8 +252,11 @@ describe("calendar sync/google", () => {
     });
 
     expect(result.changed).toBe(false);
-    expect(prisma.calendar.update).toHaveBeenCalledWith({
-      where: { id: "cal-1" },
+    expect(prisma.calendar.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "cal-1",
+        googleSyncToken: "prev",
+      },
       data: { googleSyncToken: "sync-2" },
     });
   });
@@ -299,6 +306,56 @@ describe("calendar sync/google", () => {
     expect(upsertCalendarEventShadow).toHaveBeenCalled();
     expect(buildCalendarEventSnapshot).toHaveBeenCalled();
     expect(markCalendarEventShadowDeleted).not.toHaveBeenCalled();
+    expect(result.canonical.processed).toBe(1);
+  });
+
+  it("dedupes canonical reconciliation when replay pages contain duplicate event ids", async () => {
+    const duplicateEvent = {
+      id: "evt-dup",
+      summary: "Duplicate event",
+      status: "confirmed",
+      start: { dateTime: "2026-02-24T10:00:00.000Z" },
+      end: { dateTime: "2026-02-24T11:00:00.000Z" },
+    };
+    const list = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: {
+          items: [duplicateEvent],
+          nextPageToken: "page-2",
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          items: [duplicateEvent],
+          nextSyncToken: "sync-dup",
+        },
+      });
+    vi.mocked(getCalendarClientWithRefresh).mockResolvedValue({
+      events: { list },
+    } as never);
+
+    const result = await syncGoogleCalendarChanges({
+      calendar: {
+        id: "cal-1",
+        calendarId: "primary",
+        googleSyncToken: "prev",
+        googleChannelId: null,
+        googleResourceId: null,
+        googleChannelToken: null,
+        googleChannelExpiresAt: null,
+      },
+      connection: {
+        accessToken: "a",
+        refreshToken: "r",
+        expiresAt: null,
+        emailAccountId: "email-1",
+      },
+      logger,
+      userId: "user-1",
+    });
+
+    expect(upsertCalendarEventShadow).toHaveBeenCalledTimes(1);
     expect(result.canonical.processed).toBe(1);
   });
 

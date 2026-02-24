@@ -127,9 +127,12 @@ async function reconcileCanonicalGoogleEvents(params: {
   if (!params.userId || params.items.length === 0) return emptyCanonicalSummary();
 
   const summary = emptyCanonicalSummary();
+  const seenEventIds = new Set<string>();
   for (const item of params.items) {
     const eventId = item.id ?? undefined;
     if (!eventId) continue;
+    if (seenEventIds.has(eventId)) continue;
+    seenEventIds.add(eventId);
 
     if (item.status === "cancelled") {
       const deleted = await markCalendarEventShadowDeleted({
@@ -351,20 +354,37 @@ export async function syncGoogleCalendarChanges({
 
   const persistSyncToken = async (
     nextSyncToken: string | undefined,
-    options?: { resetOnEmpty?: boolean },
+    options?: { resetOnEmpty?: boolean; expectedSyncToken?: string | null },
   ) => {
+    const where = {
+      id: calendar.id,
+      googleSyncToken: options?.expectedSyncToken ?? calendar.googleSyncToken,
+    };
     if (nextSyncToken) {
-      await prisma.calendar.update({
-        where: { id: calendar.id },
+      const updated = await prisma.calendar.updateMany({
+        where,
         data: { googleSyncToken: nextSyncToken },
       });
+      if (updated.count === 0) {
+        logger.warn("Skipped calendar sync token update due to concurrent token change", {
+          calendarId: calendar.calendarId,
+          expectedSyncToken: where.googleSyncToken,
+          nextSyncToken,
+        });
+      }
       return;
     }
     if (options?.resetOnEmpty) {
-      await prisma.calendar.update({
-        where: { id: calendar.id },
+      const updated = await prisma.calendar.updateMany({
+        where,
         data: { googleSyncToken: null },
       });
+      if (updated.count === 0) {
+        logger.warn("Skipped calendar sync token reset due to concurrent token change", {
+          calendarId: calendar.calendarId,
+          expectedSyncToken: where.googleSyncToken,
+        });
+      }
     }
   };
 
@@ -378,7 +398,9 @@ export async function syncGoogleCalendarChanges({
       connection,
       calendarId: calendar.calendarId,
     });
-    await persistSyncToken(nextSyncToken);
+    await persistSyncToken(nextSyncToken, {
+      expectedSyncToken: calendar.googleSyncToken,
+    });
 
     if (items.length > 0 && userId) {
       import("@/server/features/calendar/scheduling/insights")
@@ -406,7 +428,10 @@ export async function syncGoogleCalendarChanges({
         connection,
         calendarId: calendar.calendarId,
       });
-      await persistSyncToken(nextSyncToken, { resetOnEmpty: true });
+      await persistSyncToken(nextSyncToken, {
+        resetOnEmpty: true,
+        expectedSyncToken: calendar.googleSyncToken,
+      });
       if (retryItems.length > 0 && userId) {
         import("@/server/features/calendar/scheduling/insights")
           .then(({ updateSchedulingInsights }) => updateSchedulingInsights(userId))
