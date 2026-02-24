@@ -26,6 +26,20 @@ const FAILED_KEY = "embedding:failed";
 const MAX_RETRIES = 3;
 const PROCESSING_TIMEOUT_MS = 60000; // 1 minute
 
+function toPgVectorLiteral(embedding: number[]): string {
+  if (embedding.length === 0) {
+    throw new Error("embedding_empty_vector");
+  }
+
+  for (const value of embedding) {
+    if (!Number.isFinite(value)) {
+      throw new Error("embedding_non_finite_value");
+    }
+  }
+
+  return `[${embedding.join(",")}]`;
+}
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -154,22 +168,24 @@ export class EmbeddingQueue {
     recordId: string,
     embedding: number[]
   ): Promise<void> {
+    const vectorLiteral = toPgVectorLiteral(embedding);
+
     if (table === "MemoryFact") {
       await prisma.$executeRaw`
         UPDATE "MemoryFact"
-        SET embedding = ${embedding}::vector
+        SET embedding = ${vectorLiteral}::vector
         WHERE id = ${recordId}
       `;
     } else if (table === "Knowledge") {
       await prisma.$executeRaw`
         UPDATE "Knowledge"
-        SET embedding = ${embedding}::vector
+        SET embedding = ${vectorLiteral}::vector
         WHERE id = ${recordId}
       `;
     } else if (table === "ConversationMessage") {
       await prisma.$executeRaw`
         UPDATE "ConversationMessage"
-        SET embedding = ${embedding}::vector
+        SET embedding = ${vectorLiteral}::vector
         WHERE id = ${recordId}
       `;
     }

@@ -11,6 +11,20 @@ import { EmbeddingService } from "@/features/memory/embeddings/service";
 // Rate limiting: OpenAI allows ~500 requests/min for embeddings
 const RATE_LIMIT_DELAY_MS = 150;
 
+function toPgVectorLiteral(embedding: number[]): string {
+  if (embedding.length === 0) {
+    throw new Error("embedding_empty_vector");
+  }
+
+  for (const value of embedding) {
+    if (!Number.isFinite(value)) {
+      throw new Error("embedding_non_finite_value");
+    }
+  }
+
+  return `[${embedding.join(",")}]`;
+}
+
 async function backfillMemoryFacts() {
   console.log("🧠 Backfilling MemoryFact embeddings...\n");
 
@@ -30,9 +44,10 @@ async function backfillMemoryFacts() {
   for (const fact of factsWithoutEmbeddings) {
     try {
       const embedding = await EmbeddingService.generateEmbedding(`${fact.key}: ${fact.value}`);
+      const vectorLiteral = toPgVectorLiteral(embedding);
       await prisma.$executeRaw`
         UPDATE "MemoryFact" 
-        SET embedding = ${embedding}::vector 
+        SET embedding = ${vectorLiteral}::vector 
         WHERE id = ${fact.id}
       `;
       console.log(`✓ MemoryFact ${fact.id}: ${fact.key}`);
@@ -68,9 +83,10 @@ async function backfillKnowledge() {
   for (const item of itemsWithoutEmbeddings) {
     try {
       const embedding = await EmbeddingService.generateEmbedding(`${item.title}\n\n${item.content}`);
+      const vectorLiteral = toPgVectorLiteral(embedding);
       await prisma.$executeRaw`
         UPDATE "Knowledge" 
-        SET embedding = ${embedding}::vector 
+        SET embedding = ${vectorLiteral}::vector 
         WHERE id = ${item.id}
       `;
       console.log(`✓ Knowledge ${item.id}: ${item.title}`);
@@ -112,9 +128,10 @@ async function backfillConversationMessages() {
     try {
       const text = `${row.role}: ${row.content}`;
       const embedding = await EmbeddingService.generateEmbedding(text);
+      const vectorLiteral = toPgVectorLiteral(embedding);
       await prisma.$executeRaw`
         UPDATE "ConversationMessage"
-        SET embedding = ${embedding}::vector
+        SET embedding = ${vectorLiteral}::vector
         WHERE id = ${row.id}
       `;
       console.log(`✓ ConversationMessage ${row.id}: ${row.role}`);
