@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { RuntimeTurnContract } from "@/server/features/ai/runtime/turn-contract";
 import {
+  requiresExplicitAccountSelection,
   resolveRuntimeToolCatalogMaxTools,
   shouldAdmitDangerousTools,
 } from "@/server/features/ai/runtime/session";
@@ -55,5 +56,28 @@ describe("shouldAdmitDangerousTools", () => {
   it("does not admit dangerous tools for read/meta turns", () => {
     expect(shouldAdmitDangerousTools(baseTurn({ requestedOperation: "read" }))).toBe(false);
     expect(shouldAdmitDangerousTools(baseTurn({ requestedOperation: "meta" }))).toBe(false);
+  });
+});
+
+describe("requiresExplicitAccountSelection", () => {
+  it("requires explicit selection for inbox/calendar/cross-surface read or mutate turns", () => {
+    expect(
+      requiresExplicitAccountSelection(baseTurn({ domain: "inbox", requestedOperation: "read" })),
+    ).toBe(true);
+    expect(
+      requiresExplicitAccountSelection(baseTurn({ domain: "calendar", requestedOperation: "mutate" })),
+    ).toBe(true);
+    expect(
+      requiresExplicitAccountSelection(baseTurn({ domain: "cross_surface", requestedOperation: "mixed" })),
+    ).toBe(true);
+  });
+
+  it("does not require explicit selection for non-inbox/calendar operations", () => {
+    expect(
+      requiresExplicitAccountSelection(baseTurn({ domain: "general", requestedOperation: "read" })),
+    ).toBe(false);
+    expect(
+      requiresExplicitAccountSelection(baseTurn({ domain: "inbox", requestedOperation: "meta" })),
+    ).toBe(false);
   });
 });

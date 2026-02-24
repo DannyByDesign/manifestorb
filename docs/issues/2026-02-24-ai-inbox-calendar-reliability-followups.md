@@ -28,7 +28,7 @@ Legend: `OPEN`, `IN_PROGRESS`, `BLOCKED`, `DONE`
    - Status: DONE
    - Covers: trash approval parity, expired approval rejection
 5. WP-04 Multi-account deterministic routing
-   - Status: OPEN
+   - Status: DONE
    - Covers: wrong-account prevention and explicit disambiguation
 6. WP-05 Sync/backfill reliability under load
    - Status: OPEN

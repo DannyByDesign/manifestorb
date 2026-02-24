@@ -3,7 +3,22 @@ import prisma, { resetPrismaMock } from "@/server/lib/__mocks__/prisma";
 
 vi.mock("@/server/db/client");
 vi.mock("@/server/lib/user-utils", () => ({
-  resolveEmailAccount: vi.fn((user: { emailAccounts: unknown[] }) => user.emailAccounts[0]),
+  resolveEmailAccount: vi.fn(
+    (
+      user: { emailAccounts: Array<{ id: string; updatedAt?: Date }> },
+      preferredEmailAccountId?: string | null,
+      options?: { allowImplicit?: boolean },
+    ) => {
+      if (preferredEmailAccountId) {
+        const explicit = user.emailAccounts.find((account) => account.id === preferredEmailAccountId);
+        if (explicit) return explicit;
+      }
+      if (user.emailAccounts.length === 1) return user.emailAccounts[0];
+      if (options?.allowImplicit === false) return null;
+      return user.emailAccounts[0];
+    },
+  ),
+  resolveEmailAccountFromMessageHint: vi.fn(() => null),
 }));
 vi.mock("@/features/privacy/service", () => ({
   PrivacyService: {
@@ -33,11 +48,13 @@ vi.mock("@/env", () => ({
   },
 }));
 
-function createLinkedAccount() {
+function createLinkedAccount(overrides?: {
+  emailAccounts?: Array<{ id: string; email: string; account: { disconnectedAt: Date | null } }>;
+}) {
   return {
     user: {
       id: "user-1",
-      emailAccounts: [
+      emailAccounts: overrides?.emailAccounts ?? [
         {
           id: "email-1",
           email: "user@example.com",
@@ -228,5 +245,46 @@ describe("ChannelRouter", () => {
     );
     expect(response[0]?.targetThreadId).toBe("111.222");
     expect(response[0]?.content).toContain("Link Your Account");
+  });
+
+  it("requires account clarification for ambiguous multi-account inbox/calendar actions", async () => {
+    prisma.account.findUnique.mockResolvedValue(
+      createLinkedAccount({
+        emailAccounts: [
+          {
+            id: "email-1",
+            email: "work@example.com",
+            account: { disconnectedAt: null },
+          },
+          {
+            id: "email-2",
+            email: "home@example.com",
+            account: { disconnectedAt: null },
+          },
+        ],
+      }),
+    );
+    prisma.conversation.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+
+    const { runOneShotAgent } = await import("@/features/channels/executor");
+    const { ChannelRouter } = await import("./router");
+    const router = new ChannelRouter();
+    const beforeCalls = vi.mocked(runOneShotAgent).mock.calls.length;
+
+    const response = await router.handleInbound({
+      provider: "slack",
+      content: "archive emails from today",
+      context: {
+        channelId: "C123",
+        userId: "U123",
+        messageId: "111.222",
+        isDirectMessage: true,
+      },
+    });
+
+    expect(vi.mocked(runOneShotAgent).mock.calls.length).toBe(beforeCalls);
+    expect(response[0]?.content).toContain("multiple connected accounts");
+    expect(response[0]?.content).toContain("work@example.com");
+    expect(response[0]?.content).toContain("home@example.com");
   });
 });

@@ -27,6 +27,41 @@ import { createDeterministicIdempotencyKey } from "@/server/lib/idempotency";
 import { getSurfacesBaseUrl } from "@/server/lib/surfaces-url";
 
 const logger = createScopedLogger("ChannelRouter");
+const ACCOUNT_ACTION_KEYWORDS = [
+    "inbox",
+    "email",
+    "mail",
+    "gmail",
+    "calendar",
+    "event",
+    "meeting",
+    "schedule",
+    "draft",
+    "send",
+    "reply",
+    "forward",
+    "archive",
+    "trash",
+    "unread",
+    "search",
+];
+
+function requiresAccountDisambiguationForMessage(content: string): boolean {
+    const normalized = content.toLowerCase();
+    return ACCOUNT_ACTION_KEYWORDS.some((keyword) => normalized.includes(keyword));
+}
+
+function formatAccountChoicePrompt(emails: string[]): string {
+    const options = emails.map((email) => `- ${email}`).join("\n");
+    return [
+        "I found multiple connected accounts. Please tell me which account to use before I read or change inbox/calendar data.",
+        "",
+        "Available accounts:",
+        options,
+        "",
+        "Reply with the account email (for example: \"use work@example.com\").",
+    ].join("\n");
+}
 
 async function resolveCanonicalConversation(params: {
     userId: string;
@@ -362,8 +397,61 @@ export class ChannelRouter {
             channelId: message.context.channelId,
             threadId: message.context.threadId ?? null,
         });
-        const { resolveEmailAccount } = await import("@/server/lib/user-utils");
-        const emailAccount = resolveEmailAccount(user, null);
+        const canonicalConversation = await resolveCanonicalConversation({
+            userId: user.id,
+            provider: message.provider,
+            channelId,
+            threadId: canonicalThreadId,
+        });
+        const lastConversationAccount = await prisma.conversationMessage.findFirst({
+            where: {
+                conversationId: canonicalConversation.id,
+                emailAccountId: { not: null },
+            },
+            orderBy: { createdAt: "desc" },
+            select: { emailAccountId: true },
+        });
+        const {
+            resolveEmailAccount,
+            resolveEmailAccountFromMessageHint,
+        } = await import("@/server/lib/user-utils");
+        const hintedEmailAccount = resolveEmailAccountFromMessageHint(
+            user,
+            message.content,
+        );
+        const preferredEmailAccountId =
+            hintedEmailAccount?.id ??
+            lastConversationAccount?.emailAccountId ??
+            null;
+        let emailAccount = resolveEmailAccount(
+            user,
+            preferredEmailAccountId,
+            { allowImplicit: false },
+        );
+
+        if (
+            !emailAccount &&
+            user.emailAccounts.length > 1 &&
+            requiresAccountDisambiguationForMessage(message.content)
+        ) {
+            return await renderResponses([{
+                targetChannelId: message.context.channelId,
+                targetThreadId: outboundThreadIdForProvider({
+                    provider: message.provider,
+                    isDirectMessage,
+                    canonicalThreadId,
+                }),
+                content: formatAccountChoicePrompt(
+                    user.emailAccounts.map((account) => account.email),
+                ),
+            }]);
+        }
+
+        emailAccount = emailAccount ?? resolveEmailAccount(
+            user,
+            preferredEmailAccountId,
+            { allowImplicit: true },
+        );
 
         if (!emailAccount) {
             logger.warn("Linked user has no email account", {
@@ -406,9 +494,9 @@ export class ChannelRouter {
 
         const queueKey = buildConversationIdentityKey({
             userId: user.id,
-            provider: message.provider,
-            channelId,
-            threadId: canonicalThreadId,
+                provider: message.provider,
+                channelId,
+                threadId: canonicalThreadId,
         });
 
         try {
@@ -418,12 +506,7 @@ export class ChannelRouter {
                 channelId,
                 threadId: canonicalThreadId,
                 execute: async () => {
-                    const conversation = await resolveCanonicalConversation({
-                        userId: user.id,
-                        provider: message.provider,
-                        channelId,
-                        threadId: canonicalThreadId,
-                    });
+                    const conversation = canonicalConversation;
                     const conversationThreadId =
                         conversation.threadId ?? canonicalThreadId;
 

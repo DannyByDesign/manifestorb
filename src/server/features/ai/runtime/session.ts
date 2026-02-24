@@ -18,6 +18,10 @@ import prisma from "@/server/db/client";
 import type { RuntimeSession, OpenWorldTurnInput } from "@/server/features/ai/runtime/types";
 import type { ToolExecutionSummary } from "@/server/features/ai/tools/fabric/types";
 import { planRuntimeTurn } from "@/server/features/ai/runtime/turn-planner";
+import {
+  resolveEmailAccount,
+  resolveEmailAccountFromMessageHint,
+} from "@/server/lib/user-utils";
 
 const SECRETARY_TOOL_PREFIXES = [
   "email.",
@@ -57,23 +61,63 @@ function stabilizeTurnForExecution(turn: RuntimeTurnContract): RuntimeTurnContra
   return next;
 }
 
+export function requiresExplicitAccountSelection(turn: RuntimeTurnContract): boolean {
+  const mutatingOrReading =
+    turn.requestedOperation === "read" ||
+    turn.requestedOperation === "mutate" ||
+    turn.requestedOperation === "mixed";
+  if (!mutatingOrReading) return false;
+
+  return (
+    turn.domain === "inbox" ||
+    turn.domain === "calendar" ||
+    turn.domain === "cross_surface"
+  );
+}
+
+function applyAccountAmbiguityGuard(
+  turn: RuntimeTurnContract,
+  accountEmails: string[],
+): RuntimeTurnContract {
+  const accountList = accountEmails.slice(0, 6).join(", ");
+  return {
+    ...turn,
+    requestedOperation: "meta",
+    routeHint: "conversation_only",
+    toolChoice: "none",
+    needsClarification: true,
+    followUpLikely: false,
+    metaConstraints: [
+      ...turn.metaConstraints,
+      "multi_account_selection_required",
+    ],
+    conversationClauses: [
+      ...turn.conversationClauses,
+      accountList.length > 0
+        ? `Ask the user which account to use before inbox/calendar actions. Available accounts: ${accountList}.`
+        : "Ask the user which account to use before inbox/calendar actions.",
+    ],
+  };
+}
+
 export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<RuntimeSession> {
   const isSubagentSession = Boolean(
     input.agentId && input.agentId.toLowerCase().includes("subagent"),
   );
 
-  const [capabilities, userAiConfig] = await Promise.all([
-    createCapabilities({
+  const rawTurn =
+    input.runtimeTurnContract ??
+    await planRuntimeTurn({
       userId: input.userId,
       emailAccountId: input.emailAccountId,
       email: input.email,
-      provider: input.providerName,
+      provider: input.provider,
+      message: input.message,
       logger: input.logger,
-      conversationId: input.conversationId,
-      currentMessage: input.message,
-      sourceEmailMessageId: input.sourceEmailMessageId,
-      sourceEmailThreadId: input.sourceEmailThreadId,
-    }),
+    });
+  const stabilizedTurn = stabilizeTurnForExecution(rawTurn);
+
+  const [userAiConfig, emailAccounts, lastConversationAccount] = await Promise.all([
     prisma.userAIConfig.findUnique({
       where: { userId: input.userId },
       select: {
@@ -92,19 +136,84 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
         toolSubagentPolicy: true,
       },
     }),
+    prisma.emailAccount.findMany({
+      where: { userId: input.userId },
+      orderBy: { updatedAt: "desc" },
+    }),
+    input.conversationId
+      ? prisma.conversationMessage.findFirst({
+          where: {
+            conversationId: input.conversationId,
+            userId: input.userId,
+            emailAccountId: { not: null },
+          },
+          orderBy: { createdAt: "desc" },
+          select: { emailAccountId: true },
+        })
+      : Promise.resolve(null),
   ]);
 
-  const rawTurn =
-    input.runtimeTurnContract ??
-    await planRuntimeTurn({
-      userId: input.userId,
-      emailAccountId: input.emailAccountId,
-      email: input.email,
-      provider: input.provider,
-      message: input.message,
-      logger: input.logger,
+  const hintedEmailAccount = resolveEmailAccountFromMessageHint(
+    { emailAccounts },
+    input.message,
+  );
+  const preferredEmailAccountId =
+    hintedEmailAccount?.id ??
+    lastConversationAccount?.emailAccountId ??
+    null;
+  const explicitAccount = resolveEmailAccount(
+    { emailAccounts },
+    preferredEmailAccountId,
+    { allowImplicit: false },
+  );
+  const accountAmbiguous = emailAccounts.length > 1 && !explicitAccount;
+  const resolvedAccount =
+    explicitAccount ??
+    resolveEmailAccount(
+      { emailAccounts },
+      input.emailAccountId,
+      { allowImplicit: true },
+    );
+
+  if (!resolvedAccount) {
+    throw new Error("No email account found for runtime session");
+  }
+
+  const resolvedInput: OpenWorldTurnInput = {
+    ...input,
+    emailAccountId: resolvedAccount.id,
+    email: resolvedAccount.email,
+  };
+
+  const needsAccountClarification =
+    accountAmbiguous && requiresExplicitAccountSelection(stabilizedTurn);
+  const turn = needsAccountClarification
+    ? applyAccountAmbiguityGuard(
+        stabilizedTurn,
+        emailAccounts.map((account) => account.email),
+      )
+    : stabilizedTurn;
+
+  if (needsAccountClarification) {
+    resolvedInput.logger.info("Runtime account selection requires clarification", {
+      userId: resolvedInput.userId,
+      conversationId: resolvedInput.conversationId ?? null,
+      candidateCount: emailAccounts.length,
+      preferredEmailAccountId: preferredEmailAccountId ?? null,
     });
-  const turn = stabilizeTurnForExecution(rawTurn);
+  }
+
+  const capabilities = await createCapabilities({
+    userId: resolvedInput.userId,
+    emailAccountId: resolvedInput.emailAccountId,
+    email: resolvedInput.email,
+    provider: resolvedInput.providerName,
+    logger: resolvedInput.logger,
+    conversationId: resolvedInput.conversationId,
+    currentMessage: resolvedInput.message,
+    sourceEmailMessageId: resolvedInput.sourceEmailMessageId,
+    sourceEmailThreadId: resolvedInput.sourceEmailThreadId,
+  });
 
   const loadedSkills = loadRuntimeSkills();
   const skillSnapshot = buildSkillPromptSnapshot({
@@ -134,12 +243,12 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
           isSubagentSession,
         }
       : undefined,
-    agentId: input.agentId,
+    agentId: resolvedInput.agentId,
     modelProvider: routingModel.provider,
     modelId: routingModel.modelName,
-    groupId: input.groupId,
-    groupChannel: input.groupChannel ?? input.provider,
-    channelId: input.channelId,
+    groupId: resolvedInput.groupId,
+    groupChannel: resolvedInput.groupChannel ?? resolvedInput.provider,
+    channelId: resolvedInput.channelId,
   });
 
   const coreToolNames = new Set(
@@ -162,7 +271,7 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
       const suffix = resolved.strippedAllowlist
         ? "Ignoring allowlist so core tools remain available. Use tools.alsoAllow for additive plugin tool enablement."
         : "These entries won't match any tool unless the plugin is enabled.";
-      input.logger.warn(`tools: ${label} allowlist contains unknown entries (${entries}). ${suffix}`);
+      resolvedInput.logger.warn(`tools: ${label} allowlist contains unknown entries (${entries}). ${suffix}`);
     }
     return expandPolicyWithPluginGroups(resolved.policy, registryContext.pluginGroups);
   };
@@ -189,12 +298,12 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
     ),
     agentPolicy: resolvePolicyLayer(
       resolvedLayers.agentPolicy,
-      input.agentId ? `agents.${input.agentId}.tools.allow` : "agent tools.allow",
+      resolvedInput.agentId ? `agents.${resolvedInput.agentId}.tools.allow` : "agent tools.allow",
     ),
     agentProviderPolicy: resolvePolicyLayer(
       resolvedLayers.agentProviderPolicy,
-      input.agentId
-        ? `agents.${input.agentId}.tools.byProvider.allow`
+      resolvedInput.agentId
+        ? `agents.${resolvedInput.agentId}.tools.byProvider.allow`
         : "agent tools.byProvider.allow",
     ),
     groupPolicy: resolvePolicyLayer(
@@ -216,8 +325,8 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
       ? null
       : await filterToolRegistryDetailed(secretaryRegistry, {
           includeDangerous: shouldAdmitDangerousTools(turn),
-          message: input.message,
-          embeddingEmail: input.email,
+          message: resolvedInput.message,
+          embeddingEmail: resolvedInput.email,
           turn,
           maxTools: resolveRuntimeToolCatalogMaxTools(turn),
           layeredPolicies,
@@ -226,7 +335,7 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
 
   const registry = filtered ? filtered.tools : [];
 
-  input.logger.info("Runtime tool catalog resolved", {
+  resolvedInput.logger.info("Runtime tool catalog resolved", {
     toolCountBefore: fullRegistry.length,
     toolCountSecretaryScope: secretaryRegistry.length,
     toolCountAfter: registry.length,
@@ -234,6 +343,7 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
     requestedOperation: turn.requestedOperation,
     toolChoice: turn.toolChoice,
     source: turn.source,
+    runtimeEmailAccountId: resolvedInput.emailAccountId,
   });
 
   const artifacts = {
@@ -247,13 +357,13 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
     registry,
     context: {
       policy: {
-        userId: input.userId,
-        emailAccountId: input.emailAccountId,
-        provider: input.provider,
-        conversationId: input.conversationId,
-        channelId: input.channelId,
-        threadId: input.threadId,
-        messageId: input.messageId,
+        userId: resolvedInput.userId,
+        emailAccountId: resolvedInput.emailAccountId,
+        provider: resolvedInput.provider,
+        conversationId: resolvedInput.conversationId,
+        channelId: resolvedInput.channelId,
+        threadId: resolvedInput.threadId,
+        messageId: resolvedInput.messageId,
         source: "runtime",
       },
       capabilities,
@@ -263,7 +373,7 @@ export async function createRuntimeSession(input: OpenWorldTurnInput): Promise<R
   });
 
   return {
-    input,
+    input: resolvedInput,
     capabilities,
     turn,
     skillSnapshot,
