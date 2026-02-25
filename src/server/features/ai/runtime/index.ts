@@ -8,6 +8,10 @@ import { withUserRuntimeConcurrencyLimit } from "@/server/features/ai/runtime/co
 import { emitRuntimeTelemetry } from "@/server/features/ai/runtime/telemetry/schema";
 import { env } from "@/env";
 import { planRuntimeTurn } from "@/server/features/ai/runtime/turn-planner";
+import {
+  canRunRuntimeTurn,
+  recordRuntimeUsage,
+} from "@/server/features/billing/usage";
 
 const EMAIL_SEARCH_TOOL_NAMES = new Set([
   "email.countUnread",
@@ -68,6 +72,34 @@ export async function runOpenWorldRuntimeTurn(
         selectedSkillIds: [],
         toolSummaries: [],
       };
+    }
+
+    const limitDecision = await canRunRuntimeTurn(input.userId);
+    if (!limitDecision.allowed) {
+      input.logger.info("openworld.runtime.limit_blocked", {
+        userId: input.userId,
+        provider: input.provider,
+        reason: limitDecision.reason ?? "unknown",
+        currentCostUsd: limitDecision.currentCostUsd,
+        hardCostCapUsd: limitDecision.hardCostCapUsd,
+        monthlyRuntimeTurns: limitDecision.monthlyRuntimeTurns,
+      });
+      return {
+        text:
+          "You've reached your monthly AI usage limit for this plan. I paused execution for now; limits reset next billing cycle.",
+        approvals: [],
+        interactivePayloads: [],
+        selectedSkillIds: [],
+        toolSummaries: [],
+      };
+    }
+    if (limitDecision.softCapExceeded) {
+      input.logger.info("openworld.runtime.limit_soft_cap_reached", {
+        userId: input.userId,
+        provider: input.provider,
+        currentCostUsd: limitDecision.currentCostUsd,
+        hardCostCapUsd: limitDecision.hardCostCapUsd,
+      });
     }
 
     const plannedTurn = await planRuntimeTurn({
@@ -177,6 +209,21 @@ export async function runOpenWorldRuntimeTurn(
         totalTokens: usage.totalTokens,
       });
     }
+
+    await recordRuntimeUsage({
+      userId: input.userId,
+      conversationId: input.conversationId,
+      provider: input.provider,
+      inputTokens: usage?.inputTokens ?? 0,
+      outputTokens: usage?.outputTokens ?? 0,
+      totalTokens: usage?.totalTokens ?? 0,
+      estimatedCostUsd: turnCostUsd ?? 0,
+      direction: "runtime_turn",
+      metadata: {
+        stopReason: execution.stopReason,
+        approvalsCount: result.approvals.length,
+      },
+    });
 
     const emailSearchCalls = result.toolSummaries.filter((summary) =>
       EMAIL_SEARCH_TOOL_NAMES.has(summary.toolName),

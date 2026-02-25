@@ -16,6 +16,7 @@ type AuthUser = {
   id: string;
   email: string;
   name: string | null;
+  workosSubject: string | null;
 };
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -30,7 +31,7 @@ async function findUserByEmailWithRetry(
     const existingUser =
       (await prisma.user.findUnique({
         where: { email: normalizedEmail },
-        select: { id: true, email: true, name: true },
+        select: { id: true, email: true, name: true, workosSubject: true },
       })) ??
       (await prisma.user.findFirst({
         where: {
@@ -39,13 +40,35 @@ async function findUserByEmailWithRetry(
             mode: "insensitive",
           },
         },
-        select: { id: true, email: true, name: true },
+        select: { id: true, email: true, name: true, workosSubject: true },
       }));
     if (existingUser) {
       return existingUser;
     }
 
     // Another concurrent request may have just created this user.
+    if (attempt < attempts - 1) {
+      await wait(40 * (attempt + 1));
+    }
+  }
+
+  return null;
+}
+
+async function findUserByWorkosSubjectWithRetry(
+  workosSubject: string,
+  attempts = 2,
+): Promise<AuthUser | null> {
+  const normalizedSubject = workosSubject.trim();
+  if (!normalizedSubject) return null;
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const existingUser = await prisma.user.findUnique({
+      where: { workosSubject: normalizedSubject },
+      select: { id: true, email: true, name: true, workosSubject: true },
+    });
+    if (existingUser) return existingUser;
+
     if (attempt < attempts - 1) {
       await wait(40 * (attempt + 1));
     }
@@ -85,13 +108,67 @@ export const auth = async (): Promise<{ user: AuthUser } | null> => {
   }
 
   const email = user.email.trim();
+  const workosSubject = typeof user.id === "string" ? user.id.trim() : "";
+  const normalizedWorkosSubject = workosSubject.length > 0 ? workosSubject : null;
+  const name = buildDisplayName(user.firstName, user.lastName);
+
+  if (normalizedWorkosSubject) {
+    const existingBySubject = await findUserByWorkosSubjectWithRetry(
+      normalizedWorkosSubject,
+      2,
+    );
+    if (existingBySubject) {
+      const shouldRefreshIdentity =
+        existingBySubject.email !== email ||
+        (existingBySubject.name ?? null) !== (name ?? null);
+
+      if (shouldRefreshIdentity) {
+        const updatedBySubject = await prisma.user.update({
+          where: { id: existingBySubject.id },
+          data: {
+            email,
+            name,
+            image: user.profilePictureUrl ?? null,
+          },
+          select: { id: true, email: true, name: true, workosSubject: true },
+        });
+        return { user: updatedBySubject };
+      }
+
+      return { user: existingBySubject };
+    }
+  }
+
   const existingUser = await findUserByEmailWithRetry(email, 2);
 
   if (existingUser) {
+    if (normalizedWorkosSubject && !existingUser.workosSubject) {
+      try {
+        const updatedByEmail = await prisma.user.update({
+          where: { id: existingUser.id },
+          data: { workosSubject: normalizedWorkosSubject },
+          select: { id: true, email: true, name: true, workosSubject: true },
+        });
+        return { user: updatedByEmail };
+      } catch (error) {
+        logger.warn("Failed to backfill workos subject for existing user", {
+          userId: existingUser.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    } else if (
+      normalizedWorkosSubject &&
+      existingUser.workosSubject &&
+      existingUser.workosSubject !== normalizedWorkosSubject
+    ) {
+      logger.warn("WorkOS subject mismatch for existing user", {
+        userId: existingUser.id,
+        existingSubject: existingUser.workosSubject,
+        incomingSubject: normalizedWorkosSubject,
+      });
+    }
     return { user: existingUser };
   }
-
-  const name = buildDisplayName(user.firstName, user.lastName);
 
   try {
     const createdUser = await prisma.user.create({
@@ -99,8 +176,9 @@ export const auth = async (): Promise<{ user: AuthUser } | null> => {
         email,
         name,
         image: user.profilePictureUrl ?? null,
+        workosSubject: normalizedWorkosSubject,
       },
-      select: { id: true, email: true, name: true },
+      select: { id: true, email: true, name: true, workosSubject: true },
     });
 
     await postSignUp({

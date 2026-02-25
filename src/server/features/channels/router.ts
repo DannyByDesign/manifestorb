@@ -21,10 +21,12 @@ import { runSerializedConversationTurn } from "./runtime";
 import { enqueueConversationMessageEmbedding } from "@/features/memory/embeddings/conversation-ingestion";
 import {
     preferredProviderAccountId,
+    recordSurfaceIdentityMapping,
     resolveSurfaceAccount,
 } from "./surface-account";
 import { createDeterministicIdempotencyKey } from "@/server/lib/idempotency";
 import { getSurfacesBaseUrl } from "@/server/lib/surfaces-url";
+import { ConversationService } from "@/features/conversations/service";
 
 const logger = createScopedLogger("ChannelRouter");
 const ACCOUNT_ACTION_KEYWORDS = [
@@ -77,7 +79,16 @@ async function resolveCanonicalConversation(params: {
     };
 
     const existing = await prisma.conversation.findFirst({ where });
-    if (existing) return existing;
+    if (existing) {
+        await ConversationService.ensureUnifiedConversationLink({
+            userId: params.userId,
+            conversationId: existing.id,
+            provider: params.provider,
+            channelId: params.channelId,
+            threadId: params.threadId,
+        });
+        return existing;
+    }
 
     const legacyWithoutThread = await prisma.conversation.findFirst({
         where: {
@@ -91,10 +102,18 @@ async function resolveCanonicalConversation(params: {
 
     if (legacyWithoutThread) {
         try {
-            return await prisma.conversation.update({
+            const updated = await prisma.conversation.update({
                 where: { id: legacyWithoutThread.id },
                 data: { threadId: params.threadId },
             });
+            await ConversationService.ensureUnifiedConversationLink({
+                userId: params.userId,
+                conversationId: updated.id,
+                provider: params.provider,
+                channelId: params.channelId,
+                threadId: params.threadId,
+            });
+            return updated;
         } catch (error) {
             const maybeCode =
                 typeof error === "object" && error !== null && "code" in error
@@ -108,7 +127,7 @@ async function resolveCanonicalConversation(params: {
     }
 
     try {
-        return await prisma.conversation.create({
+        const created = await prisma.conversation.create({
             data: {
                 userId: params.userId,
                 provider: params.provider,
@@ -116,6 +135,14 @@ async function resolveCanonicalConversation(params: {
                 threadId: params.threadId,
             },
         });
+        await ConversationService.ensureUnifiedConversationLink({
+            userId: params.userId,
+            conversationId: created.id,
+            provider: params.provider,
+            channelId: params.channelId,
+            threadId: params.threadId,
+        });
+        return created;
     } catch (error) {
         const maybeCode =
             typeof error === "object" && error !== null && "code" in error
@@ -396,6 +423,18 @@ export class ChannelRouter {
             emailAccountsCount: user.emailAccounts.length,
             channelId: message.context.channelId,
             threadId: message.context.threadId ?? null,
+        });
+        await recordSurfaceIdentityMapping({
+            userId: user.id,
+            provider: message.provider,
+            providerAccountId: message.context.userId,
+            workspaceId:
+                typeof message.context.workspaceId === "string"
+                    ? message.context.workspaceId
+                    : undefined,
+            metadata: {
+                lastChannelId: message.context.channelId,
+            },
         });
         const canonicalConversation = await resolveCanonicalConversation({
             userId: user.id,

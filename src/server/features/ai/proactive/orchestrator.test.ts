@@ -1,10 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AttentionItem } from "@/server/features/ai/proactive/types";
 
-const { userFindManyMock, scanForAttentionItemsMock, createInAppNotificationMock } = vi.hoisted(() => ({
+const {
+  userFindManyMock,
+  scanForAttentionItemsMock,
+  createInAppNotificationMock,
+  canRunProactiveAttentionMock,
+  recordProactiveAttentionRunMock,
+} = vi.hoisted(() => ({
   userFindManyMock: vi.fn(),
   scanForAttentionItemsMock: vi.fn(),
   createInAppNotificationMock: vi.fn(),
+  canRunProactiveAttentionMock: vi.fn(),
+  recordProactiveAttentionRunMock: vi.fn(),
 }));
 
 vi.mock("@/server/db/client", () => ({
@@ -21,6 +29,11 @@ vi.mock("@/server/features/ai/proactive/scanner", () => ({
 
 vi.mock("@/server/features/notifications/create", () => ({
   createInAppNotification: createInAppNotificationMock,
+}));
+
+vi.mock("@/server/features/billing/usage", () => ({
+  canRunProactiveAttention: canRunProactiveAttentionMock,
+  recordProactiveAttentionRun: recordProactiveAttentionRunMock,
 }));
 
 import { runProactiveAttentionSweep } from "@/server/features/ai/proactive/orchestrator";
@@ -51,6 +64,12 @@ describe("runProactiveAttentionSweep", () => {
       },
     ]);
     createInAppNotificationMock.mockResolvedValue({ id: "notification-1" });
+    canRunProactiveAttentionMock.mockResolvedValue({
+      allowed: true,
+      monthlyProactiveRuns: 0,
+      proactiveRunCap: 600,
+    });
+    recordProactiveAttentionRunMock.mockResolvedValue(undefined);
   });
 
   it("creates at most two proactive notifications per user", async () => {
@@ -100,5 +119,25 @@ describe("runProactiveAttentionSweep", () => {
 
     expect(createInAppNotificationMock).toHaveBeenCalledTimes(1);
     expect(stats.notificationsCreated).toBe(1);
+  });
+
+  it("skips proactive execution when usage cap blocks the user", async () => {
+    canRunProactiveAttentionMock.mockResolvedValue({
+      allowed: false,
+      reason: "proactive_run_cap",
+      monthlyProactiveRuns: 600,
+      proactiveRunCap: 600,
+    });
+    scanForAttentionItemsMock.mockResolvedValue([
+      item({ id: "blocked-1", urgency: "high" }),
+    ]);
+
+    const stats = await runProactiveAttentionSweep({
+      now: new Date("2026-02-23T14:00:00.000Z"),
+    });
+
+    expect(scanForAttentionItemsMock).not.toHaveBeenCalled();
+    expect(createInAppNotificationMock).not.toHaveBeenCalled();
+    expect(stats.skippedUsageLimit).toBe(1);
   });
 });

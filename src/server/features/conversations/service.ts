@@ -1,6 +1,17 @@
-import { Conversation, PrismaClient } from "@/generated/prisma/client";
+import { Conversation } from "@/generated/prisma/client";
 import prisma from "@/server/db/client";
 import { createHash } from "crypto";
+import { createScopedLogger } from "@/server/lib/logger";
+
+const logger = createScopedLogger("ConversationService");
+
+function isMissingTableError(error: unknown): boolean {
+    const code =
+        typeof error === "object" && error !== null && "code" in error
+            ? (error as { code?: unknown }).code
+            : undefined;
+    return code === "P2021";
+}
 
 export class ConversationService {
     static async ensureConversation({
@@ -32,27 +43,40 @@ export class ConversationService {
             }
         });
 
+        let conversation: Conversation;
+
         if (existing) {
             // If we want to enforce isPrimary logic on existing (e.g. upgrading it), we can.
             if (isPrimary && !existing.isPrimary) {
-                return prisma.conversation.update({
+                conversation = await prisma.conversation.update({
                     where: { id: existing.id },
                     data: { isPrimary: true }
                 });
+            } else {
+                conversation = existing;
             }
-            return existing;
+        } else {
+            // Create
+            conversation = await prisma.conversation.create({
+                data: {
+                    userId,
+                    provider,
+                    channelId: channelId || null,
+                    threadId: threadId || null,
+                    isPrimary
+                }
+            });
         }
 
-        // Create
-        return prisma.conversation.create({
-            data: {
-                userId,
-                provider,
-                channelId: channelId || null,
-                threadId: threadId || null,
-                isPrimary
-            }
+        await this.ensureUnifiedConversationLink({
+            userId,
+            conversationId: conversation.id,
+            provider,
+            channelId: channelId || null,
+            threadId: threadId || null,
         });
+
+        return conversation;
     }
 
     static async getPrimaryWebConversation(userId: string): Promise<Conversation> {
@@ -65,7 +89,16 @@ export class ConversationService {
             }
         });
 
-        if (existing) return existing;
+        if (existing) {
+            await this.ensureUnifiedConversationLink({
+                userId,
+                conversationId: existing.id,
+                provider: "web",
+                channelId: existing.channelId ?? "web-primary-channel",
+                threadId: existing.threadId ?? "root",
+            });
+            return existing;
+        }
 
         // Create primary web conversation
         // we use sentinel strings to ensure Postgres unique constraints work (nulls are not unique-checked)
@@ -76,6 +109,60 @@ export class ConversationService {
             threadId: "root",
             isPrimary: true
         });
+    }
+
+    static async ensureUnifiedConversationLink(params: {
+        userId: string;
+        conversationId: string;
+        provider: string;
+        channelId?: string | null;
+        threadId?: string | null;
+    }): Promise<void> {
+        try {
+            await prisma.$transaction(async (tx) => {
+                const existingLink = await tx.unifiedConversationLink.findUnique({
+                    where: { conversationId: params.conversationId },
+                    select: { id: true },
+                });
+                if (existingLink) return;
+
+                let unified = await tx.unifiedConversation.findFirst({
+                    where: { userId: params.userId, status: "active" },
+                    orderBy: { createdAt: "asc" },
+                    select: { id: true },
+                });
+
+                if (!unified) {
+                    unified = await tx.unifiedConversation.create({
+                        data: {
+                            userId: params.userId,
+                            status: "active",
+                            retentionMode: "keep_active_tail",
+                        },
+                        select: { id: true },
+                    });
+                }
+
+                await tx.unifiedConversationLink.create({
+                    data: {
+                        unifiedConversationId: unified.id,
+                        conversationId: params.conversationId,
+                        provider: params.provider,
+                        channelId: params.channelId ?? null,
+                        threadId: params.threadId ?? null,
+                    },
+                });
+            });
+        } catch (error) {
+            if (isMissingTableError(error)) {
+                return;
+            }
+            logger.warn("Failed to ensure unified conversation link", {
+                userId: params.userId,
+                conversationId: params.conversationId,
+                error: error instanceof Error ? error.message : String(error),
+            });
+        }
     }
 
     static computeDedupeKey({

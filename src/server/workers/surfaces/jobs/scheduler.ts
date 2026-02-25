@@ -14,6 +14,7 @@ import { runMemoryDecay, getDecayStats } from './decay-worker';
 import { processMemoryRecording, findUsersNeedingRecording } from './recording-worker';
 import { runCalendarReconcile } from './calendar-reconcile';
 import { runProactiveAttentionSweep } from '@/server/features/ai/proactive/orchestrator';
+import { runDataRetentionSweep } from './data-retention';
 
 // Track running jobs to prevent overlap
 let embeddingJobRunning = false;
@@ -21,6 +22,7 @@ let decayJobRunning = false;
 let recordingBackupRunning = false;
 let calendarReconcileRunning = false;
 let proactiveAttentionRunning = false;
+let dataRetentionRunning = false;
 
 /**
  * Start the background job scheduler
@@ -162,15 +164,35 @@ export function startScheduler() {
         }
     });
 
+    // Daily at 4:15 AM UTC: operational data retention sweep
+    const dataRetentionJob = Cron('15 4 * * *', async () => {
+        if (dataRetentionRunning) {
+            console.log('[Scheduler] Data retention already running, skipping');
+            return;
+        }
+
+        dataRetentionRunning = true;
+        console.log('[Scheduler] Running data retention sweep');
+
+        try {
+            await runDataRetentionSweep();
+        } catch (error) {
+            console.error('[Scheduler] Data retention sweep failed:', error);
+        } finally {
+            dataRetentionRunning = false;
+        }
+    });
+
     console.log('[Scheduler] Cron jobs registered:');
     console.log('  - Embedding queue: every 5 minutes');
     console.log('  - Memory decay: daily at 3:00 AM UTC');
     console.log('  - Memory recording backup: every 30 minutes');
     console.log('  - Calendar reconcile: every 15 minutes');
     console.log('  - Proactive attention: every 20 minutes');
+    console.log('  - Data retention: daily at 4:15 AM UTC');
 
     // Return job handles for potential cleanup
-    return { embeddingJob, decayJob, recordingBackupJob, calendarReconcileJob, proactiveAttentionJob };
+    return { embeddingJob, decayJob, recordingBackupJob, calendarReconcileJob, proactiveAttentionJob, dataRetentionJob };
 }
 
 /**

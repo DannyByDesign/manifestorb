@@ -37,6 +37,14 @@ Key behaviors:
 - delegates to core route `POST /api/jobs/memory-decay`
 - keeps local stats query for status visibility
 
+### Data Retention (`data-retention.ts`)
+
+Purpose: apply 90-day operational retention policies for conversation/approval/policy logs while preserving protected active conversation tails.
+
+Key behaviors:
+- runs `applyOperationalRetentionPolicies` directly from core services
+- uses policy table overrides when present (`DataRetentionPolicy`)
+
 ### Scheduler (`scheduler.ts`)
 
 Purpose: run periodic jobs and expose manual triggers.

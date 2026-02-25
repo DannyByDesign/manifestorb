@@ -3,6 +3,10 @@ import { createScopedLogger } from "@/server/lib/logger";
 import { scanForAttentionItems } from "@/server/features/ai/proactive/scanner";
 import type { AttentionItem } from "@/server/features/ai/proactive/types";
 import { createInAppNotification } from "@/server/features/notifications/create";
+import {
+  canRunProactiveAttention,
+  recordProactiveAttentionRun,
+} from "@/server/features/billing/usage";
 
 const logger = createScopedLogger("ai/proactive/orchestrator");
 
@@ -70,6 +74,7 @@ export interface ProactiveAttentionSweepStats {
   notificationsCreated: number;
   skippedNoItems: number;
   skippedQuietHours: number;
+  skippedUsageLimit: number;
   errors: number;
 }
 
@@ -112,11 +117,32 @@ export async function runProactiveAttentionSweep(params?: {
     notificationsCreated: 0,
     skippedNoItems: 0,
     skippedQuietHours: 0,
+    skippedUsageLimit: 0,
     errors: 0,
   };
 
   for (const user of users) {
     try {
+      const limitDecision = await canRunProactiveAttention(user.id);
+      if (!limitDecision.allowed) {
+        stats.skippedUsageLimit += 1;
+        logger.info("Skipping proactive sweep due to usage cap", {
+          userId: user.id,
+          reason: limitDecision.reason,
+          monthlyProactiveRuns: limitDecision.monthlyProactiveRuns,
+          proactiveRunCap: limitDecision.proactiveRunCap,
+        });
+        continue;
+      }
+
+      await recordProactiveAttentionRun({
+        userId: user.id,
+        metadata: {
+          source: "proactive_attention_sweep",
+          sweepAt: now.toISOString(),
+        },
+      });
+
       const items = rankAttentionItems(await scanForAttentionItems(user.id));
       if (items.length === 0) {
         stats.skippedNoItems += 1;
