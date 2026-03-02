@@ -365,8 +365,8 @@ export const simulationFragmentShader = `
       vec3 axis = normalize(seededDirection(vec2(s3, s4)) + vec3(0.29, 0.47, -0.25));
       vec3 orbitDir = rotateAroundAxis(baseDir, axis, uTime * (0.2 + 0.26 * s2) + phase);
 
-      // Keep accent particles out of the center so highlights stay distributed.
-      float targetRadius = mix(0.28, 0.98, pow(s3, 0.3333333));
+      // Radius distributed through almost the whole orb volume (not a shell).
+      float targetRadius = mix(0.08, 0.98, pow(s3, 0.3333333));
       vec3 targetPos = orbitDir * targetRadius;
 
       // Use a blueyard-like curl recipe but with per-particle offsets so this
@@ -395,16 +395,16 @@ export const simulationFragmentShader = `
       );
 
       vec3 nextPos = mix(flowA, flowB, 0.5) + randomOffset;
-      nextPos = mix(nextPos, targetPos, 0.18);
+      nextPos = mix(nextPos, targetPos, 0.12);
 
       float nextLen = max(length(nextPos), 1e-4);
-      nextPos += (nextPos / nextLen) * (targetRadius - nextLen) * 0.34;
+      nextPos += (nextPos / nextLen) * (targetRadius - nextLen) * 0.22;
 
       nextLen = length(nextPos);
       if (nextLen > 1.0) {
         nextPos *= 1.0 / nextLen;
-      } else if (nextLen < 0.12) {
-        nextPos = normalize(targetPos + vec3(1e-4)) * targetRadius * 0.9;
+      } else if (nextLen < 0.04) {
+        nextPos = normalize(targetPos + vec3(1e-4)) * 0.04;
       }
 
       gl_FragColor = vec4(nextPos, 1.0);
