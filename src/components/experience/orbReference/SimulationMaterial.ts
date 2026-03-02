@@ -1,11 +1,11 @@
 import * as THREE from "three";
 
-const hash01 = (index: number, salt: number, seed: number): number => {
-  const x = Math.sin((index + 1) * 127.1 + (salt + seed) * 311.7) * 43758.5453123;
+const hash01 = (index: number, salt: number): number => {
+  const x = Math.sin((index + 1) * 127.1 + salt * 311.7) * 43758.5453123;
   return x - Math.floor(x);
 };
 
-const getRandomData = (width: number, height: number, seed: number) => {
+const getRandomData = (width: number, height: number) => {
   const length = width * height * 4;
   const data = new Float32Array(length);
 
@@ -13,9 +13,9 @@ const getRandomData = (width: number, height: number, seed: number) => {
     const index = i / 4;
 
     // Deterministic uniform distribution inside unit sphere.
-    const u = hash01(index, 0.13, seed);
-    const v = hash01(index, 0.41, seed);
-    const w = hash01(index, 0.77, seed);
+    const u = hash01(index, 0.13);
+    const v = hash01(index, 0.41);
+    const w = hash01(index, 0.77);
 
     const r = Math.cbrt(u);
     const theta = 2.0 * Math.PI * v;
@@ -45,9 +45,8 @@ class SimulationMaterial extends THREE.ShaderMaterial {
     frequency = 0.15,
     fieldMode = 0
   ) {
-    const seed = frequency * 17.17 + fieldMode * 31.19 + size * 0.013;
     const positionsTexture = new THREE.DataTexture(
-      getRandomData(size, size, seed),
+      getRandomData(size, size),
       size,
       size,
       THREE.RGBAFormat,

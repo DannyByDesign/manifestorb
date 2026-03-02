@@ -101,16 +101,6 @@ export const fragmentShader = `
     float finalAlpha = alpha * (uAlphaBase + filament * uAlphaBoost);
     finalAlpha *= radialAlpha * depthAtten;
     finalAlpha += haloMask * (0.055 + 0.045 * uGlowBoost);
-
-    // Thick feather at the orb boundary: particles approaching the rim
-    // gradually dissolve into transparency without changing their color.
-    float featherJitter = (vSeed - 0.5) * 0.04;
-    float featherStart = 0.64 + featherJitter;
-    float featherEnd = 1.02 + featherJitter;
-    float outerFeather = 1.0 - smoothstep(featherStart, featherEnd, vRadial);
-    outerFeather = pow(outerFeather, 1.35);
-    finalAlpha *= outerFeather;
-
     finalAlpha = clamp(finalAlpha, 0.0, 1.0);
 
     gl_FragColor = vec4(col, finalAlpha);
@@ -359,24 +349,24 @@ export const simulationFragmentShader = `
     vec3 pos = texture2D(positions, vUv).rgb;
     vec3 curlPos = texture2D(positions, vUv).rgb;
 
-    float texSize = max(uTextureSize, 1.0);
-    vec2 cell = floor(vUv * texSize);
-    float idx = cell.x + cell.y * texSize;
-    float s1 = hash11(idx * 0.73 + 0.19);
-    float s2 = hash11(idx * 1.31 + 2.17);
-    float s3 = hash11(idx * 1.9 + 5.7);
-    float s4 = hash11(idx * 2.43 + 7.11);
-
     // Keep bright accent particles on an independent flow field so they
     // spread through the orb volume without collapsing into the main stream.
     if (uFieldMode > 0.5) {
+      float texSize = max(uTextureSize, 1.0);
+      vec2 cell = floor(vUv * texSize);
+      float idx = cell.x + cell.y * texSize;
+      float s1 = hash11(idx * 0.73 + 0.19);
+      float s2 = hash11(idx * 1.31 + 2.17);
+      float s3 = hash11(idx * 1.9 + 5.7);
+      float s4 = hash11(idx * 2.43 + 7.11);
+
       float phase = s1 * 6.28318530718;
       vec3 baseDir = seededDirection(vec2(s1, s2));
       vec3 axis = normalize(seededDirection(vec2(s3, s4)) + vec3(0.29, 0.47, -0.25));
       vec3 orbitDir = rotateAroundAxis(baseDir, axis, uTime * (0.2 + 0.26 * s2) + phase);
 
-      // Radius distributed through almost the whole orb volume (not a shell).
-      float targetRadius = mix(0.08, 0.98, pow(s3, 0.3333333));
+      // Keep accent particles out of the center so highlights stay distributed.
+      float targetRadius = mix(0.28, 0.98, pow(s3, 0.3333333));
       vec3 targetPos = orbitDir * targetRadius;
 
       // Use a blueyard-like curl recipe but with per-particle offsets so this
@@ -405,36 +395,30 @@ export const simulationFragmentShader = `
       );
 
       vec3 nextPos = mix(flowA, flowB, 0.5) + randomOffset;
-      nextPos = mix(nextPos, targetPos, 0.12);
+      nextPos = mix(nextPos, targetPos, 0.18);
 
       float nextLen = max(length(nextPos), 1e-4);
-      nextPos += (nextPos / nextLen) * (targetRadius - nextLen) * 0.22;
+      nextPos += (nextPos / nextLen) * (targetRadius - nextLen) * 0.34;
 
       nextLen = length(nextPos);
       if (nextLen > 1.0) {
         nextPos *= 1.0 / nextLen;
-      } else if (nextLen < 0.04) {
-        nextPos = normalize(targetPos + vec3(1e-4)) * 0.04;
+      } else if (nextLen < 0.12) {
+        nextPos = normalize(targetPos + vec3(1e-4)) * targetRadius * 0.9;
       }
 
       gl_FragColor = vec4(nextPos, 1.0);
       return;
     }
 
-    // Strong fluid movement for the main orb field, while preserving an even
-    // volumetric spread via per-particle distributed anchors.
+    // Gentle movement for particles
     float freq1 = uFrequency * (0.9 + sin(pos.x * 4.0) * 0.2);
     float freq2 = uFrequency * (1.1 + cos(pos.y * 4.0) * 0.3);
     float freq3 = uFrequency * (1.3 + sin(pos.z * 4.0) * 0.4);
 
-    vec3 flowA = curlNoise(
-      pos * freq1 + vec3(uTime * 0.08, -uTime * 0.07, uTime * 0.09)
-    );
-    vec3 flowB = curlNoise(
-      curlPos * freq2 + vec3(-uTime * 0.09, uTime * 0.1, -uTime * 0.08)
-    );
-    flowB += curlNoise(curlPos * freq3) * 0.15;
-    vec3 fluid = mix(flowA, flowB, 0.5);
+    pos = curlNoise(pos * freq1 + uTime * 0.08);
+    curlPos = curlNoise(curlPos * freq2 + uTime * 0.1);
+    curlPos += curlNoise(curlPos * freq3) * 0.15;
 
     vec3 randomOffset = vec3(
       sin(pos.y * 8.0 + uTime) * 0.08,
@@ -442,29 +426,6 @@ export const simulationFragmentShader = `
       sin(pos.x * 8.0 + uTime * 0.9) * 0.08
     );
 
-    float phase = s1 * 6.28318530718;
-    vec3 anchorBase = seededDirection(vec2(s1, s2));
-    vec3 anchorAxis = normalize(seededDirection(vec2(s3, s4)) + vec3(0.23, 0.39, -0.17));
-    vec3 anchorDir = rotateAroundAxis(anchorBase, anchorAxis, uTime * (0.18 + 0.22 * s2) + phase);
-    float targetRadius = mix(0.1, 0.98, pow(s3, 0.3333333));
-    vec3 targetPos = anchorDir * targetRadius;
-
-    vec3 nextPos = pos;
-    nextPos += fluid * (0.11 + 0.04 * s4);
-    nextPos += randomOffset * 0.28;
-    nextPos = mix(nextPos, targetPos, 0.028);
-
-    float nextLen = max(length(nextPos), 1e-4);
-    vec3 radialDir = nextPos / nextLen;
-    nextPos += radialDir * (targetRadius - nextLen) * 0.24;
-
-    nextLen = length(nextPos);
-    if (nextLen > 1.0) {
-      nextPos *= 1.0 / nextLen;
-    } else if (nextLen < 0.03) {
-      nextPos = normalize(targetPos + vec3(1e-4)) * 0.03;
-    }
-
-    gl_FragColor = vec4(nextPos, 1.0);
+    gl_FragColor = vec4(mix(pos, curlPos, 0.5) + randomOffset, 1.0);
   }
 `;
