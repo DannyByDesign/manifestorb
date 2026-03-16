@@ -12,6 +12,7 @@ export const fragmentShader = `
   uniform float uClumpFlatten;
   uniform float uFieldMode;
   uniform float uGlowBoost;
+  uniform float uOuterGlowMirror;
 
   varying float vSeed;
   varying float vRadial;
@@ -94,6 +95,17 @@ export const fragmentShader = `
     vec3 haloGlow = vec3(1.0, 0.99, 1.0) * haloMask * whiteGlowStrength;
     col += haloGlow;
 
+    // Mirror the softer outside sparkle treatment for the palest interior
+    // accent particles without lifting the darker interior layers.
+    float luminance = dot(col, vec3(0.2126, 0.7152, 0.0722));
+    float lightMask = smoothstep(0.78, 1.18, luminance) * uOuterGlowMirror;
+    float sparkle = sin(gl_PointCoord.x * 12.0) * sin(gl_PointCoord.y * 12.0) * 0.08;
+    float innerCore = 1.0 - smoothstep(0.0, 0.34, r);
+    float outerAura = 1.0 - smoothstep(0.12, 0.5, r);
+    vec3 mirroredGlow = mix(col, vec3(1.0), 0.58) * outerAura * (0.2 + 0.28 * uGlowBoost);
+    col += mirroredGlow * lightMask;
+    col += vec3(sparkle) * lightMask * (0.32 + 0.2 * innerCore);
+
     float radialFade = 1.0 - smoothstep(0.78, 1.05, vRadial);
     float outerAlpha = smoothstep(0.55, 1.05, vRadial);
     float radialAlpha = mix(mix(0.58, 1.0, radialFade), mix(0.36, 1.0, outerAlpha), uFieldMode);
@@ -101,6 +113,7 @@ export const fragmentShader = `
     float finalAlpha = alpha * (uAlphaBase + filament * uAlphaBoost);
     finalAlpha *= radialAlpha * depthAtten;
     finalAlpha += haloMask * (0.055 + 0.045 * uGlowBoost);
+    finalAlpha += outerAura * lightMask * (0.06 + 0.05 * uGlowBoost);
     finalAlpha = clamp(finalAlpha, 0.0, 1.0);
 
     gl_FragColor = vec4(col, finalAlpha);

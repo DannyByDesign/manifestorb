@@ -1,79 +1,66 @@
-# Amodel
+# Orb Glow
 
-Product: an AI assistant for email and calendar workflows (drafting, scheduling, triage, automation) with explicit approval gates for sensitive actions.
+A small Next.js prototype for an interactive glowing orb scene built with React Three Fiber and custom GLSL shaders.
 
-Repo: a Next.js app in `src/` plus co-located long-running workers in `src/server/workers/` for chat platforms (Slack/Discord/Telegram) and background jobs.
+## Stack
 
-## Quick Start (Local Dev)
+- Next.js 16
+- React 19
+- Three.js
+- React Three Fiber
+- React Three Drei
+- React Three Postprocessing
+- Zustand
+- Tailwind CSS 4
 
-Prereqs:
-- Bun (this repo pins `bun@1.2.2` in `package.json`)
-- Docker (for Postgres + Redis in `docker-compose.dev.yml`)
+## What Is In This Repo
 
-1. Start local dependencies:
-   ```bash
-   docker compose -f docker-compose.dev.yml up -d
-   ```
+The current app is intentionally small:
 
-2. Configure environment:
-   - Create `/.env.local` for Next.js local dev.
-   - Fill required values from the authoritative schema in `src/env.ts`.
+- [src/app/page.tsx](/Users/dannywang/Desktop/Orb-glow/src/app/page.tsx) mounts one full-screen scene
+- [src/components/experience/Scene.tsx](/Users/dannywang/Desktop/Orb-glow/src/components/experience/Scene.tsx) builds the lighting, orb layers, and bloom pass
+- [src/components/experience/orbReference/shaders.ts](/Users/dannywang/Desktop/Orb-glow/src/components/experience/orbReference/shaders.ts) contains the particle and simulation shaders
+- [src/lib/capabilities.ts](/Users/dannywang/Desktop/Orb-glow/src/lib/capabilities.ts) and [src/lib/stores/qualityStore.ts](/Users/dannywang/Desktop/Orb-glow/src/lib/stores/qualityStore.ts) handle capability detection and quality defaults
 
-3. Install deps (also runs Prisma generate via `postinstall`):
-   ```bash
-   bun install
-   ```
+## Getting Started
 
-4. Run migrations:
-   ```bash
-   bunx prisma migrate dev --schema prisma/schema.prisma
-   ```
+Prerequisite:
 
-5. Run the web app:
-   ```bash
-   bun run dev
-   ```
+- Bun 1.2.2 or newer
 
-Optional: run web app + worker together:
+Install dependencies:
+
 ```bash
-bun run dev:stack
+bun install
 ```
 
-## Common Commands
+Run the dev server:
 
 ```bash
-# Build / run
+bun run dev
+```
+
+Build for production:
+
+```bash
 bun run build
-bun run start
-bun run start:all
-bun run worker
-
-# Lint
-bun run lint
-bun run lint:changed
-
-# Tests
-bun run test-ai
-bun run test:integration
-bun run test:e2e
-bun run test:evals
 ```
 
-## Configuration
+Start the production server:
 
-- Environment variable schema: `src/env.ts`
-- Worker internals: `src/server/workers/README.md`
+```bash
+bun run start
+```
 
-Notes:
-- WorkOS AuthKit is the auth system for the web app (`src/server/auth`).
-- The main assistant model defaults to Google Gemini (see `DEFAULT_LLM_*` in `src/env.ts`).
-- Embeddings use OpenAI (`text-embedding-3-small`). `OPENAI_API_KEY` is required for memory/knowledge semantic search and for runtime semantic tool ranking when enabled.
-- Web search tools are optional. Enable/configure via `TOOL_WEB_SEARCH_*` in `src/env.ts` and provide a provider key (for example `BRAVE_API_KEY` or `PERPLEXITY_API_KEY`).
+Lint the project:
 
-## Where To Look
+```bash
+bun run lint
+```
 
-- Source map / entrypoints: `src/ARCHITECTURE_MAP.md`
-- Architecture overview: `ARCHITECTURE.md`
-- Backend organization: `src/server/README.md`
-- Surfaces worker details: `src/server/workers/surfaces/README.md`
-- E2E test harness: `tests/e2e/README.md`
+## Notes
+
+- The app uses the Next.js App Router.
+- The scene is client-rendered because the WebGL canvas, shaders, and capability detection depend on the browser.
+- Shader source currently lives inline in TypeScript rather than in separate `.glsl` files.
+- `dev` uses webpack by default; `dev:turbo` is available if you want to try Turbopack locally.

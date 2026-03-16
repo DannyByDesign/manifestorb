@@ -24,6 +24,7 @@ type FboParticlesProps = {
   clumpFlatten?: number;
   fieldMode?: number;
   glowBoost?: number;
+  outerGlowMirror?: number;
   color1?: string;
   color2?: string;
   color3?: string;
@@ -46,6 +47,7 @@ export function FBOParticles({
   clumpFlatten = 0,
   fieldMode = 0,
   glowBoost = 0,
+  outerGlowMirror = 0,
   color1 = "#866AD6",
   color2 = "#E6B2A0",
   color3 = "#F4EFF7",
@@ -114,6 +116,7 @@ export function FBOParticles({
       uClumpFlatten: { value: clumpFlatten },
       uFieldMode: { value: fieldMode },
       uGlowBoost: { value: glowBoost },
+      uOuterGlowMirror: { value: outerGlowMirror },
     }),
     [
       pointSize,
@@ -130,6 +133,7 @@ export function FBOParticles({
       clumpFlatten,
       fieldMode,
       glowBoost,
+      outerGlowMirror,
     ]
   );
 

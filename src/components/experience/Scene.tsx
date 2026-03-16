@@ -27,6 +27,7 @@ type ParticleConfig = {
   clumpFlatten?: number;
   fieldMode?: number;
   glowBoost?: number;
+  outerGlowMirror?: number;
   colors: [string, string, string, string];
 };
 
@@ -36,7 +37,7 @@ function SceneContent() {
   const particleConfigs = useMemo<ParticleConfig[]>(
     () => [
       {
-        size: 360,
+        size: 300,
         pointSize: 16,
         frequency: 0.24,
         blending: THREE.NormalBlending,
@@ -48,7 +49,7 @@ function SceneContent() {
         colors: ["#694EB4", "#9C66CA", "#694EB4", "#9C66CA"],
       },
       {
-        size: 240,
+        size: 200,
         pointSize: 16,
         frequency: 0.26,
         blending: THREE.NormalBlending,
@@ -60,9 +61,9 @@ function SceneContent() {
         colors: ["#4C13EB", "#8A13F0", "#4C13EB", "#8A13F0"],
       },
       {
-        size: 25,
-        pointSize: 18,
-        frequency: 1.2,
+        size: 20,
+        pointSize: 20,
+        frequency: 0.48,
         blending: THREE.AdditiveBlending,
         densityBias: -0.55,
         alphaBase: 0.4,
@@ -72,12 +73,13 @@ function SceneContent() {
         clumpFlatten: 1.0,
         fieldMode: 1,
         glowBoost: 1.36,
+        outerGlowMirror: 1.0,
         colors: ["#B37FD3", "#B07DD4", "#EEDDEE", "#F3D2CE"],
       },
       {
-        size: 11,
-        pointSize: 10,
-        frequency: 1.0,
+        size: 9,
+        pointSize: 12,
+        frequency: 0.38,
         blending: THREE.AdditiveBlending,
         densityBias: -0.55,
         alphaBase: 0.38,
@@ -87,6 +89,7 @@ function SceneContent() {
         clumpFlatten: 1.0,
         fieldMode: 1,
         glowBoost: 1.36,
+        outerGlowMirror: 1.0,
         colors: ["#B07DD4", "#EEDDEE", "#ECF1FA", "#F3C8C0"],
       },
     ],
@@ -130,6 +133,7 @@ function SceneContent() {
             clumpFlatten={config.clumpFlatten ?? 0}
             fieldMode={config.fieldMode ?? 0}
             glowBoost={config.glowBoost ?? 0}
+            outerGlowMirror={config.outerGlowMirror ?? 0}
             simVertShader={simulationVertexShader}
             simFragShader={simulationFragmentShader}
           />
