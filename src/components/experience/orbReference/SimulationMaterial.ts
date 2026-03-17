@@ -35,6 +35,26 @@ const getRandomData = (width: number, height: number) => {
   return data;
 };
 
+const getTextureData = (
+  width: number,
+  height: number,
+  textureType: THREE.TextureDataType
+) => {
+  const data = getRandomData(width, height);
+
+  if (textureType !== THREE.HalfFloatType) {
+    return data;
+  }
+
+  const halfFloatData = new Uint16Array(data.length);
+
+  for (let index = 0; index < data.length; index += 1) {
+    halfFloatData[index] = THREE.DataUtils.toHalfFloat(data[index]);
+  }
+
+  return halfFloatData;
+};
+
 class SimulationMaterial extends THREE.ShaderMaterial {
   private readonly positionsTexture: THREE.DataTexture;
 
@@ -43,14 +63,15 @@ class SimulationMaterial extends THREE.ShaderMaterial {
     vertexShader: string,
     fragmentShader: string,
     frequency = 0.15,
-    fieldMode = 0
+    fieldMode = 0,
+    textureType: THREE.TextureDataType = THREE.FloatType
   ) {
     const positionsTexture = new THREE.DataTexture(
-      getRandomData(size, size),
+      getTextureData(size, size, textureType),
       size,
       size,
       THREE.RGBAFormat,
-      THREE.FloatType
+      textureType
     );
     positionsTexture.needsUpdate = true;
 

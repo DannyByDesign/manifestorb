@@ -9,10 +9,10 @@ import { ExternalSparkles2D } from "@/components/experience/orbReference/Externa
 import { FBOParticles } from "@/components/experience/orbReference/FboParticles";
 import { RimSparkleSphere } from "@/components/experience/orbReference/Sphere";
 import {
-  simulationFragmentShader,
-  simulationVertexShader,
-} from "@/components/experience/orbReference/shaders";
-import { SCENE_VISUAL_CONFIG } from "@/lib/capabilities";
+  detectCapabilities,
+  logCapabilities,
+  SCENE_VISUAL_CONFIG,
+} from "@/lib/capabilities";
 
 type ParticleConfig = {
   size: number;
@@ -267,13 +267,12 @@ function SceneRig({
 function SceneContent({
   viewState,
   reducedMotion,
+  simTextureType,
 }: {
   viewState: ViewState;
   reducedMotion: boolean;
+  simTextureType: "float" | "half-float";
 }) {
-
-  const particleConfigs = useMemo(() => PARTICLE_CONFIGS, []);
-
   return (
     <>
       <ambientLight intensity={0.8} />
@@ -297,7 +296,7 @@ function SceneContent({
           segments={SCENE_VISUAL_CONFIG.sphereSegments}
         />
 
-        {particleConfigs.map((config) => (
+        {PARTICLE_CONFIGS.map((config) => (
           <FBOParticles
             key={`${config.size}-${config.frequency}`}
             size={config.size}
@@ -318,8 +317,7 @@ function SceneContent({
             glowBoost={config.glowBoost ?? 0}
             outerGlowMirror={config.outerGlowMirror ?? 0}
             colorBoost={config.colorBoost ?? 0}
-            simVertShader={simulationVertexShader}
-            simFragShader={simulationFragmentShader}
+            simTextureType={simTextureType}
           />
         ))}
 
@@ -351,6 +349,14 @@ export function Scene({
   viewState = "revealed",
   reducedMotion = false,
 }: SceneProps) {
+  const capabilities = useMemo(() => detectCapabilities(), []);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === "development") {
+      logCapabilities();
+    }
+  }, []);
+
   return (
     <div className="h-full w-full">
       <Canvas
@@ -365,7 +371,11 @@ export function Scene({
         style={{ width: "100%", height: "100%" }}
       >
         <Suspense fallback={null}>
-          <SceneContent viewState={viewState} reducedMotion={reducedMotion} />
+          <SceneContent
+            viewState={viewState}
+            reducedMotion={reducedMotion}
+            simTextureType={capabilities.preferredSimTextureType}
+          />
         </Suspense>
       </Canvas>
     </div>

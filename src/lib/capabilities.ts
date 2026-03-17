@@ -114,7 +114,11 @@ export function detectCapabilities(): Capabilities {
     hasFloatRT,
     hasHalfFloatRT,
     hasFloatLinear,
-    preferredSimTextureType: hasFloatRT ? "float" : "half-float",
+    preferredSimTextureType: hasFloatRT
+      ? "float"
+      : hasHalfFloatRT
+        ? "half-float"
+        : "float",
   };
 
   return cachedCapabilities;
@@ -128,6 +132,9 @@ export function logCapabilities(): void {
   console.log("Float RT:", caps.hasFloatRT ? "yes" : "no");
   console.log("Half Float RT:", caps.hasHalfFloatRT ? "yes" : "no");
   console.log("Float Linear:", caps.hasFloatLinear ? "yes" : "no");
-  console.log("Preferred Simulation Texture:", caps.preferredSimTextureType);
+  console.log(
+    "Preferred Simulation Texture:",
+    caps.preferredSimTextureType
+  );
   console.groupEnd();
 }

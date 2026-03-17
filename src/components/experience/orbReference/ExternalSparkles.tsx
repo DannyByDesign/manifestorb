@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 
@@ -45,14 +45,12 @@ export function ExternalSparkles2D({
     const phases = new Float32Array(count);
     const sizes = new Float32Array(count);
     const angles = new Float32Array(count);
-    const distances = new Float32Array(count);
 
     for (let i = 0; i < count; i++) {
       const angle = hash01(i, 0.13) * Math.PI * 2;
       angles[i] = angle;
 
       const initialDist = circleRadius + 0.05 + hash01(i, 0.29) * 0.1;
-      distances[i] = initialDist;
 
       const x = Math.cos(angle) * initialDist;
       const y = Math.sin(angle) * initialDist;
@@ -67,7 +65,7 @@ export function ExternalSparkles2D({
       sizes[i] = 0.05 + hash01(i, 0.83) * 0.18;
     }
 
-    return { positions, speeds, phases, sizes, angles, distances };
+    return { positions, speeds, phases, sizes, angles };
   }, [count, circleRadius]);
 
   const colors = useMemo(() => {
@@ -99,9 +97,14 @@ export function ExternalSparkles2D({
     geom.setAttribute("phase", new THREE.BufferAttribute(particleData.phases, 1));
     geom.setAttribute("pSize", new THREE.BufferAttribute(particleData.sizes, 1));
     geom.setAttribute("angle", new THREE.BufferAttribute(particleData.angles, 1));
-    geom.setAttribute("initialDist", new THREE.BufferAttribute(particleData.distances, 1));
     return geom;
   }, [particleData, colors]);
+
+  useEffect(() => {
+    return () => {
+      geometry.dispose();
+    };
+  }, [geometry]);
 
   const vertexShader = `
     uniform float uTime;
@@ -115,7 +118,6 @@ export function ExternalSparkles2D({
     attribute float phase;
     attribute float pSize;
     attribute float angle;
-    attribute float initialDist;
     attribute vec3 color;
 
     varying vec3 vColor;

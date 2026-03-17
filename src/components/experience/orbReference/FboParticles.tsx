@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFBO } from "@react-three/drei";
 import { createPortal, useFrame } from "@react-three/fiber";
 
 import SimulationMaterial from "@/components/experience/orbReference/SimulationMaterial";
+import type { SimTextureType } from "@/lib/capabilities";
 import {
   fragmentShader,
   simulationFragmentShader,
@@ -35,8 +36,7 @@ type FboParticlesProps = {
   color3?: string;
   color4?: string;
   frequency?: number;
-  simVertShader?: string;
-  simFragShader?: string;
+  simTextureType: SimTextureType;
 };
 
 export function FBOParticles({
@@ -63,10 +63,11 @@ export function FBOParticles({
   color3 = "#F4EFF7",
   color4 = "#DDF6FF",
   frequency = 0.15,
-  simVertShader = simulationVertexShader,
-  simFragShader = simulationFragmentShader,
+  simTextureType,
 }: FboParticlesProps) {
   const points = useRef<THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial>>(null);
+  const simulationTextureType =
+    simTextureType === "half-float" ? THREE.HalfFloatType : THREE.FloatType;
 
   const scene = useMemo(() => new THREE.Scene(), []);
   const camera = useMemo(
@@ -74,8 +75,17 @@ export function FBOParticles({
     []
   );
 
-  const [simulationMaterial] = useState(
-    () => new SimulationMaterial(size, simVertShader, simFragShader, frequency, fieldMode)
+  const simulationMaterial = useMemo(
+    () =>
+      new SimulationMaterial(
+        size,
+        simulationVertexShader,
+        simulationFragmentShader,
+        frequency,
+        fieldMode,
+        simulationTextureType
+      ),
+    [fieldMode, frequency, simulationTextureType, size]
   );
   const simulationUniformsRef = useRef(simulationMaterial.uniforms);
 
@@ -84,7 +94,7 @@ export function FBOParticles({
     magFilter: THREE.NearestFilter,
     format: THREE.RGBAFormat,
     stencilBuffer: false,
-    type: THREE.FloatType,
+    type: simulationTextureType,
     depthBuffer: false,
   });
 
@@ -201,8 +211,8 @@ export function FBOParticles({
           depthTest={false}
           toneMapped
           dithering
-          fragmentShader={fragmentShader}
           vertexShader={vertexShader}
+          fragmentShader={fragmentShader}
           uniforms={uniforms}
           transparent
         />
