@@ -28,6 +28,7 @@ type ParticleConfig = {
   fieldMode?: number;
   glowBoost?: number;
   outerGlowMirror?: number;
+  colorBoost?: number;
   colors: [string, string, string, string];
 };
 
@@ -42,6 +43,7 @@ const PARTICLE_CONFIGS: ParticleConfig[] = [
     alphaBoost: 0.5,
     darkTintMix: 0.78,
     depthFade: 0.33,
+    colorBoost: 0.4,
     colors: ["#694EB4", "#9C66CA", "#694EB4", "#9C66CA"],
   },
   {
@@ -54,6 +56,7 @@ const PARTICLE_CONFIGS: ParticleConfig[] = [
     alphaBoost: 0.48,
     darkTintMix: 0.7,
     depthFade: 0.31,
+    colorBoost: 0.48,
     colors: ["#4C13EB", "#8A13F0", "#4C13EB", "#8A13F0"],
   },
   {
@@ -70,6 +73,7 @@ const PARTICLE_CONFIGS: ParticleConfig[] = [
     fieldMode: 1,
     glowBoost: 1.36,
     outerGlowMirror: 1.0,
+    colorBoost: 0.32,
     colors: ["#B37FD3", "#B07DD4", "#EEDDEE", "#F3D2CE"],
   },
   {
@@ -86,6 +90,7 @@ const PARTICLE_CONFIGS: ParticleConfig[] = [
     fieldMode: 1,
     glowBoost: 1.36,
     outerGlowMirror: 1.0,
+    colorBoost: 0.36,
     colors: ["#B07DD4", "#EEDDEE", "#ECF1FA", "#F3C8C0"],
   },
 ];
@@ -134,6 +139,7 @@ function SceneContent() {
             fieldMode={config.fieldMode ?? 0}
             glowBoost={config.glowBoost ?? 0}
             outerGlowMirror={config.outerGlowMirror ?? 0}
+            colorBoost={config.colorBoost ?? 0}
             simVertShader={simulationVertexShader}
             simFragShader={simulationFragmentShader}
           />

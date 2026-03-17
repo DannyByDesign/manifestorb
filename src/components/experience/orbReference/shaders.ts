@@ -13,6 +13,7 @@ export const fragmentShader = `
   uniform float uFieldMode;
   uniform float uGlowBoost;
   uniform float uOuterGlowMirror;
+  uniform float uColorBoost;
   uniform float uEdgeFeatherStart;
   uniform float uEdgeFeatherEnd;
   uniform float uEdgeBlurBoost;
@@ -97,6 +98,9 @@ export const fragmentShader = `
     col *= centerBoost * (0.88 + radialGradient * 0.28);
 
     float haloMask = smoothstep(0.62, 0.0, r);
+    float interiorGlow = (0.16 + radialGradient * 0.24 + haloMask * 0.18) * uColorBoost;
+    col *= 1.0 + interiorGlow;
+    col = mix(col, vec3(1.0, 0.98, 1.0), interiorGlow * 0.14);
     float whiteGlowStrength = 0.22 + (0.22 * uGlowBoost);
     vec3 haloGlow = vec3(1.0, 0.99, 1.0) * haloMask * whiteGlowStrength;
     col += haloGlow;

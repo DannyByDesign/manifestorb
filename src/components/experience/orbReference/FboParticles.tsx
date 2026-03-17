@@ -25,6 +25,7 @@ type FboParticlesProps = {
   fieldMode?: number;
   glowBoost?: number;
   outerGlowMirror?: number;
+  colorBoost?: number;
   edgeFeatherStart?: number;
   edgeFeatherEnd?: number;
   edgeBlurBoost?: number;
@@ -52,6 +53,7 @@ export function FBOParticles({
   fieldMode = 0,
   glowBoost = 0,
   outerGlowMirror = 0,
+  colorBoost = 0,
   edgeFeatherStart = 0.78,
   edgeFeatherEnd = 1.02,
   edgeBlurBoost = 0.24,
@@ -125,6 +127,7 @@ export function FBOParticles({
       uFieldMode: { value: fieldMode },
       uGlowBoost: { value: glowBoost },
       uOuterGlowMirror: { value: outerGlowMirror },
+      uColorBoost: { value: colorBoost },
       uEdgeFeatherStart: { value: edgeFeatherStart },
       uEdgeFeatherEnd: { value: edgeFeatherEnd },
       uEdgeBlurBoost: { value: edgeBlurBoost },
@@ -146,6 +149,7 @@ export function FBOParticles({
       fieldMode,
       glowBoost,
       outerGlowMirror,
+      colorBoost,
       edgeFeatherStart,
       edgeFeatherEnd,
       edgeBlurBoost,
