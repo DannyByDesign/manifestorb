@@ -236,6 +236,10 @@ export function SceneStage() {
                       onKeyDown={handleSwipeKeyDown}
                       className="pointer-events-auto relative flex h-14 w-full touch-none select-none items-center overflow-hidden rounded-full border border-white/55 bg-white/[0.06] shadow-[0_18px_44px_rgba(79,45,156,0.14)] outline-none backdrop-blur-[2px] focus-visible:ring-4 focus-visible:ring-white/45"
                     >
+                      <span className="pointer-events-none absolute inset-0 z-[1] flex translate-x-[0.65rem] items-center justify-center px-16 text-center text-[0.68rem] font-semibold uppercase tracking-[0.3em] text-white sm:translate-x-[0.78rem] sm:text-[0.72rem]">
+                        SLIDE TO ENTER SCENE
+                      </span>
+
                       <motion.div
                         aria-hidden="true"
                         className="absolute bottom-[1px] left-[1px] top-[1px] rounded-full bg-[var(--button-lavender)] shadow-[0_20px_48px_rgba(123,76,255,0.32)]"
@@ -247,7 +251,7 @@ export function SceneStage() {
 
                       <motion.span
                         aria-hidden="true"
-                        className="absolute left-0 top-1/2 flex -translate-y-1/2 items-center justify-center rounded-full border border-[color:var(--button-lavender)] bg-[color:var(--button-lavender)] shadow-[0_14px_28px_rgba(102,76,176,0.34)]"
+                        className="absolute left-0 top-1/2 z-10 flex -translate-y-1/2 items-center justify-center rounded-full border border-[color:var(--button-lavender)] bg-[color:var(--button-lavender)] shadow-[0_14px_28px_rgba(102,76,176,0.34)]"
                         style={{
                           x: handleOffset,
                           width: TRACK_HANDLE_SIZE,
