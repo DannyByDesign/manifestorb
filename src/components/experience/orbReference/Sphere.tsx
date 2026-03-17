@@ -6,6 +6,10 @@ type RimSparkleSphereProps = ComponentProps<"mesh"> & {
   colorA?: string;
   colorB?: string;
   colorC?: string;
+  hazeColor?: string;
+  hazeOpacity?: number;
+  hazeInnerStop?: number;
+  hazeSoftness?: number;
   segments?: [number, number];
 };
 
@@ -13,6 +17,10 @@ export function RimSparkleSphere({
   colorA = "#F4EFF7",
   colorB = "#E6B2A0",
   colorC = "#866AD6",
+  hazeColor = "#B895FF",
+  hazeOpacity = 0.32,
+  hazeInnerStop = 0.66,
+  hazeSoftness = 0.12,
   segments = [128, 128],
   ...props
 }: RimSparkleSphereProps) {
@@ -24,6 +32,10 @@ export function RimSparkleSphere({
       uColorA: { value: new THREE.Color(colorA) },
       uColorB: { value: new THREE.Color(colorB) },
       uColorC: { value: new THREE.Color(colorC) },
+      uHazeColor: { value: new THREE.Color(hazeColor) },
+      uHazeOpacity: { value: hazeOpacity },
+      uHazeInnerStop: { value: hazeInnerStop },
+      uHazeSoftness: { value: hazeSoftness },
       uGlow: { value: 1.0 },
       uRimWidth: { value: 1.05 },
       uRimPower: { value: 3.5 },
@@ -31,7 +43,7 @@ export function RimSparkleSphere({
       uGrain: { value: 0.03 },
       uOpacity: { value: 1.0 },
     }),
-    [colorA, colorB, colorC]
+    [colorA, colorB, colorC, hazeColor, hazeOpacity, hazeInnerStop, hazeSoftness]
   );
 
   const vertex = /* glsl */ `
@@ -58,6 +70,10 @@ export function RimSparkleSphere({
     uniform vec3 uColorA;
     uniform vec3 uColorB;
     uniform vec3 uColorC;
+    uniform vec3 uHazeColor;
+    uniform float uHazeOpacity;
+    uniform float uHazeInnerStop;
+    uniform float uHazeSoftness;
     uniform float uGlow;
     uniform float uRimWidth;
     uniform float uRimPower;
@@ -120,6 +136,11 @@ export function RimSparkleSphere({
         (1.0 - coreMask);
       blendedColor = mix(blendedColor, uColorB, inwardPeach * 0.28);
 
+      float hazeStart = max(uHazeInnerStop - uHazeSoftness, 0.0);
+      float hazeMask = smoothstep(hazeStart, 1.0, radialGradient);
+      float hazeMix = clamp(pow(hazeMask, 0.8) * uHazeOpacity, 0.0, 1.0);
+      blendedColor = mix(blendedColor, uHazeColor, hazeMix);
+
       float viewGradient = clamp(dot(lightingN, V) * 0.5 + 0.5, 0.0, 1.0);
       blendedColor = mix(blendedColor, blendedColor * 1.1, viewGradient * 0.3);
 
@@ -146,7 +167,11 @@ export function RimSparkleSphere({
     mat.current.uniforms.uColorA.value.set(colorA);
     mat.current.uniforms.uColorB.value.set(colorB);
     mat.current.uniforms.uColorC.value.set(colorC);
-  }, [colorA, colorB, colorC]);
+    mat.current.uniforms.uHazeColor.value.set(hazeColor);
+    mat.current.uniforms.uHazeOpacity.value = hazeOpacity;
+    mat.current.uniforms.uHazeInnerStop.value = hazeInnerStop;
+    mat.current.uniforms.uHazeSoftness.value = hazeSoftness;
+  }, [colorA, colorB, colorC, hazeColor, hazeOpacity, hazeInnerStop, hazeSoftness]);
 
   useFrame((_, dt) => {
     if (!mat.current) return;

@@ -116,6 +116,10 @@ function SceneContent() {
           colorA="#B37FD3"
           colorB="#E8A0B1"
           colorC="#9C66CA"
+          hazeColor="#C3A0FF"
+          hazeOpacity={0.44}
+          hazeInnerStop={0.14}
+          hazeSoftness={0.32}
           segments={SCENE_VISUAL_CONFIG.sphereSegments}
         />
 
