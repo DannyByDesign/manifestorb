@@ -95,8 +95,6 @@ const PARTICLE_CONFIGS: ParticleConfig[] = [
   },
 ];
 
-type ViewState = "intro" | "revealed";
-
 type ScenePose = {
   position: [number, number, number];
   rotation: [number, number, number];
@@ -109,7 +107,7 @@ type CameraPose = {
 };
 
 type SceneProps = {
-  viewState?: ViewState;
+  sceneProgress?: number;
   reducedMotion?: boolean;
 };
 
@@ -120,9 +118,9 @@ const REVEALED_POSE: ScenePose = {
 };
 
 const INTRO_POSE: ScenePose = {
-  position: [0, -7.75, 1.4],
-  rotation: [-0.02, 0.03, 0],
-  scale: 3.55,
+  position: [7.6, -6.1, 1.7],
+  rotation: [-0.03, 0.08, -0.02],
+  scale: 3.95,
 };
 
 const REVEALED_CAMERA: CameraPose = {
@@ -131,23 +129,58 @@ const REVEALED_CAMERA: CameraPose = {
 };
 
 const INTRO_CAMERA: CameraPose = {
-  position: [0, 0.55, 14],
-  fov: 40,
+  position: [0, 0.35, 14],
+  fov: 40.5,
 };
 
+function interpolateTuple(
+  from: readonly number[],
+  to: readonly number[],
+  progress: number
+) {
+  return from.map((value, index) => THREE.MathUtils.lerp(value, to[index] ?? value, progress));
+}
+
+function resolvePose(progress: number): ScenePose {
+  return {
+    position: interpolateTuple(
+      INTRO_POSE.position,
+      REVEALED_POSE.position,
+      progress
+    ) as ScenePose["position"],
+    rotation: interpolateTuple(
+      INTRO_POSE.rotation,
+      REVEALED_POSE.rotation,
+      progress
+    ) as ScenePose["rotation"],
+    scale: THREE.MathUtils.lerp(INTRO_POSE.scale, REVEALED_POSE.scale, progress),
+  };
+}
+
+function resolveCamera(progress: number): CameraPose {
+  return {
+    position: interpolateTuple(
+      INTRO_CAMERA.position,
+      REVEALED_CAMERA.position,
+      progress
+    ) as CameraPose["position"],
+    fov: THREE.MathUtils.lerp(INTRO_CAMERA.fov, REVEALED_CAMERA.fov, progress),
+  };
+}
+
 function SceneRig({
-  viewState,
+  sceneProgress,
   reducedMotion,
   children,
 }: React.PropsWithChildren<{
-  viewState: ViewState;
+  sceneProgress: number;
   reducedMotion: boolean;
 }>) {
   const groupRef = useRef<THREE.Group>(null);
   const { camera } = useThree();
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const targetPose = viewState === "revealed" ? REVEALED_POSE : INTRO_POSE;
-  const targetCamera = viewState === "revealed" ? REVEALED_CAMERA : INTRO_CAMERA;
+  const targetPose = resolvePose(sceneProgress);
+  const targetCamera = resolveCamera(sceneProgress);
   const hasInitialisedRef = useRef(false);
 
   useEffect(() => {
@@ -265,11 +298,11 @@ function SceneRig({
 }
 
 function SceneContent({
-  viewState,
+  sceneProgress,
   reducedMotion,
   simTextureType,
 }: {
-  viewState: ViewState;
+  sceneProgress: number;
   reducedMotion: boolean;
   simTextureType: "float" | "half-float";
 }) {
@@ -282,7 +315,7 @@ function SceneContent({
       <pointLight position={[3, -2, 8]} intensity={0.3} color="#ECF1FA" />
       <directionalLight position={[-8, 5, 5]} intensity={0.7} color="#866AD6" />
 
-      <SceneRig viewState={viewState} reducedMotion={reducedMotion}>
+      <SceneRig sceneProgress={sceneProgress} reducedMotion={reducedMotion}>
         <RimSparkleSphere
           position={[0, 0, 0]}
           renderOrder={20}
@@ -346,7 +379,7 @@ function SceneContent({
 }
 
 export function Scene({
-  viewState = "revealed",
+  sceneProgress = 1,
   reducedMotion = false,
 }: SceneProps) {
   const capabilities = useMemo(() => detectCapabilities(), []);
@@ -372,7 +405,7 @@ export function Scene({
       >
         <Suspense fallback={null}>
           <SceneContent
-            viewState={viewState}
+            sceneProgress={sceneProgress}
             reducedMotion={reducedMotion}
             simTextureType={capabilities.preferredSimTextureType}
           />
