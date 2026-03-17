@@ -2,7 +2,7 @@ import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 
-import { useMouse } from "@/components/experience/orbReference/useMouse";
+import { usePointerState } from "@/components/experience/orbReference/useMouse";
 
 type ExternalSparkles2DProps = {
   count?: number;
@@ -31,10 +31,12 @@ export function ExternalSparkles2D({
   returnSpeed = 0.03,
 }: ExternalSparkles2DProps) {
   const points = useRef<THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial>>(null);
-  const mouse = useMouse();
+  const pointer = usePointerState();
+  const lastPointerVersion = useRef(-1);
 
   const plane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), []);
   const raycaster = useMemo(() => new THREE.Raycaster(), []);
+  const pointerNdc = useMemo(() => new THREE.Vector2(), []);
   const mouseWorldPos = useMemo(() => new THREE.Vector3(), []);
 
   const particleData = useMemo(() => {
@@ -62,7 +64,7 @@ export function ExternalSparkles2D({
 
       speeds[i] = 0.2 + hash01(i, 0.47) * 0.4;
       phases[i] = hash01(i, 0.61) * Math.PI * 2;
-      sizes[i] = 0.03 + hash01(i, 0.83) * 0.15;
+      sizes[i] = 0.05 + hash01(i, 0.83) * 0.18;
     }
 
     return { positions, speeds, phases, sizes, angles, distances };
@@ -75,9 +77,9 @@ export function ExternalSparkles2D({
       const rand = hash01(i, 1.17);
       let c = new THREE.Color(color3);
 
-      if (rand < 0.33) {
+      if (rand < 0.24) {
         c = new THREE.Color(color1);
-      } else if (rand < 0.66) {
+      } else if (rand < 0.72) {
         c = new THREE.Color(color2);
       }
 
@@ -149,7 +151,7 @@ export function ExternalSparkles2D({
       vec4 mvPosition = modelViewMatrix * vec4(newPosition, 1.0);
       gl_Position = projectionMatrix * mvPosition;
 
-      float size = pSize * 2.0;
+      float size = pSize * 2.45;
       gl_PointSize = size * (150.0 / (1.0 + length(mvPosition.xyz)));
     }
   `;
@@ -192,15 +194,19 @@ export function ExternalSparkles2D({
 
     points.current.material.uniforms.uTime.value = state.clock.elapsedTime;
 
-    raycaster.setFromCamera(new THREE.Vector2(mouse.x, mouse.y), state.camera);
+    if (pointer.current.version === lastPointerVersion.current) return;
 
-    if (raycaster.ray.intersectPlane(plane, mouseWorldPos)) {
-      if (points.current.parent) {
-        points.current.parent.worldToLocal(mouseWorldPos);
-      }
+    lastPointerVersion.current = pointer.current.version;
+    pointerNdc.set(pointer.current.x, pointer.current.y);
+    raycaster.setFromCamera(pointerNdc, state.camera);
 
-      points.current.material.uniforms.uMouse.value.set(mouseWorldPos.x, mouseWorldPos.y);
+    if (!raycaster.ray.intersectPlane(plane, mouseWorldPos)) return;
+
+    if (points.current.parent) {
+      points.current.parent.worldToLocal(mouseWorldPos);
     }
+
+    points.current.material.uniforms.uMouse.value.set(mouseWorldPos.x, mouseWorldPos.y);
   });
 
   return (

@@ -161,7 +161,6 @@ export function FBOParticles({
     points.current.material.uniforms.uTime.value = clock.elapsedTime;
 
     simulationUniformsRef.current.uTime.value = clock.elapsedTime;
-    points.current.material.needsUpdate = true;
   });
 
   return (

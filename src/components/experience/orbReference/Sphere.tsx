@@ -6,12 +6,14 @@ type RimSparkleSphereProps = ComponentProps<"mesh"> & {
   colorA?: string;
   colorB?: string;
   colorC?: string;
+  segments?: [number, number];
 };
 
 export function RimSparkleSphere({
   colorA = "#F4EFF7",
   colorB = "#E6B2A0",
   colorC = "#866AD6",
+  segments = [128, 128],
   ...props
 }: RimSparkleSphereProps) {
   const mat = useRef<THREE.ShaderMaterial>(null);
@@ -153,7 +155,7 @@ export function RimSparkleSphere({
 
   return (
     <mesh {...props}>
-      <sphereGeometry args={[1.5, 256, 256]} />
+      <sphereGeometry args={[1.5, segments[0], segments[1]]} />
       <shaderMaterial
         ref={mat}
         uniforms={uniforms}

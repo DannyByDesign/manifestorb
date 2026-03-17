@@ -1,106 +1,49 @@
-/**
- * Quality State Store (Zustand)
- * 
- * Global state for quality tier settings.
- * Initialize once on app mount, then read from any component.
- */
+import { create } from "zustand";
 
-import { create } from 'zustand';
 import {
-    type QualityTier,
-    type Capabilities,
-    getQualityTier,
-    detectCapabilities,
-    logCapabilities
-} from '../capabilities';
+  type Capabilities,
+  detectCapabilities,
+  logCapabilities,
+  SCENE_VISUAL_CONFIG,
+} from "@/lib/capabilities";
 
-interface QualityState {
-    /** Current quality tier settings */
-    tier: QualityTier;
-    /** Raw capability detection results */
-    capabilities: Capabilities;
-    /** Whether initialization has completed */
-    initialized: boolean;
-    /** Initialize quality detection (call once on mount) */
-    initialize: () => void;
+interface RenderState {
+  capabilities: Capabilities;
+  initialized: boolean;
+  initialize: () => void;
 }
-
-// Default tier (conservative, SSR-safe)
-const defaultTier: QualityTier = {
-    simRes: 256,
-    particleCount: 50_000,
-    dprClamp: 1.5,
-    useFluidSim: false,
-    tierName: 'mobile',
-};
 
 const defaultCapabilities: Capabilities = {
-    hasWebGL2: false,
-    hasFloatRT: false,
-    hasFloatLinear: false,
-    isMobile: true,
-    canUseFluidSim: false,
+  hasWebGL2: false,
+  hasFloatRT: false,
+  hasHalfFloatRT: false,
+  hasFloatLinear: false,
+  preferredSimTextureType: "float",
 };
 
-export const useQualityStore = create<QualityState>((set, get) => ({
-    tier: defaultTier,
-    capabilities: defaultCapabilities,
-    initialized: false,
+export const useRenderStore = create<RenderState>((set, get) => ({
+  capabilities: defaultCapabilities,
+  initialized: false,
 
-    initialize: () => {
-        // Only initialize once
-        if (get().initialized) return;
+  initialize: () => {
+    if (get().initialized || typeof window === "undefined") return;
 
-        // Guard for SSR
-        if (typeof window === 'undefined') return;
+    const capabilities = detectCapabilities();
 
-        const capabilities = detectCapabilities();
-        const tier = getQualityTier();
+    if (process.env.NODE_ENV === "development") {
+      logCapabilities();
+    }
 
-        // Log capabilities in development
-        if (process.env.NODE_ENV === 'development') {
-            logCapabilities();
-        }
-
-        set({ tier, capabilities, initialized: true });
-    },
+    set({ capabilities, initialized: true });
+  },
 }));
 
-// ============================================
-// Selector Hooks
-// ============================================
-
-/** Get full quality tier object */
-export function useQuality(): QualityTier {
-    return useQualityStore((state) => state.tier);
+export function useRenderCapabilities(): Capabilities {
+  return useRenderStore((state) => state.capabilities);
 }
 
-/** Get specific quality value */
-export function useQualityValue<K extends keyof QualityTier>(key: K): QualityTier[K] {
-    return useQualityStore((state) => state.tier[key]);
+export function useRenderInitialized(): boolean {
+  return useRenderStore((state) => state.initialized);
 }
 
-/** Get raw capabilities */
-export function useCapabilities(): Capabilities {
-    return useQualityStore((state) => state.capabilities);
-}
-
-/** Check if fluid sim is enabled */
-export function useFluidSimEnabled(): boolean {
-    return useQualityStore((state) => state.tier.useFluidSim);
-}
-
-/** Get particle count for current tier */
-export function useParticleCount(): number {
-    return useQualityStore((state) => state.tier.particleCount);
-}
-
-/** Get simulation resolution for current tier */
-export function useSimResolution(): number {
-    return useQualityStore((state) => state.tier.simRes);
-}
-
-/** Get clamped DPR for current tier */
-export function useDPRClamp(): number {
-    return useQualityStore((state) => state.tier.dprClamp);
-}
+export { SCENE_VISUAL_CONFIG };

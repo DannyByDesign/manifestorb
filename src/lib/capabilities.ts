@@ -1,180 +1,133 @@
-/**
- * WebGL Capability Detection + Quality Tier System
- * 
- * Detects device capabilities and returns appropriate quality presets.
- * Mobile-first: defaults to conservative settings, upgrades if capable.
- */
-
-export interface QualityTier {
-    /** Fluid simulation resolution (square) */
-    simRes: number;
-    /** Number of particles in halo system */
-    particleCount: number;
-    /** Device pixel ratio clamp */
-    dprClamp: number;
-    /** Whether to use GPU fluid simulation (vs curl noise fallback) */
-    useFluidSim: boolean;
-    /** Tier name for debugging */
-    tierName: 'mobile' | 'desktop';
-}
+export type SimTextureType = "half-float" | "float";
 
 export interface Capabilities {
-    /** WebGL2 context available */
-    hasWebGL2: boolean;
-    /** Float render targets supported (EXT_color_buffer_float) */
-    hasFloatRT: boolean;
-    /** Linear filtering on float textures (OES_texture_float_linear) */
-    hasFloatLinear: boolean;
-    /** Detected as mobile device */
-    isMobile: boolean;
-    /** Fluid simulation is viable (requires WebGL2 + float RT + linear filtering) */
-    canUseFluidSim: boolean;
+  hasWebGL2: boolean;
+  hasFloatRT: boolean;
+  hasHalfFloatRT: boolean;
+  hasFloatLinear: boolean;
+  preferredSimTextureType: SimTextureType;
 }
 
-// ============================================
-// Detection Functions
-// ============================================
-
-function detectWebGL2(): boolean {
-    if (typeof document === 'undefined') return false;
-
-    const canvas = document.createElement('canvas');
-    const gl = canvas.getContext('webgl2');
-    return gl !== null;
+export interface BloomParams {
+  intensity: number;
+  luminanceThreshold: number;
+  luminanceSmoothing: number;
+  radius: number;
 }
 
-function detectFloatRenderTarget(gl: WebGL2RenderingContext): boolean {
-    // EXT_color_buffer_float enables rendering to float textures
-    const ext = gl.getExtension('EXT_color_buffer_float');
-    return ext !== null;
+export interface SceneVisualConfig {
+  dpr: number;
+  innerParticleLayerSizes: [number, number, number, number];
+  outerSparkleCount: number;
+  sphereSegments: [number, number];
+  bloom: BloomParams;
 }
 
-function detectFloatLinearFiltering(gl: WebGL2RenderingContext): boolean {
-    // OES_texture_float_linear enables linear filtering on float textures
-    const ext = gl.getExtension('OES_texture_float_linear');
-    return ext !== null;
+export const SCENE_VISUAL_CONFIG: SceneVisualConfig = {
+  dpr: 2,
+  innerParticleLayerSizes: [240, 160, 16, 7],
+  outerSparkleCount: 2400,
+  sphereSegments: [256, 256],
+  bloom: {
+    intensity: 0.36,
+    luminanceThreshold: 0.38,
+    luminanceSmoothing: 0.2,
+    radius: 0.5,
+  },
+};
+
+function cleanupRenderTargetTest(
+  gl: WebGL2RenderingContext,
+  framebuffer: WebGLFramebuffer | null,
+  texture: WebGLTexture | null
+) {
+  if (framebuffer) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.deleteFramebuffer(framebuffer);
+  }
+
+  if (texture) {
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.deleteTexture(texture);
+  }
 }
 
-function detectMobile(): boolean {
-    if (typeof navigator === 'undefined') return true; // Default to mobile (conservative)
+function testRenderTargetSupport(
+  gl: WebGL2RenderingContext,
+  internalFormat: number,
+  type: number
+): boolean {
+  const texture = gl.createTexture();
+  const framebuffer = gl.createFramebuffer();
 
-    // Touch points heuristic
-    const hasTouch = navigator.maxTouchPoints > 0;
+  if (!texture || !framebuffer) {
+    cleanupRenderTargetTest(gl, framebuffer, texture);
+    return false;
+  }
 
-    // User agent heuristics for iOS/Android
-    const ua = navigator.userAgent.toLowerCase();
-    const isIOS = /iphone|ipad|ipod/.test(ua);
-    const isAndroid = /android/.test(ua);
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, internalFormat, 1, 1, 0, gl.RGBA, type, null);
 
-    // Fallback: screen width heuristic
-    const isSmallScreen = typeof window !== 'undefined' && window.innerWidth < 768;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
 
-    return hasTouch && (isIOS || isAndroid || isSmallScreen);
+  const isSupported = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+  cleanupRenderTargetTest(gl, framebuffer, texture);
+  return isSupported;
 }
-
-// ============================================
-// Main Detection Function
-// ============================================
 
 let cachedCapabilities: Capabilities | null = null;
 
 export function detectCapabilities(): Capabilities {
-    // Return cached result if available
-    if (cachedCapabilities) return cachedCapabilities;
+  if (cachedCapabilities) return cachedCapabilities;
 
-    // Default conservative capabilities (SSR-safe)
-    const defaults: Capabilities = {
-        hasWebGL2: false,
-        hasFloatRT: false,
-        hasFloatLinear: false,
-        isMobile: true,
-        canUseFluidSim: false,
-    };
+  const defaults: Capabilities = {
+    hasWebGL2: false,
+    hasFloatRT: false,
+    hasHalfFloatRT: false,
+    hasFloatLinear: false,
+    preferredSimTextureType: "float",
+  };
 
-    if (typeof document === 'undefined') {
-        return defaults;
-    }
+  if (typeof document === "undefined") {
+    return defaults;
+  }
 
-    // Create temporary canvas for detection
-    const canvas = document.createElement('canvas');
-    const gl = canvas.getContext('webgl2');
+  const canvas = document.createElement("canvas");
+  const gl = canvas.getContext("webgl2");
 
-    if (!gl) {
-        cachedCapabilities = defaults;
-        return defaults;
-    }
+  if (!gl) {
+    cachedCapabilities = defaults;
+    return defaults;
+  }
 
-    const hasWebGL2 = true;
-    const hasFloatRT = detectFloatRenderTarget(gl);
-    const hasFloatLinear = detectFloatLinearFiltering(gl);
-    const isMobile = detectMobile();
+  const hasFloatLinear = gl.getExtension("OES_texture_float_linear") !== null;
+  const hasFloatRT = testRenderTargetSupport(gl, gl.RGBA32F, gl.FLOAT);
+  const hasHalfFloatRT = testRenderTargetSupport(gl, gl.RGBA16F, gl.HALF_FLOAT);
 
-    // Fluid sim requires ALL of: WebGL2, float render targets, and linear filtering
-    const canUseFluidSim = hasWebGL2 && hasFloatRT && hasFloatLinear;
+  cachedCapabilities = {
+    hasWebGL2: true,
+    hasFloatRT,
+    hasHalfFloatRT,
+    hasFloatLinear,
+    preferredSimTextureType: hasFloatRT ? "float" : "half-float",
+  };
 
-    cachedCapabilities = {
-        hasWebGL2,
-        hasFloatRT,
-        hasFloatLinear,
-        isMobile,
-        canUseFluidSim,
-    };
-
-    return cachedCapabilities;
+  return cachedCapabilities;
 }
-
-// ============================================
-// Quality Tier Presets
-// ============================================
-
-const MOBILE_TIER: QualityTier = {
-    simRes: 256,
-    particleCount: 50_000,
-    dprClamp: 1.5,
-    useFluidSim: false, // Will be overridden based on capabilities
-    tierName: 'mobile',
-};
-
-const DESKTOP_TIER: QualityTier = {
-    simRes: 512,
-    particleCount: 150_000,
-    dprClamp: 2.0,
-    useFluidSim: true, // Will be overridden based on capabilities
-    tierName: 'desktop',
-};
-
-export function getQualityTier(): QualityTier {
-    const caps = detectCapabilities();
-
-    // Select base tier
-    const baseTier = caps.isMobile ? { ...MOBILE_TIER } : { ...DESKTOP_TIER };
-
-    // Override fluid sim based on actual capability
-    baseTier.useFluidSim = caps.canUseFluidSim;
-
-    return baseTier;
-}
-
-// ============================================
-// Debug Logging
-// ============================================
 
 export function logCapabilities(): void {
-    const caps = detectCapabilities();
-    const tier = getQualityTier();
+  const caps = detectCapabilities();
 
-    console.group('🎮 WebGL Capabilities');
-    console.log('WebGL2:', caps.hasWebGL2 ? '✅' : '❌');
-    console.log('Float RT:', caps.hasFloatRT ? '✅' : '❌');
-    console.log('Float Linear:', caps.hasFloatLinear ? '✅' : '❌');
-    console.log('Mobile:', caps.isMobile ? '📱' : '🖥️');
-    console.log('Fluid Sim:', caps.canUseFluidSim ? '✅ enabled' : '❌ using curl noise');
-    console.groupEnd();
-
-    console.group('📊 Quality Tier');
-    console.log('Tier:', tier.tierName);
-    console.log('Sim Res:', tier.simRes);
-    console.log('Particles:', tier.particleCount.toLocaleString());
-    console.log('DPR Clamp:', tier.dprClamp);
-    console.groupEnd();
+  console.group("WebGL Capabilities");
+  console.log("WebGL2:", caps.hasWebGL2 ? "yes" : "no");
+  console.log("Float RT:", caps.hasFloatRT ? "yes" : "no");
+  console.log("Half Float RT:", caps.hasHalfFloatRT ? "yes" : "no");
+  console.log("Float Linear:", caps.hasFloatLinear ? "yes" : "no");
+  console.log("Preferred Simulation Texture:", caps.preferredSimTextureType);
+  console.groupEnd();
 }
