@@ -13,6 +13,10 @@ export const fragmentShader = `
   uniform float uFieldMode;
   uniform float uGlowBoost;
   uniform float uOuterGlowMirror;
+  uniform float uEdgeFeatherStart;
+  uniform float uEdgeFeatherEnd;
+  uniform float uEdgeBlurBoost;
+  uniform float uEdgeFadeStrength;
 
   varying float vSeed;
   varying float vRadial;
@@ -24,9 +28,11 @@ export const fragmentShader = `
     vec2 p = gl_PointCoord - vec2(0.5);
     float r = length(p);
 
-    float edge = 0.46;
+    float edgeProximity = smoothstep(uEdgeFeatherStart, uEdgeFeatherEnd, vRadial);
+    float edge = mix(0.46, 0.56 + uEdgeBlurBoost * 0.08, edgeProximity);
     float aa = fwidth(r);
-    float alpha = 1.0 - smoothstep(edge - aa, edge + aa, r);
+    float featherAA = aa * mix(1.0, 2.2 + uEdgeBlurBoost * 0.8, edgeProximity);
+    float alpha = 1.0 - smoothstep(edge - featherAA, edge + featherAA, r);
     if (alpha <= 0.0) discard;
 
     vec3 orbDir = normalize(vParticlePos + vec3(1e-5));
@@ -109,9 +115,10 @@ export const fragmentShader = `
     float radialFade = 1.0 - smoothstep(0.78, 1.05, vRadial);
     float outerAlpha = smoothstep(0.55, 1.05, vRadial);
     float radialAlpha = mix(mix(0.58, 1.0, radialFade), mix(0.36, 1.0, outerAlpha), uFieldMode);
+    float edgeAlpha = 1.0 - edgeProximity * uEdgeFadeStrength;
     float depthAtten = 1.0 - vDepth * uDepthFade;
     float finalAlpha = alpha * (uAlphaBase + filament * uAlphaBoost);
-    finalAlpha *= radialAlpha * depthAtten;
+    finalAlpha *= radialAlpha * depthAtten * edgeAlpha;
     finalAlpha += haloMask * (0.055 + 0.045 * uGlowBoost);
     finalAlpha += outerAura * lightMask * (0.06 + 0.05 * uGlowBoost);
     finalAlpha = clamp(finalAlpha, 0.0, 1.0);
@@ -128,6 +135,9 @@ export const vertexShader = `
   uniform float uPointSize;
   uniform float uPositionScale;
   uniform float uClumpFlatten;
+  uniform float uEdgeFeatherStart;
+  uniform float uEdgeFeatherEnd;
+  uniform float uEdgeBlurBoost;
 
   varying float vSeed;
   varying float vRadial;
@@ -170,6 +180,7 @@ export const vertexShader = `
     size *= variation;
     size *= mix(0.76, 1.28, mix(vClump, 0.5, uClumpFlatten));
     size *= mix(1.08, 0.74, smoothstep(0.35, 1.05, vRadial));
+    size *= mix(1.0, 1.0 + uEdgeBlurBoost, smoothstep(uEdgeFeatherStart, uEdgeFeatherEnd, vRadial));
     size *= (1.7 / (1.0 + abs(viewPosition.z) * 0.2));
 
     gl_PointSize = size;

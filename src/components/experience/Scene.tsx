@@ -91,7 +91,7 @@ const PARTICLE_CONFIGS: ParticleConfig[] = [
 ];
 
 function SceneContent() {
-  const sphereScale = 2.8;
+  const sphereScale = 2.5;
 
   const particleConfigs = useMemo(() => PARTICLE_CONFIGS, []);
 

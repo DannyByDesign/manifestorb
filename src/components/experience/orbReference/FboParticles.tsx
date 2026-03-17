@@ -25,6 +25,10 @@ type FboParticlesProps = {
   fieldMode?: number;
   glowBoost?: number;
   outerGlowMirror?: number;
+  edgeFeatherStart?: number;
+  edgeFeatherEnd?: number;
+  edgeBlurBoost?: number;
+  edgeFadeStrength?: number;
   color1?: string;
   color2?: string;
   color3?: string;
@@ -37,7 +41,7 @@ type FboParticlesProps = {
 export function FBOParticles({
   size = 32,
   pointSize = 3.0,
-  positionScale = 1.32,
+  positionScale = 1.2,
   blending = THREE.NormalBlending,
   densityBias = 0.12,
   alphaBase = 0.54,
@@ -48,6 +52,10 @@ export function FBOParticles({
   fieldMode = 0,
   glowBoost = 0,
   outerGlowMirror = 0,
+  edgeFeatherStart = 0.78,
+  edgeFeatherEnd = 1.02,
+  edgeBlurBoost = 0.24,
+  edgeFadeStrength = 0.32,
   color1 = "#866AD6",
   color2 = "#E6B2A0",
   color3 = "#F4EFF7",
@@ -117,6 +125,10 @@ export function FBOParticles({
       uFieldMode: { value: fieldMode },
       uGlowBoost: { value: glowBoost },
       uOuterGlowMirror: { value: outerGlowMirror },
+      uEdgeFeatherStart: { value: edgeFeatherStart },
+      uEdgeFeatherEnd: { value: edgeFeatherEnd },
+      uEdgeBlurBoost: { value: edgeBlurBoost },
+      uEdgeFadeStrength: { value: edgeFadeStrength },
     }),
     [
       pointSize,
@@ -134,6 +146,10 @@ export function FBOParticles({
       fieldMode,
       glowBoost,
       outerGlowMirror,
+      edgeFeatherStart,
+      edgeFeatherEnd,
+      edgeBlurBoost,
+      edgeFadeStrength,
     ]
   );
 
