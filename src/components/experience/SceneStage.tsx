@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   animate,
@@ -20,6 +21,8 @@ const TRACK_HANDLE_SIZE = 46;
 const TRACK_PADDING = 5;
 const LOAD_IN_DURATION = 1.08;
 const LOAD_IN_SCENE_DURATION = 0.82;
+const LOGO_COLOR_TRANSITION_START = 0.18;
+const LOGO_COLOR_TRANSITION_END = 0.92;
 
 const introContentVariants: Variants = {
   hidden: {},
@@ -96,12 +99,37 @@ const sceneShellVariants: Variants = {
   },
 };
 
+const logoVariants: Variants = {
+  hidden: {
+    opacity: 0,
+    y: 18,
+    filter: "blur(8px)",
+  },
+  visible: {
+    opacity: 1,
+    y: 0,
+    filter: "blur(0px)",
+    transition: {
+      duration: 0.88,
+      ease: STAGE_EASE,
+    },
+  },
+};
+
 type CtaMode = "swipe" | "button";
 
 const MOBILE_MEDIA_QUERY = "(max-width: 639px)";
 
 function clamp(value: number, min = 0, max = 1) {
   return Math.min(max, Math.max(min, value));
+}
+
+function interpolateColor(from: [number, number, number], to: [number, number, number], progress: number) {
+  const next = clamp(progress);
+  const channel = (index: number) =>
+    Math.round(from[index] + (to[index] - from[index]) * next);
+
+  return `rgb(${channel(0)} ${channel(1)} ${channel(2)})`;
 }
 
 function subscribeToMobileBreakpoint(onStoreChange: () => void) {
@@ -129,6 +157,8 @@ function getMobileBreakpointServerSnapshot() {
 
 export function SceneStage() {
   const prefersReducedMotion = useReducedMotion();
+  const pathname = usePathname();
+  const router = useRouter();
   const isMobile = useSyncExternalStore(
     subscribeToMobileBreakpoint,
     getMobileBreakpointSnapshot,
@@ -286,6 +316,18 @@ export function SceneStage() {
     animateProgress(0);
   };
 
+  const handleLogoClick = () => {
+    if (pathname !== "/") {
+      router.push("/");
+      return;
+    }
+
+    setCtaMode("swipe");
+    setIsDragging(false);
+    dragRef.current = null;
+    animateProgress(0);
+  };
+
   const sceneProgress =
     swipeProgress <= SCENE_TRANSITION_START
       ? 0
@@ -307,6 +349,15 @@ export function SceneStage() {
   const fillWidth = clamp(handleOffset + TRACK_HANDLE_SIZE - 1, 0, Math.max(trackWidth - 2, 0));
   const backdropTransform = `translate3d(0, ${-INTRO_OFFSET * sceneProgress}svh, 0)`;
   const loadInMotionState = prefersReducedMotion || isSceneReady ? "visible" : "hidden";
+  const logoColorProgress = clamp(
+    (swipeProgress - LOGO_COLOR_TRANSITION_START) /
+      (LOGO_COLOR_TRANSITION_END - LOGO_COLOR_TRANSITION_START)
+  );
+  const logoColor = interpolateColor(
+    [62, 46, 103],
+    [255, 255, 255],
+    logoColorProgress
+  );
   const ctaFadeTransition = prefersReducedMotion
     ? { duration: 0.01 }
     : { duration: 0.42, ease: CTA_EASE };
@@ -316,6 +367,22 @@ export function SceneStage() {
 
   return (
     <main className="relative isolate h-[100svh] w-full overflow-hidden bg-[var(--base-lilac)]">
+      <motion.button
+        type="button"
+        aria-label="Go to home page"
+        onClick={handleLogoClick}
+        initial={prefersReducedMotion ? false : "hidden"}
+        animate={loadInMotionState}
+        variants={logoVariants}
+        className="pointer-events-auto absolute left-6 top-[max(1.5rem,env(safe-area-inset-top,0px)+1rem)] z-40 rounded-full outline-none focus-visible:ring-4 focus-visible:ring-white/35 sm:left-10 lg:left-16"
+      >
+        <div
+          aria-hidden="true"
+          className="logo-mark h-11 w-11 sm:h-[3.15rem] sm:w-[3.15rem]"
+          style={{ backgroundColor: logoColor }}
+        />
+      </motion.button>
+
       <div
         className="absolute inset-x-0 top-0 z-0 will-change-transform"
         style={{
@@ -361,7 +428,7 @@ export function SceneStage() {
                 <div className="space-y-5">
                   <motion.h1
                     variants={introHeadlineVariants}
-                    className="mx-auto flex w-fit max-w-full flex-col items-center text-center text-[clamp(2.7rem,12vw,4.6rem)] font-semibold leading-[0.9] tracking-[-0.06em] text-[#20133b] sm:mx-0 sm:block sm:w-auto sm:max-w-none sm:text-left sm:text-[clamp(1.85rem,6vw,5.4rem)]"
+                    className="mx-auto flex w-fit max-w-full flex-col items-center text-center text-[clamp(2.7rem,12vw,4.6rem)] font-semibold leading-[0.9] tracking-[-0.06em] text-[#37285d] sm:mx-0 sm:block sm:w-auto sm:max-w-none sm:text-left sm:text-[clamp(3.2rem,2.65rem+1.7vw,5.4rem)]"
                   >
                     <span className="block w-fit whitespace-nowrap sm:hidden">What Is the</span>
                     <span className="block w-fit whitespace-nowrap sm:hidden">Final Form</span>
@@ -376,13 +443,13 @@ export function SceneStage() {
 
                   <motion.p
                     variants={introCopyVariants}
-                    className="mx-auto max-w-[19.5rem] text-balance text-[1.1rem] leading-[1.42] tracking-[0.002em] text-[#4c3d69]/86 sm:mx-0 sm:max-w-[26rem] sm:pl-[0.28rem] sm:text-[1.32rem]"
+                    className="mx-auto max-w-[20rem] text-center text-[1.05rem] leading-[1.42] tracking-[0.002em] text-[#64567f]/88 sm:mx-0 sm:max-w-[26rem] sm:text-left sm:pl-[0.28rem] sm:text-[1.32rem]"
                   >
                     <span className="block sm:whitespace-nowrap">
-                      What if we embrace the purple gradient and explore
+                      What if our interface were not purely functional, but also whimsical,
                     </span>
                     <span className="block sm:whitespace-nowrap">
-                      beyond what we thought was possible?
+                      boldly colored, and dynamic enough to adapt to every interaction?
                     </span>
                   </motion.p>
                 </div>

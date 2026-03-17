@@ -113,3 +113,14 @@ body {
 .stage-intro-flow {
   will-change: transform, opacity, filter;
 }
+
+.logo-mark {
+  -webkit-mask-image: url("/logo-icon.svg");
+  mask-image: url("/logo-icon.svg");
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
