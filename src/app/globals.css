@@ -109,3 +109,7 @@ body {
   background-size: cover;
   filter: saturate(1.14) contrast(1.02);
 }
+
+.stage-intro-flow {
+  will-change: transform, opacity, filter;
+}

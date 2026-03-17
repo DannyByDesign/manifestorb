@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef } from "react";
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Bloom, EffectComposer } from "@react-three/postprocessing";
@@ -107,14 +107,22 @@ type CameraPose = {
 };
 
 type SceneProps = {
+  loadInProgress?: number;
   sceneProgress?: number;
   reducedMotion?: boolean;
+  onReady?: () => void;
 };
 
 const REVEALED_POSE: ScenePose = {
   position: [0, 0, 0],
   rotation: [0, 0, 0],
   scale: 2.5,
+};
+
+const LOAD_IN_POSE: ScenePose = {
+  position: [8.9, -7.25, 1.95],
+  rotation: [-0.04, 0.11, -0.025],
+  scale: 4.25,
 };
 
 const INTRO_POSE: ScenePose = {
@@ -126,6 +134,11 @@ const INTRO_POSE: ScenePose = {
 const REVEALED_CAMERA: CameraPose = {
   position: [0, 0, 15],
   fov: 35,
+};
+
+const LOAD_IN_CAMERA: CameraPose = {
+  position: [0, 0.6, 13.45],
+  fov: 42,
 };
 
 const INTRO_CAMERA: CameraPose = {
@@ -141,73 +154,100 @@ function interpolateTuple(
   return from.map((value, index) => THREE.MathUtils.lerp(value, to[index] ?? value, progress));
 }
 
-function resolvePose(progress: number): ScenePose {
+function interpolatePose(from: ScenePose, to: ScenePose, progress: number): ScenePose {
   return {
-    position: interpolateTuple(
-      INTRO_POSE.position,
-      REVEALED_POSE.position,
-      progress
-    ) as ScenePose["position"],
-    rotation: interpolateTuple(
-      INTRO_POSE.rotation,
-      REVEALED_POSE.rotation,
-      progress
-    ) as ScenePose["rotation"],
-    scale: THREE.MathUtils.lerp(INTRO_POSE.scale, REVEALED_POSE.scale, progress),
+    position: interpolateTuple(from.position, to.position, progress) as ScenePose["position"],
+    rotation: interpolateTuple(from.rotation, to.rotation, progress) as ScenePose["rotation"],
+    scale: THREE.MathUtils.lerp(from.scale, to.scale, progress),
   };
 }
 
-function resolveCamera(progress: number): CameraPose {
+function interpolateCamera(
+  from: CameraPose,
+  to: CameraPose,
+  progress: number
+): CameraPose {
   return {
-    position: interpolateTuple(
-      INTRO_CAMERA.position,
-      REVEALED_CAMERA.position,
-      progress
-    ) as CameraPose["position"],
-    fov: THREE.MathUtils.lerp(INTRO_CAMERA.fov, REVEALED_CAMERA.fov, progress),
+    position: interpolateTuple(from.position, to.position, progress) as CameraPose["position"],
+    fov: THREE.MathUtils.lerp(from.fov, to.fov, progress),
   };
+}
+
+function resolvePose(loadInProgress: number, sceneProgress: number): ScenePose {
+  const introProgress = THREE.MathUtils.clamp(loadInProgress, 0, 1);
+  const revealProgress = THREE.MathUtils.clamp(sceneProgress, 0, 1);
+  const introPose = interpolatePose(LOAD_IN_POSE, INTRO_POSE, introProgress);
+
+  return interpolatePose(introPose, REVEALED_POSE, revealProgress);
+}
+
+function resolveCamera(loadInProgress: number, sceneProgress: number): CameraPose {
+  const introProgress = THREE.MathUtils.clamp(loadInProgress, 0, 1);
+  const revealProgress = THREE.MathUtils.clamp(sceneProgress, 0, 1);
+  const introCamera = interpolateCamera(LOAD_IN_CAMERA, INTRO_CAMERA, introProgress);
+
+  return interpolateCamera(introCamera, REVEALED_CAMERA, revealProgress);
+}
+
+function SceneReadySignal({ onReady }: { onReady?: () => void }) {
+  const hasReportedRef = useRef(false);
+
+  useEffect(() => {
+    if (hasReportedRef.current || !onReady) return;
+
+    hasReportedRef.current = true;
+    onReady();
+  }, [onReady]);
+
+  return null;
+}
+
+function applyPose(
+  group: THREE.Group,
+  camera: THREE.PerspectiveCamera,
+  pose: ScenePose,
+  cameraPose: CameraPose
+) {
+  group.position.set(...pose.position);
+  group.rotation.set(...pose.rotation);
+  group.scale.setScalar(pose.scale);
+  camera.position.set(...cameraPose.position);
+  camera.fov = cameraPose.fov;
+  camera.updateProjectionMatrix();
 }
 
 function SceneRig({
+  loadInProgress,
   sceneProgress,
   reducedMotion,
   children,
 }: React.PropsWithChildren<{
+  loadInProgress: number;
   sceneProgress: number;
   reducedMotion: boolean;
 }>) {
   const groupRef = useRef<THREE.Group>(null);
   const { camera } = useThree();
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const targetPose = resolvePose(sceneProgress);
-  const targetCamera = resolveCamera(sceneProgress);
+  const targetPose = resolvePose(loadInProgress, sceneProgress);
+  const targetCamera = resolveCamera(loadInProgress, sceneProgress);
   const hasInitialisedRef = useRef(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     cameraRef.current = camera as THREE.PerspectiveCamera;
   }, [camera]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (hasInitialisedRef.current || !groupRef.current || !cameraRef.current) return;
 
-    groupRef.current.position.set(...targetPose.position);
-    groupRef.current.rotation.set(...targetPose.rotation);
-    groupRef.current.scale.setScalar(targetPose.scale);
-    cameraRef.current.position.set(...targetCamera.position);
-    cameraRef.current.fov = targetCamera.fov;
-    cameraRef.current.updateProjectionMatrix();
+    applyPose(groupRef.current, cameraRef.current, targetPose, targetCamera);
     hasInitialisedRef.current = true;
   }, [targetCamera, targetPose]);
 
   useEffect(() => {
     if (!reducedMotion || !groupRef.current || !cameraRef.current) return;
 
-    groupRef.current.position.set(...targetPose.position);
-    groupRef.current.rotation.set(...targetPose.rotation);
-    groupRef.current.scale.setScalar(targetPose.scale);
-    cameraRef.current.position.set(...targetCamera.position);
-    cameraRef.current.fov = targetCamera.fov;
-    cameraRef.current.updateProjectionMatrix();
+    applyPose(groupRef.current, cameraRef.current, targetPose, targetCamera);
   }, [reducedMotion, targetCamera, targetPose]);
 
   useFrame((_, delta) => {
@@ -298,10 +338,12 @@ function SceneRig({
 }
 
 function SceneContent({
+  loadInProgress,
   sceneProgress,
   reducedMotion,
   simTextureType,
 }: {
+  loadInProgress: number;
   sceneProgress: number;
   reducedMotion: boolean;
   simTextureType: "float" | "half-float";
@@ -315,7 +357,11 @@ function SceneContent({
       <pointLight position={[3, -2, 8]} intensity={0.3} color="#ECF1FA" />
       <directionalLight position={[-8, 5, 5]} intensity={0.7} color="#866AD6" />
 
-      <SceneRig sceneProgress={sceneProgress} reducedMotion={reducedMotion}>
+      <SceneRig
+        loadInProgress={loadInProgress}
+        sceneProgress={sceneProgress}
+        reducedMotion={reducedMotion}
+      >
         <RimSparkleSphere
           position={[0, 0, 0]}
           renderOrder={20}
@@ -379,8 +425,10 @@ function SceneContent({
 }
 
 export function Scene({
+  loadInProgress = 1,
   sceneProgress = 1,
   reducedMotion = false,
+  onReady,
 }: SceneProps) {
   const capabilities = useMemo(() => detectCapabilities(), []);
 
@@ -405,10 +453,12 @@ export function Scene({
       >
         <Suspense fallback={null}>
           <SceneContent
+            loadInProgress={loadInProgress}
             sceneProgress={sceneProgress}
             reducedMotion={reducedMotion}
             simTextureType={capabilities.preferredSimTextureType}
           />
+          <SceneReadySignal onReady={onReady} />
         </Suspense>
       </Canvas>
     </div>

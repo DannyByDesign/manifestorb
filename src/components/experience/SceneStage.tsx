@@ -5,6 +5,7 @@ import {
   animate,
   AnimatePresence,
   motion,
+  type Variants,
   useReducedMotion,
 } from "framer-motion";
 
@@ -17,6 +18,83 @@ const SWIPE_COMPLETE_THRESHOLD = 0.88;
 const SCENE_TRANSITION_START = 0.58;
 const TRACK_HANDLE_SIZE = 46;
 const TRACK_PADDING = 5;
+const LOAD_IN_DURATION = 1.08;
+const LOAD_IN_SCENE_DURATION = 0.82;
+
+const introContentVariants: Variants = {
+  hidden: {},
+  visible: {
+    transition: {
+      staggerChildren: 0.08,
+    },
+  },
+};
+
+const introHeadlineVariants: Variants = {
+  hidden: {
+    opacity: 0,
+    y: 28,
+    filter: "blur(8px)",
+  },
+  visible: {
+    opacity: 1,
+    y: 0,
+    filter: "blur(0px)",
+    transition: {
+      duration: 0.9,
+      ease: STAGE_EASE,
+    },
+  },
+};
+
+const introCopyVariants: Variants = {
+  hidden: {
+    opacity: 0,
+    y: 28,
+    filter: "blur(8px)",
+  },
+  visible: {
+    opacity: 1,
+    y: 0,
+    filter: "blur(0px)",
+    transition: {
+      duration: 0.9,
+      ease: STAGE_EASE,
+    },
+  },
+};
+
+const introSliderVariants: Variants = {
+  hidden: {
+    opacity: 0,
+    y: 20,
+    scale: 0.985,
+    filter: "blur(8px)",
+  },
+  visible: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    filter: "blur(0px)",
+    transition: {
+      duration: 0.9,
+      ease: STAGE_EASE,
+    },
+  },
+};
+
+const sceneShellVariants: Variants = {
+  hidden: {
+    opacity: 0,
+  },
+  visible: {
+    opacity: 1,
+    transition: {
+      duration: LOAD_IN_SCENE_DURATION,
+      ease: STAGE_EASE,
+    },
+  },
+};
 
 type CtaMode = "swipe" | "button";
 
@@ -26,11 +104,16 @@ function clamp(value: number, min = 0, max = 1) {
 
 export function SceneStage() {
   const prefersReducedMotion = useReducedMotion();
+  const [loadInProgress, setLoadInProgress] = useState(prefersReducedMotion ? 1 : 0);
+  const [isSceneReady, setIsSceneReady] = useState(false);
+  const [hasLoadedIn, setHasLoadedIn] = useState(prefersReducedMotion);
   const [swipeProgress, setSwipeProgress] = useState(0);
   const [ctaMode, setCtaMode] = useState<CtaMode>("swipe");
   const [isDragging, setIsDragging] = useState(false);
   const [trackWidth, setTrackWidth] = useState(0);
+  const loadInProgressRef = useRef(prefersReducedMotion ? 1 : 0);
   const swipeProgressRef = useRef(0);
+  const loadInAnimationRef = useRef<{ stop: () => void } | null>(null);
   const animationRef = useRef<{ stop: () => void } | null>(null);
   const dragRef = useRef<{ pointerId: number; rect: DOMRect } | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
@@ -50,9 +133,16 @@ export function SceneStage() {
 
   useEffect(() => {
     return () => {
+      loadInAnimationRef.current?.stop();
       animationRef.current?.stop();
     };
   }, []);
+
+  const setLoadProgress = (value: number) => {
+    const next = clamp(value);
+    loadInProgressRef.current = next;
+    setLoadInProgress(next);
+  };
 
   const setProgress = (value: number) => {
     const next = clamp(value);
@@ -78,6 +168,22 @@ export function SceneStage() {
       },
     });
   };
+
+  useEffect(() => {
+    if (prefersReducedMotion || !isSceneReady || hasLoadedIn) return;
+
+    loadInAnimationRef.current?.stop();
+    loadInAnimationRef.current = animate(loadInProgressRef.current, 1, {
+      duration: LOAD_IN_DURATION,
+      ease: STAGE_EASE,
+      onUpdate: setLoadProgress,
+      onComplete: () => {
+        loadInAnimationRef.current = null;
+        setLoadProgress(1);
+        setHasLoadedIn(true);
+      },
+    });
+  }, [hasLoadedIn, isSceneReady, prefersReducedMotion]);
 
   const resolveProgressFromClientX = (clientX: number, rect: DOMRect) => {
     const travel = Math.max(rect.width - TRACK_HANDLE_SIZE - TRACK_PADDING * 2, 1);
@@ -170,6 +276,7 @@ export function SceneStage() {
   const handleOffset = TRACK_PADDING + handleTravel * swipeProgress;
   const fillWidth = clamp(handleOffset + TRACK_HANDLE_SIZE - 1, 0, Math.max(trackWidth - 2, 0));
   const backdropTransform = `translate3d(0, ${-INTRO_OFFSET * sceneProgress}svh, 0)`;
+  const loadInMotionState = prefersReducedMotion || isSceneReady ? "visible" : "hidden";
   const ctaFadeTransition = prefersReducedMotion
     ? { duration: 0.01 }
     : { duration: 0.42, ease: CTA_EASE };
@@ -189,12 +296,20 @@ export function SceneStage() {
         <div className="stage-backdrop absolute inset-0" />
       </div>
 
-      <section aria-label="Orb scene" className="absolute inset-0 z-10 overflow-hidden">
+      <motion.section
+        aria-label="Orb scene"
+        className="absolute inset-0 z-10 overflow-hidden"
+        initial={prefersReducedMotion ? false : "hidden"}
+        animate={loadInMotionState}
+        variants={sceneShellVariants}
+      >
         <Scene
+          loadInProgress={loadInProgress}
           sceneProgress={sceneProgress}
           reducedMotion={Boolean(prefersReducedMotion)}
+          onReady={() => setIsSceneReady(true)}
         />
-      </section>
+      </motion.section>
 
       <div className="pointer-events-none absolute inset-0 z-30">
         <div className="absolute inset-0 px-6 pb-10 pt-[max(4.75rem,env(safe-area-inset-top,0px)+3rem)] sm:px-10 sm:pb-12 lg:px-16">
@@ -206,67 +321,83 @@ export function SceneStage() {
                 transform: `translate3d(${introShiftX}px, ${introShiftY}px, 0)`,
               }}
             >
+              <motion.div
+                initial={prefersReducedMotion ? false : "hidden"}
+                animate={loadInMotionState}
+                variants={introContentVariants}
+                className="stage-intro-flow"
+              >
                 <div className="space-y-5">
-                  <h1 className="text-[clamp(1.85rem,6vw,5.4rem)] font-semibold leading-[0.9] tracking-[-0.06em] text-[#20133b]">
+                  <motion.h1
+                    variants={introHeadlineVariants}
+                    className="text-[clamp(1.85rem,6vw,5.4rem)] font-semibold leading-[0.9] tracking-[-0.06em] text-[#20133b]"
+                  >
                     <span className="block whitespace-nowrap">What Is the Final</span>
                     <span className="block whitespace-nowrap">Form of Voice AI?</span>
-                  </h1>
+                  </motion.h1>
 
-                  <p className="max-w-[25rem] pl-[0.22rem] text-[1.04rem] leading-[1.38] tracking-[0.002em] text-[#4c3d69]/86 sm:max-w-[26rem] sm:pl-[0.28rem] sm:text-[1.18rem]">
+                  <motion.p
+                    variants={introCopyVariants}
+                    className="max-w-[25rem] pl-[0.22rem] text-[1.04rem] leading-[1.38] tracking-[0.002em] text-[#4c3d69]/86 sm:max-w-[26rem] sm:pl-[0.28rem] sm:text-[1.18rem]"
+                  >
                     <span className="block whitespace-nowrap">
                       What if we embrace the purple gradient and explore
                     </span>
                     <span className="block whitespace-nowrap">
                       beyond what we thought was possible?
                     </span>
-                  </p>
+                  </motion.p>
                 </div>
 
-              <div className="mt-14 min-h-14 max-w-[21.5rem] -translate-x-[0.22rem] sm:-translate-x-[0.28rem]">
-                <AnimatePresence initial={false}>
-                  {ctaMode === "swipe" ? (
-                    <motion.div
-                      key="swipe-control"
-                      ref={trackRef}
-                      initial={prefersReducedMotion ? false : { opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={prefersReducedMotion ? undefined : { opacity: 0 }}
-                      transition={ctaFadeTransition}
-                      role="button"
-                      tabIndex={0}
-                      aria-label="Swipe to enter scene"
-                      onPointerDown={handleSwipePointerDown}
-                      onKeyDown={handleSwipeKeyDown}
-                      className="pointer-events-auto relative flex h-14 w-full touch-none select-none items-center overflow-hidden rounded-full border border-white/70 bg-white/16 shadow-[0_20px_48px_rgba(79,45,156,0.18)] outline-none backdrop-blur-[10px] focus-visible:ring-4 focus-visible:ring-white/45"
-                    >
-                      <span className="pointer-events-none absolute inset-0 z-[1] flex translate-x-[0.65rem] items-center justify-center px-16 text-center text-[0.68rem] font-semibold uppercase tracking-[0.3em] text-white sm:translate-x-[0.78rem] sm:text-[0.72rem]">
-                        SLIDE TO ENTER SCENE
-                      </span>
-
+                <motion.div
+                  variants={introSliderVariants}
+                  className="mt-14 min-h-14 max-w-[21.5rem] -translate-x-[0.22rem] sm:-translate-x-[0.28rem]"
+                >
+                  <AnimatePresence initial={false}>
+                    {ctaMode === "swipe" ? (
                       <motion.div
-                        aria-hidden="true"
-                        className="absolute bottom-[1px] left-[1px] top-[1px] rounded-full bg-[var(--button-lavender)] shadow-[0_20px_48px_rgba(123,76,255,0.32)]"
-                        style={{
-                          opacity: trackFillOpacity,
-                          width: Math.max(fillWidth, TRACK_HANDLE_SIZE),
-                        }}
-                      />
-
-                      <motion.span
-                        aria-hidden="true"
-                        className="absolute left-0 top-1/2 z-10 flex -translate-y-1/2 items-center justify-center rounded-full border border-[color:var(--button-lavender)] bg-[color:var(--button-lavender)] shadow-[0_14px_28px_rgba(102,76,176,0.34)]"
-                        style={{
-                          x: handleOffset,
-                          width: TRACK_HANDLE_SIZE,
-                          height: TRACK_HANDLE_SIZE,
-                        }}
+                        key="swipe-control"
+                        ref={trackRef}
+                        initial={prefersReducedMotion ? false : { opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={prefersReducedMotion ? undefined : { opacity: 0 }}
+                        transition={ctaFadeTransition}
+                        role="button"
+                        tabIndex={0}
+                        aria-label="Swipe to enter scene"
+                        onPointerDown={handleSwipePointerDown}
+                        onKeyDown={handleSwipeKeyDown}
+                        className="pointer-events-auto relative flex h-14 w-full touch-none select-none items-center overflow-hidden rounded-full border border-white/70 bg-white/16 shadow-[0_20px_48px_rgba(79,45,156,0.18)] outline-none backdrop-blur-[10px] focus-visible:ring-4 focus-visible:ring-white/45"
                       >
-                        <span className="h-2.5 w-2.5 rounded-full bg-white/92" />
-                      </motion.span>
-                    </motion.div>
-                  ) : null}
-                </AnimatePresence>
-              </div>
+                        <span className="pointer-events-none absolute inset-0 z-[1] flex translate-x-[0.65rem] items-center justify-center px-16 text-center text-[0.68rem] font-semibold uppercase tracking-[0.3em] text-white sm:translate-x-[0.78rem] sm:text-[0.72rem]">
+                          SLIDE TO ENTER SCENE
+                        </span>
+
+                        <motion.div
+                          aria-hidden="true"
+                          className="absolute bottom-[1px] left-[1px] top-[1px] rounded-full bg-[var(--button-lavender)] shadow-[0_20px_48px_rgba(123,76,255,0.32)]"
+                          style={{
+                            opacity: trackFillOpacity,
+                            width: Math.max(fillWidth, TRACK_HANDLE_SIZE),
+                          }}
+                        />
+
+                        <motion.span
+                          aria-hidden="true"
+                          className="absolute left-0 top-1/2 z-10 flex -translate-y-1/2 items-center justify-center rounded-full border border-[color:var(--button-lavender)] bg-[color:var(--button-lavender)] shadow-[0_14px_28px_rgba(102,76,176,0.34)]"
+                          style={{
+                            x: handleOffset,
+                            width: TRACK_HANDLE_SIZE,
+                            height: TRACK_HANDLE_SIZE,
+                          }}
+                        >
+                          <span className="h-2.5 w-2.5 rounded-full bg-white/92" />
+                        </motion.span>
+                      </motion.div>
+                    ) : null}
+                  </AnimatePresence>
+                </motion.div>
+              </motion.div>
             </div>
           </div>
         </div>
