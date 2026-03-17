@@ -175,7 +175,7 @@ export function SceneStage() {
     : { duration: 0.42, ease: CTA_EASE };
   const ctaHoverTransition = prefersReducedMotion
     ? { duration: 0.01 }
-    : { type: "spring", stiffness: 420, damping: 28, mass: 0.55 };
+    : { type: "spring" as const, stiffness: 420, damping: 28, mass: 0.55 };
 
   return (
     <main className="relative isolate h-[100svh] w-full overflow-hidden bg-[var(--base-lilac)]">
