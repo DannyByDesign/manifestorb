@@ -173,6 +173,9 @@ export function SceneStage() {
   const ctaFadeTransition = prefersReducedMotion
     ? { duration: 0.01 }
     : { duration: 0.42, ease: CTA_EASE };
+  const ctaHoverTransition = prefersReducedMotion
+    ? { duration: 0.01 }
+    : { type: "spring", stiffness: 420, damping: 28, mass: 0.55 };
 
   return (
     <main className="relative isolate h-[100svh] w-full overflow-hidden bg-[var(--base-lilac)]">
@@ -234,7 +237,7 @@ export function SceneStage() {
                       aria-label="Swipe to enter scene"
                       onPointerDown={handleSwipePointerDown}
                       onKeyDown={handleSwipeKeyDown}
-                      className="pointer-events-auto relative flex h-14 w-full touch-none select-none items-center overflow-hidden rounded-full border border-white/55 bg-white/[0.06] shadow-[0_18px_44px_rgba(79,45,156,0.14)] outline-none backdrop-blur-[2px] focus-visible:ring-4 focus-visible:ring-white/45"
+                      className="pointer-events-auto relative flex h-14 w-full touch-none select-none items-center overflow-hidden rounded-full border border-white/70 bg-white/16 shadow-[0_20px_48px_rgba(79,45,156,0.18)] outline-none backdrop-blur-[10px] focus-visible:ring-4 focus-visible:ring-white/45"
                     >
                       <span className="pointer-events-none absolute inset-0 z-[1] flex translate-x-[0.65rem] items-center justify-center px-16 text-center text-[0.68rem] font-semibold uppercase tracking-[0.3em] text-white sm:translate-x-[0.78rem] sm:text-[0.72rem]">
                         SLIDE TO ENTER SCENE
@@ -268,7 +271,7 @@ export function SceneStage() {
           </div>
         </div>
 
-        <div className="absolute inset-x-0 bottom-[max(1.5rem,env(safe-area-inset-bottom,0px)+1.25rem)] flex justify-center px-6">
+        <div className="absolute inset-x-0 bottom-[max(2.25rem,env(safe-area-inset-bottom,0px)+2rem)] flex justify-center px-6">
           <AnimatePresence initial={false}>
             {ctaMode === "button" ? (
               <motion.button
@@ -277,10 +280,15 @@ export function SceneStage() {
                 initial={prefersReducedMotion ? false : { opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={prefersReducedMotion ? undefined : { opacity: 0 }}
-                transition={ctaFadeTransition}
+                whileHover={prefersReducedMotion ? undefined : { scale: 1.04 }}
+                whileTap={prefersReducedMotion ? undefined : { scale: 0.985 }}
+                transition={{
+                  opacity: ctaFadeTransition,
+                  scale: ctaHoverTransition,
+                }}
                 onClick={handleGoBack}
                 aria-label="Go back to intro scene"
-                className="pointer-events-auto inline-flex h-12 min-w-56 items-center justify-center whitespace-nowrap rounded-full bg-[color:var(--button-lavender)] px-8 py-3 text-sm font-semibold uppercase tracking-[0.22em] text-white shadow-[0_22px_54px_rgba(123,76,255,0.35)] outline-none transition-colors duration-300 hover:bg-[color:var(--button-lavender-strong)] focus-visible:ring-4 focus-visible:ring-white/45"
+                className="pointer-events-auto inline-flex h-14 min-w-56 items-center justify-center whitespace-nowrap rounded-full border border-white/70 bg-white/16 px-8 py-3 text-sm font-semibold uppercase tracking-[0.22em] text-white shadow-[0_20px_48px_rgba(79,45,156,0.18)] outline-none backdrop-blur-[10px] transition-colors duration-300 hover:bg-white/22 focus-visible:ring-4 focus-visible:ring-white/45"
               >
                 Go back
               </motion.button>
