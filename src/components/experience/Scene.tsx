@@ -107,43 +107,80 @@ type CameraPose = {
 };
 
 type SceneProps = {
+  isMobile?: boolean;
   loadInProgress?: number;
   sceneProgress?: number;
   reducedMotion?: boolean;
   onReady?: () => void;
 };
 
-const REVEALED_POSE: ScenePose = {
-  position: [0, 0, 0],
-  rotation: [0, 0, 0],
-  scale: 2.5,
+type SceneLayout = {
+  loadInPose: ScenePose;
+  introPose: ScenePose;
+  revealedPose: ScenePose;
+  loadInCamera: CameraPose;
+  introCamera: CameraPose;
+  revealedCamera: CameraPose;
 };
 
-const LOAD_IN_POSE: ScenePose = {
-  position: [8.9, -7.25, 1.95],
-  rotation: [-0.04, 0.11, -0.025],
-  scale: 4.25,
+const DESKTOP_SCENE_LAYOUT: SceneLayout = {
+  revealedPose: {
+    position: [0, 0, 0],
+    rotation: [0, 0, 0],
+    scale: 2.5,
+  },
+  loadInPose: {
+    position: [8.9, -7.25, 1.95],
+    rotation: [-0.04, 0.11, -0.025],
+    scale: 4.25,
+  },
+  introPose: {
+    position: [7.6, -6.1, 1.7],
+    rotation: [-0.03, 0.08, -0.02],
+    scale: 3.95,
+  },
+  revealedCamera: {
+    position: [0, 0, 15],
+    fov: 35,
+  },
+  loadInCamera: {
+    position: [0, 0.6, 13.45],
+    fov: 42,
+  },
+  introCamera: {
+    position: [0, 0.35, 14],
+    fov: 40.5,
+  },
 };
 
-const INTRO_POSE: ScenePose = {
-  position: [7.6, -6.1, 1.7],
-  rotation: [-0.03, 0.08, -0.02],
-  scale: 3.95,
-};
-
-const REVEALED_CAMERA: CameraPose = {
-  position: [0, 0, 15],
-  fov: 35,
-};
-
-const LOAD_IN_CAMERA: CameraPose = {
-  position: [0, 0.6, 13.45],
-  fov: 42,
-};
-
-const INTRO_CAMERA: CameraPose = {
-  position: [0, 0.35, 14],
-  fov: 40.5,
+const MOBILE_SCENE_LAYOUT: SceneLayout = {
+  revealedPose: {
+    position: [0, -0.05, 0],
+    rotation: [0, 0.01, 0],
+    scale: 2.85,
+  },
+  loadInPose: {
+    position: [0, -10.4, 1.5],
+    rotation: [-0.015, 0.045, -0.012],
+    scale: 4.1,
+  },
+  introPose: {
+    position: [0, -8.7, 1.15],
+    rotation: [-0.01, 0.03, -0.008],
+    scale: 3.72,
+  },
+  revealedCamera: {
+    position: [0, 0.1, 16.1],
+    fov: 36.4,
+  },
+  loadInCamera: {
+    position: [0, 0.55, 15.05],
+    fov: 41.5,
+  },
+  introCamera: {
+    position: [0, 0.35, 15.45],
+    fov: 39.1,
+  },
 };
 
 function interpolateTuple(
@@ -173,20 +210,32 @@ function interpolateCamera(
   };
 }
 
-function resolvePose(loadInProgress: number, sceneProgress: number): ScenePose {
+function resolvePose(
+  layout: SceneLayout,
+  loadInProgress: number,
+  sceneProgress: number
+): ScenePose {
   const introProgress = THREE.MathUtils.clamp(loadInProgress, 0, 1);
   const revealProgress = THREE.MathUtils.clamp(sceneProgress, 0, 1);
-  const introPose = interpolatePose(LOAD_IN_POSE, INTRO_POSE, introProgress);
+  const introPose = interpolatePose(layout.loadInPose, layout.introPose, introProgress);
 
-  return interpolatePose(introPose, REVEALED_POSE, revealProgress);
+  return interpolatePose(introPose, layout.revealedPose, revealProgress);
 }
 
-function resolveCamera(loadInProgress: number, sceneProgress: number): CameraPose {
+function resolveCamera(
+  layout: SceneLayout,
+  loadInProgress: number,
+  sceneProgress: number
+): CameraPose {
   const introProgress = THREE.MathUtils.clamp(loadInProgress, 0, 1);
   const revealProgress = THREE.MathUtils.clamp(sceneProgress, 0, 1);
-  const introCamera = interpolateCamera(LOAD_IN_CAMERA, INTRO_CAMERA, introProgress);
+  const introCamera = interpolateCamera(
+    layout.loadInCamera,
+    layout.introCamera,
+    introProgress
+  );
 
-  return interpolateCamera(introCamera, REVEALED_CAMERA, revealProgress);
+  return interpolateCamera(introCamera, layout.revealedCamera, revealProgress);
 }
 
 function SceneReadySignal({ onReady }: { onReady?: () => void }) {
@@ -217,11 +266,13 @@ function applyPose(
 }
 
 function SceneRig({
+  isMobile,
   loadInProgress,
   sceneProgress,
   reducedMotion,
   children,
 }: React.PropsWithChildren<{
+  isMobile: boolean;
   loadInProgress: number;
   sceneProgress: number;
   reducedMotion: boolean;
@@ -229,8 +280,9 @@ function SceneRig({
   const groupRef = useRef<THREE.Group>(null);
   const { camera } = useThree();
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const targetPose = resolvePose(loadInProgress, sceneProgress);
-  const targetCamera = resolveCamera(loadInProgress, sceneProgress);
+  const layout = isMobile ? MOBILE_SCENE_LAYOUT : DESKTOP_SCENE_LAYOUT;
+  const targetPose = resolvePose(layout, loadInProgress, sceneProgress);
+  const targetCamera = resolveCamera(layout, loadInProgress, sceneProgress);
   const hasInitialisedRef = useRef(false);
 
   useLayoutEffect(() => {
@@ -338,11 +390,13 @@ function SceneRig({
 }
 
 function SceneContent({
+  isMobile,
   loadInProgress,
   sceneProgress,
   reducedMotion,
   simTextureType,
 }: {
+  isMobile: boolean;
   loadInProgress: number;
   sceneProgress: number;
   reducedMotion: boolean;
@@ -358,6 +412,7 @@ function SceneContent({
       <directionalLight position={[-8, 5, 5]} intensity={0.7} color="#866AD6" />
 
       <SceneRig
+        isMobile={isMobile}
         loadInProgress={loadInProgress}
         sceneProgress={sceneProgress}
         reducedMotion={reducedMotion}
@@ -425,6 +480,7 @@ function SceneContent({
 }
 
 export function Scene({
+  isMobile = false,
   loadInProgress = 1,
   sceneProgress = 1,
   reducedMotion = false,
@@ -453,6 +509,7 @@ export function Scene({
       >
         <Suspense fallback={null}>
           <SceneContent
+            isMobile={isMobile}
             loadInProgress={loadInProgress}
             sceneProgress={sceneProgress}
             reducedMotion={reducedMotion}

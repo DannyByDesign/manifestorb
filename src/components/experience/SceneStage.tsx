@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   animate,
   AnimatePresence,
@@ -98,12 +98,42 @@ const sceneShellVariants: Variants = {
 
 type CtaMode = "swipe" | "button";
 
+const MOBILE_MEDIA_QUERY = "(max-width: 639px)";
+
 function clamp(value: number, min = 0, max = 1) {
   return Math.min(max, Math.max(min, value));
 }
 
+function subscribeToMobileBreakpoint(onStoreChange: () => void) {
+  if (typeof window === "undefined") {
+    return () => undefined;
+  }
+
+  const mediaQuery = window.matchMedia(MOBILE_MEDIA_QUERY);
+  mediaQuery.addEventListener("change", onStoreChange);
+
+  return () => mediaQuery.removeEventListener("change", onStoreChange);
+}
+
+function getMobileBreakpointSnapshot() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return window.matchMedia(MOBILE_MEDIA_QUERY).matches;
+}
+
+function getMobileBreakpointServerSnapshot() {
+  return false;
+}
+
 export function SceneStage() {
   const prefersReducedMotion = useReducedMotion();
+  const isMobile = useSyncExternalStore(
+    subscribeToMobileBreakpoint,
+    getMobileBreakpointSnapshot,
+    getMobileBreakpointServerSnapshot
+  );
   const [loadInProgress, setLoadInProgress] = useState(prefersReducedMotion ? 1 : 0);
   const [isSceneReady, setIsSceneReady] = useState(false);
   const [hasLoadedIn, setHasLoadedIn] = useState(prefersReducedMotion);
@@ -269,8 +299,8 @@ export function SceneStage() {
           2
         );
   const introOpacity = clamp(1 - sceneProgress * 1.3);
-  const introShiftX = sceneProgress * 18;
-  const introShiftY = sceneProgress * 10;
+  const introShiftX = sceneProgress * (isMobile ? 0 : 18);
+  const introShiftY = sceneProgress * (isMobile ? 16 : 10);
   const trackFillOpacity = 0.14 + swipeProgress * 0.86;
   const handleTravel = Math.max(trackWidth - TRACK_HANDLE_SIZE - TRACK_PADDING * 2, 0);
   const handleOffset = TRACK_PADDING + handleTravel * swipeProgress;
@@ -304,6 +334,7 @@ export function SceneStage() {
         variants={sceneShellVariants}
       >
         <Scene
+          isMobile={isMobile}
           loadInProgress={loadInProgress}
           sceneProgress={sceneProgress}
           reducedMotion={Boolean(prefersReducedMotion)}
@@ -313,9 +344,9 @@ export function SceneStage() {
 
       <div className="pointer-events-none absolute inset-0 z-30">
         <div className="absolute inset-0 px-6 pb-10 pt-[max(4.75rem,env(safe-area-inset-top,0px)+3rem)] sm:px-10 sm:pb-12 lg:px-16">
-          <div className="flex h-full items-start sm:items-center">
+          <div className="flex h-full items-start justify-center sm:items-center sm:justify-start">
             <div
-              className="w-full max-w-[21.5rem] sm:max-w-[24rem]"
+              className="w-full max-w-[22rem] text-center sm:max-w-[24rem] sm:text-left"
               style={{
                 opacity: introOpacity,
                 transform: `translate3d(${introShiftX}px, ${introShiftY}px, 0)`,
@@ -330,20 +361,27 @@ export function SceneStage() {
                 <div className="space-y-5">
                   <motion.h1
                     variants={introHeadlineVariants}
-                    className="text-[clamp(1.85rem,6vw,5.4rem)] font-semibold leading-[0.9] tracking-[-0.06em] text-[#20133b]"
+                    className="mx-auto flex w-fit max-w-full flex-col items-center text-center text-[clamp(2.7rem,12vw,4.6rem)] font-semibold leading-[0.9] tracking-[-0.06em] text-[#20133b] sm:mx-0 sm:block sm:w-auto sm:max-w-none sm:text-left sm:text-[clamp(1.85rem,6vw,5.4rem)]"
                   >
-                    <span className="block whitespace-nowrap">What Is the Final</span>
-                    <span className="block whitespace-nowrap">Form of Voice AI?</span>
+                    <span className="block w-fit whitespace-nowrap sm:hidden">What Is the</span>
+                    <span className="block w-fit whitespace-nowrap sm:hidden">Final Form</span>
+                    <span className="block w-fit whitespace-nowrap sm:hidden">of Voice AI?</span>
+                    <span className="hidden sm:block sm:whitespace-nowrap">
+                      What Is the Final
+                    </span>
+                    <span className="hidden sm:block sm:whitespace-nowrap">
+                      Form of Voice AI?
+                    </span>
                   </motion.h1>
 
                   <motion.p
                     variants={introCopyVariants}
-                    className="max-w-[25rem] pl-[0.22rem] text-[1.04rem] leading-[1.38] tracking-[0.002em] text-[#4c3d69]/86 sm:max-w-[26rem] sm:pl-[0.28rem] sm:text-[1.18rem]"
+                    className="mx-auto max-w-[19.5rem] text-balance text-[1.1rem] leading-[1.42] tracking-[0.002em] text-[#4c3d69]/86 sm:mx-0 sm:max-w-[26rem] sm:pl-[0.28rem] sm:text-[1.32rem]"
                   >
-                    <span className="block whitespace-nowrap">
+                    <span className="block sm:whitespace-nowrap">
                       What if we embrace the purple gradient and explore
                     </span>
-                    <span className="block whitespace-nowrap">
+                    <span className="block sm:whitespace-nowrap">
                       beyond what we thought was possible?
                     </span>
                   </motion.p>
@@ -351,7 +389,7 @@ export function SceneStage() {
 
                 <motion.div
                   variants={introSliderVariants}
-                  className="mt-14 min-h-14 max-w-[21.5rem] -translate-x-[0.22rem] sm:-translate-x-[0.28rem]"
+                  className="mx-auto mt-12 min-h-14 max-w-[19rem] sm:mx-0 sm:mt-14 sm:max-w-[21.5rem] sm:-translate-x-[0.28rem]"
                 >
                   <AnimatePresence initial={false}>
                     {ctaMode === "swipe" ? (
@@ -369,7 +407,7 @@ export function SceneStage() {
                         onKeyDown={handleSwipeKeyDown}
                         className="pointer-events-auto relative flex h-14 w-full touch-none select-none items-center overflow-hidden rounded-full border border-white/70 bg-white/16 shadow-[0_20px_48px_rgba(79,45,156,0.18)] outline-none backdrop-blur-[10px] focus-visible:ring-4 focus-visible:ring-white/45"
                       >
-                        <span className="pointer-events-none absolute inset-0 z-[1] flex translate-x-[0.65rem] items-center justify-center px-16 text-center text-[0.68rem] font-semibold uppercase tracking-[0.3em] text-white sm:translate-x-[0.78rem] sm:text-[0.72rem]">
+                        <span className="pointer-events-none absolute inset-0 z-[1] flex translate-x-[0.5rem] items-center justify-center whitespace-nowrap px-12 text-center text-[0.6rem] font-semibold uppercase tracking-[0.24em] text-white sm:translate-x-[0.78rem] sm:px-16 sm:text-[0.72rem] sm:tracking-[0.3em]">
                           SLIDE TO ENTER SCENE
                         </span>
 
