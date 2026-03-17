@@ -1,8 +1,8 @@
 "use client";
 
-import { Suspense, useMemo } from "react";
+import { Suspense, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import { Canvas } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Bloom, EffectComposer } from "@react-three/postprocessing";
 
 import { ExternalSparkles2D } from "@/components/experience/orbReference/ExternalSparkles";
@@ -95,8 +95,182 @@ const PARTICLE_CONFIGS: ParticleConfig[] = [
   },
 ];
 
-function SceneContent() {
-  const sphereScale = 2.5;
+type ViewState = "intro" | "revealed";
+
+type ScenePose = {
+  position: [number, number, number];
+  rotation: [number, number, number];
+  scale: number;
+};
+
+type CameraPose = {
+  position: [number, number, number];
+  fov: number;
+};
+
+type SceneProps = {
+  viewState?: ViewState;
+  reducedMotion?: boolean;
+};
+
+const REVEALED_POSE: ScenePose = {
+  position: [0, 0, 0],
+  rotation: [0, 0, 0],
+  scale: 2.5,
+};
+
+const INTRO_POSE: ScenePose = {
+  position: [0, -7.75, 1.4],
+  rotation: [-0.02, 0.03, 0],
+  scale: 3.55,
+};
+
+const REVEALED_CAMERA: CameraPose = {
+  position: [0, 0, 15],
+  fov: 35,
+};
+
+const INTRO_CAMERA: CameraPose = {
+  position: [0, 0.55, 14],
+  fov: 40,
+};
+
+function SceneRig({
+  viewState,
+  reducedMotion,
+  children,
+}: React.PropsWithChildren<{
+  viewState: ViewState;
+  reducedMotion: boolean;
+}>) {
+  const groupRef = useRef<THREE.Group>(null);
+  const { camera } = useThree();
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const targetPose = viewState === "revealed" ? REVEALED_POSE : INTRO_POSE;
+  const targetCamera = viewState === "revealed" ? REVEALED_CAMERA : INTRO_CAMERA;
+  const hasInitialisedRef = useRef(false);
+
+  useEffect(() => {
+    cameraRef.current = camera as THREE.PerspectiveCamera;
+  }, [camera]);
+
+  useEffect(() => {
+    if (hasInitialisedRef.current || !groupRef.current || !cameraRef.current) return;
+
+    groupRef.current.position.set(...targetPose.position);
+    groupRef.current.rotation.set(...targetPose.rotation);
+    groupRef.current.scale.setScalar(targetPose.scale);
+    cameraRef.current.position.set(...targetCamera.position);
+    cameraRef.current.fov = targetCamera.fov;
+    cameraRef.current.updateProjectionMatrix();
+    hasInitialisedRef.current = true;
+  }, [targetCamera, targetPose]);
+
+  useEffect(() => {
+    if (!reducedMotion || !groupRef.current || !cameraRef.current) return;
+
+    groupRef.current.position.set(...targetPose.position);
+    groupRef.current.rotation.set(...targetPose.rotation);
+    groupRef.current.scale.setScalar(targetPose.scale);
+    cameraRef.current.position.set(...targetCamera.position);
+    cameraRef.current.fov = targetCamera.fov;
+    cameraRef.current.updateProjectionMatrix();
+  }, [reducedMotion, targetCamera, targetPose]);
+
+  useFrame((_, delta) => {
+    if (!groupRef.current || !cameraRef.current || reducedMotion) return;
+
+    const activeCamera = cameraRef.current;
+
+    const movementDamping = 4.6;
+    const cameraDamping = 4.1;
+    groupRef.current.position.x = THREE.MathUtils.damp(
+      groupRef.current.position.x,
+      targetPose.position[0],
+      movementDamping,
+      delta
+    );
+    groupRef.current.position.y = THREE.MathUtils.damp(
+      groupRef.current.position.y,
+      targetPose.position[1],
+      movementDamping,
+      delta
+    );
+    groupRef.current.position.z = THREE.MathUtils.damp(
+      groupRef.current.position.z,
+      targetPose.position[2],
+      movementDamping,
+      delta
+    );
+    groupRef.current.rotation.x = THREE.MathUtils.damp(
+      groupRef.current.rotation.x,
+      targetPose.rotation[0],
+      movementDamping,
+      delta
+    );
+    groupRef.current.rotation.y = THREE.MathUtils.damp(
+      groupRef.current.rotation.y,
+      targetPose.rotation[1],
+      movementDamping,
+      delta
+    );
+    groupRef.current.rotation.z = THREE.MathUtils.damp(
+      groupRef.current.rotation.z,
+      targetPose.rotation[2],
+      movementDamping,
+      delta
+    );
+
+    const nextScale = THREE.MathUtils.damp(
+      groupRef.current.scale.x,
+      targetPose.scale,
+      movementDamping,
+      delta
+    );
+    groupRef.current.scale.setScalar(nextScale);
+
+    activeCamera.position.x = THREE.MathUtils.damp(
+      activeCamera.position.x,
+      targetCamera.position[0],
+      cameraDamping,
+      delta
+    );
+    activeCamera.position.y = THREE.MathUtils.damp(
+      activeCamera.position.y,
+      targetCamera.position[1],
+      cameraDamping,
+      delta
+    );
+    activeCamera.position.z = THREE.MathUtils.damp(
+      activeCamera.position.z,
+      targetCamera.position[2],
+      cameraDamping,
+      delta
+    );
+
+    const nextFov = THREE.MathUtils.damp(
+      activeCamera.fov,
+      targetCamera.fov,
+      cameraDamping,
+      delta
+    );
+
+    if (Math.abs(activeCamera.fov - nextFov) > 0.001) {
+      activeCamera.fov = nextFov;
+      activeCamera.updateProjectionMatrix();
+    }
+  });
+
+  return <group ref={groupRef}>{children}</group>;
+}
+
+function SceneContent({
+  viewState,
+  reducedMotion,
+}: {
+  viewState: ViewState;
+  reducedMotion: boolean;
+}) {
 
   const particleConfigs = useMemo(() => PARTICLE_CONFIGS, []);
 
@@ -109,7 +283,7 @@ function SceneContent() {
       <pointLight position={[3, -2, 8]} intensity={0.3} color="#ECF1FA" />
       <directionalLight position={[-8, 5, 5]} intensity={0.7} color="#866AD6" />
 
-      <group position={[0, 0, 0]} scale={sphereScale}>
+      <SceneRig viewState={viewState} reducedMotion={reducedMotion}>
         <RimSparkleSphere
           position={[0, 0, 0]}
           renderOrder={20}
@@ -159,7 +333,7 @@ function SceneContent() {
           mouseRepelStrength={0.1}
           returnSpeed={0.18}
         />
-      </group>
+      </SceneRig>
 
       <EffectComposer multisampling={0}>
         <Bloom
@@ -173,7 +347,10 @@ function SceneContent() {
   );
 }
 
-export function Scene() {
+export function Scene({
+  viewState = "revealed",
+  reducedMotion = false,
+}: SceneProps) {
   return (
     <div className="h-full w-full">
       <Canvas
@@ -188,7 +365,7 @@ export function Scene() {
         style={{ width: "100%", height: "100%" }}
       >
         <Suspense fallback={null}>
-          <SceneContent />
+          <SceneContent viewState={viewState} reducedMotion={reducedMotion} />
         </Suspense>
       </Canvas>
     </div>

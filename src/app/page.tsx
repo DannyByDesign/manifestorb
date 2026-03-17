@@ -25,22 +25,20 @@ export default function Page() {
   return (
     <main className="relative isolate h-[100svh] w-full overflow-hidden bg-[var(--base-lilac)]">
       <motion.div
-        className="absolute inset-x-0 top-0 z-10"
+        className="absolute inset-x-0 top-0 z-0"
         style={{ height: `calc(100svh + ${INTRO_OFFSET})` }}
         animate={{ y: isRevealed ? `-${INTRO_OFFSET}` : "0svh" }}
         transition={stageTransition}
       >
         <div className="stage-backdrop absolute inset-0" />
-        <section
-          aria-label="Orb scene"
-          className="absolute inset-x-0 h-[100svh] overflow-hidden"
-          style={{ top: INTRO_OFFSET }}
-        >
-          <div className="relative z-[1] h-full w-full">
-            <Scene />
-          </div>
-        </section>
       </motion.div>
+
+      <section aria-label="Orb scene" className="absolute inset-0 z-10 overflow-hidden">
+        <Scene
+          viewState={viewState}
+          reducedMotion={Boolean(prefersReducedMotion)}
+        />
+      </section>
 
       <div className="pointer-events-none absolute inset-0 z-30">
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2">
