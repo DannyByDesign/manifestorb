@@ -117,9 +117,11 @@ type SceneProps = {
 type SceneLayout = {
   loadInPose: ScenePose;
   introPose: ScenePose;
+  askingPose: ScenePose;
   revealedPose: ScenePose;
   loadInCamera: CameraPose;
   introCamera: CameraPose;
+  askingCamera: CameraPose;
   revealedCamera: CameraPose;
 };
 
@@ -139,6 +141,11 @@ const DESKTOP_SCENE_LAYOUT: SceneLayout = {
     rotation: [-0.03, 0.08, -0.02],
     scale: 3.95,
   },
+  askingPose: {
+    position: [0, -8.5, 0.6],
+    rotation: [-0.015, 0.02, -0.008],
+    scale: 3.5,
+  },
   revealedCamera: {
     position: [0, 0, 15],
     fov: 35,
@@ -150,6 +157,10 @@ const DESKTOP_SCENE_LAYOUT: SceneLayout = {
   introCamera: {
     position: [0, 0.35, 14],
     fov: 40.5,
+  },
+  askingCamera: {
+    position: [0, 0.02, 14.4],
+    fov: 38,
   },
 };
 
@@ -169,6 +180,11 @@ const MOBILE_SCENE_LAYOUT: SceneLayout = {
     rotation: [-0.01, 0.03, -0.008],
     scale: 3.72,
   },
+  askingPose: {
+    position: [0, -10.6, 0.6],
+    rotation: [-0.005, 0.012, -0.004],
+    scale: 3.7,
+  },
   revealedCamera: {
     position: [0, 0.1, 16.1],
     fov: 36.4,
@@ -180,6 +196,10 @@ const MOBILE_SCENE_LAYOUT: SceneLayout = {
   introCamera: {
     position: [0, 0.35, 15.45],
     fov: 39.1,
+  },
+  askingCamera: {
+    position: [0, 0.05, 15.6],
+    fov: 38,
   },
 };
 
@@ -219,7 +239,14 @@ function resolvePose(
   const revealProgress = THREE.MathUtils.clamp(sceneProgress, 0, 1);
   const introPose = interpolatePose(layout.loadInPose, layout.introPose, introProgress);
 
-  return interpolatePose(introPose, layout.revealedPose, revealProgress);
+  if (revealProgress <= 0.5) {
+    return interpolatePose(introPose, layout.askingPose, revealProgress * 2);
+  }
+  return interpolatePose(
+    layout.askingPose,
+    layout.revealedPose,
+    (revealProgress - 0.5) * 2
+  );
 }
 
 function resolveCamera(
@@ -235,7 +262,14 @@ function resolveCamera(
     introProgress
   );
 
-  return interpolateCamera(introCamera, layout.revealedCamera, revealProgress);
+  if (revealProgress <= 0.5) {
+    return interpolateCamera(introCamera, layout.askingCamera, revealProgress * 2);
+  }
+  return interpolateCamera(
+    layout.askingCamera,
+    layout.revealedCamera,
+    (revealProgress - 0.5) * 2
+  );
 }
 
 function SceneReadySignal({ onReady }: { onReady?: () => void }) {

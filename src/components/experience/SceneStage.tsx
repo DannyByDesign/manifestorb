@@ -12,17 +12,51 @@ import {
 
 import { Scene } from "@/components/experience/Scene";
 
-const INTRO_OFFSET = 68;
 const STAGE_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 const CTA_EASE: [number, number, number, number] = [0.65, 0, 0.35, 1];
-const SWIPE_COMPLETE_THRESHOLD = 0.88;
-const SCENE_TRANSITION_START = 0.58;
-const TRACK_HANDLE_SIZE = 46;
-const TRACK_PADDING = 5;
 const LOAD_IN_DURATION = 1.08;
 const LOAD_IN_SCENE_DURATION = 0.82;
-const LOGO_COLOR_TRANSITION_START = 0.18;
-const LOGO_COLOR_TRANSITION_END = 0.92;
+
+const ASKING_PROGRESS = 0.5;
+const SEALED_PROGRESS = 1;
+const LANDING_PROGRESS = 0;
+
+const SCENE_BIG_TRANSITION = 1.4;
+const SCENE_SEAL_TRANSITION = 1.65;
+
+const MOBILE_MEDIA_QUERY = "(max-width: 639px)";
+
+type Question = {
+  title: string;
+  helper: string;
+};
+
+const QUESTIONS: Question[] = [
+  {
+    title:
+      "In five years, what's one specific thing you're doing that you absolutely weren't doing before?",
+    helper:
+      "Something concrete: a role you're in, a project you've completed, a way you're spending your time.",
+  },
+  {
+    title: "What does that version of you care about most?",
+    helper:
+      "If five-years-you could tell present-you one thing about what actually matters, what would it be?",
+  },
+  {
+    title: "What's the hardest part about getting there?",
+    helper: "What are you afraid of, or what keeps you stuck right now?",
+  },
+  {
+    title: "How does five-years-you spend your time differently?",
+    helper: "Walk us through a normal Tuesday: what does it actually look like?",
+  },
+  {
+    title:
+      "If future-you had to remind present-you of one thing when you get discouraged, what is it?",
+    helper: "What's the thing you need to hear?",
+  },
+];
 
 const introContentVariants: Variants = {
   hidden: {},
@@ -34,102 +68,74 @@ const introContentVariants: Variants = {
 };
 
 const introHeadlineVariants: Variants = {
-  hidden: {
-    opacity: 0,
-    y: 28,
-    filter: "blur(8px)",
-  },
+  hidden: { opacity: 0, y: 28, filter: "blur(8px)" },
   visible: {
     opacity: 1,
     y: 0,
     filter: "blur(0px)",
-    transition: {
-      duration: 0.9,
-      ease: STAGE_EASE,
-    },
+    transition: { duration: 0.9, ease: STAGE_EASE },
   },
 };
 
 const introCopyVariants: Variants = {
-  hidden: {
-    opacity: 0,
-    y: 28,
-    filter: "blur(8px)",
-  },
+  hidden: { opacity: 0, y: 28, filter: "blur(8px)" },
   visible: {
     opacity: 1,
     y: 0,
     filter: "blur(0px)",
-    transition: {
-      duration: 0.9,
-      ease: STAGE_EASE,
-    },
+    transition: { duration: 0.9, ease: STAGE_EASE },
   },
 };
 
-const introSliderVariants: Variants = {
-  hidden: {
-    opacity: 0,
-    y: 20,
-    scale: 0.985,
-    filter: "blur(8px)",
-  },
+const introCtaVariants: Variants = {
+  hidden: { opacity: 0, y: 20, scale: 0.985, filter: "blur(8px)" },
   visible: {
     opacity: 1,
     y: 0,
     scale: 1,
     filter: "blur(0px)",
-    transition: {
-      duration: 0.9,
-      ease: STAGE_EASE,
-    },
+    transition: { duration: 0.9, ease: STAGE_EASE },
   },
 };
 
 const sceneShellVariants: Variants = {
-  hidden: {
-    opacity: 0,
-  },
+  hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    transition: {
-      duration: LOAD_IN_SCENE_DURATION,
-      ease: STAGE_EASE,
-    },
+    transition: { duration: LOAD_IN_SCENE_DURATION, ease: STAGE_EASE },
   },
 };
 
 const logoVariants: Variants = {
-  hidden: {
-    opacity: 0,
-    y: 18,
-    filter: "blur(8px)",
-  },
+  hidden: { opacity: 0, y: 18, filter: "blur(8px)" },
   visible: {
     opacity: 1,
     y: 0,
     filter: "blur(0px)",
-    transition: {
-      duration: 0.88,
-      ease: STAGE_EASE,
-    },
+    transition: { duration: 0.88, ease: STAGE_EASE },
   },
 };
 
-type CtaMode = "swipe" | "button";
+const phaseSwapVariants: Variants = {
+  hidden: { opacity: 0, y: 14, filter: "blur(6px)" },
+  visible: {
+    opacity: 1,
+    y: 0,
+    filter: "blur(0px)",
+    transition: { duration: 0.6, ease: STAGE_EASE },
+  },
+  exit: {
+    opacity: 0,
+    y: -10,
+    filter: "blur(6px)",
+    transition: { duration: 0.34, ease: STAGE_EASE },
+  },
+};
 
-const MOBILE_MEDIA_QUERY = "(max-width: 639px)";
+type Phase = "landing" | "asking" | "sealed";
 
 function clamp(value: number, min = 0, max = 1) {
   return Math.min(max, Math.max(min, value));
-}
-
-function interpolateColor(from: [number, number, number], to: [number, number, number], progress: number) {
-  const next = clamp(progress);
-  const channel = (index: number) =>
-    Math.round(from[index] + (to[index] - from[index]) * next);
-
-  return `rgb(${channel(0)} ${channel(1)} ${channel(2)})`;
 }
 
 function subscribeToMobileBreakpoint(onStoreChange: () => void) {
@@ -155,6 +161,9 @@ function getMobileBreakpointServerSnapshot() {
   return false;
 }
 
+const STAGE_PADDING_CLASSES =
+  "absolute inset-0 px-6 pb-10 pt-[max(4.75rem,env(safe-area-inset-top,0px)+3rem)] sm:px-10 sm:pb-12 lg:px-16";
+
 export function SceneStage() {
   const prefersReducedMotion = useReducedMotion();
   const pathname = usePathname();
@@ -164,37 +173,27 @@ export function SceneStage() {
     getMobileBreakpointSnapshot,
     getMobileBreakpointServerSnapshot
   );
+
+  const [phase, setPhase] = useState<Phase>("landing");
+  const [questionIndex, setQuestionIndex] = useState(0);
+  const [answers, setAnswers] = useState<string[]>(() => QUESTIONS.map(() => ""));
+
   const [loadInProgress, setLoadInProgress] = useState(prefersReducedMotion ? 1 : 0);
+  const [sceneProgress, setSceneProgress] = useState(0);
   const [isSceneReady, setIsSceneReady] = useState(false);
   const [hasLoadedIn, setHasLoadedIn] = useState(prefersReducedMotion);
-  const [swipeProgress, setSwipeProgress] = useState(0);
-  const [ctaMode, setCtaMode] = useState<CtaMode>("swipe");
-  const [isDragging, setIsDragging] = useState(false);
-  const [trackWidth, setTrackWidth] = useState(0);
+
   const loadInProgressRef = useRef(prefersReducedMotion ? 1 : 0);
-  const swipeProgressRef = useRef(0);
+  const sceneProgressRef = useRef(0);
+  const sceneTargetRef = useRef(0);
   const loadInAnimationRef = useRef<{ stop: () => void } | null>(null);
-  const animationRef = useRef<{ stop: () => void } | null>(null);
-  const dragRef = useRef<{ pointerId: number; rect: DOMRect } | null>(null);
-  const trackRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const node = trackRef.current;
-    if (!node) return;
-
-    const syncWidth = () => setTrackWidth(node.clientWidth);
-    syncWidth();
-
-    const observer = new ResizeObserver(syncWidth);
-    observer.observe(node);
-
-    return () => observer.disconnect();
-  }, [ctaMode]);
+  const sceneAnimationRef = useRef<{ stop: () => void } | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     return () => {
       loadInAnimationRef.current?.stop();
-      animationRef.current?.stop();
+      sceneAnimationRef.current?.stop();
     };
   }, []);
 
@@ -204,29 +203,10 @@ export function SceneStage() {
     setLoadInProgress(next);
   };
 
-  const setProgress = (value: number) => {
+  const setSceneProg = (value: number) => {
     const next = clamp(value);
-    swipeProgressRef.current = next;
-    setSwipeProgress(next);
-  };
-
-  const animateProgress = (target: number) => {
-    animationRef.current?.stop();
-
-    if (prefersReducedMotion) {
-      setProgress(target);
-      return;
-    }
-
-    animationRef.current = animate(swipeProgressRef.current, target, {
-      duration: target > swipeProgressRef.current ? 1.18 : 1.02,
-      ease: STAGE_EASE,
-      onUpdate: setProgress,
-      onComplete: () => {
-        animationRef.current = null;
-        setProgress(target);
-      },
-    });
+    sceneProgressRef.current = next;
+    setSceneProgress(next);
   };
 
   useEffect(() => {
@@ -245,75 +225,69 @@ export function SceneStage() {
     });
   }, [hasLoadedIn, isSceneReady, prefersReducedMotion]);
 
-  const resolveProgressFromClientX = (clientX: number, rect: DOMRect) => {
-    const travel = Math.max(rect.width - TRACK_HANDLE_SIZE - TRACK_PADDING * 2, 1);
-    const next = (clientX - rect.left - TRACK_PADDING - TRACK_HANDLE_SIZE / 2) / travel;
-    return clamp(next);
-  };
+  useEffect(() => {
+    if (phase !== "asking") return;
+    const id = setTimeout(() => textareaRef.current?.focus(), 380);
+    return () => clearTimeout(id);
+  }, [phase, questionIndex]);
 
-  const settleSwipe = () => {
-    const shouldReveal = swipeProgressRef.current >= SWIPE_COMPLETE_THRESHOLD;
-    setIsDragging(false);
-    dragRef.current = null;
+  const animateSceneTo = (target: number, duration: number) => {
+    sceneTargetRef.current = target;
 
-    if (shouldReveal) {
-      setCtaMode("button");
-      animateProgress(1);
+    if (prefersReducedMotion) {
+      setSceneProg(target);
       return;
     }
 
-    animateProgress(0);
+    sceneAnimationRef.current?.stop();
+    sceneAnimationRef.current = animate(sceneProgressRef.current, target, {
+      duration,
+      ease: STAGE_EASE,
+      onUpdate: setSceneProg,
+      onComplete: () => {
+        sceneAnimationRef.current = null;
+        setSceneProg(target);
+      },
+    });
   };
 
-  useEffect(() => {
-    if (!isDragging) return;
-
-    const handlePointerMove = (event: PointerEvent) => {
-      if (!dragRef.current || dragRef.current.pointerId !== event.pointerId) return;
-      setProgress(resolveProgressFromClientX(event.clientX, dragRef.current.rect));
-    };
-
-    const handlePointerEnd = (event: PointerEvent) => {
-      if (!dragRef.current || dragRef.current.pointerId !== event.pointerId) return;
-      settleSwipe();
-    };
-
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerEnd);
-    window.addEventListener("pointercancel", handlePointerEnd);
-
-    return () => {
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerEnd);
-      window.removeEventListener("pointercancel", handlePointerEnd);
-    };
-  }, [isDragging]);
-
-  const handleSwipePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (ctaMode !== "swipe") return;
-
-    const rect = trackRef.current?.getBoundingClientRect();
-    if (!rect) return;
-
-    event.preventDefault();
-    animationRef.current?.stop();
-    dragRef.current = { pointerId: event.pointerId, rect };
-    setIsDragging(true);
-    setProgress(resolveProgressFromClientX(event.clientX, rect));
-    event.currentTarget.setPointerCapture?.(event.pointerId);
+  const handleLightOrb = () => {
+    animateSceneTo(ASKING_PROGRESS, SCENE_BIG_TRANSITION);
+    setQuestionIndex(0);
+    setPhase("asking");
   };
 
-  const handleSwipeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== "Enter" && event.key !== " ") return;
-
-    event.preventDefault();
-    setCtaMode("button");
-    animateProgress(1);
+  const handleNext = () => {
+    if (questionIndex < QUESTIONS.length - 1) {
+      setQuestionIndex(questionIndex + 1);
+    } else {
+      animateSceneTo(SEALED_PROGRESS, SCENE_SEAL_TRANSITION);
+      setPhase("sealed");
+    }
   };
 
-  const handleGoBack = () => {
-    setCtaMode("swipe");
-    animateProgress(0);
+  const handleBack = () => {
+    if (questionIndex === 0) {
+      animateSceneTo(LANDING_PROGRESS, SCENE_BIG_TRANSITION);
+      setPhase("landing");
+    } else {
+      setQuestionIndex(questionIndex - 1);
+    }
+  };
+
+  const handleStartOver = () => {
+    animateSceneTo(LANDING_PROGRESS, SCENE_BIG_TRANSITION);
+    setAnswers(QUESTIONS.map(() => ""));
+    setQuestionIndex(0);
+    setPhase("landing");
+  };
+
+  const handleAnswerChange = (value: string) => {
+    setAnswers((prev) => {
+      const next = [...prev];
+      next[questionIndex] = value;
+      return next;
+    });
   };
 
   const handleLogoClick = () => {
@@ -322,48 +296,17 @@ export function SceneStage() {
       return;
     }
 
-    setCtaMode("swipe");
-    setIsDragging(false);
-    dragRef.current = null;
-    animateProgress(0);
+    if (phase !== "landing") {
+      handleStartOver();
+    }
   };
 
-  const sceneProgress =
-    swipeProgress <= SCENE_TRANSITION_START
-      ? 0
-      : 1 -
-        Math.pow(
-          1 -
-            clamp(
-              (swipeProgress - SCENE_TRANSITION_START) /
-                (1 - SCENE_TRANSITION_START)
-            ),
-          2
-        );
-  const introOpacity = clamp(1 - sceneProgress * 1.3);
-  const introShiftX = sceneProgress * (isMobile ? 0 : 18);
-  const introShiftY = sceneProgress * (isMobile ? 16 : 10);
-  const trackFillOpacity = 0.14 + swipeProgress * 0.86;
-  const handleTravel = Math.max(trackWidth - TRACK_HANDLE_SIZE - TRACK_PADDING * 2, 0);
-  const handleOffset = TRACK_PADDING + handleTravel * swipeProgress;
-  const fillWidth = clamp(handleOffset + TRACK_HANDLE_SIZE - 1, 0, Math.max(trackWidth - 2, 0));
-  const backdropTransform = `translate3d(0, ${-INTRO_OFFSET * sceneProgress}svh, 0)`;
   const loadInMotionState = prefersReducedMotion || isSceneReady ? "visible" : "hidden";
-  const logoColorProgress = clamp(
-    (swipeProgress - LOGO_COLOR_TRANSITION_START) /
-      (LOGO_COLOR_TRANSITION_END - LOGO_COLOR_TRANSITION_START)
-  );
-  const logoColor = interpolateColor(
-    [62, 46, 103],
-    [255, 255, 255],
-    logoColorProgress
-  );
-  const ctaFadeTransition = prefersReducedMotion
-    ? { duration: 0.01 }
-    : { duration: 0.42, ease: CTA_EASE };
-  const ctaHoverTransition = prefersReducedMotion
+  const buttonHoverTransition = prefersReducedMotion
     ? { duration: 0.01 }
     : { type: "spring" as const, stiffness: 420, damping: 28, mass: 0.55 };
+
+  const currentQuestion = QUESTIONS[questionIndex];
 
   return (
     <main className="relative isolate h-[100svh] w-full overflow-hidden bg-[var(--base-lilac)]">
@@ -379,17 +322,11 @@ export function SceneStage() {
         <div
           aria-hidden="true"
           className="logo-mark h-11 w-11 sm:h-[3.15rem] sm:w-[3.15rem]"
-          style={{ backgroundColor: logoColor }}
+          style={{ backgroundColor: "rgb(62 46 103)" }}
         />
       </motion.button>
 
-      <div
-        className="absolute inset-x-0 top-0 z-0 will-change-transform"
-        style={{
-          height: `calc(100svh + ${INTRO_OFFSET}svh)`,
-          transform: backdropTransform,
-        }}
-      >
+      <div className="absolute inset-0 z-0">
         <div className="stage-backdrop absolute inset-0" />
       </div>
 
@@ -410,127 +347,181 @@ export function SceneStage() {
       </motion.section>
 
       <div className="pointer-events-none absolute inset-0 z-30">
-        <div className="absolute inset-0 px-6 pb-10 pt-[max(4.75rem,env(safe-area-inset-top,0px)+3rem)] sm:px-10 sm:pb-12 lg:px-16">
-          <div className="flex h-full items-start justify-center sm:items-center sm:justify-start">
-            <div
-              className="w-full max-w-[22rem] text-center sm:max-w-[24rem] sm:text-left"
-              style={{
-                opacity: introOpacity,
-                transform: `translate3d(${introShiftX}px, ${introShiftY}px, 0)`,
-              }}
+        <AnimatePresence mode="wait" initial={false}>
+          {phase === "landing" ? (
+            <motion.div
+              key="landing"
+              variants={phaseSwapVariants}
+              initial={prefersReducedMotion ? false : "hidden"}
+              animate={loadInMotionState}
+              exit={prefersReducedMotion ? undefined : "exit"}
+              className={STAGE_PADDING_CLASSES}
             >
-              <motion.div
-                initial={prefersReducedMotion ? false : "hidden"}
-                animate={loadInMotionState}
-                variants={introContentVariants}
-                className="stage-intro-flow"
-              >
-                <div className="space-y-5">
-                  <motion.h1
-                    variants={introHeadlineVariants}
-                    className="mx-auto flex w-fit max-w-full flex-col items-center text-center text-[clamp(2.7rem,12vw,4.6rem)] font-semibold leading-[0.9] tracking-[-0.06em] text-[#37285d] sm:mx-0 sm:block sm:w-auto sm:max-w-none sm:text-left sm:text-[clamp(3.2rem,2.65rem+1.7vw,5.4rem)]"
+              <div className="flex h-full items-start justify-center sm:items-center sm:justify-start">
+                <div className="w-full max-w-[26rem] text-center sm:max-w-[36rem] sm:text-left">
+                  <motion.div
+                    variants={introContentVariants}
+                    className="stage-intro-flow"
                   >
-                    <span className="block w-fit whitespace-nowrap sm:hidden">What Is the</span>
-                    <span className="block w-fit whitespace-nowrap sm:hidden">Final Form</span>
-                    <span className="block w-fit whitespace-nowrap sm:hidden">of Voice AI?</span>
-                    <span className="hidden sm:block sm:whitespace-nowrap">
-                      What Is the Final
-                    </span>
-                    <span className="hidden sm:block sm:whitespace-nowrap">
-                      Form of Voice AI?
-                    </span>
-                  </motion.h1>
-
-                  <motion.p
-                    variants={introCopyVariants}
-                    className="mx-auto max-w-[20rem] text-center text-[1.05rem] leading-[1.42] tracking-[0.002em] text-[#64567f]/88 sm:mx-0 sm:max-w-[26rem] sm:text-left sm:pl-[0.28rem] sm:text-[1.32rem]"
-                  >
-                    <span className="block sm:whitespace-nowrap">
-                      What if our interface were not purely functional, but also whimsical,
-                    </span>
-                    <span className="block sm:whitespace-nowrap">
-                      boldly colored, and dynamic enough to adapt to every interaction?
-                    </span>
-                  </motion.p>
-                </div>
-
-                <motion.div
-                  variants={introSliderVariants}
-                  className="mx-auto mt-12 min-h-14 max-w-[19rem] sm:mx-0 sm:mt-14 sm:max-w-[21.5rem] sm:-translate-x-[0.28rem]"
-                >
-                  <AnimatePresence initial={false}>
-                    {ctaMode === "swipe" ? (
-                      <motion.div
-                        key="swipe-control"
-                        ref={trackRef}
-                        initial={prefersReducedMotion ? false : { opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={prefersReducedMotion ? undefined : { opacity: 0 }}
-                        transition={ctaFadeTransition}
-                        role="button"
-                        tabIndex={0}
-                        aria-label="Swipe to enter scene"
-                        onPointerDown={handleSwipePointerDown}
-                        onKeyDown={handleSwipeKeyDown}
-                        className="pointer-events-auto relative flex h-14 w-full touch-none select-none items-center overflow-hidden rounded-full border border-white/70 bg-white/16 shadow-[0_20px_48px_rgba(79,45,156,0.18)] outline-none backdrop-blur-[10px] focus-visible:ring-4 focus-visible:ring-white/45"
+                    <div className="space-y-5">
+                      <motion.h1
+                        variants={introHeadlineVariants}
+                        className="mx-auto flex w-fit max-w-full flex-col items-center text-center font-serif text-[clamp(2.2rem,9vw,2.95rem)] font-normal leading-[1.02] tracking-[-0.012em] text-[#37285d] sm:mx-0 sm:block sm:w-auto sm:max-w-none sm:text-left sm:text-[clamp(2.85rem,2.1rem+1.6vw,4.4rem)]"
                       >
-                        <span className="pointer-events-none absolute inset-0 z-[1] flex translate-x-[0.5rem] items-center justify-center whitespace-nowrap px-12 text-center text-[0.6rem] font-semibold uppercase tracking-[0.24em] text-white sm:translate-x-[0.78rem] sm:px-16 sm:text-[0.72rem] sm:tracking-[0.3em]">
-                          SLIDE TO ENTER SCENE
-                        </span>
+                        <span className="block w-fit">Letters from</span>
+                        <span className="block w-fit">your future self.</span>
+                      </motion.h1>
 
-                        <motion.div
-                          aria-hidden="true"
-                          className="absolute bottom-[1px] left-[1px] top-[1px] rounded-full bg-[var(--button-lavender)] shadow-[0_20px_48px_rgba(123,76,255,0.32)]"
-                          style={{
-                            opacity: trackFillOpacity,
-                            width: Math.max(fillWidth, TRACK_HANDLE_SIZE),
-                          }}
-                        />
+                      <motion.p
+                        variants={introCopyVariants}
+                        className="mx-auto max-w-[20rem] text-center text-[1.05rem] leading-[1.42] tracking-[0.002em] text-[#64567f]/88 sm:mx-0 sm:max-w-[26rem] sm:text-left sm:pl-[0.28rem] sm:text-[1.18rem]"
+                      >
+                        Answer five questions. Light the orb. Receive weekly
+                        emails from who you&apos;re becoming&mdash;for the next
+                        five years.
+                      </motion.p>
+                    </div>
 
-                        <motion.span
-                          aria-hidden="true"
-                          className="absolute left-0 top-1/2 z-10 flex -translate-y-1/2 items-center justify-center rounded-full border border-[color:var(--button-lavender)] bg-[color:var(--button-lavender)] shadow-[0_14px_28px_rgba(102,76,176,0.34)]"
-                          style={{
-                            x: handleOffset,
-                            width: TRACK_HANDLE_SIZE,
-                            height: TRACK_HANDLE_SIZE,
-                          }}
-                        >
-                          <span className="h-2.5 w-2.5 rounded-full bg-white/92" />
-                        </motion.span>
-                      </motion.div>
-                    ) : null}
-                  </AnimatePresence>
-                </motion.div>
-              </motion.div>
-            </div>
-          </div>
-        </div>
+                    <motion.div
+                      variants={introCtaVariants}
+                      className="mx-auto mt-12 flex justify-center sm:mx-0 sm:mt-14 sm:justify-start sm:-translate-x-[0.06rem]"
+                    >
+                      <motion.button
+                        type="button"
+                        onClick={handleLightOrb}
+                        whileHover={prefersReducedMotion ? undefined : { scale: 1.04 }}
+                        whileTap={prefersReducedMotion ? undefined : { scale: 0.985 }}
+                        transition={buttonHoverTransition}
+                        className="pointer-events-auto inline-flex h-14 min-w-56 items-center justify-center whitespace-nowrap rounded-full bg-[color:var(--button-lavender)] px-9 py-3 text-sm font-semibold uppercase tracking-[0.24em] text-white shadow-[0_22px_52px_rgba(123,76,255,0.34)] outline-none transition-colors duration-300 hover:bg-[color:var(--button-lavender-strong)] focus-visible:ring-4 focus-visible:ring-white/45"
+                      >
+                        Light the Orb
+                      </motion.button>
+                    </motion.div>
+                  </motion.div>
+                </div>
+              </div>
+            </motion.div>
+          ) : phase === "asking" ? (
+            <motion.div
+              key={`asking-${questionIndex}`}
+              variants={phaseSwapVariants}
+              initial={prefersReducedMotion ? false : "hidden"}
+              animate="visible"
+              exit={prefersReducedMotion ? undefined : "exit"}
+              className={STAGE_PADDING_CLASSES}
+            >
+              <div className="flex h-full items-center justify-center">
+                <div className="w-full max-w-[26rem] text-center sm:max-w-[34rem]">
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-center gap-3">
+                      <span className="text-[0.62rem] font-semibold uppercase tracking-[0.32em] text-[#64567f]/82">
+                        {questionIndex + 1} of {QUESTIONS.length}
+                      </span>
+                      <span aria-hidden="true" className="flex items-center gap-1.5">
+                        {QUESTIONS.map((_, idx) => (
+                          <span
+                            key={idx}
+                            className={`block h-[5px] w-[5px] rounded-full transition-colors duration-300 ${
+                              idx <= questionIndex ? "bg-[#37285d]" : "bg-[#37285d]/22"
+                            }`}
+                          />
+                        ))}
+                      </span>
+                    </div>
 
-        <div className="absolute inset-x-0 bottom-[max(2.25rem,env(safe-area-inset-bottom,0px)+2rem)] flex justify-center px-6">
-          <AnimatePresence initial={false}>
-            {ctaMode === "button" ? (
-              <motion.button
-                key="revealed-button"
-                type="button"
-                initial={prefersReducedMotion ? false : { opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={prefersReducedMotion ? undefined : { opacity: 0 }}
-                whileHover={prefersReducedMotion ? undefined : { scale: 1.04 }}
-                whileTap={prefersReducedMotion ? undefined : { scale: 0.985 }}
-                transition={{
-                  opacity: ctaFadeTransition,
-                  scale: ctaHoverTransition,
-                }}
-                onClick={handleGoBack}
-                aria-label="Go back to intro scene"
-                className="pointer-events-auto inline-flex h-14 min-w-56 items-center justify-center whitespace-nowrap rounded-full border border-white/70 bg-white/16 px-8 py-3 text-sm font-semibold uppercase tracking-[0.22em] text-white shadow-[0_20px_48px_rgba(79,45,156,0.18)] outline-none backdrop-blur-[10px] transition-colors duration-300 hover:bg-white/22 focus-visible:ring-4 focus-visible:ring-white/45"
-              >
-                Go back
-              </motion.button>
-            ) : null}
-          </AnimatePresence>
-        </div>
+                    <h2
+                      id={`q-${questionIndex}`}
+                      className="font-serif text-[clamp(1.55rem,5.8vw,2.15rem)] font-normal leading-[1.12] tracking-[-0.005em] text-[#37285d] sm:text-[clamp(1.75rem,1.45rem+0.85vw,2.5rem)]"
+                    >
+                      {currentQuestion.title}
+                    </h2>
+
+                    <p className="text-[0.97rem] leading-[1.46] text-[#64567f]/82 sm:text-[1.04rem]">
+                      {currentQuestion.helper}
+                    </p>
+
+                    <textarea
+                      ref={textareaRef}
+                      value={answers[questionIndex]}
+                      onChange={(event) => handleAnswerChange(event.target.value)}
+                      aria-labelledby={`q-${questionIndex}`}
+                      rows={isMobile ? 4 : 5}
+                      className="pointer-events-auto block w-full resize-none rounded-2xl border border-white/70 bg-white/55 px-5 py-4 text-left text-[1rem] leading-[1.5] tracking-[0.002em] text-[#37285d] shadow-[0_18px_44px_rgba(79,45,156,0.14)] outline-none backdrop-blur-[10px] placeholder:text-[#64567f]/40 focus:border-white focus:ring-4 focus:ring-white/45"
+                    />
+
+                    <div className="flex items-center justify-between gap-3 pt-1">
+                      <motion.button
+                        type="button"
+                        onClick={handleBack}
+                        whileHover={prefersReducedMotion ? undefined : { scale: 1.03 }}
+                        whileTap={prefersReducedMotion ? undefined : { scale: 0.985 }}
+                        transition={buttonHoverTransition}
+                        className="pointer-events-auto inline-flex h-12 items-center justify-center rounded-full border border-white/70 bg-white/24 px-6 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-[#37285d] outline-none backdrop-blur-[10px] transition-colors duration-300 hover:bg-white/36 focus-visible:ring-4 focus-visible:ring-white/45"
+                      >
+                        Back
+                      </motion.button>
+                      <motion.button
+                        type="button"
+                        onClick={handleNext}
+                        whileHover={prefersReducedMotion ? undefined : { scale: 1.04 }}
+                        whileTap={prefersReducedMotion ? undefined : { scale: 0.985 }}
+                        transition={buttonHoverTransition}
+                        className="pointer-events-auto inline-flex h-12 min-w-32 items-center justify-center rounded-full bg-[color:var(--button-lavender)] px-7 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-white shadow-[0_16px_36px_rgba(123,76,255,0.3)] outline-none transition-colors duration-300 hover:bg-[color:var(--button-lavender-strong)] focus-visible:ring-4 focus-visible:ring-white/45"
+                      >
+                        {questionIndex === QUESTIONS.length - 1 ? "Seal it" : "Next"}
+                      </motion.button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="sealed"
+              variants={phaseSwapVariants}
+              initial={prefersReducedMotion ? false : "hidden"}
+              animate="visible"
+              exit={prefersReducedMotion ? undefined : "exit"}
+              className={STAGE_PADDING_CLASSES}
+            >
+              <div className="flex h-full items-center justify-center">
+                <div className="w-full max-w-[26rem] text-center sm:max-w-[34rem]">
+                  <div className="space-y-6">
+                    <h1
+                      className="font-serif text-[clamp(2.8rem,11.5vw,4.7rem)] font-normal leading-[0.97] tracking-[-0.012em] text-white sm:text-[clamp(3.1rem,2.4rem+1.7vw,5rem)]"
+                      style={{
+                        textShadow:
+                          "0 2px 28px rgba(54,40,93,0.55), 0 1px 3px rgba(54,40,93,0.4)",
+                      }}
+                    >
+                      Sealed.
+                    </h1>
+                    <p
+                      className="mx-auto max-w-[22rem] text-[1.05rem] leading-[1.42] tracking-[0.002em] text-white/92 sm:max-w-[26rem] sm:text-[1.18rem]"
+                      style={{
+                        textShadow: "0 1px 18px rgba(54,40,93,0.55)",
+                      }}
+                    >
+                      A letter from five-years-you is on the way.
+                    </p>
+                    <div className="flex justify-center pt-2">
+                      <motion.button
+                        type="button"
+                        onClick={handleStartOver}
+                        whileHover={prefersReducedMotion ? undefined : { scale: 1.04 }}
+                        whileTap={prefersReducedMotion ? undefined : { scale: 0.985 }}
+                        transition={buttonHoverTransition}
+                        className="pointer-events-auto inline-flex h-12 items-center justify-center rounded-full border border-white/80 bg-white/18 px-7 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-white shadow-[0_18px_42px_rgba(54,40,93,0.35)] outline-none backdrop-blur-[10px] transition-colors duration-300 hover:bg-white/28 focus-visible:ring-4 focus-visible:ring-white/55"
+                      >
+                        Start Over
+                      </motion.button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </main>
   );

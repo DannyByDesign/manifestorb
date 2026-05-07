@@ -1,6 +1,15 @@
 import type { Metadata } from "next";
+import { Newsreader } from "next/font/google";
 
 import "./globals.css";
+
+const displaySerif = Newsreader({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  style: ["normal", "italic"],
+  variable: "--font-display-serif",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Manifestorb",
@@ -40,7 +49,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className={displaySerif.variable}>
       <body className="antialiased">{children}</body>
     </html>
   );
