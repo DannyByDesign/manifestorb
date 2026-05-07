@@ -3,12 +3,12 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Magic Orb",
+  title: "Manifestorb",
   description:
     "A whimsical, boldly colored interface prototype built around a luminous interactive orb.",
-  applicationName: "Magic Orb",
+  applicationName: "Manifestorb",
   keywords: [
-    "Magic Orb",
+    "Manifestorb",
     "interactive UI",
     "orb interface",
     "motion design",
@@ -20,15 +20,15 @@ export const metadata: Metadata = {
     shortcut: [{ url: "/icon.svg", type: "image/svg+xml" }],
   },
   openGraph: {
-    title: "Magic Orb",
+    title: "Manifestorb",
     description:
       "A whimsical, boldly colored interface prototype built around a luminous interactive orb.",
-    siteName: "Magic Orb",
+    siteName: "Manifestorb",
     type: "website",
   },
   twitter: {
     card: "summary",
-    title: "Magic Orb",
+    title: "Manifestorb",
     description:
       "A whimsical, boldly colored interface prototype built around a luminous interactive orb.",
   },

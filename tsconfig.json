@@ -63,9 +63,6 @@
       "@/tests/*": [
         "./tests/*"
       ],
-      "@amodel/*": [
-        "./src/server/packages/*"
-      ],
       "@/generated/*": [
         "./generated/*"
       ],

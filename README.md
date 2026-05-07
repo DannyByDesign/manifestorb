@@ -1,6 +1,6 @@
-# Orb Glow
+# Manifestorb
 
-A small Next.js prototype for an interactive glowing orb scene built with React Three Fiber and custom GLSL shaders.
+A small Next.js prototype for an interactive orb scene built with React Three Fiber and custom GLSL shaders.
 
 ## Stack
 
@@ -17,10 +17,10 @@ A small Next.js prototype for an interactive glowing orb scene built with React 
 
 The current app is intentionally small:
 
-- [src/app/page.tsx](/Users/dannywang/Desktop/Orb-glow/src/app/page.tsx) mounts one full-screen scene
-- [src/components/experience/Scene.tsx](/Users/dannywang/Desktop/Orb-glow/src/components/experience/Scene.tsx) builds the lighting, orb layers, and bloom pass
-- [src/components/experience/orbReference/shaders.ts](/Users/dannywang/Desktop/Orb-glow/src/components/experience/orbReference/shaders.ts) contains the particle and simulation shaders
-- [src/lib/capabilities.ts](/Users/dannywang/Desktop/Orb-glow/src/lib/capabilities.ts) and [src/lib/stores/qualityStore.ts](/Users/dannywang/Desktop/Orb-glow/src/lib/stores/qualityStore.ts) handle capability detection and quality defaults
+- [src/app/page.tsx](src/app/page.tsx) mounts one full-screen scene
+- [src/components/experience/Scene.tsx](src/components/experience/Scene.tsx) builds the lighting, orb layers, and bloom pass
+- [src/components/experience/orbReference/shaders.ts](src/components/experience/orbReference/shaders.ts) contains the particle and simulation shaders
+- [src/lib/capabilities.ts](src/lib/capabilities.ts) and [src/lib/stores/qualityStore.ts](src/lib/stores/qualityStore.ts) handle capability detection and quality defaults
 
 ## Getting Started
 

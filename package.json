@@ -1,8 +1,8 @@
 {
-  "name": "orb-glow",
+  "name": "manifestorb",
   "version": "0.1.0",
   "private": true,
-  "description": "Interactive glowing orb scene built with Next.js, React Three Fiber, and custom shaders.",
+  "description": "Interactive orb scene built with Next.js, React Three Fiber, and custom shaders.",
   "packageManager": "bun@1.2.2",
   "scripts": {
     "preinstall": "bun --version >/dev/null 2>&1",
