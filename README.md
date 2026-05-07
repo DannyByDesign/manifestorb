@@ -10,7 +10,6 @@ A small Next.js prototype for an interactive orb scene built with React Three Fi
 - React Three Fiber
 - React Three Drei
 - React Three Postprocessing
-- Zustand
 - Tailwind CSS 4
 
 ## What Is In This Repo
@@ -20,7 +19,7 @@ The current app is intentionally small:
 - [src/app/page.tsx](src/app/page.tsx) mounts one full-screen scene
 - [src/components/experience/Scene.tsx](src/components/experience/Scene.tsx) builds the lighting, orb layers, and bloom pass
 - [src/components/experience/orbReference/shaders.ts](src/components/experience/orbReference/shaders.ts) contains the particle and simulation shaders
-- [src/lib/capabilities.ts](src/lib/capabilities.ts) and [src/lib/stores/qualityStore.ts](src/lib/stores/qualityStore.ts) handle capability detection and quality defaults
+- [src/lib/capabilities.ts](src/lib/capabilities.ts) handles capability detection
 
 ## Getting Started
 
