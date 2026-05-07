@@ -34,27 +34,54 @@ type Question = {
 const QUESTIONS: Question[] = [
   {
     title:
-      "In five years, what's one specific thing you're doing that you absolutely weren't doing before?",
+      "Five years from now, what are you doing that you aren't doing today?",
     helper:
-      "Something concrete: a role you're in, a project you've completed, a way you're spending your time.",
+      "Get specific. A role you're in. A project you finished. How you spend your time.",
   },
   {
-    title: "What does that version of you care about most?",
+    title: "What matters most to you, five years from now?",
     helper:
-      "If five-years-you could tell present-you one thing about what actually matters, what would it be?",
+      "If you could tell yourself one thing today about what actually matters, what would it be?",
   },
   {
-    title: "What's the hardest part about getting there?",
-    helper: "What are you afraid of, or what keeps you stuck right now?",
+    title: "What's the hardest part of getting there?",
+    helper: "What are you afraid of? What's keeping you stuck right now?",
   },
   {
-    title: "How does five-years-you spend your time differently?",
-    helper: "Walk us through a normal Tuesday: what does it actually look like?",
+    title: "What does a normal Tuesday look like, five years from now?",
+    helper: "Walk through it — morning to night.",
   },
   {
-    title:
-      "If future-you had to remind present-you of one thing when you get discouraged, what is it?",
-    helper: "What's the thing you need to hear?",
+    title: "What do you most need to hear on the hard days?",
+    helper: "From the version of you who already made it through.",
+  },
+];
+
+type PricingOption = {
+  id: string;
+  cadence: string;
+  price: string;
+  description: string;
+};
+
+const PRICING_OPTIONS: PricingOption[] = [
+  {
+    id: "monthly",
+    cadence: "Monthly",
+    price: "$3",
+    description: "One email every month",
+  },
+  {
+    id: "biweekly",
+    cadence: "Every 2 weeks",
+    price: "$8",
+    description: "One email every 2 weeks",
+  },
+  {
+    id: "weekly",
+    cadence: "Weekly",
+    price: "$12",
+    description: "One email every week",
   },
 ];
 
@@ -132,7 +159,7 @@ const phaseSwapVariants: Variants = {
   },
 };
 
-type Phase = "landing" | "asking" | "sealed";
+type Phase = "landing" | "asking" | "pricing" | "sealed";
 
 function clamp(value: number, min = 0, max = 1) {
   return Math.min(max, Math.max(min, value));
@@ -261,8 +288,7 @@ export function SceneStage() {
     if (questionIndex < QUESTIONS.length - 1) {
       setQuestionIndex(questionIndex + 1);
     } else {
-      animateSceneTo(SEALED_PROGRESS, SCENE_SEAL_TRANSITION);
-      setPhase("sealed");
+      setPhase("pricing");
     }
   };
 
@@ -273,6 +299,15 @@ export function SceneStage() {
     } else {
       setQuestionIndex(questionIndex - 1);
     }
+  };
+
+  const handleSelectPlan = () => {
+    animateSceneTo(SEALED_PROGRESS, SCENE_SEAL_TRANSITION);
+    setPhase("sealed");
+  };
+
+  const handlePricingBack = () => {
+    setPhase("asking");
   };
 
   const handleStartOver = () => {
@@ -376,9 +411,9 @@ export function SceneStage() {
                         variants={introCopyVariants}
                         className="mx-auto max-w-[20rem] text-center text-[1.05rem] leading-[1.42] tracking-[0.002em] text-[#64567f]/88 sm:mx-0 sm:max-w-[26rem] sm:text-left sm:pl-[0.28rem] sm:text-[1.18rem]"
                       >
-                        Answer five questions. Light the orb. Receive weekly
-                        emails from who you&apos;re becoming&mdash;for the next
-                        five years.
+                        Your future self 5 years from now wants to write to
+                        you. To remind you who you&apos;re becoming, and what
+                        you&apos;re fighting for.
                       </motion.p>
                     </div>
 
@@ -392,9 +427,9 @@ export function SceneStage() {
                         whileHover={prefersReducedMotion ? undefined : { scale: 1.04 }}
                         whileTap={prefersReducedMotion ? undefined : { scale: 0.985 }}
                         transition={buttonHoverTransition}
-                        className="pointer-events-auto inline-flex h-14 min-w-56 items-center justify-center whitespace-nowrap rounded-full bg-[color:var(--button-lavender)] px-9 py-3 text-sm font-semibold uppercase tracking-[0.24em] text-white shadow-[0_22px_52px_rgba(123,76,255,0.34)] outline-none transition-colors duration-300 hover:bg-[color:var(--button-lavender-strong)] focus-visible:ring-4 focus-visible:ring-white/45"
+                        className="orb-cta pointer-events-auto inline-flex h-14 min-w-56 items-center justify-center whitespace-nowrap rounded-full px-9 py-3 text-sm font-semibold uppercase tracking-[0.24em] text-white outline-none"
                       >
-                        Light the Orb
+                        Read my letters
                       </motion.button>
                     </motion.div>
                   </motion.div>
@@ -466,9 +501,82 @@ export function SceneStage() {
                         whileHover={prefersReducedMotion ? undefined : { scale: 1.04 }}
                         whileTap={prefersReducedMotion ? undefined : { scale: 0.985 }}
                         transition={buttonHoverTransition}
-                        className="pointer-events-auto inline-flex h-12 min-w-32 items-center justify-center rounded-full bg-[color:var(--button-lavender)] px-7 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-white shadow-[0_16px_36px_rgba(123,76,255,0.3)] outline-none transition-colors duration-300 hover:bg-[color:var(--button-lavender-strong)] focus-visible:ring-4 focus-visible:ring-white/45"
+                        className="orb-cta pointer-events-auto inline-flex h-12 min-w-32 items-center justify-center rounded-full px-7 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-white outline-none"
                       >
-                        {questionIndex === QUESTIONS.length - 1 ? "Seal it" : "Next"}
+                        {questionIndex === QUESTIONS.length - 1 ? "Continue" : "Next"}
+                      </motion.button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          ) : phase === "pricing" ? (
+            <motion.div
+              key="pricing"
+              variants={phaseSwapVariants}
+              initial={prefersReducedMotion ? false : "hidden"}
+              animate="visible"
+              exit={prefersReducedMotion ? undefined : "exit"}
+              className={STAGE_PADDING_CLASSES}
+            >
+              <div className="flex h-full items-center justify-center">
+                <div className="w-full max-w-[26rem] text-center sm:max-w-[34rem]">
+                  <div className="space-y-6">
+                    <div className="space-y-3">
+                      <h2 className="font-serif text-[clamp(1.55rem,5.8vw,2.15rem)] font-normal leading-[1.12] tracking-[-0.005em] text-[#37285d] sm:text-[clamp(1.75rem,1.45rem+0.85vw,2.5rem)]">
+                        Choose your email cadence
+                      </h2>
+                      <p className="text-[0.97rem] leading-[1.46] text-[#64567f]/82 sm:text-[1.04rem]">
+                        How often would you like to hear from them?
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col gap-3">
+                      {PRICING_OPTIONS.map((option) => (
+                        <div
+                          key={option.id}
+                          className="flex items-center gap-4 rounded-2xl border border-white/70 bg-white/55 px-4 py-3.5 shadow-[0_18px_44px_rgba(79,45,156,0.14)] backdrop-blur-[10px] sm:px-5 sm:py-4"
+                        >
+                          <div className="flex-1 text-left">
+                            <div className="font-serif text-[1.15rem] font-normal leading-[1.05] text-[#37285d] sm:text-[1.3rem]">
+                              {option.cadence}
+                            </div>
+                            <p className="mt-1 text-[0.74rem] leading-[1.3] text-[#64567f]/68 sm:text-[0.8rem]">
+                              {option.description}
+                            </p>
+                          </div>
+                          <div className="flex flex-col items-end leading-none">
+                            <div className="font-serif text-[1.55rem] font-normal text-[#37285d] sm:text-[1.75rem]">
+                              {option.price}
+                            </div>
+                            <div className="mt-1 text-[0.6rem] tracking-[0.04em] text-[#64567f]/60 sm:text-[0.64rem]">
+                              one-time
+                            </div>
+                          </div>
+                          <motion.button
+                            type="button"
+                            onClick={handleSelectPlan}
+                            whileHover={prefersReducedMotion ? undefined : { scale: 1.04 }}
+                            whileTap={prefersReducedMotion ? undefined : { scale: 0.985 }}
+                            transition={buttonHoverTransition}
+                            className="orb-cta pointer-events-auto inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-full px-5 text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-white outline-none"
+                          >
+                            Seal it
+                          </motion.button>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex justify-center pt-1">
+                      <motion.button
+                        type="button"
+                        onClick={handlePricingBack}
+                        whileHover={prefersReducedMotion ? undefined : { scale: 1.03 }}
+                        whileTap={prefersReducedMotion ? undefined : { scale: 0.985 }}
+                        transition={buttonHoverTransition}
+                        className="pointer-events-auto inline-flex h-12 items-center justify-center rounded-full border border-white/70 bg-white/24 px-6 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-[#37285d] outline-none backdrop-blur-[10px] transition-colors duration-300 hover:bg-white/36 focus-visible:ring-4 focus-visible:ring-white/45"
+                      >
+                        Back
                       </motion.button>
                     </div>
                   </div>
