@@ -29,31 +29,66 @@ const MOBILE_MEDIA_QUERY = "(max-width: 639px)";
 type Question = {
   title: string;
   helper: string;
+  inputType: "text" | "email" | "number" | "textarea";
+  placeholder?: string;
+  autoComplete?: string;
 };
 
 const QUESTIONS: Question[] = [
+  {
+    title: "Send a letter to your future self first.",
+    helper: "What's your name?",
+    inputType: "text",
+    placeholder: "First and last name",
+    autoComplete: "name",
+  },
+  {
+    title: "Where should the letters arrive?",
+    helper:
+      "An email address — that's where they'll send everything.",
+    inputType: "email",
+    placeholder: "your@email.com",
+    autoComplete: "email",
+  },
+  {
+    title: "How old are you today?",
+    helper: "So they know who they're writing to.",
+    inputType: "number",
+    placeholder: "Age",
+  },
+  {
+    title: "Who are you right now?",
+    helper:
+      "A founder in year two. A musician chasing the dream. A new parent figuring it out. The version of you today.",
+    inputType: "textarea",
+  },
   {
     title:
       "Five years from now, what are you doing that you aren't doing today?",
     helper:
       "Get specific. A role you're in. A project you finished. How you spend your time.",
+    inputType: "textarea",
   },
   {
     title: "What matters most to you, five years from now?",
     helper:
       "If you could tell yourself one thing today about what actually matters, what would it be?",
+    inputType: "textarea",
   },
   {
     title: "What's the hardest part of getting there?",
     helper: "What are you afraid of? What's keeping you stuck right now?",
+    inputType: "textarea",
   },
   {
     title: "What does a normal Tuesday look like, five years from now?",
     helper: "Walk through it — morning to night.",
+    inputType: "textarea",
   },
   {
     title: "What do you most need to hear on the hard days?",
     helper: "From the version of you who already made it through.",
+    inputType: "textarea",
   },
 ];
 
@@ -161,6 +196,63 @@ const phaseSwapVariants: Variants = {
 
 type Phase = "landing" | "asking" | "pricing" | "sealed";
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+const COMMON_EMAIL_DOMAINS = [
+  "gmail.com",
+  "yahoo.com",
+  "hotmail.com",
+  "outlook.com",
+  "icloud.com",
+  "aol.com",
+  "live.com",
+  "protonmail.com",
+  "proton.me",
+  "me.com",
+  "msn.com",
+];
+
+function levenshtein(a: string, b: string): number {
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const matrix: number[][] = Array.from({ length: b.length + 1 }, () => []);
+  for (let i = 0; i <= b.length; i++) matrix[i][0] = i;
+  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      const cost = b[i - 1] === a[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost
+      );
+    }
+  }
+  return matrix[b.length][a.length];
+}
+
+function suggestEmailCorrection(email: string): string | null {
+  const at = email.lastIndexOf("@");
+  if (at <= 0) return null;
+  const local = email.slice(0, at);
+  const domain = email.slice(at + 1).toLowerCase();
+  if (!domain || COMMON_EMAIL_DOMAINS.includes(domain)) return null;
+  let best: string | null = null;
+  let bestDist = Infinity;
+  for (const candidate of COMMON_EMAIL_DOMAINS) {
+    const d = levenshtein(domain, candidate);
+    if (d > 0 && d <= 2 && d < bestDist) {
+      bestDist = d;
+      best = candidate;
+    }
+  }
+  return best ? `${local}@${best}` : null;
+}
+
+function normalizeEmail(raw: string): string {
+  return raw.trim().toLowerCase();
+}
+
 function clamp(value: number, min = 0, max = 1) {
   return Math.min(max, Math.max(min, value));
 }
@@ -204,6 +296,10 @@ export function SceneStage() {
   const [phase, setPhase] = useState<Phase>("landing");
   const [questionIndex, setQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<string[]>(() => QUESTIONS.map(() => ""));
+  const [ageError, setAgeError] = useState(false);
+  const ageErrorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [emailSuggestion, setEmailSuggestion] = useState<string | null>(null);
 
   const [loadInProgress, setLoadInProgress] = useState(prefersReducedMotion ? 1 : 0);
   const [sceneProgress, setSceneProgress] = useState(0);
@@ -215,14 +311,18 @@ export function SceneStage() {
   const sceneTargetRef = useRef(0);
   const loadInAnimationRef = useRef<{ stop: () => void } | null>(null);
   const sceneAnimationRef = useRef<{ stop: () => void } | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | HTMLInputElement | null>(null);
 
   useEffect(() => {
     return () => {
       loadInAnimationRef.current?.stop();
       sceneAnimationRef.current?.stop();
+      if (ageErrorTimeoutRef.current) {
+        clearTimeout(ageErrorTimeoutRef.current);
+      }
     };
   }, []);
+
 
   const setLoadProgress = (value: number) => {
     const next = clamp(value);
@@ -254,7 +354,7 @@ export function SceneStage() {
 
   useEffect(() => {
     if (phase !== "asking") return;
-    const id = setTimeout(() => textareaRef.current?.focus(), 380);
+    const id = setTimeout(() => inputRef.current?.focus(), 380);
     return () => clearTimeout(id);
   }, [phase, questionIndex]);
 
@@ -278,6 +378,16 @@ export function SceneStage() {
     });
   };
 
+  const clearFieldErrors = () => {
+    setAgeError(false);
+    if (ageErrorTimeoutRef.current) {
+      clearTimeout(ageErrorTimeoutRef.current);
+      ageErrorTimeoutRef.current = null;
+    }
+    setEmailError(null);
+    setEmailSuggestion(null);
+  };
+
   const handleLightOrb = () => {
     animateSceneTo(ASKING_PROGRESS, SCENE_BIG_TRANSITION);
     setQuestionIndex(0);
@@ -285,6 +395,24 @@ export function SceneStage() {
   };
 
   const handleNext = () => {
+    if (currentQuestion.inputType === "email") {
+      const raw = answers[questionIndex];
+      const normalized = normalizeEmail(raw);
+      if (!EMAIL_REGEX.test(normalized)) {
+        setEmailError("Please enter a valid email address.");
+        inputRef.current?.focus();
+        return;
+      }
+      if (normalized !== raw) {
+        setAnswers((prev) => {
+          const next = [...prev];
+          next[questionIndex] = normalized;
+          return next;
+        });
+      }
+    }
+
+    clearFieldErrors();
     if (questionIndex < QUESTIONS.length - 1) {
       setQuestionIndex(questionIndex + 1);
     } else {
@@ -293,6 +421,7 @@ export function SceneStage() {
   };
 
   const handleBack = () => {
+    clearFieldErrors();
     if (questionIndex === 0) {
       animateSceneTo(LANDING_PROGRESS, SCENE_BIG_TRANSITION);
       setPhase("landing");
@@ -311,16 +440,74 @@ export function SceneStage() {
   };
 
   const handleStartOver = () => {
+    clearFieldErrors();
     animateSceneTo(LANDING_PROGRESS, SCENE_BIG_TRANSITION);
     setAnswers(QUESTIONS.map(() => ""));
     setQuestionIndex(0);
     setPhase("landing");
   };
 
-  const handleAnswerChange = (value: string) => {
+  const handleEmailBlur = () => {
+    const raw = answers[questionIndex];
+    if (!raw.trim()) return;
+
+    const normalized = normalizeEmail(raw);
+    if (normalized !== raw) {
+      setAnswers((prev) => {
+        const next = [...prev];
+        next[questionIndex] = normalized;
+        return next;
+      });
+    }
+
+    if (!EMAIL_REGEX.test(normalized)) {
+      setEmailError("That doesn't look like a valid email.");
+      setEmailSuggestion(null);
+      return;
+    }
+
+    setEmailError(null);
+    const suggestion = suggestEmailCorrection(normalized);
+    setEmailSuggestion(suggestion && suggestion !== normalized ? suggestion : null);
+  };
+
+  const acceptEmailSuggestion = () => {
+    if (!emailSuggestion) return;
+    const corrected = emailSuggestion;
     setAnswers((prev) => {
       const next = [...prev];
-      next[questionIndex] = value;
+      next[questionIndex] = corrected;
+      return next;
+    });
+    setEmailSuggestion(null);
+    setEmailError(null);
+  };
+
+  const handleAnswerChange = (value: string) => {
+    let processed = value;
+
+    if (currentQuestion.inputType === "number") {
+      processed = value.replace(/\D/g, "").slice(0, 2);
+      const rejectedChars = processed !== value;
+
+      if (rejectedChars) {
+        setAgeError(true);
+        if (ageErrorTimeoutRef.current) {
+          clearTimeout(ageErrorTimeoutRef.current);
+        }
+        ageErrorTimeoutRef.current = setTimeout(() => setAgeError(false), 2200);
+      } else {
+        setAgeError(false);
+      }
+    } else if (currentQuestion.inputType === "email") {
+      processed = value.replace(/^\s+/, "");
+      if (emailError) setEmailError(null);
+      if (emailSuggestion) setEmailSuggestion(null);
+    }
+
+    setAnswers((prev) => {
+      const next = [...prev];
+      next[questionIndex] = processed;
       return next;
     });
   };
@@ -475,14 +662,90 @@ export function SceneStage() {
                       {currentQuestion.helper}
                     </p>
 
-                    <textarea
-                      ref={textareaRef}
-                      value={answers[questionIndex]}
-                      onChange={(event) => handleAnswerChange(event.target.value)}
-                      aria-labelledby={`q-${questionIndex}`}
-                      rows={isMobile ? 4 : 5}
-                      className="pointer-events-auto block w-full resize-none rounded-2xl border border-white/70 bg-white/55 px-5 py-4 text-left text-[1rem] leading-[1.5] tracking-[0.002em] text-[#37285d] shadow-[0_18px_44px_rgba(79,45,156,0.14)] outline-none backdrop-blur-[10px] placeholder:text-[#64567f]/40 focus:border-white focus:ring-4 focus:ring-white/45"
-                    />
+                    {currentQuestion.inputType === "textarea" ? (
+                      <textarea
+                        ref={(el) => {
+                          inputRef.current = el;
+                        }}
+                        value={answers[questionIndex]}
+                        onChange={(event) => handleAnswerChange(event.target.value)}
+                        aria-labelledby={`q-${questionIndex}`}
+                        rows={isMobile ? 4 : 5}
+                        className="pointer-events-auto block w-full resize-none rounded-2xl border border-white/70 bg-white/55 px-5 py-4 text-left text-[1rem] leading-[1.5] tracking-[0.002em] text-[#37285d] shadow-[0_18px_44px_rgba(79,45,156,0.14)] outline-none backdrop-blur-[10px] placeholder:text-[#64567f]/40 focus:border-white focus:ring-4 focus:ring-white/45"
+                      />
+                    ) : (
+                      <div>
+                        <input
+                          ref={(el) => {
+                            inputRef.current = el;
+                          }}
+                          type={
+                            currentQuestion.inputType === "number"
+                              ? "text"
+                              : currentQuestion.inputType
+                          }
+                          value={answers[questionIndex]}
+                          onChange={(event) =>
+                            handleAnswerChange(event.target.value)
+                          }
+                          onBlur={
+                            currentQuestion.inputType === "email"
+                              ? handleEmailBlur
+                              : undefined
+                          }
+                          aria-labelledby={`q-${questionIndex}`}
+                          placeholder={currentQuestion.placeholder}
+                          autoComplete={currentQuestion.autoComplete}
+                          maxLength={
+                            currentQuestion.inputType === "number" ? 2 : undefined
+                          }
+                          pattern={
+                            currentQuestion.inputType === "number"
+                              ? "[0-9]*"
+                              : undefined
+                          }
+                          inputMode={
+                            currentQuestion.inputType === "number"
+                              ? "numeric"
+                              : currentQuestion.inputType === "email"
+                                ? "email"
+                                : "text"
+                          }
+                          className="pointer-events-auto block w-full rounded-2xl border border-white/70 bg-white/55 px-5 py-4 text-left text-[1rem] leading-[1.5] tracking-[0.002em] text-[#37285d] shadow-[0_18px_44px_rgba(79,45,156,0.14)] outline-none backdrop-blur-[10px] placeholder:text-[#64567f]/40 focus:border-white focus:ring-4 focus:ring-white/45"
+                        />
+                        {currentQuestion.inputType === "number" && ageError ? (
+                          <p
+                            role="alert"
+                            className="mt-2 text-left text-[0.8rem] leading-[1.3] text-[#b8395a]"
+                          >
+                            Numbers only — up to 2 digits.
+                          </p>
+                        ) : null}
+                        {currentQuestion.inputType === "email" && emailError ? (
+                          <p
+                            role="alert"
+                            className="mt-2 text-left text-[0.8rem] leading-[1.3] text-[#b8395a]"
+                          >
+                            {emailError}
+                          </p>
+                        ) : null}
+                        {currentQuestion.inputType === "email" &&
+                        !emailError &&
+                        emailSuggestion ? (
+                          <p className="mt-2 text-left text-[0.84rem] leading-[1.4] text-[#64567f]">
+                            Did you mean{" "}
+                            <button
+                              type="button"
+                              onClick={acceptEmailSuggestion}
+                              className="cursor-pointer font-semibold text-[#37285d] underline decoration-[#37285d]/35 underline-offset-2 transition-colors hover:decoration-[#37285d]"
+                            >
+                              {emailSuggestion}
+                            </button>
+                            ?
+                          </p>
+                        ) : null}
+                      </div>
+                    )}
 
                     <div className="flex items-center justify-between gap-3 pt-1">
                       <motion.button
