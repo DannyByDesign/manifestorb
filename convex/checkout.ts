@@ -48,7 +48,6 @@ export const createCheckoutSession = action({
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
-      payment_method_types: ["card"],
       customer_email: sub.email,
       line_items: [
         {
