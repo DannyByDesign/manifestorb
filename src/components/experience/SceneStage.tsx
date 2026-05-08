@@ -9,8 +9,10 @@ import {
   type Variants,
   useReducedMotion,
 } from "framer-motion";
+import { useAction, useMutation } from "convex/react";
 
 import { Scene } from "@/components/experience/Scene";
+import { api } from "../../../convex/_generated/api";
 
 const STAGE_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 const CTA_EASE: [number, number, number, number] = [0.65, 0, 0.35, 1];
@@ -18,11 +20,9 @@ const LOAD_IN_DURATION = 1.08;
 const LOAD_IN_SCENE_DURATION = 0.82;
 
 const ASKING_PROGRESS = 0.5;
-const SEALED_PROGRESS = 1;
 const LANDING_PROGRESS = 0;
 
 const SCENE_BIG_TRANSITION = 1.4;
-const SCENE_SEAL_TRANSITION = 1.65;
 
 const MOBILE_MEDIA_QUERY = "(max-width: 639px)";
 
@@ -92,8 +92,10 @@ const QUESTIONS: Question[] = [
   },
 ];
 
+type Cadence = "monthly" | "biweekly" | "weekly";
+
 type PricingOption = {
-  id: string;
+  id: Cadence;
   cadence: string;
   price: string;
   description: string;
@@ -293,9 +295,14 @@ export function SceneStage() {
     getMobileBreakpointServerSnapshot
   );
 
+  const createSignup = useMutation(api.signup.createSignup);
+  const createCheckoutSession = useAction(api.checkout.createCheckoutSession);
+
   const [phase, setPhase] = useState<Phase>("landing");
   const [questionIndex, setQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<string[]>(() => QUESTIONS.map(() => ""));
+  const [submitting, setSubmitting] = useState<Cadence | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [ageError, setAgeError] = useState(false);
   const ageErrorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
@@ -430,9 +437,42 @@ export function SceneStage() {
     }
   };
 
-  const handleSelectPlan = () => {
-    animateSceneTo(SEALED_PROGRESS, SCENE_SEAL_TRANSITION);
-    setPhase("sealed");
+  const handleSelectPlan = async (cadence: Cadence) => {
+    if (submitting) return;
+
+    const ageNum = Number.parseInt(answers[2] ?? "", 10);
+    if (!Number.isFinite(ageNum) || ageNum <= 0) {
+      setSubmitError("Age looks off. Please go back and re-enter it.");
+      return;
+    }
+
+    setSubmitError(null);
+    setSubmitting(cadence);
+    try {
+      const { subscriptionId } = await createSignup({
+        name: answers[0].trim(),
+        email: normalizeEmail(answers[1]),
+        ageAtSignup: ageNum,
+        currentSelf: answers[3].trim(),
+        futureSelf: answers[4].trim(),
+        whatMatters: answers[5].trim(),
+        hardestPart: answers[6].trim(),
+        normalTuesday: answers[7].trim(),
+        hardDayMessage: answers[8].trim(),
+        cadence,
+      });
+
+      const { url } = await createCheckoutSession({ subscriptionId });
+      window.location.assign(url);
+    } catch (err) {
+      console.error(err);
+      setSubmitError(
+        err instanceof Error
+          ? err.message
+          : "Something went wrong. Please try again.",
+      );
+      setSubmitting(null);
+    }
   };
 
   const handlePricingBack = () => {
@@ -818,17 +858,35 @@ export function SceneStage() {
                           </div>
                           <motion.button
                             type="button"
-                            onClick={handleSelectPlan}
-                            whileHover={prefersReducedMotion ? undefined : { scale: 1.04 }}
-                            whileTap={prefersReducedMotion ? undefined : { scale: 0.985 }}
+                            onClick={() => handleSelectPlan(option.id)}
+                            disabled={submitting !== null}
+                            whileHover={
+                              prefersReducedMotion || submitting !== null
+                                ? undefined
+                                : { scale: 1.04 }
+                            }
+                            whileTap={
+                              prefersReducedMotion || submitting !== null
+                                ? undefined
+                                : { scale: 0.985 }
+                            }
                             transition={buttonHoverTransition}
-                            className="orb-cta pointer-events-auto inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-full px-5 text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-white outline-none"
+                            className="orb-cta pointer-events-auto inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-full px-5 text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-white outline-none disabled:cursor-not-allowed disabled:opacity-70"
                           >
-                            Seal it
+                            {submitting === option.id ? "Sealing…" : "Seal it"}
                           </motion.button>
                         </div>
                       ))}
                     </div>
+
+                    {submitError ? (
+                      <p
+                        role="alert"
+                        className="text-center text-[0.84rem] leading-[1.4] text-[#b8395a]"
+                      >
+                        {submitError}
+                      </p>
+                    ) : null}
 
                     <div className="flex justify-center pt-1">
                       <motion.button

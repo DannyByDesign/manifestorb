@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Newsreader } from "next/font/google";
 
 import "./globals.css";
+import { ConvexClientProvider } from "./ConvexClientProvider";
 
 const displaySerif = Newsreader({
   subsets: ["latin"],
@@ -50,7 +51,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={displaySerif.variable}>
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        <ConvexClientProvider>{children}</ConvexClientProvider>
+      </body>
     </html>
   );
 }
