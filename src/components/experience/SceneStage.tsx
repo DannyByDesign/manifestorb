@@ -307,6 +307,7 @@ export function SceneStage() {
   const ageErrorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [emailSuggestion, setEmailSuggestion] = useState<string | null>(null);
+  const [requiredError, setRequiredError] = useState(false);
 
   const [loadInProgress, setLoadInProgress] = useState(prefersReducedMotion ? 1 : 0);
   const [sceneProgress, setSceneProgress] = useState(0);
@@ -393,6 +394,7 @@ export function SceneStage() {
     }
     setEmailError(null);
     setEmailSuggestion(null);
+    setRequiredError(false);
   };
 
   const handleLightOrb = () => {
@@ -402,15 +404,21 @@ export function SceneStage() {
   };
 
   const handleNext = () => {
+    const rawValue = answers[questionIndex] ?? "";
+    if (!rawValue.trim()) {
+      setRequiredError(true);
+      inputRef.current?.focus();
+      return;
+    }
+
     if (currentQuestion.inputType === "email") {
-      const raw = answers[questionIndex];
-      const normalized = normalizeEmail(raw);
+      const normalized = normalizeEmail(rawValue);
       if (!EMAIL_REGEX.test(normalized)) {
         setEmailError("Please enter a valid email address.");
         inputRef.current?.focus();
         return;
       }
-      if (normalized !== raw) {
+      if (normalized !== rawValue) {
         setAnswers((prev) => {
           const next = [...prev];
           next[questionIndex] = normalized;
@@ -545,6 +553,10 @@ export function SceneStage() {
       if (emailSuggestion) setEmailSuggestion(null);
     }
 
+    if (requiredError && processed.trim()) {
+      setRequiredError(false);
+    }
+
     setAnswers((prev) => {
       const next = [...prev];
       next[questionIndex] = processed;
@@ -675,46 +687,57 @@ export function SceneStage() {
               <div className="flex h-full items-center justify-center">
                 <div className="w-full max-w-[26rem] text-center sm:max-w-[34rem]">
                   <div className="space-y-6">
-                    <div className="flex items-center justify-center gap-3">
-                      <span className="text-[0.62rem] font-semibold uppercase tracking-[0.32em] text-[#64567f]/82">
-                        {questionIndex + 1} of {QUESTIONS.length}
-                      </span>
-                      <span aria-hidden="true" className="flex items-center gap-1.5">
-                        {QUESTIONS.map((_, idx) => (
-                          <span
-                            key={idx}
-                            className={`block h-[5px] w-[5px] rounded-full transition-colors duration-300 ${
-                              idx <= questionIndex ? "bg-[#37285d]" : "bg-[#37285d]/22"
-                            }`}
-                          />
-                        ))}
-                      </span>
-                    </div>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-center gap-3">
+                        <span className="text-[0.62rem] font-semibold uppercase tracking-[0.32em] text-[#64567f]/82">
+                          {questionIndex + 1} of {QUESTIONS.length}
+                        </span>
+                        <span aria-hidden="true" className="flex items-center gap-1.5">
+                          {QUESTIONS.map((_, idx) => (
+                            <span
+                              key={idx}
+                              className={`block h-[5px] w-[5px] rounded-full transition-colors duration-300 ${
+                                idx <= questionIndex ? "bg-[#37285d]" : "bg-[#37285d]/22"
+                              }`}
+                            />
+                          ))}
+                        </span>
+                      </div>
 
-                    <h2
-                      id={`q-${questionIndex}`}
-                      className="font-serif text-[clamp(1.55rem,5.8vw,2.15rem)] font-normal leading-[1.12] tracking-[-0.005em] text-[#37285d] sm:text-[clamp(1.75rem,1.45rem+0.85vw,2.5rem)]"
-                    >
-                      {currentQuestion.title}
-                    </h2>
+                      <h2
+                        id={`q-${questionIndex}`}
+                        className="font-serif text-[clamp(1.55rem,5.8vw,2.15rem)] font-normal leading-[1.12] tracking-[-0.005em] text-[#37285d] sm:text-[clamp(1.75rem,1.45rem+0.85vw,2.5rem)]"
+                      >
+                        {currentQuestion.title}
+                      </h2>
+                    </div>
 
                     <p className="text-[0.97rem] leading-[1.46] text-[#64567f]/82 sm:text-[1.04rem]">
                       {currentQuestion.helper}
                     </p>
 
-                    {currentQuestion.inputType === "textarea" ? (
-                      <textarea
-                        ref={(el) => {
-                          inputRef.current = el;
-                        }}
-                        value={answers[questionIndex]}
-                        onChange={(event) => handleAnswerChange(event.target.value)}
-                        aria-labelledby={`q-${questionIndex}`}
-                        rows={isMobile ? 4 : 5}
-                        className="pointer-events-auto block w-full resize-none rounded-2xl border border-white/70 bg-white/55 px-5 py-4 text-left text-[1rem] leading-[1.5] tracking-[0.002em] text-[#37285d] shadow-[0_18px_44px_rgba(79,45,156,0.14)] outline-none backdrop-blur-[10px] placeholder:text-[#64567f]/40 focus:border-white focus:ring-4 focus:ring-white/45"
-                      />
-                    ) : (
-                      <div>
+                    <div>
+                      {currentQuestion.inputType === "textarea" ? (
+                        <textarea
+                          ref={(el) => {
+                            inputRef.current = el;
+                          }}
+                          value={answers[questionIndex]}
+                          onChange={(event) => handleAnswerChange(event.target.value)}
+                          aria-labelledby={`q-${questionIndex}`}
+                          rows={isMobile ? 4 : 5}
+                          className="pointer-events-auto block w-full resize-none rounded-2xl border border-white/70 bg-white/55 px-5 py-4 text-left text-[1rem] leading-[1.5] tracking-[0.002em] text-[#37285d] shadow-[0_18px_44px_rgba(79,45,156,0.14)] outline-none backdrop-blur-[10px] placeholder:text-[#64567f]/40 focus:border-white focus:ring-4 focus:ring-white/45"
+                        />
+                      ) : (
+                      <div className="relative">
+                        {questionIndex === 0 ? (
+                          <span
+                            aria-hidden="true"
+                            className="pointer-events-none absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap text-[0.78rem] italic tracking-[0.01em] text-[#64567f]/55"
+                          >
+                            (your private info is protected)
+                          </span>
+                        ) : null}
                         <input
                           ref={(el) => {
                             inputRef.current = el;
@@ -785,7 +808,16 @@ export function SceneStage() {
                           </p>
                         ) : null}
                       </div>
-                    )}
+                      )}
+                      {requiredError ? (
+                        <p
+                          role="alert"
+                          className="mt-2 text-left text-[0.8rem] leading-[1.3] text-[#b8395a]"
+                        >
+                          Please answer this question before continuing.
+                        </p>
+                      ) : null}
+                    </div>
 
                     <div className="flex items-center justify-between gap-3 pt-1">
                       <motion.button
