@@ -17,6 +17,7 @@ import type * as payment from "../payment.js";
 import type * as planning from "../planning.js";
 import type * as planningNode from "../planningNode.js";
 import type * as signup from "../signup.js";
+import type * as transcribe from "../transcribe.js";
 
 import type {
   ApiFromModules,
@@ -34,6 +35,7 @@ declare const fullApi: ApiFromModules<{
   planning: typeof planning;
   planningNode: typeof planningNode;
   signup: typeof signup;
+  transcribe: typeof transcribe;
 }>;
 
 /**

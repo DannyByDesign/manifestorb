@@ -1,7 +1,13 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   animate,
   AnimatePresence,
@@ -12,6 +18,7 @@ import {
 import { useAction, useMutation } from "convex/react";
 
 import { Scene } from "@/components/experience/Scene";
+import { useDictation } from "@/lib/useDictation";
 import { api } from "../../../convex/_generated/api";
 
 const STAGE_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
@@ -285,6 +292,61 @@ function getMobileBreakpointServerSnapshot() {
 const STAGE_PADDING_CLASSES =
   "absolute inset-0 px-6 pb-10 pt-[max(4.75rem,env(safe-area-inset-top,0px)+3rem)] sm:px-10 sm:pb-12 lg:px-16";
 
+function formatSeconds(total: number): string {
+  const safe = Math.max(0, Math.floor(total));
+  const mm = Math.floor(safe / 60);
+  const ss = safe % 60;
+  return `${mm}:${ss.toString().padStart(2, "0")}`;
+}
+
+function MicIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-[1.05rem] w-[1.05rem]"
+      aria-hidden="true"
+    >
+      <rect x="9" y="3" width="6" height="12" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0" />
+      <path d="M12 18v3" />
+    </svg>
+  );
+}
+
+function StopIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      className="h-[0.85rem] w-[0.85rem]"
+      aria-hidden="true"
+    >
+      <rect x="6" y="6" width="12" height="12" rx="1.5" />
+    </svg>
+  );
+}
+
+function Spinner() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      className="h-[0.95rem] w-[0.95rem] animate-spin"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="9" strokeOpacity="0.25" />
+      <path d="M21 12a9 9 0 0 0-9-9" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function SceneStage() {
   const prefersReducedMotion = useReducedMotion();
   const pathname = usePathname();
@@ -365,6 +427,40 @@ export function SceneStage() {
     const id = setTimeout(() => inputRef.current?.focus(), 380);
     return () => clearTimeout(id);
   }, [phase, questionIndex]);
+
+  const dictationTargetRef = useRef(questionIndex);
+  useEffect(() => {
+    dictationTargetRef.current = questionIndex;
+  }, [questionIndex]);
+
+  const handleDictationTranscript = useCallback((text: string) => {
+    setAnswers((prev) => {
+      const next = [...prev];
+      const targetIndex = dictationTargetRef.current;
+      const existing = next[targetIndex] ?? "";
+      next[targetIndex] = existing
+        ? `${existing.trimEnd()} ${text}`
+        : text;
+      return next;
+    });
+    setRequiredError(false);
+  }, []);
+
+  const dictation = useDictation(handleDictationTranscript);
+
+  useEffect(() => {
+    if (phase !== "asking" && dictation.status !== "idle") {
+      dictation.cancel();
+    }
+  }, [dictation, phase]);
+
+  useEffect(() => {
+    if (dictation.status === "recording" || dictation.status === "permission") {
+      dictation.cancel();
+    }
+    // Only auto-cancel when the question changes, not on dictation transitions.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [questionIndex]);
 
   const animateSceneTo = (target: number, duration: number) => {
     sceneTargetRef.current = target;
@@ -716,21 +812,99 @@ export function SceneStage() {
                       {currentQuestion.helper}
                     </p>
 
-                    <div>
+                    <div className="relative">
                       {currentQuestion.inputType === "textarea" ? (
-                        <textarea
-                          ref={(el) => {
-                            inputRef.current = el;
-                          }}
-                          value={answers[questionIndex]}
-                          onChange={(event) => handleAnswerChange(event.target.value)}
-                          aria-labelledby={`q-${questionIndex}`}
-                          rows={isMobile ? 4 : 5}
-                          className="pointer-events-auto block w-full resize-none rounded-2xl border border-white/70 bg-white/55 px-5 py-4 text-left text-[1rem] leading-[1.5] tracking-[0.002em] text-[#37285d] shadow-[0_18px_44px_rgba(79,45,156,0.14)] outline-none backdrop-blur-[10px] placeholder:text-[#64567f]/40 focus:border-white focus:ring-4 focus:ring-white/45"
-                        />
+                        <div className="relative">
+                          <textarea
+                            ref={(el) => {
+                              inputRef.current = el;
+                            }}
+                            value={answers[questionIndex]}
+                            onChange={(event) => handleAnswerChange(event.target.value)}
+                            aria-labelledby={`q-${questionIndex}`}
+                            rows={isMobile ? 4 : 5}
+                            className={`pointer-events-auto block w-full resize-none border border-white/70 bg-white/55 px-5 pt-4 text-left text-[1rem] leading-[1.5] tracking-[0.002em] text-[#37285d] shadow-[0_18px_44px_rgba(79,45,156,0.14)] outline-none backdrop-blur-[10px] placeholder:text-[#64567f]/40 focus:border-white focus:ring-4 focus:ring-white/45 ${
+                              dictation.isSupported
+                                ? "rounded-[28px] pb-14"
+                                : "rounded-2xl pb-4"
+                            }`}
+                          />
+                          {dictation.isSupported ? (
+                            <>
+                              <div className="pointer-events-none absolute bottom-2 left-1/2 flex h-10 max-w-[58%] -translate-x-1/2 items-center justify-center text-[0.78rem] leading-[1.3] text-[#64567f]/80">
+                                {dictation.status === "recording" ? (
+                                  <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                    <span className="block h-1.5 w-1.5 animate-pulse rounded-full bg-[#b8395a]" />
+                                    <span>
+                                      Listening — {formatSeconds(dictation.seconds)}
+                                    </span>
+                                  </span>
+                                ) : dictation.status === "permission" ? (
+                                  <span className="whitespace-nowrap">Allow mic access…</span>
+                                ) : dictation.status === "uploading" ? (
+                                  <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                    <Spinner />
+                                    <span>Transcribing…</span>
+                                  </span>
+                                ) : dictation.status === "error" && dictation.error ? (
+                                  <span className="truncate text-[#b8395a]">
+                                    {dictation.error}
+                                  </span>
+                                ) : (
+                                  <span className="whitespace-nowrap text-[#64567f]/60">
+                                    Tap the mic to dictate
+                                  </span>
+                                )}
+                              </div>
+                              <motion.button
+                                type="button"
+                                onClick={
+                                  dictation.status === "recording"
+                                    ? dictation.stop
+                                    : dictation.start
+                                }
+                                disabled={
+                                  dictation.status === "uploading" ||
+                                  dictation.status === "permission"
+                                }
+                                whileHover={
+                                  prefersReducedMotion ||
+                                  dictation.status === "uploading" ||
+                                  dictation.status === "permission"
+                                    ? undefined
+                                    : { scale: 1.06 }
+                                }
+                                whileTap={
+                                  prefersReducedMotion ||
+                                  dictation.status === "uploading" ||
+                                  dictation.status === "permission"
+                                    ? undefined
+                                    : { scale: 0.94 }
+                                }
+                                transition={buttonHoverTransition}
+                                aria-label={
+                                  dictation.status === "recording"
+                                    ? "Stop recording"
+                                    : "Start dictating"
+                                }
+                                className={`pointer-events-auto absolute bottom-2 right-2 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full outline-none transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:ring-4 focus-visible:ring-white/45 ${
+                                  dictation.status === "recording"
+                                    ? "bg-[#b8395a] text-white shadow-[0_12px_30px_rgba(184,57,90,0.32)] hover:bg-[#a4304f]"
+                                    : "border border-white/70 bg-white/72 text-[#37285d] backdrop-blur-[10px] hover:bg-white/88"
+                                }`}
+                              >
+                                {dictation.status === "recording" ? (
+                                  <StopIcon />
+                                ) : (
+                                  <MicIcon />
+                                )}
+                              </motion.button>
+                            </>
+                          ) : null}
+                        </div>
                       ) : (
                       <div className="relative">
-                        {questionIndex === 0 ? (
+                        {questionIndex === 0 && !requiredError ? (
                           <span
                             aria-hidden="true"
                             className="pointer-events-none absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap text-[0.78rem] italic tracking-[0.01em] text-[#64567f]/55"
@@ -779,7 +953,7 @@ export function SceneStage() {
                         {currentQuestion.inputType === "number" && ageError ? (
                           <p
                             role="alert"
-                            className="mt-2 text-left text-[0.8rem] leading-[1.3] text-[#b8395a]"
+                            className="pointer-events-none absolute left-0 right-0 top-full mt-2 text-left text-[0.8rem] leading-[1.3] text-[#b8395a]"
                           >
                             Numbers only — up to 2 digits.
                           </p>
@@ -787,7 +961,7 @@ export function SceneStage() {
                         {currentQuestion.inputType === "email" && emailError ? (
                           <p
                             role="alert"
-                            className="mt-2 text-left text-[0.8rem] leading-[1.3] text-[#b8395a]"
+                            className="pointer-events-none absolute left-0 right-0 top-full mt-2 text-left text-[0.8rem] leading-[1.3] text-[#b8395a]"
                           >
                             {emailError}
                           </p>
@@ -795,12 +969,12 @@ export function SceneStage() {
                         {currentQuestion.inputType === "email" &&
                         !emailError &&
                         emailSuggestion ? (
-                          <p className="mt-2 text-left text-[0.84rem] leading-[1.4] text-[#64567f]">
+                          <p className="pointer-events-none absolute left-0 right-0 top-full mt-2 text-left text-[0.84rem] leading-[1.4] text-[#64567f]">
                             Did you mean{" "}
                             <button
                               type="button"
                               onClick={acceptEmailSuggestion}
-                              className="cursor-pointer font-semibold text-[#37285d] underline decoration-[#37285d]/35 underline-offset-2 transition-colors hover:decoration-[#37285d]"
+                              className="pointer-events-auto cursor-pointer font-semibold text-[#37285d] underline decoration-[#37285d]/35 underline-offset-2 transition-colors hover:decoration-[#37285d]"
                             >
                               {emailSuggestion}
                             </button>
@@ -812,7 +986,7 @@ export function SceneStage() {
                       {requiredError ? (
                         <p
                           role="alert"
-                          className="mt-2 text-left text-[0.8rem] leading-[1.3] text-[#b8395a]"
+                          className="pointer-events-none absolute left-0 right-0 top-full mt-2 text-left text-[0.8rem] leading-[1.3] text-[#b8395a]"
                         >
                           Please answer this question before continuing.
                         </p>
