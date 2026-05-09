@@ -43,7 +43,7 @@ type Question = {
 
 const QUESTIONS: Question[] = [
   {
-    title: "Send a letter to your future self first.",
+    title: "First, let's meet your future self.",
     helper: "What's your name?",
     inputType: "text",
     placeholder: "First and last name",
