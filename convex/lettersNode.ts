@@ -238,10 +238,9 @@ async function sendViaResend(args: {
   if (!fromEmail) throw new Error("RESEND_FROM_EMAIL not set in Convex env");
 
   const resend = new Resend(apiKey);
-  const fromName = `${args.userName} (5 years from now)`;
 
   const { data, error } = await resend.emails.send({
-    from: `${escapeFromName(fromName)} <${fromEmail}>`,
+    from: `${escapeFromName(args.userName)} <${fromEmail}>`,
     to: [args.to],
     replyTo: args.to,
     subject: args.subject,
